@@ -7,6 +7,7 @@ import { ActiveSession } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { FutureWorkoutsScreen } from '@/components/FutureWorkoutsScreen';
+import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
 import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
@@ -24,6 +25,7 @@ type Screen =
   | { type: 'sessionDetail'; session: WorkoutSession }
   | { type: 'history' }
   | { type: 'futureWorkouts' }
+  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
@@ -123,10 +125,23 @@ const Index = () => {
         <FutureWorkoutsScreen
           futureWorkouts={storage.futureWorkouts}
           templates={storage.templates}
-          onStartTemplate={startFromTemplate}
+          onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
+
+      {screen.type === 'futureWorkoutDetail' && (() => {
+        const fw = screen.futureWorkout;
+        const template = storage.templates.find(t => t.id === fw.templateId) ?? null;
+        return (
+          <FutureWorkoutDetail
+            futureWorkout={fw}
+            template={template}
+            onPerformWorkout={startFromTemplate}
+            onBack={() => setScreen({ type: 'futureWorkouts' })}
+          />
+        );
+      })()}
 
       {screen.type === 'history' && (
         <WorkoutHistory

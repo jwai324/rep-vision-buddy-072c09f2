@@ -6,12 +6,12 @@ import { ArrowLeft, ChevronRight } from 'lucide-react';
 interface FutureWorkoutsScreenProps {
   futureWorkouts: FutureWorkout[];
   templates: WorkoutTemplate[];
-  onStartTemplate: (template: WorkoutTemplate) => void;
+  onSelectFutureWorkout: (fw: FutureWorkout) => void;
   onBack: () => void;
 }
 
 export const FutureWorkoutsScreen: React.FC<FutureWorkoutsScreenProps> = ({
-  futureWorkouts, templates, onStartTemplate, onBack,
+  futureWorkouts, templates, onSelectFutureWorkout, onBack,
 }) => {
   const workouts = futureWorkouts.filter(fw => fw.templateId !== 'rest');
 
@@ -37,7 +37,7 @@ export const FutureWorkoutsScreen: React.FC<FutureWorkoutsScreenProps> = ({
             return (
               <button
                 key={fw.id}
-                onClick={() => { if (template) onStartTemplate(template); }}
+                onClick={() => onSelectFutureWorkout(fw)}
                 className="w-full bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors text-left flex items-center gap-3"
               >
                 <span className="text-xl">🏋️</span>
