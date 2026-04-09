@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { BODY_PARTS } from '@/data/exercises';
-import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency } from '@/types/workout';
+import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ interface DashboardProps {
   history: WorkoutSession[];
   activeProgram: WorkoutProgram | null;
   templates: WorkoutTemplate[];
+  futureWorkouts: FutureWorkout[];
   onStartWorkout: () => void;
   onStartTemplate: (template: WorkoutTemplate) => void;
   onGoToHistory: () => void;
@@ -230,7 +231,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
