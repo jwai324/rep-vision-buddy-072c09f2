@@ -119,6 +119,15 @@ const Index = () => {
         />
       )}
 
+      {screen.type === 'futureWorkouts' && (
+        <FutureWorkoutsScreen
+          futureWorkouts={storage.futureWorkouts}
+          templates={storage.templates}
+          onStartTemplate={startFromTemplate}
+          onBack={() => setScreen({ type: 'dashboard' })}
+        />
+      )}
+
       {screen.type === 'history' && (
         <WorkoutHistory
           sessions={storage.history}
