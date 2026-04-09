@@ -2,7 +2,7 @@ import React from 'react';
 import type { WorkoutSession, FutureWorkout, WorkoutTemplate } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import { ArrowLeft, Dumbbell, Clock, TrendingUp, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Dumbbell, Clock, TrendingUp, ChevronRight, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface CalendarDayDetailProps {
@@ -12,11 +12,12 @@ interface CalendarDayDetailProps {
   template: WorkoutTemplate | null;
   onViewSession: (session: WorkoutSession) => void;
   onViewFutureWorkout: (fw: FutureWorkout) => void;
+  onAddRestDay: (date: string) => void;
   onBack: () => void;
 }
 
 export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
-  date, pastSessions, futureWorkout, template, onViewSession, onViewFutureWorkout, onBack,
+  date, pastSessions, futureWorkout, template, onViewSession, onViewFutureWorkout, onAddRestDay, onBack,
 }) => {
   const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -181,11 +182,23 @@ export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
         </div>
       )}
 
-      {/* Empty state */}
-      {pastSessions.length === 0 && !futureWorkout && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center py-12">
-          <span className="text-4xl">📅</span>
-          <p className="text-muted-foreground text-sm">Nothing scheduled or logged for this day.</p>
+      {/* Add rest day / empty state */}
+      {!futureWorkout && (
+        <div className={`flex flex-col items-center gap-3 ${pastSessions.length === 0 ? 'flex-1 justify-center' : ''} py-8`}>
+          {pastSessions.length === 0 && (
+            <>
+              <span className="text-4xl">📅</span>
+              <p className="text-muted-foreground text-sm">Nothing scheduled or logged for this day.</p>
+            </>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => onAddRestDay(date)}
+            className="mt-2"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Rest Day
+          </Button>
         </div>
       )}
     </div>
