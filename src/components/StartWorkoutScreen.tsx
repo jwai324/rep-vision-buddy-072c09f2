@@ -1,7 +1,7 @@
 import React from 'react';
 import type { WorkoutTemplate, WorkoutProgram } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
-import { Dumbbell, ClipboardList, Calendar, ChevronRight } from 'lucide-react';
+import { Dumbbell, ClipboardList, Calendar, ChevronRight, Search } from 'lucide-react';
 
 interface StartWorkoutScreenProps {
   templates: WorkoutTemplate[];
