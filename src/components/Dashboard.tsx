@@ -153,8 +153,8 @@ function buildProgramEvents(program: WorkoutProgram) {
 const WeeklyProgramCalendar: React.FC<{
   program: WorkoutProgram;
   templates: WorkoutTemplate[];
-  onStartTemplate: (template: WorkoutTemplate) => void;
-}> = ({ program, templates, onStartTemplate }) => {
+  onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
+}> = ({ program, templates, onDayClick }) => {
   const today = new Date();
 
   const weekDays = useMemo(() => {
