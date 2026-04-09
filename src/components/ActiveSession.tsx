@@ -107,24 +107,29 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const addExercise = useCallback((id: ExerciseId) => {
-    const existing = blocks.find(b => b.exerciseId === id);
-    if (existing) {
-      setShowExercisePicker(false);
-      return;
-    }
-    setBlocks(prev => [...prev, {
-      exerciseId: id,
-      exerciseName: EXERCISES[id]?.name ?? id,
-      sets: Array.from({ length: 3 }, (_, i) => ({
-        setNumber: i + 1,
-        weight: '',
-        reps: '',
-        completed: false,
-        type: 'normal' as SetType,
-      })),
-    }]);
+    addMultipleExercises([id]);
+  }, []);
+
+  const addMultipleExercises = useCallback((ids: ExerciseId[]) => {
+    setBlocks(prev => {
+      const existingIds = new Set(prev.map(b => b.exerciseId));
+      const newBlocks = ids
+        .filter(id => !existingIds.has(id))
+        .map(id => ({
+          exerciseId: id,
+          exerciseName: EXERCISES[id]?.name ?? id,
+          sets: Array.from({ length: 3 }, (_, i) => ({
+            setNumber: i + 1,
+            weight: '',
+            reps: '',
+            completed: false,
+            type: 'normal' as SetType,
+          })),
+        }));
+      return [...prev, ...newBlocks];
+    });
     setShowExercisePicker(false);
-  }, [blocks]);
+  }, []);
 
   const finishWorkout = useCallback(() => {
     const duration = Math.floor((Date.now() - startTime.current) / 1000);
