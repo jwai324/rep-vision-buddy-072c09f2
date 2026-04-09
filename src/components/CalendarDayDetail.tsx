@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 interface CalendarDayDetailProps {
   date: string; // ISO date string
   pastSessions: WorkoutSession[];
-  futureWorkout: FutureWorkout | null;
-  template: WorkoutTemplate | null;
+  futureWorkouts: FutureWorkout[];
+  templates: WorkoutTemplate[];
   onViewSession: (session: WorkoutSession) => void;
   onViewFutureWorkout: (fw: FutureWorkout) => void;
   onAddRestDay: (date: string) => void;
@@ -17,7 +17,7 @@ interface CalendarDayDetailProps {
 }
 
 export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
-  date, pastSessions, futureWorkout, template, onViewSession, onViewFutureWorkout, onAddRestDay, onBack,
+  date, pastSessions, futureWorkouts, templates, onViewSession, onViewFutureWorkout, onAddRestDay, onBack,
 }) => {
   const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -147,43 +147,53 @@ export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
         </div>
       )}
 
-      {/* Future Workout */}
-      {futureWorkout && (
+      {/* Future Workouts */}
+      {futureWorkouts.length > 0 && (
         <div className="flex flex-col gap-3">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Scheduled</p>
-          <button
-            onClick={() => onViewFutureWorkout(futureWorkout)}
-            className="bg-card rounded-xl border border-border p-4 text-left hover:border-primary/30 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                {futureWorkout.templateId === 'rest' ? (
-                  <span className="text-lg">😴</span>
-                ) : (
-                  <Dumbbell className="w-5 h-5 text-primary" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-foreground">{futureWorkout.label}</p>
-                {template && (
-                  <p className="text-xs text-muted-foreground">
-                    {template.exercises.length} exercise{template.exercises.length !== 1 ? 's' : ''}
-                  </p>
-                )}
-                {futureWorkout.templateId === 'rest' && futureWorkout.recoveryActivities && futureWorkout.recoveryActivities.length > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {futureWorkout.recoveryActivities.length} recovery activit{futureWorkout.recoveryActivities.length !== 1 ? 'ies' : 'y'}
-                  </p>
-                )}
-              </div>
-              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-            </div>
-          </button>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+            Scheduled {futureWorkouts.length > 1 ? `(${futureWorkouts.length})` : ''}
+          </p>
+          {futureWorkouts.map(fw => {
+            const tmpl = fw.templateId !== 'rest'
+              ? templates.find(t => t.id === fw.templateId) ?? null
+              : null;
+            return (
+              <button
+                key={fw.id}
+                onClick={() => onViewFutureWorkout(fw)}
+                className="bg-card rounded-xl border border-border p-4 text-left hover:border-primary/30 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    {fw.templateId === 'rest' ? (
+                      <span className="text-lg">😴</span>
+                    ) : (
+                      <Dumbbell className="w-5 h-5 text-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-foreground">{fw.label}</p>
+                    {tmpl && (
+                      <p className="text-xs text-muted-foreground">
+                        {tmpl.exercises.length} exercise{tmpl.exercises.length !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                    {fw.templateId === 'rest' && fw.recoveryActivities && fw.recoveryActivities.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {fw.recoveryActivities.length} recovery activit{fw.recoveryActivities.length !== 1 ? 'ies' : 'y'}
+                      </p>
+                    )}
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
       {/* Add rest day / empty state */}
-      {!futureWorkout && (
+      {futureWorkouts.length === 0 && (
         <div className={`flex flex-col items-center gap-3 ${pastSessions.length === 0 ? 'flex-1 justify-center' : ''} py-8`}>
           {pastSessions.length === 0 && (
             <>
