@@ -8,13 +8,13 @@ import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { FutureWorkoutsScreen } from '@/components/FutureWorkoutsScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
+import { CalendarDayDetail } from '@/components/CalendarDayDetail';
 import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-// DayDetail removed — calendar now routes to FutureWorkoutDetail
 
 type Screen =
   | { type: 'dashboard' }
@@ -22,10 +22,11 @@ type Screen =
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
-  | { type: 'sessionDetail'; session: WorkoutSession }
+  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'history' }
   | { type: 'history' }
   | { type: 'futureWorkouts' }
   | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'list' }
+  | { type: 'calendarDay'; date: string }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
@@ -62,22 +63,9 @@ const Index = () => {
           onGoToTemplates={() => setScreen({ type: 'templates' })}
           onGoToPrograms={() => setScreen({ type: 'programs' })}
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
-          onDayClick={(date, template) => {
+          onDayClick={(date) => {
             const dateStr = date.toISOString().split('T')[0];
-            const fw = storage.futureWorkouts.find(f => f.date === dateStr);
-            if (fw) {
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'calendar' });
-            } else {
-              // No future workout for this date — create a temporary rest day entry
-              const restFw: FutureWorkout = {
-                id: 'temp-' + dateStr,
-                programId: '',
-                date: dateStr,
-                templateId: template ? template.id : 'rest',
-                label: template ? template.name : 'Rest Day',
-              };
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
-            }
+            setScreen({ type: 'calendarDay', date: dateStr });
           }}
         />
       )}
@@ -168,9 +156,49 @@ const Index = () => {
                 recoveryActivities: restFw.recoveryActivities,
               };
               storage.saveSession(session);
-              setScreen(screen.from === 'list' ? { type: 'futureWorkouts' } : { type: 'dashboard' });
+              setScreen(screen.from === 'list'
+                ? { type: 'futureWorkouts' }
+                : screen.from === 'calendar'
+                  ? { type: 'calendarDay', date: restFw.date }
+                  : { type: 'dashboard' });
             }}
-            onBack={() => setScreen(screen.from === 'list' ? { type: 'futureWorkouts' } : { type: 'dashboard' })}
+            onBack={() => setScreen(
+              screen.from === 'list'
+                ? { type: 'futureWorkouts' }
+                : screen.from === 'calendar'
+                  ? { type: 'calendarDay', date: fw.date }
+                  : { type: 'dashboard' }
+            )}
+          />
+        );
+      })()}
+
+      {screen.type === 'calendarDay' && (() => {
+        const dateStr = screen.date;
+        const pastSessions = storage.history.filter(s => s.date.startsWith(dateStr));
+        const fw = storage.futureWorkouts.find(f => f.date === dateStr) ?? null;
+        const template = fw && fw.templateId !== 'rest'
+          ? storage.templates.find(t => t.id === fw.templateId) ?? null
+          : null;
+        return (
+          <CalendarDayDetail
+            date={dateStr}
+            pastSessions={pastSessions}
+            futureWorkout={fw}
+            template={template}
+            onViewSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'calendar' })}
+            onViewFutureWorkout={(selectedFw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: selectedFw, from: 'calendar' })}
+            onAddRestDay={(d) => {
+              const restFw: FutureWorkout = {
+                id: 'temp-' + d,
+                programId: '',
+                date: d,
+                templateId: 'rest',
+                label: 'Rest Day',
+              };
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
+            }}
+            onBack={() => setScreen({ type: 'dashboard' })}
           />
         );
       })()}
@@ -178,7 +206,7 @@ const Index = () => {
       {screen.type === 'history' && (
         <WorkoutHistory
           sessions={storage.history}
-          onSelectSession={(session) => setScreen({ type: 'sessionDetail', session })}
+          onSelectSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'history' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
@@ -186,9 +214,9 @@ const Index = () => {
       {screen.type === 'sessionDetail' && (
         <SessionSummary
           session={screen.session}
-          onSave={() => setScreen({ type: 'history' })}
-          onSaveAsTemplate={() => setScreen({ type: 'history' })}
-          onClose={() => setScreen({ type: 'history' })}
+          onSave={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'history' })}
+          onSaveAsTemplate={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'history' })}
+          onClose={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'history' })}
         />
       )}
 
