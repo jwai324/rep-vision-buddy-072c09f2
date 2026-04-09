@@ -1,48 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
 
-const KEYS = {
-  history: 'replog:history',
-  templates: 'replog:templates',
-  programs: 'replog:programs',
-  activeProgram: 'replog:activeProgram',
-  futureWorkouts: 'replog:futureWorkouts',
-} as const;
-
-function getItem<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (e) {
-    console.error(`[useStorage] Failed to read ${key}:`, e);
-    return fallback;
-  }
-}
-
-function setItem<T>(key: string, value: T) {
-  try {
-    const json = JSON.stringify(value);
-    // Check rough quota — warn if approaching limit
-    if (json.length > 4 * 1024 * 1024) {
-      console.warn(`[useStorage] Large write to ${key}: ${(json.length / 1024 / 1024).toFixed(1)}MB`);
-    }
-    localStorage.setItem(key, json);
-  } catch (e) {
-    console.error(`[useStorage] Failed to write ${key}:`, e);
-    toast.error('Storage error', {
-      description: 'Could not save data. Your device storage may be full.',
-    });
-  }
-}
-
-function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
-  const workouts: FutureWorkout[] = [];
+function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
+  const workouts: Omit<FutureWorkout, 'id'>[] = [];
   const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
   const endDate = addWeeks(start, program.durationWeeks ?? 8);
-
-  // Track which dates have a scheduled workout
   const scheduledDates = new Set<string>();
 
   program.days.forEach((day) => {
@@ -53,7 +19,6 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
       const dateStr = format(date, 'yyyy-MM-dd');
       scheduledDates.add(dateStr);
       workouts.push({
-        id: crypto.randomUUID(),
         programId: program.id,
         date: dateStr,
         templateId: day.templateId,
@@ -89,13 +54,12 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
     }
   });
 
-  // Fill in rest days for any unscheduled dates in the program range
+  // Fill in rest days
   let cursor = new Date(start);
   while (cursor < endDate) {
     const dateStr = format(cursor, 'yyyy-MM-dd');
     if (!scheduledDates.has(dateStr)) {
       workouts.push({
-        id: crypto.randomUUID(),
         programId: program.id,
         date: dateStr,
         templateId: 'rest',
@@ -108,120 +72,287 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
   return workouts;
 }
 
-function cleanFutureWorkouts(workouts: FutureWorkout[], history: WorkoutSession[]): FutureWorkout[] {
-  const today = format(new Date(), 'yyyy-MM-dd');
-  return workouts.filter(fw => {
-    if (fw.date < today) return false;
-    if (fw.completed) return false;
-    // Check if a session was completed on that date with matching template
-    const completedOnDate = history.some(s => s.date.split('T')[0] === fw.date);
-    if (completedOnDate) return false;
-    return true;
-  });
+// Map DB row to app type
+function mapSession(row: any): WorkoutSession {
+  return {
+    id: row.id,
+    date: row.date,
+    exercises: row.exercises as any[],
+    duration: row.duration,
+    totalVolume: Number(row.total_volume),
+    totalSets: row.total_sets,
+    totalReps: row.total_reps,
+    averageRpe: row.average_rpe ? Number(row.average_rpe) : undefined,
+    isRestDay: row.is_rest_day ?? false,
+    recoveryActivities: row.recovery_activities as any,
+  };
+}
+
+function mapTemplate(row: any): WorkoutTemplate {
+  return {
+    id: row.id,
+    name: row.name,
+    exercises: row.exercises as any[],
+  };
+}
+
+function mapProgram(row: any): WorkoutProgram {
+  return {
+    id: row.id,
+    name: row.name,
+    days: row.days as any[],
+    durationWeeks: row.duration_weeks ?? 8,
+    startDate: row.start_date ?? undefined,
+    schedule: row.schedule as any,
+  };
+}
+
+function mapFutureWorkout(row: any): FutureWorkout {
+  return {
+    id: row.id,
+    programId: row.program_id,
+    date: row.date,
+    templateId: row.template_id,
+    label: row.label,
+    completed: row.completed ?? false,
+    recoveryActivities: row.recovery_activities as any,
+  };
 }
 
 export function useStorage() {
-  const [history, setHistory] = useState<WorkoutSession[]>(() => getItem(KEYS.history, []));
-  const [templates, setTemplates] = useState<WorkoutTemplate[]>(() => getItem(KEYS.templates, []));
-  const [programs, setPrograms] = useState<WorkoutProgram[]>(() => getItem(KEYS.programs, []));
-  const [activeProgramId, setActiveProgramId] = useState<string | null>(() => getItem(KEYS.activeProgram, null));
-  const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>(() => {
-    const stored = getItem<FutureWorkout[]>(KEYS.futureWorkouts, []);
-    const historyData = getItem<WorkoutSession[]>(KEYS.history, []);
-    const cleaned = cleanFutureWorkouts(stored, historyData);
-    if (cleaned.length !== stored.length) setItem(KEYS.futureWorkouts, cleaned);
-    return cleaned;
-  });
+  const { user } = useAuth();
+  const [history, setHistory] = useState<WorkoutSession[]>([]);
+  const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  const [programs, setPrograms] = useState<WorkoutProgram[]>([]);
+  const [activeProgramId, setActiveProgramIdState] = useState<string | null>(null);
+  const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const saveSession = useCallback((session: WorkoutSession) => {
-    setHistory(prev => {
-      const next = [session, ...prev];
-      setItem(KEYS.history, next);
-      // Clean future workouts when a session is saved
-      setFutureWorkouts(fws => {
-        const cleaned = cleanFutureWorkouts(fws, next);
-        setItem(KEYS.futureWorkouts, cleaned);
-        return cleaned;
-      });
-      return next;
-    });
+  // Load all data from Supabase on mount / user change
+  useEffect(() => {
+    if (!user) {
+      setHistory([]);
+      setTemplates([]);
+      setPrograms([]);
+      setActiveProgramId(null);
+      setFutureWorkouts([]);
+      setLoading(false);
+      return;
+    }
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes] = await Promise.all([
+          supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
+          supabase.from('workout_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+          supabase.from('workout_programs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+          supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }),
+          supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
+        ]);
+
+        if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
+        if (templatesRes.data) setTemplates(templatesRes.data.map(mapTemplate));
+        if (programsRes.data) setPrograms(programsRes.data.map(mapProgram));
+        if (futureRes.data) setFutureWorkouts(futureRes.data.map(mapFutureWorkout));
+        if (settingsRes.data) setActiveProgramIdState(settingsRes.data.active_program_id);
+      } catch (e) {
+        console.error('[useStorage] Failed to load data:', e);
+        toast.error('Failed to load your data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [user]);
+
+  const setActiveProgramId = useCallback((id: string | null) => {
+    setActiveProgramIdState(id);
   }, []);
 
-  const saveTemplate = useCallback((template: WorkoutTemplate) => {
+  const saveSession = useCallback(async (session: WorkoutSession) => {
+    if (!user) return;
+    const { error } = await supabase.from('workout_sessions').upsert({
+      id: session.id,
+      user_id: user.id,
+      date: session.date,
+      exercises: session.exercises as any,
+      duration: session.duration,
+      total_volume: session.totalVolume,
+      total_sets: session.totalSets,
+      total_reps: session.totalReps,
+      average_rpe: session.averageRpe ?? null,
+      is_rest_day: session.isRestDay ?? false,
+      recovery_activities: session.recoveryActivities as any ?? null,
+    });
+    if (error) {
+      console.error('[useStorage] saveSession error:', error);
+      toast.error('Failed to save workout session');
+      return;
+    }
+    setHistory(prev => {
+      const exists = prev.findIndex(s => s.id === session.id);
+      if (exists >= 0) return prev.map(s => s.id === session.id ? session : s);
+      return [session, ...prev];
+    });
+    // Clean future workouts that match this date
+    setFutureWorkouts(prev => {
+      const toRemove = prev.filter(fw => fw.date === session.date.split('T')[0] && !fw.completed);
+      toRemove.forEach(fw => {
+        supabase.from('future_workouts').delete().eq('id', fw.id).then(() => {});
+      });
+      return prev.filter(fw => !toRemove.some(r => r.id === fw.id));
+    });
+  }, [user]);
+
+  const saveTemplate = useCallback(async (template: WorkoutTemplate) => {
+    if (!user) return;
+    const { error } = await supabase.from('workout_templates').upsert({
+      id: template.id,
+      user_id: user.id,
+      name: template.name,
+      exercises: template.exercises as any,
+    });
+    if (error) {
+      console.error('[useStorage] saveTemplate error:', error);
+      toast.error('Failed to save template');
+      return;
+    }
     setTemplates(prev => {
       const exists = prev.findIndex(t => t.id === template.id);
-      const next = exists >= 0 ? prev.map(t => t.id === template.id ? template : t) : [...prev, template];
-      setItem(KEYS.templates, next);
-      return next;
+      if (exists >= 0) return prev.map(t => t.id === template.id ? template : t);
+      return [...prev, template];
     });
-  }, []);
+  }, [user]);
 
-  const deleteTemplate = useCallback((id: string) => {
-    setTemplates(prev => {
-      const next = prev.filter(t => t.id !== id);
-      setItem(KEYS.templates, next);
-      return next;
+  const deleteTemplate = useCallback(async (id: string) => {
+    if (!user) return;
+    const { error } = await supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id);
+    if (error) {
+      console.error('[useStorage] deleteTemplate error:', error);
+      toast.error('Failed to delete template');
+      return;
+    }
+    setTemplates(prev => prev.filter(t => t.id !== id));
+  }, [user]);
+
+  const saveProgram = useCallback(async (program: WorkoutProgram) => {
+    if (!user) return;
+    const { error } = await supabase.from('workout_programs').upsert({
+      id: program.id,
+      user_id: user.id,
+      name: program.name,
+      days: program.days as any,
+      duration_weeks: program.durationWeeks ?? 8,
+      start_date: program.startDate ?? null,
+      schedule: program.schedule as any ?? null,
     });
-  }, []);
-
-  const saveProgram = useCallback((program: WorkoutProgram) => {
+    if (error) {
+      console.error('[useStorage] saveProgram error:', error);
+      toast.error('Failed to save program');
+      return;
+    }
     setPrograms(prev => {
       const exists = prev.findIndex(p => p.id === program.id);
-      const next = exists >= 0 ? prev.map(p => p.id === program.id ? program : p) : [...prev, program];
-      setItem(KEYS.programs, next);
-      return next;
+      if (exists >= 0) return prev.map(p => p.id === program.id ? program : p);
+      return [...prev, program];
     });
-    // Generate future workouts for this program
-    setFutureWorkouts(prev => {
-      const withoutOld = prev.filter(fw => fw.programId !== program.id);
-      const newFws = generateFutureWorkouts(program);
-      const historyData = getItem<WorkoutSession[]>(KEYS.history, []);
-      const cleaned = cleanFutureWorkouts([...withoutOld, ...newFws], historyData);
-      setItem(KEYS.futureWorkouts, cleaned);
-      return cleaned;
-    });
-  }, []);
 
-  const deleteProgram = useCallback((id: string) => {
-    setPrograms(prev => {
-      const next = prev.filter(p => p.id !== id);
-      setItem(KEYS.programs, next);
-      return next;
-    });
-    // Remove future workouts for this program
-    setFutureWorkouts(prev => {
-      const next = prev.filter(fw => fw.programId !== id);
-      setItem(KEYS.futureWorkouts, next);
-      return next;
-    });
-  }, []);
+    // Regenerate future workouts for this program
+    // Delete old ones for this program
+    await supabase.from('future_workouts').delete().eq('program_id', program.id).eq('user_id', user.id);
+    
+    const newFws = generateFutureWorkouts(program);
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const futureFws = newFws.filter(fw => fw.date >= today);
+    
+    if (futureFws.length > 0) {
+      const rows = futureFws.map(fw => ({
+        user_id: user.id,
+        program_id: fw.programId,
+        date: fw.date,
+        template_id: fw.templateId,
+        label: fw.label,
+        completed: false,
+      }));
+      const { data, error: insertError } = await supabase.from('future_workouts').insert(rows).select();
+      if (insertError) {
+        console.error('[useStorage] future workouts insert error:', insertError);
+      }
+      if (data) {
+        setFutureWorkouts(prev => {
+          const withoutOld = prev.filter(fw => fw.programId !== program.id);
+          return [...withoutOld, ...data.map(mapFutureWorkout)].sort((a, b) => a.date.localeCompare(b.date));
+        });
+      }
+    } else {
+      setFutureWorkouts(prev => prev.filter(fw => fw.programId !== program.id));
+    }
+  }, [user]);
 
-  const setActiveProgram = useCallback((id: string | null) => {
-    setActiveProgramId(id);
-    setItem(KEYS.activeProgram, id);
-  }, []);
+  const deleteProgram = useCallback(async (id: string) => {
+    if (!user) return;
+    await supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id);
+    const { error } = await supabase.from('workout_programs').delete().eq('id', id).eq('user_id', user.id);
+    if (error) {
+      console.error('[useStorage] deleteProgram error:', error);
+      toast.error('Failed to delete program');
+      return;
+    }
+    setPrograms(prev => prev.filter(p => p.id !== id));
+    setFutureWorkouts(prev => prev.filter(fw => fw.programId !== id));
+  }, [user]);
 
-  const deleteSession = useCallback((id: string) => {
-    setHistory(prev => {
-      const next = prev.filter(s => s.id !== id);
-      setItem(KEYS.history, next);
-      return next;
+  const setActiveProgram = useCallback(async (id: string | null) => {
+    if (!user) return;
+    setActiveProgramIdState(id);
+    const { error } = await supabase.from('user_settings').upsert({
+      user_id: user.id,
+      active_program_id: id,
+    }, { onConflict: 'user_id' });
+    if (error) {
+      console.error('[useStorage] setActiveProgram error:', error);
+    }
+  }, [user]);
+
+  const deleteSession = useCallback(async (id: string) => {
+    if (!user) return;
+    const { error } = await supabase.from('workout_sessions').delete().eq('id', id).eq('user_id', user.id);
+    if (error) {
+      console.error('[useStorage] deleteSession error:', error);
+      toast.error('Failed to delete session');
+      return;
+    }
+    setHistory(prev => prev.filter(s => s.id !== id));
+  }, [user]);
+
+  const updateFutureWorkout = useCallback(async (updated: FutureWorkout) => {
+    if (!user) return;
+    const { error } = await supabase.from('future_workouts').upsert({
+      id: updated.id,
+      user_id: user.id,
+      program_id: updated.programId,
+      date: updated.date,
+      template_id: updated.templateId,
+      label: updated.label,
+      completed: updated.completed ?? false,
+      recovery_activities: updated.recoveryActivities as any ?? null,
     });
-  }, []);
-
-  const updateFutureWorkout = useCallback((updated: FutureWorkout) => {
+    if (error) {
+      console.error('[useStorage] updateFutureWorkout error:', error);
+      toast.error('Failed to update future workout');
+      return;
+    }
     setFutureWorkouts(prev => {
       const exists = prev.some(fw => fw.id === updated.id);
-      const next = exists
-        ? prev.map(fw => fw.id === updated.id ? updated : fw)
-        : [...prev, updated];
-      setItem(KEYS.futureWorkouts, next);
-      return next;
+      if (exists) return prev.map(fw => fw.id === updated.id ? updated : fw);
+      return [...prev, updated];
     });
-  }, []);
+  }, [user]);
 
   return {
-    history, templates, programs, activeProgramId, futureWorkouts,
+    history, templates, programs, activeProgramId, futureWorkouts, loading,
     saveSession, saveTemplate, deleteTemplate,
     saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
   };
