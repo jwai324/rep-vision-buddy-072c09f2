@@ -272,7 +272,7 @@ export function getBodyPartIcon(bodyPart: string): string {
   const icons: Record<string, string> = {
     Chest: '🫁', Back: '🔙', Shoulders: '🏋️', Quads: '🦵', Hamstrings: '🦵',
     Glutes: '🍑', Calves: '🦶', Biceps: '💪', Triceps: '💪', Core: '🧱',
-    Traps: '🏋️', Forearms: '💪', 'Full Body': '⚡', Neck: '🏋️',
+    Traps: '🏋️', Forearms: '💪', 'Full Body': '⚡', Cardio: '🏃', Neck: '🏋️',
   };
   return icons[bodyPart] || '🏋️';
 }
