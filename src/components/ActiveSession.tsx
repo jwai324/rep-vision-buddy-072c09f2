@@ -541,9 +541,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
-        <Button variant="neon" size="sm" onClick={finishWorkout}>
-          {isEditMode ? 'Save Changes' : 'Finish'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {!isEditMode && (
+            <Button variant="outline" size="sm" onClick={onCancel} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+              <Trash2 className="w-3.5 h-3.5 mr-1" />
+              Discard
+            </Button>
+          )}
+          <Button variant="neon" size="sm" onClick={finishWorkout}>
+            {isEditMode ? 'Save Changes' : 'Finish'}
+          </Button>
+        </div>
       </div>
 
       {/* Title + Timer */}
