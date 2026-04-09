@@ -29,6 +29,13 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
   return [];
 }
 
+interface DropRow {
+  weight: string;
+  reps: string;
+  rpe: string;
+  completed: boolean;
+}
+
 interface SetRow {
   setNumber: number;
   weight: string;
@@ -36,6 +43,7 @@ interface SetRow {
   completed: boolean;
   type: SetType;
   rpe: string;
+  drops?: DropRow[];
 }
 
 interface ExerciseBlock {
