@@ -78,6 +78,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       };
     })
   );
+  const [workoutName, setWorkoutName] = useState('Workout');
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -350,7 +351,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
       {/* Title + Timer */}
       <div className="px-4 pb-3">
-        <h1 className="text-xl font-bold text-foreground">Workout</h1>
+        <input
+          type="text"
+          value={workoutName}
+          onChange={e => setWorkoutName(e.target.value)}
+          className="text-xl font-bold text-foreground bg-transparent outline-none border-b border-transparent focus:border-primary transition-colors w-full"
+        />
         <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
       </div>
 
