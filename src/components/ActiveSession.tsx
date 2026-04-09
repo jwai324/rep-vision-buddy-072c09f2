@@ -173,7 +173,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         <div className="p-4 pb-0">
           <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
         </div>
-        <ExerciseSelector onSelect={addExercise} />
+        <ExerciseSelector onSelect={addExercise} onSelectMultiple={addMultipleExercises} />
       </div>
     );
   }
