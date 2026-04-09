@@ -31,6 +31,8 @@ export interface WorkoutSession {
   totalSets: number;
   totalReps: number;
   averageRpe?: number;
+  isRestDay?: boolean;
+  recoveryActivities?: RecoveryActivity[];
 }
 
 export interface TemplateExercise {
@@ -75,7 +77,7 @@ export interface WorkoutProgram {
 
 export interface RecoveryActivity {
   id: string;
-  activityId: string;
+  activityId: string; // maps to ExerciseId in exercise database
   notes?: string;
   duration?: number; // minutes
   completed?: boolean;
