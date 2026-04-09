@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from 'react';
-import { Search } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
 import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
-import { EXERCISE_DATABASE } from '@/data/exercises';
+import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Plus, MoreHorizontal, Trash2, Layers, ChevronDown, ArrowUp, ArrowDown, Timer, Check } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 
 interface TemplateBuilderProps {
@@ -15,166 +15,297 @@ interface TemplateBuilderProps {
 
 const setTypes: SetType[] = ['normal', 'superset', 'dropset', 'failure'];
 
+interface TemplateSetRow {
+  setNumber: number;
+  targetWeight: string;
+  targetReps: string;
+  targetRpe: string;
+}
+
+interface TemplateBlock {
+  exerciseId: ExerciseId;
+  exerciseName: string;
+  sets: TemplateSetRow[];
+  setType: SetType;
+  restSeconds: number;
+}
+
+function exerciseToBlock(ex: TemplateExercise): TemplateBlock {
+  const info = EXERCISES[ex.exerciseId];
+  return {
+    exerciseId: ex.exerciseId,
+    exerciseName: info?.name ?? ex.exerciseId,
+    setType: ex.setType,
+    restSeconds: ex.restSeconds,
+    sets: Array.from({ length: ex.sets }, (_, i) => ({
+      setNumber: i + 1,
+      targetWeight: '',
+      targetReps: ex.targetReps === 'failure' ? '' : ex.targetReps.toString(),
+      targetRpe: ex.targetRpe?.toString() ?? '',
+    })),
+  };
+}
+
+function blockToExercise(block: TemplateBlock): TemplateExercise {
+  const firstSet = block.sets[0];
+  const reps = block.setType === 'failure' ? 'failure' as const : (parseInt(firstSet?.targetReps) || 10);
+  return {
+    exerciseId: block.exerciseId,
+    sets: block.sets.length,
+    targetReps: reps,
+    setType: block.setType,
+    restSeconds: block.restSeconds,
+    targetRpe: firstSet?.targetRpe ? parseInt(firstSet.targetRpe) : undefined,
+  };
+}
+
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
-  const [exercises, setExercises] = useState<TemplateExercise[]>(initial?.exercises ?? []);
-  const [exerciseSearch, setExerciseSearch] = useState('');
+  const [blocks, setBlocks] = useState<TemplateBlock[]>(() =>
+    initial?.exercises.map(exerciseToBlock) ?? []
+  );
   const [showExercisePicker, setShowExercisePicker] = useState(false);
 
-  const filteredExercises = useMemo(() => {
-    if (!exerciseSearch) return EXERCISE_DATABASE.slice(0, 20);
-    return EXERCISE_DATABASE.filter(ex =>
-      ex.name.toLowerCase().includes(exerciseSearch.toLowerCase()) ||
-      ex.primaryBodyPart.toLowerCase().includes(exerciseSearch.toLowerCase())
-    ).slice(0, 20);
-  }, [exerciseSearch]);
+  const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof TemplateSetRow, value: string) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      return {
+        ...block,
+        sets: block.sets.map((set, si) => si === setIdx ? { ...set, [field]: value } : set),
+      };
+    }));
+  }, []);
 
-  const addExercise = (id: ExerciseId) => {
-    setExercises(prev => [...prev, {
-      exerciseId: id,
-      sets: 3,
-      targetReps: 10,
-      setType: 'normal',
-      restSeconds: 90,
-    }]);
-  };
+  const addSet = useCallback((blockIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      const last = block.sets[block.sets.length - 1];
+      return {
+        ...block,
+        sets: [...block.sets, {
+          setNumber: block.sets.length + 1,
+          targetWeight: last?.targetWeight ?? '',
+          targetReps: last?.targetReps ?? '',
+          targetRpe: last?.targetRpe ?? '',
+        }],
+      };
+    }));
+  }, []);
 
-  const updateExercise = (index: number, update: Partial<TemplateExercise>) => {
-    setExercises(prev => prev.map((e, i) => i === index ? { ...e, ...update } : e));
-  };
+  const removeExercise = useCallback((blockIdx: number) => {
+    setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
+  }, []);
 
-  const removeExercise = (index: number) => {
-    setExercises(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const moveExercise = (from: number, to: number) => {
-    if (to < 0 || to >= exercises.length) return;
-    setExercises(prev => {
+  const moveExercise = useCallback((from: number, to: number) => {
+    setBlocks(prev => {
+      if (to < 0 || to >= prev.length) return prev;
       const next = [...prev];
       const [item] = next.splice(from, 1);
       next.splice(to, 0, item);
       return next;
     });
-  };
+  }, []);
+
+  const updateBlockType = useCallback((blockIdx: number, type: SetType) => {
+    setBlocks(prev => prev.map((b, i) => i === blockIdx ? { ...b, setType: type } : b));
+  }, []);
+
+  const updateRestSeconds = useCallback((blockIdx: number, seconds: number) => {
+    setBlocks(prev => prev.map((b, i) => i === blockIdx ? { ...b, restSeconds: seconds } : b));
+  }, []);
+
+  const addExercise = useCallback((id: ExerciseId) => {
+    addMultipleExercises([id]);
+  }, []);
+
+  const addMultipleExercises = useCallback((ids: ExerciseId[]) => {
+    setBlocks(prev => {
+      const existingIds = new Set(prev.map(b => b.exerciseId));
+      const newBlocks = ids
+        .filter(id => !existingIds.has(id))
+        .map(id => ({
+          exerciseId: id,
+          exerciseName: EXERCISES[id]?.name ?? id,
+          setType: 'normal' as SetType,
+          restSeconds: 90,
+          sets: Array.from({ length: 3 }, (_, i) => ({
+            setNumber: i + 1,
+            targetWeight: '',
+            targetReps: '10',
+            targetRpe: '',
+          })),
+        }));
+      return [...prev, ...newBlocks];
+    });
+    setShowExercisePicker(false);
+  }, []);
 
   const save = () => {
-    if (!name.trim() || exercises.length === 0) return;
+    if (!name.trim() || blocks.length === 0) return;
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
-      exercises,
+      exercises: blocks.map(blockToExercise),
     });
   };
 
+  if (showExercisePicker) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <div className="p-4 pb-0">
+          <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
+        </div>
+        <ExerciseSelector onSelect={addExercise} onSelectMultiple={addMultipleExercises} />
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-foreground">{initial ? 'Edit' : 'New'} Template</h2>
-        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 pb-2">
+        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        <Button variant="neon" size="sm" onClick={save} disabled={!name.trim() || blocks.length === 0}>
+          Save Template
+        </Button>
       </div>
 
-      <input
-        type="text"
-        placeholder="Template name..."
-        value={name}
-        onChange={e => setName(e.target.value)}
-        className="bg-secondary rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary font-medium"
-      />
+      {/* Template Name */}
+      <div className="px-4 pb-3">
+        <input
+          type="text"
+          placeholder="Template name..."
+          value={name}
+          onChange={e => setName(e.target.value)}
+          className="w-full bg-transparent text-xl font-bold text-foreground placeholder:text-muted-foreground/50 outline-none border-b border-border pb-2 focus:border-primary transition-colors"
+        />
+      </div>
 
-      {/* Exercises */}
-      {exercises.map((ex, i) => (
-        <div key={i} className="bg-card rounded-xl p-4 border border-border flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold text-foreground">{EXERCISES[ex.exerciseId].icon} {EXERCISES[ex.exerciseId].name}</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => moveExercise(i, i - 1)} className="text-muted-foreground hover:text-foreground text-xs px-1">↑</button>
-              <button onClick={() => moveExercise(i, i + 1)} className="text-muted-foreground hover:text-foreground text-xs px-1">↓</button>
-              <button onClick={() => removeExercise(i)} className="text-set-failure hover:opacity-80 text-xs px-1">✕</button>
+      {/* Exercise Blocks */}
+      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
+        {blocks.map((block, blockIdx) => (
+          <div key={`${block.exerciseId}-${blockIdx}`} className="rounded-lg">
+            {/* Exercise Header */}
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="text-muted-foreground hover:text-foreground p-1">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-48 p-1">
+                  <button
+                    onClick={() => moveExercise(blockIdx, blockIdx - 1)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
+                  >
+                    <ArrowUp className="w-4 h-4" /> Move Up
+                  </button>
+                  <button
+                    onClick={() => moveExercise(blockIdx, blockIdx + 1)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
+                  >
+                    <ArrowDown className="w-4 h-4" /> Move Down
+                  </button>
+                  <button
+                    onClick={() => removeExercise(blockIdx)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="w-4 h-4" /> Remove Exercise
+                  </button>
+                </PopoverContent>
+              </Popover>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Sets</label>
-              <input type="number" value={ex.sets} min={1} onChange={e => updateExercise(i, { sets: parseInt(e.target.value) || 1 })}
-                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Target Reps</label>
-              <input
-                type={ex.targetReps === 'failure' ? 'text' : 'number'}
-                value={ex.targetReps === 'failure' ? 'Failure' : ex.targetReps}
-                readOnly={ex.targetReps === 'failure'}
-                onChange={e => updateExercise(i, { targetReps: parseInt(e.target.value) || 1 })}
-                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rest (sec)</label>
-              <input type="number" value={ex.restSeconds} min={0} step={15} onChange={e => updateExercise(i, { restSeconds: parseInt(e.target.value) || 0 })}
-                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Target RPE</label>
-              <input type="number" value={ex.targetRpe ?? ''} min={1} max={10} placeholder="–" onChange={e => updateExercise(i, { targetRpe: e.target.value ? parseInt(e.target.value) : undefined })}
-                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none" />
-            </div>
-          </div>
-
-          <div className="flex gap-2 flex-wrap">
-            {setTypes.map(t => (
-              <SetTypeBadge
-                key={t} type={t} selected={ex.setType === t}
-                onClick={() => updateExercise(i, {
-                  setType: t,
-                  targetReps: t === 'failure' ? 'failure' : (ex.targetReps === 'failure' ? 10 : ex.targetReps),
-                })}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {/* Add exercise */}
-      <div className="flex flex-col gap-2">
-        {!showExercisePicker ? (
-          <Button variant="outline" onClick={() => setShowExercisePicker(true)} className="w-full">
-            + Add Exercise
-          </Button>
-        ) : (
-          <div className="bg-card rounded-xl p-3 border border-border space-y-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search exercises..."
-                value={exerciseSearch}
-                onChange={e => setExerciseSearch(e.target.value)}
-                className="pl-9 bg-secondary border-border text-sm"
-                autoFocus
-              />
-            </div>
-            <div className="max-h-48 overflow-y-auto space-y-0.5">
-              {filteredExercises.map(ex => (
-                <button
-                  key={ex.id}
-                  onClick={() => { addExercise(ex.id); setShowExercisePicker(false); setExerciseSearch(''); }}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-secondary/80 transition-colors text-sm"
-                >
-                  <span className="text-foreground font-medium">{ex.name}</span>
-                  <span className="text-xs text-muted-foreground ml-2">{ex.equipment} · {ex.primaryBodyPart}</span>
-                </button>
+            {/* Set Type Badges */}
+            <div className="flex gap-1.5 flex-wrap mb-2">
+              {setTypes.map(t => (
+                <SetTypeBadge
+                  key={t} type={t} selected={block.setType === t}
+                  onClick={() => updateBlockType(blockIdx, t)}
+                />
               ))}
             </div>
-            <Button variant="ghost" size="sm" onClick={() => { setShowExercisePicker(false); setExerciseSearch(''); }} className="w-full text-xs">
-              Cancel
-            </Button>
-          </div>
-        )}
-      </div>
 
-      <Button variant="neon" onClick={save} disabled={!name.trim() || exercises.length === 0} className="w-full mt-2">
-        Save Template
-      </Button>
+            {/* Rest Timer Setting */}
+            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+              <Timer className="w-3 h-3" />
+              <span>Rest:</span>
+              <input
+                type="number"
+                min={0}
+                step={15}
+                value={block.restSeconds}
+                onChange={e => updateRestSeconds(blockIdx, parseInt(e.target.value) || 0)}
+                className="w-16 text-center text-xs bg-secondary/60 rounded-md py-1 text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span>sec</span>
+            </div>
+
+            {/* Table Header */}
+            <div className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+              <span>Set</span>
+              <span className="text-center">lbs</span>
+              <span className="text-center">Reps</span>
+              <span className="text-center">RPE</span>
+            </div>
+
+            {/* Set Rows */}
+            {block.sets.map((set, setIdx) => (
+              <div
+                key={setIdx}
+                className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 items-center py-1.5 px-1 rounded-md"
+              >
+                <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={set.targetWeight}
+                  onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)}
+                  placeholder="—"
+                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                />
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={set.targetReps}
+                  onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
+                  placeholder={block.setType === 'failure' ? 'Fail' : '—'}
+                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                />
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="1"
+                  max="10"
+                  step="0.5"
+                  value={set.targetRpe}
+                  onChange={e => updateSet(blockIdx, setIdx, 'targetRpe', e.target.value)}
+                  placeholder="—"
+                  className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                />
+              </div>
+            ))}
+
+            {/* Add Set */}
+            <button
+              onClick={() => addSet(blockIdx)}
+              className="w-full py-2 mt-1 rounded-md bg-secondary/40 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            >
+              + Add Set
+            </button>
+          </div>
+        ))}
+
+        {/* Add Exercise */}
+        <button
+          onClick={() => setShowExercisePicker(true)}
+          className="w-full py-3 rounded-lg border border-dashed border-muted-foreground/30 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add Exercise
+        </button>
+      </div>
     </div>
   );
 };
