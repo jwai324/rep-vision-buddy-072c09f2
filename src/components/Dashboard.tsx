@@ -12,6 +12,7 @@ interface DashboardProps {
   onGoToHistory: () => void;
   onGoToTemplates: () => void;
   onGoToPrograms: () => void;
+  onBrowseExercises: () => void;
 }
 
 function getStreak(sessions: WorkoutSession[]): number {
