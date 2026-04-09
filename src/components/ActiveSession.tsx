@@ -86,6 +86,7 @@ interface SetRow {
   completed: boolean;
   type: SetType;
   rpe: string;
+  time: string;
   drops?: DropRow[];
 }
 
