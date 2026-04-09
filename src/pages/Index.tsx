@@ -63,8 +63,18 @@ const Index = () => {
           onBlankWorkout={() => setScreen({ type: 'activeSession', exercises: [] })}
           onSelectTemplate={startFromTemplate}
           onStartProgramDay={startFromTemplate}
+          onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
+      )}
+
+      {screen.type === 'browseExercises' && (
+        <div className="min-h-screen bg-background flex flex-col">
+          <div className="p-4 pb-0">
+            <button onClick={() => setScreen({ type: 'startWorkout' })} className="text-sm text-muted-foreground hover:text-foreground mb-2">← Back</button>
+          </div>
+          <ExerciseSelector onSelect={() => {}} multiSelect={false} />
+        </div>
       )}
 
       {screen.type === 'activeSession' && (
