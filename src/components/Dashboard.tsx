@@ -190,7 +190,7 @@ const WeeklyProgramCalendar: React.FC<{
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 {program.name}</p>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 {program?.name ?? 'Calendar'}</p>
       </div>
       <div className="flex items-center justify-between mb-2">
         <button
