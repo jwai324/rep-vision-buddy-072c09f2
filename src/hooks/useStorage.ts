@@ -25,7 +25,7 @@ function setItem<T>(key: string, value: T) {
 
 function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
   const workouts: FutureWorkout[] = [];
-  const start = program.startDate ? new Date(program.startDate) : new Date();
+  const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
   const endDate = addWeeks(start, program.durationWeeks ?? 8);
 
   // Track which dates have a scheduled workout

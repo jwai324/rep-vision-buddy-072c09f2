@@ -24,7 +24,7 @@ const FREQUENCY_OPTIONS = [
 export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, history, initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [durationWeeks, setDurationWeeks] = useState(initial?.durationWeeks ?? 8);
-  const [startDate] = useState(() => initial?.startDate ? new Date(initial.startDate) : new Date());
+  const [startDate] = useState(() => initial?.startDate ? new Date(initial.startDate + 'T00:00:00') : new Date());
   const [days, setDays] = useState<ProgramDay[]>(
     initial?.days ?? [{ label: 'Day 1', templateId: 'rest' }]
   );
