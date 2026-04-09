@@ -539,6 +539,8 @@ interface ExerciseTableProps {
   onAddSet: (blockIdx: number) => void;
   onAddDrop: (blockIdx: number, setIdx: number) => void;
   onUpdateDrop: (blockIdx: number, setIdx: number, dropIdx: number, field: keyof DropRow, value: string | boolean) => void;
+  onRemoveSet: (blockIdx: number, setIdx: number) => void;
+  onRemoveDrop: (blockIdx: number, setIdx: number, dropIdx: number) => void;
   onMenuAction: (action: string, blockIdx: number) => void;
   onStartTimer: (id: TimerId, duration: number) => void;
   onSkipTimer: () => void;
