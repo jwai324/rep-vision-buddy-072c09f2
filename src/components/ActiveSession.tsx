@@ -516,9 +516,6 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
     </div>
   );
 };
-  return (
-    <div>
-      {/* Exercise Header */}
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
         <Popover>
