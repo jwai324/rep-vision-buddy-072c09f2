@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useStorage } from '@/hooks/useStorage';
 import { Dashboard } from '@/components/Dashboard';
-import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { ActiveSession } from '@/components/ActiveSession';
+import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
@@ -13,7 +13,7 @@ import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram } from
 
 type Screen =
   | { type: 'dashboard' }
-  | { type: 'exerciseSelector' }
+  | { type: 'startWorkout' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession }
@@ -46,7 +46,7 @@ const Index = () => {
           history={storage.history}
           activeProgram={activeProgram}
           templates={storage.templates}
-          onStartWorkout={() => setScreen({ type: 'exerciseSelector' })}
+          onStartWorkout={() => setScreen({ type: 'startWorkout' })}
           onStartTemplate={startFromTemplate}
           onGoToHistory={() => setScreen({ type: 'history' })}
           onGoToTemplates={() => setScreen({ type: 'templates' })}
@@ -54,16 +54,15 @@ const Index = () => {
         />
       )}
 
-      {screen.type === 'exerciseSelector' && (
-        <div className="flex flex-col">
-          <div className="p-4 pb-0">
-            <button onClick={() => setScreen({ type: 'dashboard' })} className="text-muted-foreground hover:text-foreground text-sm">← Back</button>
-          </div>
-          <ExerciseSelector
-            onSelect={(id) => setScreen({ type: 'activeSession', exercises: [id] })}
-            onStartTemplate={() => setScreen({ type: 'templates' })}
-          />
-        </div>
+      {screen.type === 'startWorkout' && (
+        <StartWorkoutScreen
+          templates={storage.templates}
+          activeProgram={activeProgram}
+          onBlankWorkout={() => setScreen({ type: 'activeSession', exercises: [] })}
+          onSelectTemplate={startFromTemplate}
+          onStartProgramDay={startFromTemplate}
+          onBack={() => setScreen({ type: 'dashboard' })}
+        />
       )}
 
       {screen.type === 'activeSession' && (
