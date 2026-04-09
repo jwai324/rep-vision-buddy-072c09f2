@@ -23,7 +23,7 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
   history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onBack, initialTab = 'future', filterDate,
 }) => {
   const [tab, setTab] = useState<'history' | 'future'>(initialTab);
-  const [showRestDays, setShowRestDays] = useState(false);
+  const [showRestDays, setShowRestDays] = useState(!!filterDate);
 
   const filteredHistory = useMemo(() => {
     let items = showRestDays ? history : history.filter(s => !s.isRestDay);
