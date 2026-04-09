@@ -58,10 +58,6 @@ const SUPERSET_COLORS = [
   'bg-purple-500/20',
   'bg-white/20',
 ];
-  'border-l-4 border-l-purple-500',
-  'border-l-4 border-l-pink-500',
-  'border-l-4 border-l-cyan-500',
-];
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
