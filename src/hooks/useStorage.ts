@@ -124,13 +124,14 @@ export type WeightUnit = 'kg' | 'lbs';
 export interface UserPreferences {
   weightUnit: WeightUnit;
   defaultRestSeconds: number;
+  defaultDropSetsEnabled: boolean;
 }
 
 export interface UserProfile {
   displayName: string | null;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90 };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 export function useStorage() {
@@ -175,8 +176,9 @@ export function useStorage() {
         if (settingsRes.data) {
           setActiveProgramIdState(settingsRes.data.active_program_id);
           setPreferencesState({
-            weightUnit: (settingsRes.data as any).weight_unit ?? 'kg',
+            weightUnit: (settingsRes.data as any).weight_unit ?? 'lbs',
             defaultRestSeconds: (settingsRes.data as any).default_rest_seconds ?? 90,
+            defaultDropSetsEnabled: (settingsRes.data as any).default_drop_sets_enabled ?? false,
           });
         }
         if (profileRes.data) {
@@ -388,6 +390,7 @@ export function useStorage() {
       active_program_id: activeProgramId,
       weight_unit: updated.weightUnit,
       default_rest_seconds: updated.defaultRestSeconds,
+      default_drop_sets_enabled: updated.defaultDropSetsEnabled,
     } as any, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);

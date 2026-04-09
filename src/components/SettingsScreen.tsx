@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import type { WeightUnit, UserPreferences, UserProfile } from '@/hooks/useStorage';
 
@@ -137,6 +138,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Drop Sets Default */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ChevronDown className="w-4 h-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Drop Sets</p>
+              <p className="text-xs text-muted-foreground">Enable drop sets on exercises by default</p>
+            </div>
+          </div>
+          <Switch
+            checked={preferences.defaultDropSetsEnabled}
+            onCheckedChange={(checked) => onUpdatePreferences({ defaultDropSetsEnabled: checked })}
+          />
         </div>
       </div>
 
