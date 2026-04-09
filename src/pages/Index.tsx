@@ -132,6 +132,7 @@ const Index = () => {
             templateExercises={screen.templateExercises}
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
+            defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             cachedSession={getSessionCache()}
             onFinish={(session) => { setMinimizedSession(null); setScreen({ type: 'summary', session }); }}
             onCancel={() => { clearSessionCache(); setMinimizedSession(null); setScreen({ type: 'dashboard' }); }}
@@ -146,6 +147,7 @@ const Index = () => {
             exercises={[]}
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
+            defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             editSession={screen.session}
             onFinish={(session) => {
               storage.saveSession(session);
