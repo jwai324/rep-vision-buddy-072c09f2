@@ -476,7 +476,6 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
-const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
 const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
