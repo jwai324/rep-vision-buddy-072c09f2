@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import type { WorkoutProgram, WorkoutTemplate } from '@/types/workout';
+import type { WorkoutProgram, WorkoutTemplate, WorkoutSession } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 
 interface ProgramBuilderProps {
   templates: WorkoutTemplate[];
+  history: WorkoutSession[];
   initial?: WorkoutProgram;
   onSave: (program: WorkoutProgram) => void;
   onCancel: () => void;
 }
 
-export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, initial, onSave, onCancel }) => {
+export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, history, initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [days, setDays] = useState(initial?.days ?? [{ label: 'Day 1', templateId: 'rest' as string }]);
 
@@ -66,9 +67,20 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, initi
             className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
           >
             <option value="rest">🛏️ Rest Day</option>
-            {templates.map(t => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
+            <optgroup label="Templates">
+              {templates.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </optgroup>
+            {history.length > 0 && (
+              <optgroup label="Past Workouts">
+                {history.map(s => (
+                  <option key={s.id} value={`session:${s.id}`}>
+                    {new Date(s.date).toLocaleDateString()} — {s.exercises.map(e => e.exerciseName).join(', ')}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
       ))}
