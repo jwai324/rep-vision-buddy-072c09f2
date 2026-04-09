@@ -14,7 +14,7 @@ interface StartWorkoutScreenProps {
 }
 
 export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
-  templates, activeProgram, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
+  templates, activeProgram, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBrowseExercises, onBack,
 }) => {
   const dayOfWeek = new Date().getDay();
   const todayDay = activeProgram?.days[(dayOfWeek + 6) % 7];
