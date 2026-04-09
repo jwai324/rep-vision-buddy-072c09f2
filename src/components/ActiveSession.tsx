@@ -733,14 +733,12 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
             ))}
 
             {/* Add Drop button for any set */}
-            {(
-              <button
-                onClick={() => onAddDrop(blockIdx, setIdx)}
-                className="ml-4 py-1 px-3 text-xs text-set-dropset/70 hover:text-set-dropset transition-colors"
-              >
-                + Add Drop
-              </button>
-            )}
+            <button
+              onClick={() => onAddDrop(blockIdx, setIdx)}
+              className="ml-4 py-1 px-3 text-xs text-set-dropset/70 hover:text-set-dropset transition-colors"
+            >
+              + Add Drop
+            </button>
           </React.Fragment>
         );
       })}
