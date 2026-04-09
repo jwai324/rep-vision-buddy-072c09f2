@@ -24,6 +24,7 @@ type Screen =
   | { type: 'startWorkout' }
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
+  | { type: 'editSession'; session: WorkoutSession }
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession; from?: 'activity' }
   | { type: 'activity'; initialTab?: 'history' | 'future'; filterDate?: string }
@@ -124,6 +125,21 @@ const Index = () => {
         </ErrorBoundary>
       )}
 
+      {screen.type === 'editSession' && (
+        <ErrorBoundary fallbackTitle="Edit session error" onReset={() => setScreen({ type: 'activity', initialTab: 'history' })}>
+          <ActiveSession
+            exercises={[]}
+            history={storage.history}
+            weightUnit={storage.preferences.weightUnit}
+            editSession={screen.session}
+            onFinish={(session) => {
+              storage.saveSession(session);
+              setScreen({ type: 'activity', initialTab: 'history' });
+            }}
+            onCancel={() => setScreen({ type: 'sessionDetail', session: screen.session, from: 'activity' })}
+          />
+        </ErrorBoundary>
+      )}
       {screen.type === 'summary' && (
         <SessionSummary
           session={screen.session}
@@ -212,6 +228,7 @@ const Index = () => {
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {
             storage.deleteSession(id);
             setScreen({ type: 'activity', initialTab: 'history' });

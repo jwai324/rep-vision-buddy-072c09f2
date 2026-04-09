@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
+import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
@@ -42,6 +43,8 @@ interface ActiveSessionProps {
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
   cachedSession?: ActiveSessionCache | null;
+  /** When editing an existing session */
+  editSession?: WorkoutSession | null;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
 }
@@ -97,8 +100,29 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, onFinish, onCancel }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, editSession, onFinish, onCancel }) => {
+  const isEditMode = !!editSession;
+
+  // Convert saved session exercises back to blocks for editing
+  const editBlocks = useMemo<ExerciseBlock[] | null>(() => {
+    if (!editSession) return null;
+    return editSession.exercises.map(ex => ({
+      exerciseId: ex.exerciseId,
+      exerciseName: ex.exerciseName,
+      restSeconds: 90,
+      sets: ex.sets.map(s => ({
+        setNumber: s.setNumber,
+        weight: s.weight?.toString() ?? '',
+        reps: s.reps.toString(),
+        completed: true,
+        type: s.type,
+        rpe: s.rpe?.toString() ?? '',
+      })),
+    }));
+  }, [editSession]);
+
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
+    if (editBlocks) return editBlocks;
     if (cachedSession) return cachedSession.blocks;
     return initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
@@ -122,16 +146,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? 0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
+
+  // Edit mode: date/time state
+  const [editDate, setEditDate] = useState(() => {
+    if (!editSession) return '';
+    const d = new Date(editSession.date);
+    return format(d, 'yyyy-MM-dd');
+  });
+  const [editTime, setEditTime] = useState(() => {
+    if (!editSession) return '';
+    const d = new Date(editSession.date);
+    return format(d, 'HH:mm');
+  });
+  const [editDurationMin, setEditDurationMin] = useState(() => {
+    if (!editSession) return '';
+    return Math.floor(editSession.duration / 60).toString();
+  });
+
   // Centralized single-timer state
   const [activeTimer, setActiveTimer] = useState<{ id: TimerId; remaining: number; duration: number; startedAt: number } | null>(null);
   const [restRecords, setRestRecords] = useState<Record<string, number>>({});
   const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Cache session state to localStorage on changes
+  // Cache session state to localStorage on changes (skip in edit mode)
   useEffect(() => {
+    if (isEditMode) return;
     const cache: ActiveSessionCache = {
       blocks,
       workoutName,
@@ -139,7 +181,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       elapsedAtCache: elapsedSeconds,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  }, [blocks, workoutName, elapsedSeconds]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode]);
 
   const startTimer = useCallback((id: TimerId, duration: number) => {
     // Cancel any existing timer
@@ -383,7 +425,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const finishWorkout = useCallback(() => {
-    const duration = Math.floor((Date.now() - startTime.current) / 1000);
     const exerciseLogs: ExerciseLog[] = blocks
       .filter(b => b.sets.some(s => s.completed))
       .map(b => ({
@@ -406,9 +447,25 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const rpeSets = allSets.filter(s => s.rpe !== undefined);
     const averageRpe = rpeSets.length > 0 ? rpeSets.reduce((s, set) => s + (set.rpe ?? 0), 0) / rpeSets.length : undefined;
 
+    let sessionDate: string;
+    let duration: number;
+
+    if (isEditMode && editSession) {
+      // Use edited date/time
+      sessionDate = editDate && editTime
+        ? new Date(`${editDate}T${editTime}`).toISOString()
+        : editDate
+          ? new Date(`${editDate}T00:00:00`).toISOString()
+          : editSession.date;
+      duration = editDurationMin ? parseInt(editDurationMin) * 60 : editSession.duration;
+    } else {
+      sessionDate = new Date().toISOString();
+      duration = Math.floor((Date.now() - startTime.current) / 1000);
+    }
+
     onFinish({
-      id: crypto.randomUUID(),
-      date: new Date().toISOString(),
+      id: isEditMode && editSession ? editSession.id : crypto.randomUUID(),
+      date: sessionDate,
       exercises: exerciseLogs,
       duration,
       totalVolume,
@@ -416,7 +473,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalReps,
       averageRpe,
     });
-  }, [blocks, onFinish]);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin]);
 
   if (showSupersetLinker) {
     return (
@@ -453,7 +510,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
         <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
-        <Button variant="neon" size="sm" onClick={finishWorkout}>Finish</Button>
+        <Button variant="neon" size="sm" onClick={finishWorkout}>
+          {isEditMode ? 'Save Changes' : 'Finish'}
+        </Button>
       </div>
 
       {/* Title + Timer */}
@@ -464,13 +523,49 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           onChange={e => setWorkoutName(e.target.value)}
           className="text-xl font-bold text-foreground bg-transparent outline-none border-b border-transparent focus:border-primary transition-colors w-full"
         />
-        <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
+        {isEditMode ? (
+          <div className="flex flex-wrap gap-3 mt-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Date</label>
+              <input
+                type="date"
+                value={editDate}
+                onChange={e => setEditDate(e.target.value)}
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Time</label>
+              <input
+                type="time"
+                value={editTime}
+                onChange={e => setEditTime(e.target.value)}
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Duration (min)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                value={editDurationMin}
+                onChange={e => setEditDurationMin(e.target.value)}
+                className="w-20 bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
+        )}
       </div>
 
-      {/* Camera */}
-      <div className="px-4 pb-4">
-        <CameraFeed />
-      </div>
+      {/* Camera - hide in edit mode */}
+      {!isEditMode && (
+        <div className="px-4 pb-4">
+          <CameraFeed />
+        </div>
+      )}
 
       {/* Note Editor Modal */}
       {editingNote && (

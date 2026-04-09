@@ -22,6 +22,7 @@ interface SessionSummaryProps {
   onClose: () => void;
   /** When viewing a saved session, allow deletion instead of discard */
   onDelete?: (id: string) => void;
+  onEdit?: (session: WorkoutSession) => void;
   isViewMode?: boolean;
 }
 
@@ -31,7 +32,7 @@ function formatDuration(s: number) {
   return `${m}m ${sec}s`;
 }
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, isViewMode }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, isViewMode }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
@@ -99,6 +100,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
         )}
         {isViewMode && (
           <>
+            {onEdit && (
+              <Button variant="neon" onClick={() => onEdit(session)} className="w-full">Edit Workout</Button>
+            )}
             <Button variant="outline" onClick={onClose} className="w-full">Back</Button>
             {onDelete && (
               <button
