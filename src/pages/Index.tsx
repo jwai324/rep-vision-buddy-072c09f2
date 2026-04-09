@@ -139,7 +139,7 @@ const Index = () => {
             onCancel={() => setScreen({ type: 'sessionDetail', session: screen.session, from: 'activity' })}
           />
         </ErrorBoundary>
-
+      )}
       {screen.type === 'summary' && (
         <SessionSummary
           session={screen.session}
