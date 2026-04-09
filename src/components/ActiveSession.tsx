@@ -42,6 +42,8 @@ interface ActiveSessionProps {
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
   cachedSession?: ActiveSessionCache | null;
+  /** When editing an existing session */
+  editSession?: WorkoutSession | null;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
 }
