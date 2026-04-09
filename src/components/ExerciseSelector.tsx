@@ -11,6 +11,8 @@ interface ExerciseSelectorProps {
   onSelectMultiple?: (ids: ExerciseId[]) => void;
   onStartTemplate?: () => void;
   multiSelect?: boolean;
+  browseMode?: boolean;
+  onExerciseTap?: (id: ExerciseId) => void;
 }
 
 const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
