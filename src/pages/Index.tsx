@@ -66,7 +66,7 @@ const Index = () => {
             const dateStr = date.toISOString().split('T')[0];
             const fw = storage.futureWorkouts.find(f => f.date === dateStr);
             if (fw) {
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw });
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'calendar' });
             } else {
               // No future workout for this date — create a temporary rest day entry
               const restFw: FutureWorkout = {
@@ -76,7 +76,7 @@ const Index = () => {
                 templateId: template ? template.id : 'rest',
                 label: template ? template.name : 'Rest Day',
               };
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw });
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
             }
           }}
         />
