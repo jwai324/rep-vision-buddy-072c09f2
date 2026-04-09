@@ -10,6 +10,16 @@ import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, Refres
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
 
 import type { WeightUnit } from '@/hooks/useStorage';
@@ -151,6 +161,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
 
@@ -586,7 +597,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         )}
         <div className="flex items-center gap-2">
           {!isEditMode && (
-            <Button variant="outline" size="sm" onClick={onCancel} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+            <Button variant="outline" size="sm" onClick={() => setShowDiscardConfirm(true)} className="text-destructive border-destructive/30 hover:bg-destructive/10">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Discard
             </Button>
@@ -739,6 +750,27 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           Add Exercise
         </button>
       </div>
+
+      {/* Discard confirmation dialog */}
+      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Workout</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to discard this workout? All progress will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={onCancel}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
