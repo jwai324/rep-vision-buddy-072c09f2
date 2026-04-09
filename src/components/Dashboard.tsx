@@ -322,6 +322,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           program={activeProgram}
           templates={templates}
           onDayClick={onDayClick}
+          onViewAll={onGoToHistory}
         />
       )}
 
