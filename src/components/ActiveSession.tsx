@@ -343,9 +343,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const removeSet = useCallback((blockIdx: number, setIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
-      const newSets = block.sets.filter((_, si) => si !== setIdx)
-        .map((s, i) => ({ ...s, setNumber: i + 1 }));
-      return { ...block, sets: newSets };
+      const newSets = block.sets.filter((_, si) => si !== setIdx);
+      let warmupCount = 0;
+      let normalCount = 0;
+      const renumbered = newSets.map(s => {
+        if (s.type === 'warmup') {
+          warmupCount++;
+          return { ...s, setNumber: warmupCount };
+        }
+        normalCount++;
+        return { ...s, setNumber: normalCount };
+      });
+      return { ...block, sets: renumbered };
     }));
   }, []);
 
