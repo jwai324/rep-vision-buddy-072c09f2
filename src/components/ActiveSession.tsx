@@ -135,6 +135,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? id,
         restSeconds: restSec,
+        dropSetsEnabled: defaultDropSetsEnabled,
         sets: Array.from({ length: numSets }, (_, i) => ({
           setNumber: i + 1,
           weight: '',
@@ -368,6 +369,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           exerciseId: id,
           exerciseName: EXERCISES[id]?.name ?? id,
           restSeconds: 90,
+          dropSetsEnabled: defaultDropSetsEnabled,
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
             weight: '',
@@ -380,7 +382,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       return [...prev, ...newBlocks];
     });
     setShowExercisePicker(false);
-  }, []);
+  }, [defaultDropSetsEnabled]);
 
   const removeExercise = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
