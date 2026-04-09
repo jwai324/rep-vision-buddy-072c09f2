@@ -76,6 +76,13 @@
 }
 
 @layer utilities {
+  /* Number input spinner arrows in primary color */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+    filter: hue-rotate(90deg) saturate(2) brightness(1.2);
+  }
+
   .font-scoreboard {
     font-family: 'JetBrains Mono', monospace;
   }
