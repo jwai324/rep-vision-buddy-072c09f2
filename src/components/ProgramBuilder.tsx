@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { WorkoutProgram, WorkoutTemplate, WorkoutSession } from '@/types/workout';
+import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, ProgramSchedule } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 
 interface ProgramBuilderProps {
@@ -13,6 +13,31 @@ interface ProgramBuilderProps {
 export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, history, initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [days, setDays] = useState(initial?.days ?? [{ label: 'Day 1', templateId: 'rest' as string }]);
+  const [scheduleType, setScheduleType] = useState<string>(initial?.schedule?.type ?? 'none');
+  const [weekdays, setWeekdays] = useState<number[]>(
+    initial?.schedule?.type === 'weekly' ? initial.schedule.weekdays : [1]
+  );
+  const [dayOfMonth, setDayOfMonth] = useState<number>(
+    initial?.schedule?.type === 'monthly' ? initial.schedule.dayOfMonth : 1
+  );
+  const [interval, setInterval] = useState<number>(
+    initial?.schedule?.type === 'everyNDays' ? initial.schedule.interval : 2
+  );
+
+  const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const toggleWeekday = (day: number) => {
+    setWeekdays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+    );
+  };
+
+  const buildSchedule = (): ProgramSchedule | undefined => {
+    if (scheduleType === 'weekly') return { type: 'weekly', weekdays };
+    if (scheduleType === 'monthly') return { type: 'monthly', dayOfMonth };
+    if (scheduleType === 'everyNDays') return { type: 'everyNDays', interval };
+    return undefined;
+  };
 
   const addDay = () => {
     setDays(prev => [...prev, { label: `Day ${prev.length + 1}`, templateId: 'rest' }]);
@@ -32,7 +57,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
 
   const save = () => {
     if (!name.trim() || days.length === 0) return;
-    onSave({ id: initial?.id ?? crypto.randomUUID(), name: name.trim(), days });
+    onSave({ id: initial?.id ?? crypto.randomUUID(), name: name.trim(), days, schedule: buildSchedule() });
   };
 
   return (
@@ -49,6 +74,72 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
         onChange={e => setName(e.target.value)}
         className="bg-secondary rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary font-medium"
       />
+
+      {/* Frequency / Schedule */}
+      <div className="bg-card rounded-xl p-4 border border-border flex flex-col gap-3">
+        <label className="text-sm font-semibold text-foreground">Frequency</label>
+        <select
+          value={scheduleType}
+          onChange={e => setScheduleType(e.target.value)}
+          className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+        >
+          <option value="none">No schedule</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="everyNDays">Every N days</option>
+        </select>
+
+        {scheduleType === 'weekly' && (
+          <div className="flex flex-wrap gap-1.5">
+            {WEEKDAY_LABELS.map((label, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => toggleWeekday(idx)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  weekdays.includes(idx)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {scheduleType === 'monthly' && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Day</span>
+            <select
+              value={dayOfMonth}
+              onChange={e => setDayOfMonth(Number(e.target.value))}
+              className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+            >
+              {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            <span className="text-sm text-muted-foreground">of each month</span>
+          </div>
+        )}
+
+        {scheduleType === 'everyNDays' && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Every</span>
+            <select
+              value={interval}
+              onChange={e => setInterval(Number(e.target.value))}
+              className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+            >
+              {[2, 3, 4, 5, 6, 7].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <span className="text-sm text-muted-foreground">days</span>
+          </div>
+        )}
+      </div>
 
       {days.map((day, i) => (
         <div key={i} className="bg-card rounded-xl p-4 border border-border flex flex-col gap-2">
