@@ -132,6 +132,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setShowExercisePicker(false);
   }, []);
 
+  const removeExercise = useCallback((blockIdx: number) => {
+    setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
+  }, []);
+
   const finishWorkout = useCallback(() => {
     const duration = Math.floor((Date.now() - startTime.current) / 1000);
     const exerciseLogs: ExerciseLog[] = blocks
