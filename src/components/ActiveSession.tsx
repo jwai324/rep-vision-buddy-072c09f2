@@ -510,7 +510,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
-        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        {isEditMode ? (
+          <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        ) : (
+          <button onClick={onMinimize ?? onCancel} className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
         <Button variant="neon" size="sm" onClick={finishWorkout}>
           {isEditMode ? 'Save Changes' : 'Finish'}
         </Button>
