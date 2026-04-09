@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-import { addDays, addWeeks, getDay } from 'date-fns';
+import { addDays, addWeeks, getDay, format } from 'date-fns';
 
 const KEYS = {
   history: 'replog:history',
