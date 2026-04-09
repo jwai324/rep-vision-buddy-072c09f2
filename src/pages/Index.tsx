@@ -11,7 +11,7 @@ import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
-import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram } from '@/types/workout';
+import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { DayDetail } from '@/components/DayDetail';
 
 type Screen =
@@ -51,6 +51,7 @@ const Index = () => {
           history={storage.history}
           activeProgram={activeProgram}
           templates={storage.templates}
+          futureWorkouts={storage.futureWorkouts}
           onStartWorkout={() => setScreen({ type: 'startWorkout' })}
           onStartTemplate={startFromTemplate}
           onGoToHistory={() => setScreen({ type: 'history' })}
@@ -65,6 +66,7 @@ const Index = () => {
         <StartWorkoutScreen
           templates={storage.templates}
           activeProgram={activeProgram}
+          futureWorkouts={storage.futureWorkouts}
           onBlankWorkout={() => setScreen({ type: 'activeSession', exercises: [] })}
           onSelectTemplate={startFromTemplate}
           onStartProgramDay={startFromTemplate}
