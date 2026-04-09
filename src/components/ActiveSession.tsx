@@ -301,7 +301,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         removeExercise(blockIdx);
         break;
     }
-  }, [blocks, getStickyNote, removeExercise]);
+  }, [blocks, getStickyNote, removeExercise, addDrop]);
 
   const saveNote = useCallback(() => {
     if (!editingNote) return;
