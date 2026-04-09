@@ -178,6 +178,15 @@ const Index = () => {
           onCancel={() => setScreen({ type: 'programs' })}
         />
       )}
+
+      {screen.type === 'dayDetail' && (
+        <DayDetail
+          date={screen.date}
+          template={screen.template}
+          onStartWorkout={startFromTemplate}
+          onBack={() => setScreen({ type: 'dashboard' })}
+        />
+      )}
     </div>
   );
 };
