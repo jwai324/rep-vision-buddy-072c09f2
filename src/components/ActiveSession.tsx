@@ -393,13 +393,24 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
       {/* Exercise Blocks */}
       <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
-        {blocks.map((block, blockIdx) => (
+        {blocks.map((block, blockIdx) => {
+          const betweenId: TimerId = { type: 'between', blockIdx };
+          const betweenKey = timerIdKey(betweenId);
+          const isBetweenActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenKey;
+          return (
           <React.Fragment key={block.exerciseId}>
             {blockIdx > 0 && (
               <ExerciseRestTimer
-                timerKey={timerTriggers[blockIdx - 1] ?? 0}
+                timerId={betweenId}
                 defaultDuration={blocks[blockIdx - 1].restSeconds}
                 variant="between"
+                isActive={isBetweenActive}
+                remaining={isBetweenActive ? activeTimer!.remaining : 0}
+                totalDuration={isBetweenActive ? activeTimer!.duration : 0}
+                recordedRest={restRecords[betweenKey] ?? null}
+                onStart={startTimer}
+                onSkip={skipTimer}
+                onExtend={extendTimer}
               />
             )}
             <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
@@ -407,15 +418,21 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 block={block}
                 blockIdx={blockIdx}
                 stickyNote={getStickyNote(block.exerciseId)}
-                timerTrigger={timerTriggers[blockIdx] ?? 0}
+                activeTimer={activeTimer}
+                restRecords={restRecords}
                 previousSets={getPreviousExerciseData(history, block.exerciseId)}
                 onUpdateSet={updateSet}
                 onToggleComplete={toggleSetComplete}
                 onAddSet={addSet}
                 onMenuAction={handleMenuAction}
+                onStartTimer={startTimer}
+                onSkipTimer={skipTimer}
+                onExtendTimer={extendTimer}
               />
             </div>
           </React.Fragment>
+          );
+        })}
         ))}
 
         {/* Add Exercise */}
