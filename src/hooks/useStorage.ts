@@ -126,7 +126,13 @@ export interface UserPreferences {
   defaultRestSeconds: number;
 }
 
+export interface UserProfile {
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
 const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'kg', defaultRestSeconds: 90 };
+const DEFAULT_PROFILE: UserProfile = { displayName: null, avatarUrl: null };
 
 export function useStorage() {
   const { user } = useAuth();
@@ -136,6 +142,7 @@ export function useStorage() {
   const [activeProgramId, setActiveProgramIdState] = useState<string | null>(null);
   const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>([]);
   const [preferences, setPreferencesState] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const [profile, setProfileState] = useState<UserProfile>(DEFAULT_PROFILE);
   const [loading, setLoading] = useState(true);
 
   // Load all data from Supabase on mount / user change
@@ -153,12 +160,13 @@ export function useStorage() {
     const load = async () => {
       setLoading(true);
       try {
-        const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes] = await Promise.all([
+        const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes] = await Promise.all([
           supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
           supabase.from('workout_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
           supabase.from('workout_programs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
           supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }),
           supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
+          supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
         ]);
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
@@ -170,6 +178,12 @@ export function useStorage() {
           setPreferencesState({
             weightUnit: (settingsRes.data as any).weight_unit ?? 'kg',
             defaultRestSeconds: (settingsRes.data as any).default_rest_seconds ?? 90,
+          });
+        }
+        if (profileRes.data) {
+          setProfileState({
+            displayName: profileRes.data.display_name,
+            avatarUrl: profileRes.data.avatar_url,
           });
         }
       } catch (e) {
@@ -383,9 +397,41 @@ export function useStorage() {
     }
   }, [user, preferences, activeProgramId]);
 
+  const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
+    if (!user) return;
+    const updated = { ...profile, ...updates };
+    setProfileState(updated);
+    const { error } = await supabase.from('profiles').upsert({
+      user_id: user.id,
+      display_name: updated.displayName,
+      avatar_url: updated.avatarUrl,
+    }, { onConflict: 'user_id' });
+    if (error) {
+      console.error('[useStorage] updateProfile error:', error);
+      toast.error('Failed to save profile');
+    }
+  }, [user, profile]);
+
+  const uploadAvatar = useCallback(async (file: File): Promise<string | null> => {
+    if (!user) return null;
+    const ext = file.name.split('.').pop() ?? 'jpg';
+    const path = `${user.id}/avatar.${ext}`;
+    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+    if (error) {
+      console.error('[useStorage] uploadAvatar error:', error);
+      toast.error('Failed to upload avatar');
+      return null;
+    }
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    const url = data.publicUrl + '?t=' + Date.now(); // cache bust
+    await updateProfile({ avatarUrl: url });
+    return url;
+  }, [user, updateProfile]);
+
   return {
-    history, templates, programs, activeProgramId, futureWorkouts, preferences, loading,
+    history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, loading,
     saveSession, saveTemplate, deleteTemplate,
     saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout, updatePreferences,
+    updateProfile, uploadAvatar,
   };
 }
