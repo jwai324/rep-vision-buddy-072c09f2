@@ -287,6 +287,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
+      {/* Future Workouts */}
+      {futureWorkouts.filter(fw => fw.templateId !== 'rest').length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2 px-1">🗓️ Future Workouts</p>
+          <div className="flex flex-col gap-2">
+            {futureWorkouts
+              .filter(fw => fw.templateId !== 'rest')
+              .slice(0, 5)
+              .map(fw => {
+                const template = templates.find(t => t.id === fw.templateId);
+                return (
+                  <button
+                    key={fw.id}
+                    onClick={() => {
+                      if (template) onStartTemplate(template);
+                    }}
+                    className="w-full bg-card rounded-xl p-3 border border-border hover:border-primary/30 transition-colors text-left flex items-center gap-3"
+                  >
+                    <span className="text-lg">🏋️</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{fw.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {template ? ` · ${template.exercises.length} exercises` : ''}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       {/* Weekly Sets by Body Part */}
       <WeeklySetsByBodyPart history={history} />
 

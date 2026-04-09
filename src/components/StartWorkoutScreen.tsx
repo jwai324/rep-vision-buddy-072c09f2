@@ -1,11 +1,12 @@
 import React from 'react';
-import type { WorkoutTemplate, WorkoutProgram } from '@/types/workout';
+import type { WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { Dumbbell, ClipboardList, Calendar, ChevronRight } from 'lucide-react';
 
 interface StartWorkoutScreenProps {
   templates: WorkoutTemplate[];
   activeProgram: WorkoutProgram | null;
+  futureWorkouts: FutureWorkout[];
   onBlankWorkout: () => void;
   onSelectTemplate: (template: WorkoutTemplate) => void;
   onStartProgramDay: (template: WorkoutTemplate) => void;
@@ -13,7 +14,7 @@ interface StartWorkoutScreenProps {
 }
 
 export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
-  templates, activeProgram, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
+  templates, activeProgram, futureWorkouts, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
 }) => {
   const dayOfWeek = new Date().getDay();
   const todayDay = activeProgram?.days[(dayOfWeek + 6) % 7];
@@ -70,6 +71,41 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
               <p className="text-sm text-muted-foreground mt-1">Rest day</p>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* Future Workouts */}
+      {futureWorkouts.filter(fw => fw.templateId !== 'rest').length > 0 && (
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2 px-1">
+            🗓️ Future Workouts
+          </p>
+          <div className="flex flex-col gap-2">
+            {futureWorkouts
+              .filter(fw => fw.templateId !== 'rest')
+              .slice(0, 5)
+              .map(fw => {
+                const template = templates.find(t => t.id === fw.templateId);
+                return (
+                  <button
+                    key={fw.id}
+                    onClick={() => {
+                      if (template) onSelectTemplate(template);
+                    }}
+                    className="w-full bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors text-left flex items-center gap-3"
+                  >
+                    <div className="flex-1">
+                      <h3 className="text-sm font-semibold text-foreground">{fw.label}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {template ? ` · ${template.exercises.map(e => EXERCISES[e.exerciseId]?.name).join(', ')}` : ''}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                  </button>
+                );
+              })}
+          </div>
         </div>
       )}
 
