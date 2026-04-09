@@ -126,15 +126,16 @@ const Index = () => {
       )}
 
       {screen.type === 'activeSession' && (
-        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}>
+        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => { clearSessionCache(); setMinimizedSession(null); setScreen({ type: 'dashboard' }); }}>
           <ActiveSession
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
             cachedSession={getSessionCache()}
-            onFinish={(session) => setScreen({ type: 'summary', session })}
-            onCancel={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
+            onFinish={(session) => { setMinimizedSession(null); setScreen({ type: 'summary', session }); }}
+            onCancel={() => { clearSessionCache(); setMinimizedSession(null); setScreen({ type: 'dashboard' }); }}
+            onMinimize={handleMinimize}
           />
         </ErrorBoundary>
       )}
