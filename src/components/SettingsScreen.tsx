@@ -1,13 +1,23 @@
 import React from 'react';
-import { ChevronLeft, LogOut, User, Shield, Trash2 } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import type { WeightUnit, UserPreferences } from '@/hooks/useStorage';
 
 interface SettingsScreenProps {
+  preferences: UserPreferences;
+  onUpdatePreferences: (prefs: Partial<UserPreferences>) => void;
   onBack: () => void;
 }
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
+const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
+  { value: 'kg', label: 'kg' },
+  { value: 'lbs', label: 'lbs' },
+];
+
+const REST_OPTIONS = [30, 45, 60, 90, 120, 150, 180];
+
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ preferences, onUpdatePreferences, onBack }) => {
   const { user, signOut } = useAuth();
 
   return (
@@ -36,6 +46,56 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
             <p className="text-sm font-semibold text-foreground truncate">{user?.email ?? 'Unknown'}</p>
             <p className="text-xs text-muted-foreground">Signed in</p>
           </div>
+        </div>
+      </div>
+
+      {/* Weight Unit */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <Weight className="w-4 h-4 text-primary" />
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Weight Unit</p>
+        </div>
+        <div className="px-4 py-3 flex gap-2">
+          {UNIT_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => onUpdatePreferences({ weightUnit: opt.value })}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                preferences.weightUnit === opt.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Default Rest Timer */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <Timer className="w-4 h-4 text-primary" />
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Default Rest Timer</p>
+        </div>
+        <div className="px-4 py-3 grid grid-cols-4 gap-2">
+          {REST_OPTIONS.map(seconds => {
+            const label = seconds >= 60 ? `${seconds / 60}m` : `${seconds}s`;
+            const isActive = preferences.defaultRestSeconds === seconds;
+            return (
+              <button
+                key={seconds}
+                onClick={() => onUpdatePreferences({ defaultRestSeconds: seconds })}
+                className={`py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 

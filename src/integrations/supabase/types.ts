@@ -84,23 +84,29 @@ export type Database = {
         Row: {
           active_program_id: string | null
           created_at: string
+          default_rest_seconds: number
           id: string
           updated_at: string
           user_id: string
+          weight_unit: string
         }
         Insert: {
           active_program_id?: string | null
           created_at?: string
+          default_rest_seconds?: number
           id?: string
           updated_at?: string
           user_id: string
+          weight_unit?: string
         }
         Update: {
           active_program_id?: string | null
           created_at?: string
+          default_rest_seconds?: number
           id?: string
           updated_at?: string
           user_id?: string
+          weight_unit?: string
         }
         Relationships: []
       }

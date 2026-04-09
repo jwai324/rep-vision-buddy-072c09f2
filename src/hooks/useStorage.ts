@@ -119,6 +119,15 @@ function mapFutureWorkout(row: any): FutureWorkout {
   };
 }
 
+export type WeightUnit = 'kg' | 'lbs';
+
+export interface UserPreferences {
+  weightUnit: WeightUnit;
+  defaultRestSeconds: number;
+}
+
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'kg', defaultRestSeconds: 90 };
+
 export function useStorage() {
   const { user } = useAuth();
   const [history, setHistory] = useState<WorkoutSession[]>([]);
@@ -126,6 +135,7 @@ export function useStorage() {
   const [programs, setPrograms] = useState<WorkoutProgram[]>([]);
   const [activeProgramId, setActiveProgramIdState] = useState<string | null>(null);
   const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>([]);
+  const [preferences, setPreferencesState] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [loading, setLoading] = useState(true);
 
   // Load all data from Supabase on mount / user change
@@ -155,7 +165,13 @@ export function useStorage() {
         if (templatesRes.data) setTemplates(templatesRes.data.map(mapTemplate));
         if (programsRes.data) setPrograms(programsRes.data.map(mapProgram));
         if (futureRes.data) setFutureWorkouts(futureRes.data.map(mapFutureWorkout));
-        if (settingsRes.data) setActiveProgramIdState(settingsRes.data.active_program_id);
+        if (settingsRes.data) {
+          setActiveProgramIdState(settingsRes.data.active_program_id);
+          setPreferencesState({
+            weightUnit: (settingsRes.data as any).weight_unit ?? 'kg',
+            defaultRestSeconds: (settingsRes.data as any).default_rest_seconds ?? 90,
+          });
+        }
       } catch (e) {
         console.error('[useStorage] Failed to load data:', e);
         toast.error('Failed to load your data');
@@ -351,9 +367,25 @@ export function useStorage() {
     });
   }, [user]);
 
+  const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
+    if (!user) return;
+    const updated = { ...preferences, ...prefs };
+    setPreferencesState(updated);
+    const { error } = await supabase.from('user_settings').upsert({
+      user_id: user.id,
+      active_program_id: activeProgramId,
+      weight_unit: updated.weightUnit,
+      default_rest_seconds: updated.defaultRestSeconds,
+    } as any, { onConflict: 'user_id' });
+    if (error) {
+      console.error('[useStorage] updatePreferences error:', error);
+      toast.error('Failed to save preferences');
+    }
+  }, [user, preferences, activeProgramId]);
+
   return {
-    history, templates, programs, activeProgramId, futureWorkouts, loading,
+    history, templates, programs, activeProgramId, futureWorkouts, preferences, loading,
     saveSession, saveTemplate, deleteTemplate,
-    saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
+    saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout, updatePreferences,
   };
 }
