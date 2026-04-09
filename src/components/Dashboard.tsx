@@ -172,7 +172,7 @@ const WeeklyProgramCalendar: React.FC<{
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 This Week</p>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 Next 7 Days</p>
         <span className="text-xs text-muted-foreground">{program.name}</span>
       </div>
       <div className="grid grid-cols-7 gap-1">
