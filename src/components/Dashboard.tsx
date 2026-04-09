@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
@@ -56,6 +57,8 @@ const exerciseBodyPartMap = new Map(
   EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart])
 );
 
+const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All');
+
 const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
   const weeklyData = useMemo(() => {
     const now = new Date();
@@ -79,38 +82,22 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
     return { counts, totalSets };
   }, [history]);
 
-  const sorted = Object.entries(weeklyData.counts).sort((a, b) => b[1] - a[1]);
-
-  if (sorted.length === 0) {
-    return (
-      <div className="bg-card rounded-xl p-4 border border-border text-center">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">This Week</p>
-        <p className="text-sm text-muted-foreground">No sets logged this week</p>
-      </div>
-    );
-  }
-
-  const maxSets = sorted[0][1];
-
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Weekly Sets</p>
         <span className="text-xs font-bold text-primary">{weeklyData.totalSets} total</span>
       </div>
-      <div className="space-y-2">
-        {sorted.map(([bodyPart, sets]) => (
-          <div key={bodyPart} className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-20 shrink-0 truncate">{bodyPart}</span>
-            <div className="flex-1 h-5 bg-secondary rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full ${BODY_PART_COLORS[bodyPart] || 'bg-primary/60'} transition-all`}
-                style={{ width: `${(sets / maxSets) * 100}%` }}
-              />
+      <div className="grid grid-cols-3 gap-x-4 gap-y-1.5">
+        {ALL_BODY_PARTS.map(bp => {
+          const sets = weeklyData.counts[bp] || 0;
+          return (
+            <div key={bp} className="flex items-center justify-between">
+              <span className={`text-xs truncate ${sets > 0 ? 'text-foreground' : 'text-muted-foreground/50'}`}>{bp}</span>
+              <span className={`text-xs font-mono font-bold ml-1 ${sets > 0 ? 'text-primary' : 'text-muted-foreground/30'}`}>{sets}</span>
             </div>
-            <span className="text-xs font-mono font-bold text-foreground w-6 text-right">{sets}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
