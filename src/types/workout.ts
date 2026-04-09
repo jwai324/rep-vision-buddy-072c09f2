@@ -48,20 +48,28 @@ export interface WorkoutTemplate {
   exercises: TemplateExercise[];
 }
 
+export type DayFrequency =
+  | { type: 'weekly'; weekday: number }           // 0=Sun,...6=Sat
+  | { type: 'monthly'; dayOfMonth: number }       // 1-31
+  | { type: 'everyNDays'; interval: number };     // 2,3,4...
+
 export interface ProgramDay {
   label: string;
   templateId: string | 'rest';
+  frequency?: DayFrequency;
 }
 
 export type ProgramSchedule =
-  | { type: 'weekly'; weekdays: number[] }       // 0=Sun,1=Mon,...6=Sat
-  | { type: 'monthly'; dayOfMonth: number }       // 1-31
-  | { type: 'everyNDays'; interval: number };     // 2,3,4...
+  | { type: 'weekly'; weekdays: number[] }
+  | { type: 'monthly'; dayOfMonth: number }
+  | { type: 'everyNDays'; interval: number };
 
 export interface WorkoutProgram {
   id: string;
   name: string;
   days: ProgramDay[];
+  durationWeeks?: number;
+  startDate?: string; // ISO date
   schedule?: ProgramSchedule;
 }
 
