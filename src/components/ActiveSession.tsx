@@ -42,6 +42,7 @@ interface ActiveSessionProps {
   templateExercises?: TemplateExercise[];
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
+  defaultDropSetsEnabled?: boolean;
   cachedSession?: ActiveSessionCache | null;
   /** When editing an existing session */
   editSession?: WorkoutSession | null;
@@ -85,6 +86,7 @@ interface ExerciseBlock {
   note?: string; // session-only note
   supersetGroup?: number;
   restSeconds: number;
+  dropSetsEnabled?: boolean;
 }
 
 const SUPERSET_COLORS = [
@@ -101,7 +103,7 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
   const isEditMode = !!editSession;
 
   // Convert saved session exercises back to blocks for editing
@@ -384,6 +386,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
   }, []);
 
+  const toggleDropSets = useCallback((blockIdx: number) => {
+    setBlocks(prev => prev.map((b, i) => {
+      if (i !== blockIdx) return b;
+      const nowEnabled = !b.dropSetsEnabled;
+      // If disabling, remove all drops from sets
+      if (!nowEnabled) {
+        return {
+          ...b,
+          dropSetsEnabled: false,
+          sets: b.sets.map(s => ({ ...s, drops: undefined, type: s.type === 'dropset' ? 'normal' as SetType : s.type })),
+        };
+      }
+      return { ...b, dropSetsEnabled: true };
+    }));
+  }, []);
+
   const handleMenuAction = useCallback((action: string, blockIdx: number) => {
     const block = blocks[blockIdx];
     switch (action) {
@@ -398,16 +416,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       case 'Create Superset':
         setShowSupersetLinker(true);
         break;
-      case 'Create Drop Set': {
-        const lastSetIdx = blocks[blockIdx].sets.length - 1;
-        if (lastSetIdx >= 0) addDrop(blockIdx, lastSetIdx);
+      case 'Drop Sets':
+        toggleDropSets(blockIdx);
         break;
-      }
       case 'Remove Exercise':
         removeExercise(blockIdx);
         break;
     }
-  }, [blocks, getStickyNote, removeExercise, addDrop]);
+  }, [blocks, getStickyNote, removeExercise, toggleDropSets]);
 
   const saveNote = useCallback(() => {
     if (!editingNote) return;
@@ -768,7 +784,7 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Timer, label: 'Update Rest Timer' },
   { icon: RefreshCw, label: 'Replace Exercise' },
   { icon: Layers, label: 'Create Superset' },
-  { icon: ChevronDown, label: 'Create Drop Set' },
+  { icon: ChevronDown, label: 'Drop Sets', toggle: true },
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
@@ -797,7 +813,16 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                 }`}
               >
                 <item.icon className="w-4 h-4" />
-                {item.label}
+                {'toggle' in item && item.toggle ? (
+                  <span className="flex-1 flex items-center justify-between">
+                    <span>{item.label}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${block.dropSetsEnabled ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}`}>
+                      {block.dropSetsEnabled ? 'ON' : 'OFF'}
+                    </span>
+                  </span>
+                ) : (
+                  item.label
+                )}
               </button>
             ))}
           </PopoverContent>
@@ -988,13 +1013,15 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
               </SwipeToDelete>
             ))}
 
-            {/* Add Drop button for any set */}
-            <button
-              onClick={() => onAddDrop(blockIdx, setIdx)}
-              className="ml-4 py-1 px-3 text-xs text-set-dropset/70 hover:text-set-dropset transition-colors"
-            >
-              + Add Dropset
-            </button>
+            {/* Add Drop button for any set - only when dropsets enabled */}
+            {block.dropSetsEnabled && (
+              <button
+                onClick={() => onAddDrop(blockIdx, setIdx)}
+                className="ml-4 py-1 px-3 text-xs text-set-dropset/70 hover:text-set-dropset transition-colors"
+              >
+                + Add Dropset
+              </button>
+            )}
           </React.Fragment>
         );
       })}
