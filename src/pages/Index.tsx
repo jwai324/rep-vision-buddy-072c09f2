@@ -249,7 +249,11 @@ const Index = () => {
       )}
 
       {screen.type === 'settings' && (
-        <SettingsScreen onBack={() => setScreen({ type: 'dashboard' })} />
+        <SettingsScreen
+          preferences={storage.preferences}
+          onUpdatePreferences={storage.updatePreferences}
+          onBack={() => setScreen({ type: 'dashboard' })}
+        />
       )}
 
     </div>
