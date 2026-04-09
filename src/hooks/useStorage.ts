@@ -28,15 +28,20 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
   const start = program.startDate ? new Date(program.startDate) : new Date();
   const endDate = addWeeks(start, program.durationWeeks ?? 8);
 
+  // Track which dates have a scheduled workout
+  const scheduledDates = new Set<string>();
+
   program.days.forEach((day) => {
     if (!day.frequency) return;
     const freq = day.frequency;
 
     const addEvent = (date: Date) => {
+      const dateStr = date.toISOString().split('T')[0];
+      scheduledDates.add(dateStr);
       workouts.push({
         id: crypto.randomUUID(),
         programId: program.id,
-        date: date.toISOString().split('T')[0],
+        date: dateStr,
         templateId: day.templateId,
         label: day.label,
       });
@@ -69,6 +74,22 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
       }
     }
   });
+
+  // Fill in rest days for any unscheduled dates in the program range
+  let cursor = new Date(start);
+  while (cursor < endDate) {
+    const dateStr = cursor.toISOString().split('T')[0];
+    if (!scheduledDates.has(dateStr)) {
+      workouts.push({
+        id: crypto.randomUUID(),
+        programId: program.id,
+        date: dateStr,
+        templateId: 'rest',
+        label: 'Rest Day',
+      });
+    }
+    cursor = addDays(cursor, 1);
+  }
 
   return workouts;
 }
