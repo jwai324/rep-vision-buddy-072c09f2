@@ -254,7 +254,6 @@ const Index = () => {
           profile={storage.profile}
           onUpdatePreferences={storage.updatePreferences}
           onUpdateProfile={storage.updateProfile}
-          onUploadAvatar={storage.uploadAvatar}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
