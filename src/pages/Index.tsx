@@ -176,16 +176,13 @@ const Index = () => {
       {screen.type === 'calendarDay' && (() => {
         const dateStr = screen.date;
         const pastSessions = storage.history.filter(s => s.date.startsWith(dateStr));
-        const fw = storage.futureWorkouts.find(f => f.date === dateStr) ?? null;
-        const template = fw && fw.templateId !== 'rest'
-          ? storage.templates.find(t => t.id === fw.templateId) ?? null
-          : null;
+        const fws = storage.futureWorkouts.filter(f => f.date === dateStr);
         return (
           <CalendarDayDetail
             date={dateStr}
             pastSessions={pastSessions}
-            futureWorkout={fw}
-            template={template}
+            futureWorkouts={fws}
+            templates={storage.templates}
             onViewSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'calendar' })}
             onViewFutureWorkout={(selectedFw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: selectedFw, from: 'calendar' })}
             onAddRestDay={(d) => {
