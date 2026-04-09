@@ -117,7 +117,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
       name: name.trim(),
       days,
       durationWeeks,
-      startDate: startDate.toISOString(),
+      startDate: format(startDate, 'yyyy-MM-dd'),
     });
   };
 
