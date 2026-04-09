@@ -327,19 +327,29 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       )}
 
       {/* Exercise Blocks */}
-      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
         {blocks.map((block, blockIdx) => (
-          <div key={block.exerciseId} className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
-            <ExerciseTable
-              block={block}
-              blockIdx={blockIdx}
-              stickyNote={getStickyNote(block.exerciseId)}
-              onUpdateSet={updateSet}
-              onToggleComplete={toggleSetComplete}
-              onAddSet={addSet}
-              onMenuAction={handleMenuAction}
-            />
-          </div>
+          <React.Fragment key={block.exerciseId}>
+            {blockIdx > 0 && (
+              <ExerciseRestTimer
+                timerKey={timerTriggers[blockIdx - 1] ?? 0}
+                defaultDuration={blocks[blockIdx - 1].restSeconds}
+                variant="between"
+              />
+            )}
+            <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
+              <ExerciseTable
+                block={block}
+                blockIdx={blockIdx}
+                stickyNote={getStickyNote(block.exerciseId)}
+                timerTrigger={timerTriggers[blockIdx] ?? 0}
+                onUpdateSet={updateSet}
+                onToggleComplete={toggleSetComplete}
+                onAddSet={addSet}
+                onMenuAction={handleMenuAction}
+              />
+            </div>
+          </React.Fragment>
         ))}
 
         {/* Add Exercise */}
@@ -361,6 +371,7 @@ interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
   stickyNote: string;
+  timerTrigger: number;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
@@ -378,7 +389,133 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, timerTrigger, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
+  return (
+    <div>
+      {/* Exercise Header */}
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="text-muted-foreground hover:text-foreground p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-52 p-1">
+            {EXERCISE_MENU_ITEMS.map(item => (
+              <button
+                key={item.label}
+                onClick={() => onMenuAction(item.label, blockIdx)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                  'destructive' in item && item.destructive
+                    ? 'text-destructive hover:bg-destructive/10'
+                    : 'text-foreground hover:bg-secondary'
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {/* Sticky Note display */}
+      {stickyNote && (
+        <div className="mb-2 px-2 py-1.5 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-200 flex items-start gap-1.5">
+          <StickyNote className="w-3 h-3 mt-0.5 shrink-0 text-yellow-400" />
+          {stickyNote}
+        </div>
+      )}
+
+      {/* Session Note display */}
+      {block.note && (
+        <div className="mb-2 px-2 py-1.5 rounded-md bg-primary/5 border border-primary/20 text-xs text-muted-foreground flex items-start gap-1.5">
+          <FileText className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
+          {block.note}
+        </div>
+      )}
+
+      {/* Table Header */}
+      <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+        <span>Set</span>
+        <span className="text-center">Previous</span>
+        <span className="text-center">lbs</span>
+        <span className="text-center">Reps</span>
+        <span className="text-center">RPE</span>
+        <span className="text-center">
+          <Timer className="w-3 h-3 mx-auto" />
+        </span>
+        <span className="text-center">
+          <Check className="w-3 h-3 mx-auto" />
+        </span>
+      </div>
+
+      {/* Set Rows */}
+      {block.sets.map((set, setIdx) => (
+        <div
+          key={setIdx}
+          className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+            set.completed ? 'bg-primary/10' : ''
+          }`}
+        >
+          <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+          <span className="text-xs text-muted-foreground text-center">—</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={set.weight}
+            onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+            placeholder="—"
+            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+          />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={set.reps}
+            onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+            placeholder="—"
+            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+          />
+          <input
+            type="number"
+            inputMode="decimal"
+            min="1"
+            max="10"
+            step="0.5"
+            value={set.rpe}
+            onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+            placeholder="—"
+            className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+          />
+          <ExerciseRestTimer
+            timerKey={set.completed ? timerTrigger : 0}
+            defaultDuration={block.restSeconds}
+            variant="inline"
+          />
+          <button
+            onClick={() => onToggleComplete(blockIdx, setIdx)}
+            className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+              set.completed
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Check className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+
+      {/* Add Set */}
+      <button
+        onClick={() => onAddSet(blockIdx)}
+        className="w-full py-2 mt-1 rounded-md bg-secondary/40 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+      >
+        + Add Set
+      </button>
+    </div>
+  );
+};
   return (
     <div>
       {/* Exercise Header */}
