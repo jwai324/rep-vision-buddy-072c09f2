@@ -153,6 +153,7 @@ const Index = () => {
             futureWorkout={fw}
             template={template}
             onPerformWorkout={startFromTemplate}
+            onUpdateFutureWorkout={storage.updateFutureWorkout}
             onBack={() => setScreen(screen.from === 'list' ? { type: 'futureWorkouts' } : { type: 'dashboard' })}
           />
         );
