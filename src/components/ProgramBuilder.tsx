@@ -275,7 +275,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
             }}
             modifiersClassNames={{
               workout: 'bg-primary/20 text-primary font-bold',
-              rest: 'bg-muted text-muted-foreground',
+              rest: 'bg-blue-500/20 text-blue-400 font-bold',
             }}
             numberOfMonths={1}
             defaultMonth={startDate}
@@ -287,7 +287,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
               <span className="text-[10px] text-muted-foreground">Workout</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-muted border border-border" />
+              <div className="w-3 h-3 rounded-sm bg-blue-500/20 border border-blue-500/40" />
               <span className="text-[10px] text-muted-foreground">Rest</span>
             </div>
           </div>
