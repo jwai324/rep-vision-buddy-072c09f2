@@ -593,18 +593,6 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
     if (el) { el.focus(); return; }
   }
 
-  // End of all columns → next block, first row, first column
-  if (blockIdx < blocks.length - 1) {
-    const nextBlock = blocks[blockIdx + 1];
-    const nextRows = getBlockRows(nextBlock);
-    if (nextRows.length > 0) {
-      const firstRow = nextRows[0];
-      const nextId = buildInputId(blockIdx + 1, firstRow.setIdx, FIELD_ORDER[0], firstRow.dropIdx);
-      const el = document.getElementById(nextId) as HTMLInputElement | null;
-      if (el) { el.focus(); return; }
-    }
-  }
-
   // Nothing left — blur
   (e.target as HTMLInputElement).blur();
 }
