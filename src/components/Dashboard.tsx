@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, BarChart3 } from 'lucide-react';
 import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
@@ -21,6 +21,7 @@ interface DashboardProps {
   onGoToPrograms: () => void;
   onBrowseExercises: () => void;
   onGoToSettings: () => void;
+  onGoToAnalytics: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }
 
@@ -66,7 +67,8 @@ const exerciseBodyPartMap = new Map(
   EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart])
 );
 
-const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All');
+const HIDDEN_BODY_PARTS = new Set(['Full Body', 'Cardio', 'Neck', 'Forearms']);
+const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All' && !HIDDEN_BODY_PARTS.has(bp));
 
 const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
   const weeklyData = useMemo(() => {
@@ -87,7 +89,10 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       }
     }
 
-    return { counts, totalSets };
+    // Calculate displayed sets (only visible body parts)
+    const displayedSets = ALL_BODY_PARTS.reduce((sum, bp) => sum + (counts[bp] || 0), 0);
+
+    return { counts, totalSets, displayedSets };
   }, [history]);
 
   return (
