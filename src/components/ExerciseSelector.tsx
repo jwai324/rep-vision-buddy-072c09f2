@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { EXERCISE_DATABASE, BODY_PARTS, EQUIPMENT_LIST, getBodyPartIcon } from '@/data/exercises';
 import type { ExerciseId } from '@/types/workout';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface ExerciseSelectorProps {
   onSelect: (id: ExerciseId) => void;
@@ -20,6 +21,7 @@ const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
 
 export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebounce(search, 250);
   const [bodyPartFilter, setBodyPartFilter] = useState<string>('All');
   const [equipmentFilter, setEquipmentFilter] = useState<string>('All');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
@@ -31,17 +33,17 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
 
   const filtered = useMemo(() => {
     return EXERCISE_DATABASE.filter(ex => {
-      const matchesSearch = search === '' ||
-        ex.name.toLowerCase().includes(search.toLowerCase()) ||
-        ex.primaryBodyPart.toLowerCase().includes(search.toLowerCase()) ||
-        ex.equipment.toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = debouncedSearch === '' ||
+        ex.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        ex.primaryBodyPart.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        ex.equipment.toLowerCase().includes(debouncedSearch.toLowerCase());
       const matchesBodyPart = bodyPartFilter === 'All' || ex.primaryBodyPart === bodyPartFilter;
       const matchesEquipment = equipmentFilter === 'All' || ex.equipment === equipmentFilter;
       const matchesDifficulty = difficultyFilter === 'All' || ex.difficulty === difficultyFilter;
       const matchesType = typeFilter === 'All' || ex.exerciseType === typeFilter;
       return matchesSearch && matchesBodyPart && matchesEquipment && matchesDifficulty && matchesType;
     });
-  }, [search, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
+  }, [debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
 
   const grouped = useMemo(() => {
     const groups: Record<string, typeof filtered> = {};

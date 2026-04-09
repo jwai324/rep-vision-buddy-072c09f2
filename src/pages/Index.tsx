@@ -8,6 +8,7 @@ import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
@@ -49,24 +50,26 @@ const Index = () => {
   return (
     <div className="max-w-lg mx-auto min-h-screen">
       {screen.type === 'dashboard' && (
-        <Dashboard
-          history={storage.history}
-          activeProgram={activeProgram}
-          templates={storage.templates}
-          futureWorkouts={storage.futureWorkouts}
-          onStartWorkout={() => setScreen({ type: 'startWorkout' })}
-          onGoToFutureWorkouts={() => setScreen({ type: 'activity', initialTab: 'future' })}
-          onStartTemplate={startFromTemplate}
-          onGoToHistory={() => setScreen({ type: 'activity', initialTab: 'history' })}
-          onGoToTemplates={() => setScreen({ type: 'templates' })}
-          onGoToPrograms={() => setScreen({ type: 'programs' })}
-          onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
-          onDayClick={(date) => {
-            const dateStr = format(date, 'yyyy-MM-dd');
-            const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
-            setScreen({ type: 'activity', initialTab: isPast ? 'history' : 'future', filterDate: dateStr });
-          }}
-        />
+        <ErrorBoundary fallbackTitle="Dashboard error" onReset={() => setScreen({ type: 'dashboard' })}>
+          <Dashboard
+            history={storage.history}
+            activeProgram={activeProgram}
+            templates={storage.templates}
+            futureWorkouts={storage.futureWorkouts}
+            onStartWorkout={() => setScreen({ type: 'startWorkout' })}
+            onGoToFutureWorkouts={() => setScreen({ type: 'activity', initialTab: 'future' })}
+            onStartTemplate={startFromTemplate}
+            onGoToHistory={() => setScreen({ type: 'activity', initialTab: 'history' })}
+            onGoToTemplates={() => setScreen({ type: 'templates' })}
+            onGoToPrograms={() => setScreen({ type: 'programs' })}
+            onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
+            onDayClick={(date) => {
+              const dateStr = format(date, 'yyyy-MM-dd');
+              const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
+              setScreen({ type: 'activity', initialTab: isPast ? 'history' : 'future', filterDate: dateStr });
+            }}
+          />
+        </ErrorBoundary>
       )}
 
       {screen.type === 'startWorkout' && (
@@ -86,13 +89,15 @@ const Index = () => {
       )}
 
       {screen.type === 'activeSession' && (
-        <ActiveSession
-          exercises={screen.exercises}
-          templateExercises={screen.templateExercises}
-          history={storage.history}
-          onFinish={(session) => setScreen({ type: 'summary', session })}
-          onCancel={() => setScreen({ type: 'dashboard' })}
-        />
+        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => setScreen({ type: 'dashboard' })}>
+          <ActiveSession
+            exercises={screen.exercises}
+            templateExercises={screen.templateExercises}
+            history={storage.history}
+            onFinish={(session) => setScreen({ type: 'summary', session })}
+            onCancel={() => setScreen({ type: 'dashboard' })}
+          />
+        </ErrorBoundary>
       )}
 
       {screen.type === 'summary' && (

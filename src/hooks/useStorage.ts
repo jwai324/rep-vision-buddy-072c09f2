@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
 
@@ -14,13 +15,26 @@ function getItem<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
-  } catch {
+  } catch (e) {
+    console.error(`[useStorage] Failed to read ${key}:`, e);
     return fallback;
   }
 }
 
 function setItem<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    const json = JSON.stringify(value);
+    // Check rough quota — warn if approaching limit
+    if (json.length > 4 * 1024 * 1024) {
+      console.warn(`[useStorage] Large write to ${key}: ${(json.length / 1024 / 1024).toFixed(1)}MB`);
+    }
+    localStorage.setItem(key, json);
+  } catch (e) {
+    console.error(`[useStorage] Failed to write ${key}:`, e);
+    toast.error('Storage error', {
+      description: 'Could not save data. Your device storage may be full.',
+    });
+  }
 }
 
 function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
