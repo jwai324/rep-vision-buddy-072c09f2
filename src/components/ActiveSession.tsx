@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
+import { ExerciseRestTimer } from '@/components/ExerciseRestTimer';
 
 interface ActiveSessionProps {
   exercises: ExerciseId[];
@@ -31,6 +32,7 @@ interface ExerciseBlock {
   sets: SetRow[];
   note?: string; // session-only note
   supersetGroup?: number;
+  restSeconds: number;
 }
 
 const SUPERSET_COLORS = [
@@ -46,9 +48,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
+      const restSec = tpl?.restSeconds ?? 90;
       return {
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? id,
+        restSeconds: restSec,
         sets: Array.from({ length: numSets }, (_, i) => ({
           setNumber: i + 1,
           weight: '',
@@ -65,6 +69,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTime = useRef(Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
+  // Timer triggers: incremented when a set is completed to auto-start rest timers
+  const [timerTriggers, setTimerTriggers] = useState<Record<number, number>>({});
 
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
@@ -97,16 +103,25 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const toggleSetComplete = useCallback((blockIdx: number, setIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si !== setIdx) return set;
-          return { ...set, completed: !set.completed };
-        }),
-      };
-    }));
+    setBlocks(prev => {
+      const block = prev[blockIdx];
+      const wasCompleted = block.sets[setIdx].completed;
+      const updated = prev.map((b, bi) => {
+        if (bi !== blockIdx) return b;
+        return {
+          ...b,
+          sets: b.sets.map((set, si) => {
+            if (si !== setIdx) return set;
+            return { ...set, completed: !set.completed };
+          }),
+        };
+      });
+      // Auto-start rest timer when completing a set (not unchecking)
+      if (!wasCompleted) {
+        setTimerTriggers(prev => ({ ...prev, [blockIdx]: (prev[blockIdx] ?? 0) + 1 }));
+      }
+      return updated;
+    });
   }, []);
 
   const addSet = useCallback((blockIdx: number) => {
@@ -139,6 +154,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         .map(id => ({
           exerciseId: id,
           exerciseName: EXERCISES[id]?.name ?? id,
+          restSeconds: 90,
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
             weight: '',
@@ -311,19 +327,29 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       )}
 
       {/* Exercise Blocks */}
-      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
         {blocks.map((block, blockIdx) => (
-          <div key={block.exerciseId} className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
-            <ExerciseTable
-              block={block}
-              blockIdx={blockIdx}
-              stickyNote={getStickyNote(block.exerciseId)}
-              onUpdateSet={updateSet}
-              onToggleComplete={toggleSetComplete}
-              onAddSet={addSet}
-              onMenuAction={handleMenuAction}
-            />
-          </div>
+          <React.Fragment key={block.exerciseId}>
+            {blockIdx > 0 && (
+              <ExerciseRestTimer
+                timerKey={timerTriggers[blockIdx - 1] ?? 0}
+                defaultDuration={blocks[blockIdx - 1].restSeconds}
+                variant="between"
+              />
+            )}
+            <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
+              <ExerciseTable
+                block={block}
+                blockIdx={blockIdx}
+                stickyNote={getStickyNote(block.exerciseId)}
+                timerTrigger={timerTriggers[blockIdx] ?? 0}
+                onUpdateSet={updateSet}
+                onToggleComplete={toggleSetComplete}
+                onAddSet={addSet}
+                onMenuAction={handleMenuAction}
+              />
+            </div>
+          </React.Fragment>
         ))}
 
         {/* Add Exercise */}
@@ -345,6 +371,7 @@ interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
   stickyNote: string;
+  timerTrigger: number;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
@@ -362,7 +389,7 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, timerTrigger, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
   return (
     <div>
       {/* Exercise Header */}
@@ -410,12 +437,15 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
       )}
 
       {/* Table Header */}
-      <div className="grid grid-cols-[40px_1fr_1fr_1fr_50px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+      <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
         <span>Set</span>
         <span className="text-center">Previous</span>
         <span className="text-center">lbs</span>
         <span className="text-center">Reps</span>
         <span className="text-center">RPE</span>
+        <span className="text-center">
+          <Timer className="w-3 h-3 mx-auto" />
+        </span>
         <span className="text-center">
           <Check className="w-3 h-3 mx-auto" />
         </span>
@@ -425,7 +455,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
       {block.sets.map((set, setIdx) => (
         <div
           key={setIdx}
-          className={`grid grid-cols-[40px_1fr_1fr_1fr_50px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+          className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
             set.completed ? 'bg-primary/10' : ''
           }`}
         >
@@ -457,6 +487,11 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
             onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
             placeholder="—"
             className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+          />
+          <ExerciseRestTimer
+            timerKey={set.completed ? timerTrigger : 0}
+            defaultDuration={block.restSeconds}
+            variant="inline"
           />
           <button
             onClick={() => onToggleComplete(blockIdx, setIdx)}
