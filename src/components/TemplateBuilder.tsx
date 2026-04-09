@@ -61,7 +61,7 @@ function blockToExercise(block: TemplateBlock): TemplateExercise {
   };
 }
 
-export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSave, onCancel }) => {
+export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() =>
     initial?.exercises.map(exerciseToBlock) ?? []
@@ -247,7 +247,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSav
             {/* Table Header */}
             <div className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
               <span>Set</span>
-              <span className="text-center">lbs</span>
+              <span className="text-center">{weightUnit}</span>
               <span className="text-center">Reps</span>
               <span className="text-center">RPE</span>
             </div>
