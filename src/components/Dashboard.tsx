@@ -350,16 +350,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* Weekly Program Calendar */}
-      {activeProgram && (
-        <WeeklyProgramCalendar
-          program={activeProgram}
-          templates={templates}
-          history={history}
-          futureWorkouts={futureWorkouts}
-          onDayClick={onDayClick}
-          onViewAll={onGoToHistory}
-        />
-      )}
+      <WeeklyProgramCalendar
+        program={activeProgram}
+        templates={templates}
+        history={history}
+        futureWorkouts={futureWorkouts}
+        onDayClick={onDayClick}
+        onViewAll={onGoToHistory}
+      />
 
       {/* Future Workouts button */}
       {futureWorkouts.filter(fw => fw.templateId !== 'rest').length > 0 && (
