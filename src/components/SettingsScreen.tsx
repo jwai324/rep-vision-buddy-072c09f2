@@ -1,12 +1,16 @@
-import React from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Camera, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
-import type { WeightUnit, UserPreferences } from '@/hooks/useStorage';
+import type { WeightUnit, UserPreferences, UserProfile } from '@/hooks/useStorage';
 
 interface SettingsScreenProps {
   preferences: UserPreferences;
+  profile: UserProfile;
   onUpdatePreferences: (prefs: Partial<UserPreferences>) => void;
+  onUpdateProfile: (updates: Partial<UserProfile>) => void;
+  onUploadAvatar: (file: File) => Promise<string | null>;
   onBack: () => void;
 }
 
@@ -17,8 +21,29 @@ const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
 
 const REST_OPTIONS = [30, 45, 60, 90, 120, 150, 180];
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ preferences, onUpdatePreferences, onBack }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({
+  preferences, profile, onUpdatePreferences, onUpdateProfile, onUploadAvatar, onBack,
+}) => {
   const { user, signOut } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(profile.displayName ?? '');
+  const [uploading, setUploading] = useState(false);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    await onUploadAvatar(file);
+    setUploading(false);
+  };
+
+  const saveName = () => {
+    onUpdateProfile({ displayName: nameDraft.trim() || null });
+    setEditingName(false);
+  };
+
+  const displayName = profile.displayName || user?.email?.split('@')[0] || 'User';
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
@@ -33,19 +58,70 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ preferences, onU
         <h1 className="text-xl font-extrabold text-foreground">Settings</h1>
       </div>
 
-      {/* Account Section */}
+      {/* Profile Section */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Account</p>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Profile</p>
         </div>
-        <div className="px-4 py-3 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-            <User className="w-5 h-5 text-primary" />
+        <div className="px-4 py-5 flex flex-col items-center gap-4">
+          {/* Avatar */}
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden ring-2 ring-primary/30">
+              {profile.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-8 h-8 text-primary" />
+              )}
+            </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {uploading ? (
+                <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Camera className="w-4 h-4" />
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground truncate">{user?.email ?? 'Unknown'}</p>
-            <p className="text-xs text-muted-foreground">Signed in</p>
-          </div>
+
+          {/* Display Name */}
+          {editingName ? (
+            <div className="flex items-center gap-2 w-full max-w-[240px]">
+              <Input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                className="text-center text-sm h-9"
+                placeholder="Display name"
+                autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && saveName()}
+              />
+              <button onClick={saveName} className="p-1.5 rounded-lg text-primary hover:bg-primary/10">
+                <Check className="w-4 h-4" />
+              </button>
+              <button onClick={() => setEditingName(false)} className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setNameDraft(profile.displayName ?? ''); setEditingName(true); }}
+              className="flex items-center gap-2 group"
+            >
+              <span className="text-sm font-semibold text-foreground">{displayName}</span>
+              <Pencil className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+            </button>
+          )}
+
+          <p className="text-xs text-muted-foreground">{user?.email}</p>
         </div>
       </div>
 
