@@ -11,6 +11,7 @@ interface ActivityScreenProps {
   onSelectFutureWorkout: (fw: FutureWorkout) => void;
   onBack: () => void;
   initialTab?: 'history' | 'future';
+  filterDate?: string;
 }
 
 function formatDuration(s: number) {
@@ -19,20 +20,22 @@ function formatDuration(s: number) {
 }
 
 export const ActivityScreen: React.FC<ActivityScreenProps> = ({
-  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onBack, initialTab = 'future',
+  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onBack, initialTab = 'future', filterDate,
 }) => {
   const [tab, setTab] = useState<'history' | 'future'>(initialTab);
   const [showRestDays, setShowRestDays] = useState(false);
 
   const filteredHistory = useMemo(() => {
-    if (showRestDays) return history;
-    return history.filter(s => !s.isRestDay);
-  }, [history, showRestDays]);
+    let items = showRestDays ? history : history.filter(s => !s.isRestDay);
+    if (filterDate) items = items.filter(s => s.date.startsWith(filterDate));
+    return items;
+  }, [history, showRestDays, filterDate]);
 
   const filteredFuture = useMemo(() => {
-    if (showRestDays) return futureWorkouts;
-    return futureWorkouts.filter(fw => fw.templateId !== 'rest');
-  }, [futureWorkouts, showRestDays]);
+    let items = showRestDays ? futureWorkouts : futureWorkouts.filter(fw => fw.templateId !== 'rest');
+    if (filterDate) items = items.filter(f => f.date === filterDate);
+    return items;
+  }, [futureWorkouts, showRestDays, filterDate]);
 
   const restCount = history.filter(s => s.isRestDay).length + futureWorkouts.filter(f => f.templateId === 'rest').length;
 
