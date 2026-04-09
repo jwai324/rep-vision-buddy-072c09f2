@@ -22,6 +22,7 @@ interface SessionSummaryProps {
   onClose: () => void;
   /** When viewing a saved session, allow deletion instead of discard */
   onDelete?: (id: string) => void;
+  onEdit?: (session: WorkoutSession) => void;
   isViewMode?: boolean;
 }
 
