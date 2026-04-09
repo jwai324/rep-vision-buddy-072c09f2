@@ -1,11 +1,13 @@
 import React from 'react';
 import type { ExerciseLog } from '@/types/workout';
+import type { WeightUnit } from '@/hooks/useStorage';
 
 interface WorkoutLogProps {
   logs: ExerciseLog[];
+  weightUnit?: WeightUnit;
 }
 
-export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs }) => {
+export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' }) => {
   const hasAnyData = logs.some(l => l.sets.length > 0);
   if (!hasAnyData) return null;
 
@@ -19,7 +21,7 @@ export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs }) => {
             <span className="text-muted-foreground text-xs">
               {log.sets.length} set{log.sets.length !== 1 ? 's' : ''} · {log.sets.reduce((s, set) => s + set.reps, 0)} reps
               {log.sets.some(s => s.weight) && (
-                <> · {log.sets.map(s => s.weight ? `${s.weight}lbs` : '—').join(', ')}</>
+                <> · {log.sets.map(s => s.weight ? `${s.weight}${weightUnit}` : '—').join(', ')}</>
               )}
             </span>
           </div>

@@ -3,15 +3,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
+import type { WeightUnit } from '@/hooks/useStorage';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface ExerciseDetailModalProps {
   exerciseId: ExerciseId | null;
   onClose: () => void;
   history: WorkoutSession[];
+  weightUnit?: WeightUnit;
 }
 
-export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerciseId, onClose, history }) => {
+export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerciseId, onClose, history, weightUnit = 'kg' }) => {
   const exercise = exerciseId ? EXERCISE_DATABASE.find(e => e.id === exerciseId) : null;
 
   const exerciseHistory = useMemo(() => {
@@ -97,7 +99,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
                         <div key={si} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Set {set.setNumber}</span>
                           <span className="text-foreground font-medium">
-                            {set.weight ? `${set.weight} lbs × ` : ''}{set.reps} reps
+                            {set.weight ? `${set.weight} ${weightUnit} × ` : ''}{set.reps} reps
                             {set.rpe ? ` @ RPE ${set.rpe}` : ''}
                           </span>
                         </div>
@@ -128,7 +130,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
                         borderRadius: '8px',
                         color: 'hsl(var(--popover-foreground))',
                       }}
-                      formatter={(value: number) => [`${value} lbs`, 'Volume']}
+                      formatter={(value: number) => [`${value} ${weightUnit}`, 'Volume']}
                     />
                     <Line
                       type="monotone"

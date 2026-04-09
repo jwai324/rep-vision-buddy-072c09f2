@@ -11,10 +11,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useStickyNotes } from '@/hooks/useStickyNotes';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
 
+import type { WeightUnit } from '@/hooks/useStorage';
+
 interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
   history?: WorkoutSession[];
+  weightUnit?: WeightUnit;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
 }
@@ -70,7 +73,7 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], onFinish, onCancel }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', onFinish, onCancel }) => {
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
     initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
@@ -491,6 +494,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               <ExerciseTable
                 block={block}
                 blockIdx={blockIdx}
+                weightUnit={weightUnit}
                 blocks={blocks}
                 stickyNote={getStickyNote(block.exerciseId)}
                 activeTimer={activeTimer}
@@ -600,6 +604,7 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
 interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
+  weightUnit: string;
   blocks: ExerciseBlock[];
   stickyNote: string;
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
@@ -630,7 +635,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
     <div>
       {/* Exercise Header */}
@@ -681,7 +686,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, 
       <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
         <span>Set</span>
         <span className="text-center">Previous</span>
-        <span className="text-center">lbs</span>
+        <span className="text-center">{weightUnit}</span>
         <span className="text-center">Reps</span>
         <span className="text-center">RPE</span>
         <span className="text-center">

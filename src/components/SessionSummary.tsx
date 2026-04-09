@@ -2,9 +2,11 @@ import React from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { SET_TYPE_CONFIG } from '@/types/workout';
 import { Button } from '@/components/ui/button';
+import type { WeightUnit } from '@/hooks/useStorage';
 
 interface SessionSummaryProps {
   session: WorkoutSession;
+  weightUnit?: WeightUnit;
   onSave: () => void;
   onSaveAsTemplate: () => void;
   onClose: () => void;
@@ -16,7 +18,7 @@ function formatDuration(s: number) {
   return `${m}m ${sec}s`;
 }
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, onSave, onSaveAsTemplate, onClose }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose }) => {
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
       <div className="text-center">
@@ -30,7 +32,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, onSave,
           { label: 'Duration', value: formatDuration(session.duration) },
           { label: 'Total Sets', value: session.totalSets },
           { label: 'Total Reps', value: session.totalReps },
-          { label: 'Volume', value: `${session.totalVolume} lbs` },
+          { label: 'Volume', value: `${session.totalVolume} ${weightUnit}` },
         ].map(s => (
           <div key={s.label} className="bg-card rounded-xl p-4 border border-border text-center">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</p>
@@ -62,7 +64,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, onSave,
                   </div>
                   <div className="flex items-center gap-3 text-foreground">
                     <span>{set.reps} reps</span>
-                    {set.weight && <span>{set.weight} lbs</span>}
+                    {set.weight && <span>{set.weight} {weightUnit}</span>}
                     {set.rpe && <span className="text-primary text-xs">RPE {set.rpe}</span>}
                   </div>
                 </div>
