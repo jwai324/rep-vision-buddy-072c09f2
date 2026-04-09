@@ -195,9 +195,17 @@ export function useStorage() {
     });
   }, []);
 
+  const updateFutureWorkout = useCallback((updated: FutureWorkout) => {
+    setFutureWorkouts(prev => {
+      const next = prev.map(fw => fw.id === updated.id ? updated : fw);
+      setItem(KEYS.futureWorkouts, next);
+      return next;
+    });
+  }, []);
+
   return {
     history, templates, programs, activeProgramId, futureWorkouts,
     saveSession, saveTemplate, deleteTemplate,
-    saveProgram, deleteProgram, setActiveProgram, deleteSession,
+    saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
   };
 }

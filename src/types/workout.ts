@@ -73,6 +73,31 @@ export interface WorkoutProgram {
   schedule?: ProgramSchedule;
 }
 
+export interface RecoveryActivity {
+  id: string;
+  activityId: string;
+  notes?: string;
+  duration?: number; // minutes
+  completed?: boolean;
+}
+
+export const RECOVERY_ACTIVITIES = [
+  { id: 'cold-plunge', name: 'Cold Plunge', icon: '🧊', category: 'Recovery' },
+  { id: 'compression-cuff', name: 'Compression Cuff', icon: '🦵', category: 'Recovery' },
+  { id: 'active-rest', name: 'Active Rest', icon: '🚶', category: 'Active' },
+  { id: 'stretching', name: 'Stretching', icon: '🧘', category: 'Mobility' },
+  { id: 'foam-rolling', name: 'Foam Rolling', icon: '🪵', category: 'Mobility' },
+  { id: 'sauna', name: 'Sauna', icon: '🔥', category: 'Recovery' },
+  { id: 'massage', name: 'Massage', icon: '💆', category: 'Recovery' },
+  { id: 'yoga', name: 'Yoga', icon: '🧘‍♀️', category: 'Active' },
+  { id: 'swimming', name: 'Swimming', icon: '🏊', category: 'Active' },
+  { id: 'walking', name: 'Walking', icon: '🚶‍♂️', category: 'Active' },
+  { id: 'meditation', name: 'Meditation', icon: '🧠', category: 'Mental' },
+  { id: 'sleep-focus', name: 'Sleep Focus', icon: '😴', category: 'Recovery' },
+] as const;
+
+export type RecoveryActivityId = typeof RECOVERY_ACTIVITIES[number]['id'];
+
 export interface FutureWorkout {
   id: string;
   programId: string;
@@ -80,6 +105,7 @@ export interface FutureWorkout {
   templateId: string; // or 'rest'
   label: string;
   completed?: boolean;
+  recoveryActivities?: RecoveryActivity[];
 }
 
 // Legacy lookup - now uses exercise database
