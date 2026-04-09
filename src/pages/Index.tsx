@@ -10,6 +10,7 @@ import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
+import { SettingsScreen } from '@/components/SettingsScreen';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
@@ -29,7 +30,8 @@ type Screen =
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
-  | { type: 'programBuilder'; program?: WorkoutProgram };
+  | { type: 'programBuilder'; program?: WorkoutProgram }
+  | { type: 'settings' };
 
 const Index = () => {
   const storage = useStorage();
@@ -74,6 +76,7 @@ const Index = () => {
             onGoToTemplates={() => setScreen({ type: 'templates' })}
             onGoToPrograms={() => setScreen({ type: 'programs' })}
             onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
+            onGoToSettings={() => setScreen({ type: 'settings' })}
             onDayClick={(date) => {
               const dateStr = format(date, 'yyyy-MM-dd');
               const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
@@ -243,6 +246,10 @@ const Index = () => {
           }}
           onCancel={() => setScreen({ type: 'programs' })}
         />
+      )}
+
+      {screen.type === 'settings' && (
+        <SettingsScreen onBack={() => setScreen({ type: 'dashboard' })} />
       )}
 
     </div>

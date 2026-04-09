@@ -20,6 +20,7 @@ interface DashboardProps {
   onGoToTemplates: () => void;
   onGoToPrograms: () => void;
   onBrowseExercises: () => void;
+  onGoToSettings: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }
 
@@ -297,7 +298,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -323,7 +324,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <span className="font-mono text-xl font-bold text-primary">{streak}</span>
           </div>
           <button
-            onClick={() => {/* TODO: open settings */}}
+            onClick={onGoToSettings}
             className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
           >
             <Settings className="w-5 h-5" />
