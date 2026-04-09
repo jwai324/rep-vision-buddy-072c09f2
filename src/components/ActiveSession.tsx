@@ -1,11 +1,13 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import type { ExerciseId, ExerciseLog, SetType, WorkoutSet, WorkoutSession, TemplateExercise } from '@/types/workout';
+import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
+import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
-import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2 } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useStickyNotes } from '@/hooks/useStickyNotes';
 
 interface ActiveSessionProps {
   exercises: ExerciseId[];
@@ -20,14 +22,24 @@ interface SetRow {
   reps: string;
   completed: boolean;
   type: SetType;
-  rpe?: number;
+  rpe: string;
 }
 
 interface ExerciseBlock {
   exerciseId: ExerciseId;
   exerciseName: string;
   sets: SetRow[];
+  note?: string; // session-only note
+  supersetGroup?: number;
 }
+
+const SUPERSET_COLORS = [
+  'border-l-4 border-l-set-superset',
+  'border-l-4 border-l-orange-500',
+  'border-l-4 border-l-purple-500',
+  'border-l-4 border-l-pink-500',
+  'border-l-4 border-l-cyan-500',
+];
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, onFinish, onCancel }) => {
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
@@ -43,13 +55,20 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           reps: tpl?.targetReps === 'failure' ? '' : (tpl?.targetReps?.toString() ?? ''),
           completed: false,
           type: tpl?.setType ?? 'normal',
+          rpe: '',
         })),
       };
     })
   );
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTime = useRef(Date.now());
+  const { getStickyNote, setStickyNote } = useStickyNotes();
+
+  // Note editing state
+  const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
+  const [noteText, setNoteText] = useState('');
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -102,6 +121,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           reps: lastSet?.reps ?? '',
           completed: false,
           type: lastSet?.type ?? 'normal',
+          rpe: '',
         }],
       };
     }));
@@ -125,6 +145,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             reps: '',
             completed: false,
             type: 'normal' as SetType,
+            rpe: '',
           })),
         }));
       return [...prev, ...newBlocks];
@@ -134,6 +155,42 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   const removeExercise = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
+  }, []);
+
+  const handleMenuAction = useCallback((action: string, blockIdx: number) => {
+    const block = blocks[blockIdx];
+    switch (action) {
+      case 'Add Note':
+        setNoteText(block.note ?? '');
+        setEditingNote({ blockIdx, type: 'note' });
+        break;
+      case 'Add Sticky Note':
+        setNoteText(getStickyNote(block.exerciseId));
+        setEditingNote({ blockIdx, type: 'sticky' });
+        break;
+      case 'Create Superset':
+        setShowSupersetLinker(true);
+        break;
+      case 'Remove Exercise':
+        removeExercise(blockIdx);
+        break;
+    }
+  }, [blocks, getStickyNote, removeExercise]);
+
+  const saveNote = useCallback(() => {
+    if (!editingNote) return;
+    const { blockIdx, type } = editingNote;
+    if (type === 'note') {
+      setBlocks(prev => prev.map((b, i) => i === blockIdx ? { ...b, note: noteText.trim() || undefined } : b));
+    } else {
+      setStickyNote(blocks[blockIdx].exerciseId, noteText);
+    }
+    setEditingNote(null);
+  }, [editingNote, noteText, blocks, setStickyNote]);
+
+  const handleSupersetSave = useCallback((groups: Record<string, number | undefined>) => {
+    setBlocks(prev => prev.map(b => ({ ...b, supersetGroup: groups[b.exerciseId] })));
+    setShowSupersetLinker(false);
   }, []);
 
   const finishWorkout = useCallback(() => {
@@ -150,7 +207,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             type: s.type,
             reps: parseInt(s.reps) || 0,
             weight: s.weight ? parseFloat(s.weight) : undefined,
-            rpe: s.rpe,
+            rpe: s.rpe ? parseFloat(s.rpe) : undefined,
           })),
       }));
 
@@ -172,6 +229,20 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, [blocks, onFinish]);
 
+  if (showSupersetLinker) {
+    return (
+      <SupersetLinker
+        exercises={blocks.map(b => ({
+          exerciseId: b.exerciseId,
+          exerciseName: b.exerciseName,
+          supersetGroup: b.supersetGroup,
+        }))}
+        onSave={handleSupersetSave}
+        onCancel={() => setShowSupersetLinker(false)}
+      />
+    );
+  }
+
   if (showExercisePicker) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -182,6 +253,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       </div>
     );
   }
+
+  const getSupersetColorClass = (group?: number) => {
+    if (group === undefined) return '';
+    return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -202,18 +278,52 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         <CameraFeed />
       </div>
 
+      {/* Note Editor Modal */}
+      {editingNote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-xl w-full max-w-md p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">
+                {editingNote.type === 'sticky' ? '📌 Sticky Note' : '📝 Session Note'}
+              </h3>
+              <button onClick={() => setEditingNote(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {editingNote.type === 'sticky'
+                ? 'This note stays with this exercise across all future workouts.'
+                : 'This note is only for this workout session.'}
+            </p>
+            <textarea
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder="Type your note..."
+              rows={3}
+              className="w-full bg-secondary/60 border border-border rounded-lg p-3 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary resize-none"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setEditingNote(null)}>Cancel</Button>
+              <Button variant="neon" size="sm" onClick={saveNote}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Exercise Blocks */}
       <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-6">
         {blocks.map((block, blockIdx) => (
-          <ExerciseTable
-            key={block.exerciseId}
-            block={block}
-            blockIdx={blockIdx}
-            onUpdateSet={updateSet}
-            onToggleComplete={toggleSetComplete}
-            onAddSet={addSet}
-            onRemoveExercise={removeExercise}
-          />
+          <div key={block.exerciseId} className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
+            <ExerciseTable
+              block={block}
+              blockIdx={blockIdx}
+              stickyNote={getStickyNote(block.exerciseId)}
+              onUpdateSet={updateSet}
+              onToggleComplete={toggleSetComplete}
+              onAddSet={addSet}
+              onMenuAction={handleMenuAction}
+            />
+          </div>
         ))}
 
         {/* Add Exercise */}
@@ -234,10 +344,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
+  stickyNote: string;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
-  onRemoveExercise: (blockIdx: number) => void;
+  onMenuAction: (action: string, blockIdx: number) => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -251,11 +362,11 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdateSet, onToggleComplete, onAddSet, onRemoveExercise }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
   return (
     <div>
       {/* Exercise Header */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
         <Popover>
           <PopoverTrigger asChild>
@@ -267,9 +378,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdate
             {EXERCISE_MENU_ITEMS.map(item => (
               <button
                 key={item.label}
-                onClick={() => {
-                  if (item.label === 'Remove Exercise') onRemoveExercise(blockIdx);
-                }}
+                onClick={() => onMenuAction(item.label, blockIdx)}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
                   'destructive' in item && item.destructive
                     ? 'text-destructive hover:bg-destructive/10'
@@ -284,12 +393,29 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdate
         </Popover>
       </div>
 
+      {/* Sticky Note display */}
+      {stickyNote && (
+        <div className="mb-2 px-2 py-1.5 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-200 flex items-start gap-1.5">
+          <StickyNote className="w-3 h-3 mt-0.5 shrink-0 text-yellow-400" />
+          {stickyNote}
+        </div>
+      )}
+
+      {/* Session Note display */}
+      {block.note && (
+        <div className="mb-2 px-2 py-1.5 rounded-md bg-primary/5 border border-primary/20 text-xs text-muted-foreground flex items-start gap-1.5">
+          <FileText className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
+          {block.note}
+        </div>
+      )}
+
       {/* Table Header */}
-      <div className="grid grid-cols-[40px_1fr_1fr_1fr_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+      <div className="grid grid-cols-[40px_1fr_1fr_1fr_50px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
         <span>Set</span>
         <span className="text-center">Previous</span>
         <span className="text-center">lbs</span>
         <span className="text-center">Reps</span>
+        <span className="text-center">RPE</span>
         <span className="text-center">
           <Check className="w-3 h-3 mx-auto" />
         </span>
@@ -299,7 +425,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdate
       {block.sets.map((set, setIdx) => (
         <div
           key={setIdx}
-          className={`grid grid-cols-[40px_1fr_1fr_1fr_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+          className={`grid grid-cols-[40px_1fr_1fr_1fr_50px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
             set.completed ? 'bg-primary/10' : ''
           }`}
         >
@@ -320,6 +446,17 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdate
             onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
             placeholder="—"
             className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+          />
+          <input
+            type="number"
+            inputMode="decimal"
+            min="1"
+            max="10"
+            step="0.5"
+            value={set.rpe}
+            onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+            placeholder="—"
+            className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
           />
           <button
             onClick={() => onToggleComplete(blockIdx, setIdx)}
