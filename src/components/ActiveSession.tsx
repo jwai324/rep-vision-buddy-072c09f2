@@ -6,7 +6,7 @@ import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
-import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
@@ -162,7 +162,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [timerPaused, setTimerPaused] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
+  const pausedElapsed = useRef<number | null>(null);
   const { getStickyNote, setStickyNote } = useStickyNotes();
 
   // Edit mode: date/time state
@@ -252,10 +254,27 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [noteText, setNoteText] = useState('');
 
   useEffect(() => {
+    if (timerPaused) return;
     const interval = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - startTime.current) / 1000));
     }, 1000);
     return () => clearInterval(interval);
+  }, [timerPaused]);
+
+  const toggleTimerPause = useCallback(() => {
+    setTimerPaused(prev => {
+      if (!prev) {
+        // Pausing: save current elapsed
+        pausedElapsed.current = Math.floor((Date.now() - startTime.current) / 1000);
+      } else {
+        // Resuming: adjust startTime so elapsed stays continuous
+        if (pausedElapsed.current !== null) {
+          startTime.current = Date.now() - (pausedElapsed.current * 1000);
+          pausedElapsed.current = null;
+        }
+      }
+      return !prev;
+    });
   }, []);
 
   const formatTime = (s: number) => {
@@ -649,7 +668,16 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
+          <div className="flex items-center gap-2">
+            <p className={`text-sm ${timerPaused ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>{formatTime(elapsedSeconds)}</p>
+            <button
+              onClick={toggleTimerPause}
+              className="w-6 h-6 rounded-full flex items-center justify-center bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors"
+              title={timerPaused ? 'Resume timer' : 'Pause timer'}
+            >
+              {timerPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+            </button>
+          </div>
         )}
       </div>
 
