@@ -154,7 +154,7 @@ function buildProgramEvents(program: WorkoutProgram) {
 }
 
 const WeeklyProgramCalendar: React.FC<{
-  program: WorkoutProgram;
+  program: WorkoutProgram | null;
   templates: WorkoutTemplate[];
   history: WorkoutSession[];
   futureWorkouts: FutureWorkout[];
@@ -169,7 +169,7 @@ const WeeklyProgramCalendar: React.FC<{
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [weekOffset]);
 
-  const events = useMemo(() => buildProgramEvents(program), [program]);
+  const events = useMemo(() => program ? buildProgramEvents(program) : [], [program]);
 
   const weekSchedule = useMemo(() => {
     return weekDays.map(day => {
@@ -190,7 +190,7 @@ const WeeklyProgramCalendar: React.FC<{
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 {program.name}</p>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 {program?.name ?? 'Calendar'}</p>
       </div>
       <div className="flex items-center justify-between mb-2">
         <button
@@ -350,16 +350,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* Weekly Program Calendar */}
-      {activeProgram && (
-        <WeeklyProgramCalendar
-          program={activeProgram}
-          templates={templates}
-          history={history}
-          futureWorkouts={futureWorkouts}
-          onDayClick={onDayClick}
-          onViewAll={onGoToHistory}
-        />
-      )}
+      <WeeklyProgramCalendar
+        program={activeProgram}
+        templates={templates}
+        history={history}
+        futureWorkouts={futureWorkouts}
+        onDayClick={onDayClick}
+        onViewAll={onGoToHistory}
+      />
 
       {/* Future Workouts button */}
       {futureWorkouts.filter(fw => fw.templateId !== 'rest').length > 0 && (
