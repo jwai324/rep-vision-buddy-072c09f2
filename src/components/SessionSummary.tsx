@@ -1,8 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { SET_TYPE_CONFIG } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface SessionSummaryProps {
   session: WorkoutSession;
@@ -10,6 +20,9 @@ interface SessionSummaryProps {
   onSave: () => void;
   onSaveAsTemplate: () => void;
   onClose: () => void;
+  /** When viewing a saved session, allow deletion instead of discard */
+  onDelete?: (id: string) => void;
+  isViewMode?: boolean;
 }
 
 function formatDuration(s: number) {
@@ -18,7 +31,8 @@ function formatDuration(s: number) {
   return `${m}m ${sec}s`;
 }
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, isViewMode }) => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
       <div className="text-center">
@@ -76,10 +90,51 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
 
       {/* Actions */}
       <div className="flex flex-col gap-2 mt-auto">
-        <Button variant="neon" onClick={onSave} className="w-full">Save Workout</Button>
-        <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
-        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
+        {!isViewMode && (
+          <>
+            <Button variant="neon" onClick={onSave} className="w-full">Save Workout</Button>
+            <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
+            <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
+          </>
+        )}
+        {isViewMode && (
+          <>
+            <Button variant="outline" onClick={onClose} className="w-full">Back</Button>
+            {onDelete && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-xs text-destructive hover:text-destructive/80 font-medium py-2"
+              >
+                Delete Workout
+              </button>
+            )}
+          </>
+        )}
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Workout</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this workout? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onDelete?.(session.id);
+                setShowDeleteConfirm(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
