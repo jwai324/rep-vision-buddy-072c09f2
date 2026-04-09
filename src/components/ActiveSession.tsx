@@ -917,6 +917,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   value={set.weight}
                   onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
                   onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
+                  onFocus={e => e.target.value && e.target.select()}
                   placeholder="—"
                   className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
@@ -927,6 +928,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   value={set.reps}
                   onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
                   onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
+                  onFocus={e => e.target.value && e.target.select()}
                   placeholder="—"
                   className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
