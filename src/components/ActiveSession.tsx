@@ -722,22 +722,27 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, 
                   <span className="text-xs text-muted-foreground text-center">—</span>
                 )}
                 <input
+                  id={buildInputId(blockIdx, setIdx, 'weight')}
                   type="number"
                   inputMode="decimal"
                   value={set.weight}
                   onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
                   placeholder="—"
                   className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
                 <input
+                  id={buildInputId(blockIdx, setIdx, 'reps')}
                   type="number"
                   inputMode="numeric"
                   value={set.reps}
                   onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
                   placeholder="—"
                   className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
                 <input
+                  id={buildInputId(blockIdx, setIdx, 'rpe')}
                   type="number"
                   inputMode="decimal"
                   min="1"
@@ -745,6 +750,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, 
                   step="0.5"
                   value={set.rpe}
                   onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe')}
                   placeholder="—"
                   className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
