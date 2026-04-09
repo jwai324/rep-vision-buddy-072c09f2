@@ -1,4 +1,4 @@
-export type SetType = 'normal' | 'superset' | 'dropset' | 'failure';
+export type SetType = 'normal' | 'superset' | 'dropset' | 'failure' | 'warmup';
 
 export type ExerciseId = string;
 
