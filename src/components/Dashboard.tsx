@@ -99,7 +99,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Weekly Sets</p>
-        <span className="text-xs font-bold text-primary">{weeklyData.totalSets} total</span>
+        <span className="text-xs font-bold text-primary">{weeklyData.displayedSets} total</span>
       </div>
       <div className="grid grid-cols-3 gap-x-4 gap-y-1.5">
         {ALL_BODY_PARTS.map(bp => {
