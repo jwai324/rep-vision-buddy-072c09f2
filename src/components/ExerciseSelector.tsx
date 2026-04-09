@@ -18,7 +18,7 @@ interface ExerciseSelectorProps {
 const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
 
-export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true }) => {
+export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
   const [search, setSearch] = useState('');
   const [bodyPartFilter, setBodyPartFilter] = useState<string>('All');
   const [equipmentFilter, setEquipmentFilter] = useState<string>('All');
@@ -84,7 +84,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 pb-2">
-        <h2 className="text-xl font-bold text-foreground mb-3">Add Exercises</h2>
+        <h2 className="text-xl font-bold text-foreground mb-3">{browseMode ? 'Exercises' : 'Add Exercises'}</h2>
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
