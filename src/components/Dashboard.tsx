@@ -352,20 +352,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onDayClick={onDayClick}
       />
 
-      {/* Activity button */}
-      <button
-        onClick={onGoToFutureWorkouts}
-        className="w-full bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors flex items-center gap-3"
-      >
-        <span className="text-2xl">📋</span>
-        <div className="flex-1 text-left">
-          <h3 className="text-sm font-semibold text-foreground">Activity</h3>
-          <p className="text-xs text-muted-foreground">
-            {futureWorkouts.filter(fw => fw.templateId !== 'rest').length} upcoming · {history.filter(s => !s.isRestDay).length} completed
-          </p>
-        </div>
-        <span className="text-muted-foreground">→</span>
-      </button>
 
       {/* Weekly Sets by Body Part */}
       <WeeklySetsByBodyPart history={history} />
