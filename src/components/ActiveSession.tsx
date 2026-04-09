@@ -248,6 +248,29 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }));
   }, []);
 
+  const removeSet = useCallback((blockIdx: number, setIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      const newSets = block.sets.filter((_, si) => si !== setIdx)
+        .map((s, i) => ({ ...s, setNumber: i + 1 }));
+      return { ...block, sets: newSets };
+    }));
+  }, []);
+
+  const removeDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      return {
+        ...block,
+        sets: block.sets.map((set, si) => {
+          if (si !== setIdx || !set.drops) return set;
+          const newDrops = set.drops.filter((_, di) => di !== dropIdx);
+          return { ...set, drops: newDrops.length > 0 ? newDrops : undefined, type: newDrops.length > 0 ? 'dropset' : 'normal' as SetType };
+        }),
+      };
+    }));
+  }, []);
+
   const addExercise = useCallback((id: ExerciseId) => {
     addMultipleExercises([id]);
   }, []);
