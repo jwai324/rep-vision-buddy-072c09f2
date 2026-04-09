@@ -103,16 +103,26 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const toggleSetComplete = useCallback((blockIdx: number, setIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si !== setIdx) return set;
-          return { ...set, completed: !set.completed };
-        }),
-      };
-    }));
+    setBlocks(prev => {
+      const block = prev[blockIdx];
+      const wasCompleted = block.sets[setIdx].completed;
+      const updated = prev.map((b, bi) => {
+        if (bi !== blockIdx) return b;
+        return {
+          ...b,
+          sets: b.sets.map((set, si) => {
+            if (si !== setIdx) return set;
+            return { ...set, completed: !set.completed };
+          }),
+        };
+      });
+      // Auto-start rest timer when completing a set (not unchecking)
+      if (!wasCompleted) {
+        setTimerTriggers(prev => ({ ...prev, [blockIdx]: (prev[blockIdx] ?? 0) + 1 }));
+      }
+      return updated;
+    });
+  }, []);
   }, []);
 
   const addSet = useCallback((blockIdx: number) => {
@@ -145,6 +155,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         .map(id => ({
           exerciseId: id,
           exerciseName: EXERCISES[id]?.name ?? id,
+          restSeconds: 90,
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
             weight: '',
