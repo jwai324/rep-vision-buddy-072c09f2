@@ -317,9 +317,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <h1 className="text-2xl font-extrabold text-foreground">RepVision</h1>
           <p className="text-sm text-muted-foreground">AI-Powered Workout Tracker</p>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-2xl">🔥</span>
-          <span className="font-mono text-xl font-bold text-primary">{streak}</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-2xl">🔥</span>
+            <span className="font-mono text-xl font-bold text-primary">{streak}</span>
+          </div>
+          <button
+            onClick={() => {/* TODO: open settings */}}
+            className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
