@@ -32,6 +32,7 @@ interface ExerciseBlock {
   sets: SetRow[];
   note?: string; // session-only note
   supersetGroup?: number;
+  restSeconds: number;
 }
 
 const SUPERSET_COLORS = [
