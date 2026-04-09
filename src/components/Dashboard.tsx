@@ -12,6 +12,7 @@ interface DashboardProps {
   onGoToHistory: () => void;
   onGoToTemplates: () => void;
   onGoToPrograms: () => void;
+  onBrowseExercises: () => void;
 }
 
 function getStreak(sessions: WorkoutSession[]): number {
@@ -38,7 +39,7 @@ function formatDuration(s: number) {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms
+  history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -110,11 +111,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
         🎯 Start Workout
       </Button>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {[
           { label: 'Templates', icon: '📋', onClick: onGoToTemplates },
           { label: 'Programs', icon: '📅', onClick: onGoToPrograms },
           { label: 'History', icon: '📊', onClick: onGoToHistory },
+          { label: 'Exercises', icon: '🔍', onClick: onBrowseExercises },
         ].map(item => (
           <button
             key={item.label}
