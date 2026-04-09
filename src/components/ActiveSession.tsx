@@ -254,10 +254,27 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [noteText, setNoteText] = useState('');
 
   useEffect(() => {
+    if (timerPaused) return;
     const interval = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - startTime.current) / 1000));
     }, 1000);
     return () => clearInterval(interval);
+  }, [timerPaused]);
+
+  const toggleTimerPause = useCallback(() => {
+    setTimerPaused(prev => {
+      if (!prev) {
+        // Pausing: save current elapsed
+        pausedElapsed.current = Math.floor((Date.now() - startTime.current) / 1000);
+      } else {
+        // Resuming: adjust startTime so elapsed stays continuous
+        if (pausedElapsed.current !== null) {
+          startTime.current = Date.now() - (pausedElapsed.current * 1000);
+          pausedElapsed.current = null;
+        }
+      }
+      return !prev;
+    });
   }, []);
 
   const formatTime = (s: number) => {
