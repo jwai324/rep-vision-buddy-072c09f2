@@ -71,16 +71,19 @@ const HIDDEN_BODY_PARTS = new Set(['Full Body', 'Cardio', 'Neck', 'Forearms']);
 const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All' && !HIDDEN_BODY_PARTS.has(bp));
 
 const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
-  const weeklyData = useMemo(() => {
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    const weekAgoStr = format(addDays(new Date(todayStr + 'T00:00:00'), -7), 'yyyy-MM-dd');
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const { weeklyData, weekLabel } = useMemo(() => {
+    const anchor = addDays(new Date(format(new Date(), 'yyyy-MM-dd') + 'T00:00:00'), weekOffset * 7);
+    const endStr = format(anchor, 'yyyy-MM-dd');
+    const startStr = format(addDays(anchor, -7), 'yyyy-MM-dd');
 
     const counts: Record<string, number> = {};
     let totalSets = 0;
 
     for (const session of history) {
       const sessionDate = session.date.length >= 10 ? session.date.substring(0, 10) : format(new Date(session.date), 'yyyy-MM-dd');
-      if (sessionDate < weekAgoStr) continue;
+      if (sessionDate < startStr || sessionDate > endStr) continue;
       for (const ex of session.exercises) {
         const bodyPart = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
         const setCount = ex.sets.length;
@@ -89,17 +92,37 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       }
     }
 
-    // Calculate displayed sets (only visible body parts)
     const displayedSets = ALL_BODY_PARTS.reduce((sum, bp) => sum + (counts[bp] || 0), 0);
 
-    return { counts, totalSets, displayedSets };
-  }, [history]);
+    const startDate = addDays(anchor, -6);
+    const label = startDate.getMonth() === anchor.getMonth()
+      ? `${format(startDate, 'MMM d')} – ${format(anchor, 'd')}`
+      : `${format(startDate, 'MMM d')} – ${format(anchor, 'MMM d')}`;
+
+    return { weeklyData: { counts, totalSets, displayedSets }, weekLabel: label };
+  }, [history, weekOffset]);
 
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Weekly Sets</p>
         <span className="text-xs font-bold text-primary">{weeklyData.displayedSets} total</span>
+      </div>
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={() => setWeekOffset(o => o - 1)}
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <span className="text-xs font-semibold text-muted-foreground">{weekLabel}</span>
+        <button
+          onClick={() => setWeekOffset(o => Math.min(o + 1, 0))}
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          disabled={weekOffset >= 0}
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
       <div className="grid grid-cols-3 gap-x-4 gap-y-1.5">
         {ALL_BODY_PARTS.map(bp => {
@@ -116,6 +139,16 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
           );
         })}
       </div>
+      {weekOffset !== 0 && (
+        <div className="flex justify-start mt-2">
+          <button
+            onClick={() => setWeekOffset(0)}
+            className="text-[10px] text-primary font-medium hover:underline"
+          >
+            Back to this week
+          </button>
+        </div>
+      )}
     </div>
   );
 };
