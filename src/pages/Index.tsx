@@ -166,6 +166,7 @@ const Index = () => {
       {screen.type === 'programBuilder' && (
         <ProgramBuilder
           templates={storage.templates}
+          history={storage.history}
           initial={screen.program}
           onSave={(p) => {
             storage.saveProgram(p);
