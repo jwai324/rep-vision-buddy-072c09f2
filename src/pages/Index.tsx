@@ -15,6 +15,7 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
+import { format } from 'date-fns';
 
 type Screen =
   | { type: 'dashboard' }
@@ -64,7 +65,7 @@ const Index = () => {
           onGoToPrograms={() => setScreen({ type: 'programs' })}
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
           onDayClick={(date) => {
-            const dateStr = date.toISOString().split('T')[0];
+            const dateStr = format(date, 'yyyy-MM-dd');
             setScreen({ type: 'calendarDay', date: dateStr });
           }}
         />
