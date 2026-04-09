@@ -81,8 +81,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTime = useRef(Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
-  // Timer triggers: incremented when a set is completed to auto-start rest timers
-  const [timerTriggers, setTimerTriggers] = useState<Record<number, number>>({});
+  // Centralized single-timer state
+  const [activeTimer, setActiveTimer] = useState<{ id: TimerId; remaining: number; duration: number; startedAt: number } | null>(null);
+  const [restRecords, setRestRecords] = useState<Record<string, number>>({});
+  const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
