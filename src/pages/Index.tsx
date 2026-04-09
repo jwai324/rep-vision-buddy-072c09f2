@@ -54,16 +54,15 @@ const Index = () => {
         />
       )}
 
-      {screen.type === 'exerciseSelector' && (
-        <div className="flex flex-col">
-          <div className="p-4 pb-0">
-            <button onClick={() => setScreen({ type: 'dashboard' })} className="text-muted-foreground hover:text-foreground text-sm">← Back</button>
-          </div>
-          <ExerciseSelector
-            onSelect={(id) => setScreen({ type: 'activeSession', exercises: [id] })}
-            onStartTemplate={() => setScreen({ type: 'templates' })}
-          />
-        </div>
+      {screen.type === 'startWorkout' && (
+        <StartWorkoutScreen
+          templates={storage.templates}
+          activeProgram={activeProgram}
+          onBlankWorkout={() => setScreen({ type: 'activeSession', exercises: [] })}
+          onSelectTemplate={startFromTemplate}
+          onStartProgramDay={startFromTemplate}
+          onBack={() => setScreen({ type: 'dashboard' })}
+        />
       )}
 
       {screen.type === 'activeSession' && (
