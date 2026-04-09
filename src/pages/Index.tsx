@@ -217,6 +217,7 @@ const Index = () => {
       {screen.type === 'templateBuilder' && (
         <TemplateBuilder
           initial={screen.template}
+          weightUnit={storage.preferences.weightUnit}
           onSave={(t) => {
             storage.saveTemplate(t);
             setScreen({ type: 'templates' });
