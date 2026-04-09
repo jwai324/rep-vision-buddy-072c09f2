@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStorage } from '@/hooks/useStorage';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
-import { ActiveSession } from '@/components/ActiveSession';
+import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
@@ -37,7 +37,12 @@ type Screen =
 
 const Index = () => {
   const storage = useStorage();
-  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  // Check for cached active session on mount
+  const [screen, setScreen] = useState<Screen>(() => {
+    const cached = getSessionCache();
+    if (cached) return { type: 'activeSession', exercises: [] };
+    return { type: 'dashboard' };
+  });
 
   if (storage.loading) {
     return (
