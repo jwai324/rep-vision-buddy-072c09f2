@@ -12,6 +12,7 @@ interface DashboardProps {
   templates: WorkoutTemplate[];
   futureWorkouts: FutureWorkout[];
   onStartWorkout: () => void;
+  onGoToFutureWorkouts: () => void;
   onStartTemplate: (template: WorkoutTemplate) => void;
   onGoToHistory: () => void;
   onGoToTemplates: () => void;
@@ -231,7 +232,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -287,37 +288,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {/* Future Workouts */}
+      {/* Future Workouts button */}
       {futureWorkouts.filter(fw => fw.templateId !== 'rest').length > 0 && (
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2 px-1">🗓️ Future Workouts</p>
-          <div className="flex flex-col gap-2">
-            {futureWorkouts
-              .filter(fw => fw.templateId !== 'rest')
-              .slice(0, 5)
-              .map(fw => {
-                const template = templates.find(t => t.id === fw.templateId);
-                return (
-                  <button
-                    key={fw.id}
-                    onClick={() => {
-                      if (template) onStartTemplate(template);
-                    }}
-                    className="w-full bg-card rounded-xl p-3 border border-border hover:border-primary/30 transition-colors text-left flex items-center gap-3"
-                  >
-                    <span className="text-lg">🏋️</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{fw.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                        {template ? ` · ${template.exercises.length} exercises` : ''}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+        <button
+          onClick={onGoToFutureWorkouts}
+          className="w-full bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors flex items-center gap-3"
+        >
+          <span className="text-2xl">🗓️</span>
+          <div className="flex-1 text-left">
+            <h3 className="text-sm font-semibold text-foreground">Future Workouts</h3>
+            <p className="text-xs text-muted-foreground">
+              {futureWorkouts.filter(fw => fw.templateId !== 'rest').length} upcoming workouts
+            </p>
           </div>
-        </div>
+          <span className="text-muted-foreground">→</span>
+        </button>
       )}
 
       {/* Weekly Sets by Body Part */}
