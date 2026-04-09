@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Settings } from 'lucide-react';
+import { Settings, BarChart3 } from 'lucide-react';
 import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
@@ -21,6 +21,7 @@ interface DashboardProps {
   onGoToPrograms: () => void;
   onBrowseExercises: () => void;
   onGoToSettings: () => void;
+  onGoToAnalytics: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }
 
@@ -66,7 +67,8 @@ const exerciseBodyPartMap = new Map(
   EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart])
 );
 
-const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All');
+const HIDDEN_BODY_PARTS = new Set(['Full Body', 'Cardio', 'Neck', 'Forearms']);
+const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All' && !HIDDEN_BODY_PARTS.has(bp));
 
 const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
   const weeklyData = useMemo(() => {
@@ -87,14 +89,17 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       }
     }
 
-    return { counts, totalSets };
+    // Calculate displayed sets (only visible body parts)
+    const displayedSets = ALL_BODY_PARTS.reduce((sum, bp) => sum + (counts[bp] || 0), 0);
+
+    return { counts, totalSets, displayedSets };
   }, [history]);
 
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Weekly Sets</p>
-        <span className="text-xs font-bold text-primary">{weeklyData.totalSets} total</span>
+        <span className="text-xs font-bold text-primary">{weeklyData.displayedSets} total</span>
       </div>
       <div className="grid grid-cols-3 gap-x-4 gap-y-1.5">
         {ALL_BODY_PARTS.map(bp => {
@@ -298,7 +303,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -365,6 +370,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Weekly Sets by Body Part */}
       <WeeklySetsByBodyPart history={history} />
+
+      {/* Analytics Button */}
+      <button
+        onClick={onGoToAnalytics}
+        className="bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors flex items-center gap-3"
+      >
+        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          <BarChart3 className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 text-left">
+          <p className="text-sm font-semibold text-foreground">Analytics</p>
+          <p className="text-xs text-muted-foreground">Track your volume trends</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+      </button>
 
       {/* Quick actions */}
       <Button variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">

@@ -9,6 +9,7 @@ import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { AnalyticsScreen } from '@/components/AnalyticsScreen';
 
 import { SettingsScreen } from '@/components/SettingsScreen';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
@@ -31,7 +32,8 @@ type Screen =
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
   | { type: 'programBuilder'; program?: WorkoutProgram }
-  | { type: 'settings' };
+  | { type: 'settings' }
+  | { type: 'analytics' };
 
 const Index = () => {
   const storage = useStorage();
@@ -77,6 +79,7 @@ const Index = () => {
             onGoToPrograms={() => setScreen({ type: 'programs' })}
             onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
             onGoToSettings={() => setScreen({ type: 'settings' })}
+            onGoToAnalytics={() => setScreen({ type: 'analytics' })}
             onDayClick={(date) => {
               const dateStr = format(date, 'yyyy-MM-dd');
               const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
@@ -258,6 +261,14 @@ const Index = () => {
           profile={storage.profile}
           onUpdatePreferences={storage.updatePreferences}
           onUpdateProfile={storage.updateProfile}
+          onBack={() => setScreen({ type: 'dashboard' })}
+        />
+      )}
+
+      {screen.type === 'analytics' && (
+        <AnalyticsScreen
+          history={storage.history}
+          weightUnit={storage.preferences.weightUnit}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
