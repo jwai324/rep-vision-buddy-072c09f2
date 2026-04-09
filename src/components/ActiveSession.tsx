@@ -183,11 +183,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       });
       // Auto-start rest timer when completing a set (not unchecking)
       if (!wasCompleted) {
-        setTimerTriggers(prev => ({ ...prev, [blockIdx]: (prev[blockIdx] ?? 0) + 1 }));
+        startTimer({ type: 'set', blockIdx, setIdx }, block.restSeconds);
       }
       return updated;
     });
-  }, []);
+  }, [startTimer]);
 
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
