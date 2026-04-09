@@ -108,6 +108,131 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
   );
 };
 
+// Build all scheduled events from a program's days + frequencies + duration
+function buildProgramEvents(program: WorkoutProgram) {
+  const events: { date: Date; label: string; templateId: string }[] = [];
+  const start = program.startDate ? new Date(program.startDate) : new Date();
+  const endDate = addWeeks(start, program.durationWeeks ?? 8);
+
+  program.days.forEach((day) => {
+    if (!day.frequency) return;
+    const freq = day.frequency;
+
+    if (freq.type === 'weekly') {
+      const targetDay = freq.weekday;
+      const currentDay = getDay(start);
+      const diff = (targetDay - currentDay + 7) % 7;
+      let current = addDays(start, diff);
+      while (current < endDate) {
+        events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
+        current = addDays(current, 7);
+      }
+    } else if (freq.type === 'everyNDays') {
+      let current = new Date(start);
+      while (current < endDate) {
+        events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
+        current = addDays(current, freq.interval);
+      }
+    } else if (freq.type === 'monthly') {
+      let current = new Date(start);
+      current.setDate(freq.dayOfMonth);
+      if (current < start) current.setMonth(current.getMonth() + 1);
+      while (current < endDate) {
+        events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
+        const next = new Date(current);
+        next.setMonth(next.getMonth() + 1);
+        current = next;
+      }
+    }
+  });
+
+  return events;
+}
+
+const WeeklyProgramCalendar: React.FC<{
+  program: WorkoutProgram;
+  templates: WorkoutTemplate[];
+  onStartTemplate: (template: WorkoutTemplate) => void;
+}> = ({ program, templates, onStartTemplate }) => {
+  const today = new Date();
+  const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+
+  const weekDays = useMemo(() => {
+    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  }, [weekStart]);
+
+  const events = useMemo(() => buildProgramEvents(program), [program]);
+
+  const weekSchedule = useMemo(() => {
+    return weekDays.map(day => {
+      const dayEvents = events.filter(e => isSameDay(e.date, day));
+      return { date: day, events: dayEvents };
+    });
+  }, [weekDays, events]);
+
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  return (
+    <div className="bg-card rounded-xl p-4 border border-border">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 This Week</p>
+        <span className="text-xs text-muted-foreground">{program.name}</span>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {weekSchedule.map((day, i) => {
+          const isToday = isSameDay(day.date, today);
+          const hasWorkout = day.events.some(e => e.templateId !== 'rest');
+          const isRest = day.events.some(e => e.templateId === 'rest');
+          const noEvent = day.events.length === 0;
+
+          const template = hasWorkout
+            ? templates.find(t => day.events.find(e => e.templateId === t.id))
+            : null;
+
+          return (
+            <button
+              key={i}
+              onClick={() => {
+                if (template && isToday) onStartTemplate(template);
+              }}
+              className={`flex flex-col items-center rounded-lg py-2 px-1 transition-colors ${
+                isToday
+                  ? 'ring-2 ring-primary'
+                  : ''
+              } ${
+                hasWorkout
+                  ? 'bg-primary/15'
+                  : isRest
+                  ? 'bg-blue-500/15'
+                  : 'bg-secondary/50'
+              }`}
+            >
+              <span className={`text-[10px] font-medium ${
+                isToday ? 'text-primary' : 'text-muted-foreground'
+              }`}>
+                {dayLabels[i]}
+              </span>
+              <span className={`text-sm font-bold ${
+                isToday ? 'text-foreground' : 'text-muted-foreground'
+              }`}>
+                {format(day.date, 'd')}
+              </span>
+              <span className="text-base mt-0.5">
+                {hasWorkout ? '🏋️' : isRest ? '😴' : noEvent ? '—' : '—'}
+              </span>
+              {hasWorkout && (
+                <span className="text-[8px] text-primary font-medium truncate max-w-full mt-0.5">
+                  {day.events.find(e => e.templateId !== 'rest')?.label}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({
   history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises
 }) => {
