@@ -234,12 +234,31 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-leg-cable-row', name: 'Single-Leg Cable Row', primaryBodyPart: 'Back', equipment: 'Cable', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Biceps', 'Core'] },
   { id: 'single-arm-cable-row-half-kneeling', name: 'Single-Arm Cable Row (Half-Kneeling)', primaryBodyPart: 'Back', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Biceps', 'Core'] },
   { id: 'single-arm-cable-row-standing', name: 'Single-Arm Cable Row (Standing)', primaryBodyPart: 'Back', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Biceps', 'Core'] },
+
+  // Cardio / Sport
+  { id: 'swimming', name: 'Swimming', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads', 'Triceps', 'Lats'] },
+  { id: 'elliptical', name: 'Elliptical', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Shoulders'] },
+  { id: 'stationary-cycling', name: 'Stationary Cycling', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Hamstrings', 'Glutes', 'Calves'] },
+  { id: 'sprinting', name: 'Sprinting', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Hip Flexors'] },
+  { id: 'basketball', name: 'Basketball', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Shoulders', 'Core'] },
+  { id: 'rock-climbing', name: 'Rock Climbing', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Forearms', 'Biceps', 'Core', 'Shoulders', 'Lats'] },
+  { id: 'volleyball', name: 'Volleyball', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Shoulders', 'Quads', 'Core', 'Calves', 'Forearms'] },
+  { id: 'tennis', name: 'Tennis', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Shoulders', 'Core', 'Quads', 'Calves', 'Forearms', 'Obliques'] },
+  { id: 'cycling-outdoor', name: 'Cycling (Outdoor)', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Hamstrings', 'Glutes', 'Calves', 'Core'] },
+  { id: 'rowing-machine', name: 'Rowing Machine', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Quads', 'Hamstrings', 'Biceps', 'Core', 'Shoulders'] },
+  { id: 'jump-rope', name: 'Jump Rope', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Calves', 'Quads', 'Shoulders', 'Forearms', 'Core'] },
+  { id: 'martial-arts-mma', name: 'Martial Arts / MMA', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Core', 'Quads', 'Glutes', 'Shoulders', 'Hip Flexors', 'Obliques'] },
+  { id: 'soccer', name: 'Soccer', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Hip Flexors'] },
+  { id: 'hiking', name: 'Hiking', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
+  { id: 'shuttle-runs', name: 'Shuttle Runs', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
+  { id: 'running-steady-state', name: 'Running (Steady State)', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
+  { id: 'high-knees', name: 'High Knees', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hip Flexors', 'Calves', 'Core'] },
 ];
 
 // Body part groupings for filtering
 export const BODY_PARTS = [
   'All', 'Chest', 'Back', 'Shoulders', 'Quads', 'Hamstrings', 'Glutes',
-  'Calves', 'Biceps', 'Triceps', 'Core', 'Traps', 'Forearms', 'Full Body', 'Neck',
+  'Calves', 'Biceps', 'Triceps', 'Core', 'Traps', 'Forearms', 'Full Body', 'Cardio', 'Neck',
 ] as const;
 
 export const EQUIPMENT_LIST = [
@@ -253,7 +272,7 @@ export function getBodyPartIcon(bodyPart: string): string {
   const icons: Record<string, string> = {
     Chest: '🫁', Back: '🔙', Shoulders: '🏋️', Quads: '🦵', Hamstrings: '🦵',
     Glutes: '🍑', Calves: '🦶', Biceps: '💪', Triceps: '💪', Core: '🧱',
-    Traps: '🏋️', Forearms: '💪', 'Full Body': '⚡', Neck: '🏋️',
+    Traps: '🏋️', Forearms: '💪', 'Full Body': '⚡', Cardio: '🏃', Neck: '🏋️',
   };
   return icons[bodyPart] || '🏋️';
 }
