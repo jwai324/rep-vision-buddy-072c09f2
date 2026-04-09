@@ -55,6 +55,8 @@ const SUPERSET_COLORS = [
   'border-l-4 border-l-cyan-500',
 ];
 
+const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
+
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], onFinish, onCancel }) => {
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
     initialExercises.map((id, idx) => {
