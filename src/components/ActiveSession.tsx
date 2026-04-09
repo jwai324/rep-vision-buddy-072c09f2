@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
+import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
