@@ -35,6 +35,17 @@ const Index = () => {
   const storage = useStorage();
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
 
+  if (storage.loading) {
+    return (
+      <div className="max-w-lg mx-auto min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-muted-foreground">Loading your data…</p>
+        </div>
+      </div>
+    );
+  }
+
   const activeProgram = storage.activeProgramId
     ? storage.programs.find(p => p.id === storage.activeProgramId) ?? null
     : null;
