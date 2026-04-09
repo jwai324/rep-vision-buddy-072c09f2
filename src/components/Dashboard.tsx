@@ -205,7 +205,8 @@ const WeeklyProgramCalendar: React.FC<{
   const [weekOffset, setWeekOffset] = useState(0);
 
   const weekDays = useMemo(() => {
-    const start = addDays(today, weekOffset * 7);
+    const mondayOfThisWeek = startOfWeek(today, { weekStartsOn: 1 });
+    const start = addDays(mondayOfThisWeek, weekOffset * 7);
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [weekOffset]);
 
