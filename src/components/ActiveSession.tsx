@@ -571,9 +571,22 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
     if (el) { el.focus(); return; }
   }
 
-  // End of column → next column, first row
-  if (currentFieldIdx < FIELD_ORDER.length - 1) {
-    const nextField = FIELD_ORDER[currentFieldIdx + 1];
+  // End of column → next column, first row (wrap to weight)
+  const nextFieldIdx = (currentFieldIdx + 1) % FIELD_ORDER.length;
+  const nextField = FIELD_ORDER[nextFieldIdx];
+  // If we wrapped back to weight, go to next block
+  if (nextFieldIdx === 0) {
+    if (blockIdx < blocks.length - 1) {
+      const nextBlock = blocks[blockIdx + 1];
+      const nextRows = getBlockRows(nextBlock);
+      if (nextRows.length > 0) {
+        const firstRow = nextRows[0];
+        const nextId = buildInputId(blockIdx + 1, firstRow.setIdx, FIELD_ORDER[0], firstRow.dropIdx);
+        const el = document.getElementById(nextId) as HTMLInputElement | null;
+        if (el) { el.focus(); return; }
+      }
+    }
+  } else {
     const firstRow = rows[0];
     const nextId = buildInputId(blockIdx, firstRow.setIdx, nextField, firstRow.dropIdx);
     const el = document.getElementById(nextId) as HTMLInputElement | null;
