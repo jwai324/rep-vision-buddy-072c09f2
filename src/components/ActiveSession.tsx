@@ -1157,6 +1157,27 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                 + Add Dropset
               </button>
             )}
+
+            {/* Between-set rest timer */}
+            {setIdx < block.sets.length - 1 && (() => {
+              const betweenSetId: TimerId = { type: 'set', blockIdx, setIdx };
+              const betweenSetKey = timerIdKey(betweenSetId);
+              const isBetweenSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenSetKey;
+              return (
+                <ExerciseRestTimer
+                  timerId={betweenSetId}
+                  defaultDuration={block.restSeconds}
+                  variant="between"
+                  isActive={isBetweenSetActive}
+                  remaining={isBetweenSetActive ? activeTimer!.remaining : 0}
+                  totalDuration={isBetweenSetActive ? activeTimer!.duration : 0}
+                  recordedRest={restRecords[betweenSetKey] ?? null}
+                  onStart={onStartTimer}
+                  onSkip={onSkipTimer}
+                  onExtend={onExtendTimer}
+                />
+              );
+            })()}
           </React.Fragment>
         );
       })}
