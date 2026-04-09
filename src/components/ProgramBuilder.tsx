@@ -275,7 +275,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
             }}
             modifiersClassNames={{
               workout: 'bg-primary/20 text-primary font-bold',
-              rest: 'bg-muted text-muted-foreground',
+              rest: 'bg-blue-500/20 text-blue-400 font-bold',
             }}
             numberOfMonths={1}
             defaultMonth={startDate}
