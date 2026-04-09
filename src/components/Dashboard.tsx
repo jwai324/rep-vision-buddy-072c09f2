@@ -39,6 +39,83 @@ function formatDuration(s: number) {
   return `${m} min`;
 }
 
+const BODY_PART_COLORS: Record<string, string> = {
+  Chest: 'bg-red-500/80',
+  Back: 'bg-blue-500/80',
+  Shoulders: 'bg-orange-500/80',
+  Biceps: 'bg-purple-500/80',
+  Triceps: 'bg-pink-500/80',
+  Legs: 'bg-emerald-500/80',
+  Core: 'bg-yellow-500/80',
+  Glutes: 'bg-rose-500/80',
+  Forearms: 'bg-teal-500/80',
+  Calves: 'bg-cyan-500/80',
+};
+
+const exerciseBodyPartMap = new Map(
+  EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart])
+);
+
+const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
+  const weeklyData = useMemo(() => {
+    const now = new Date();
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    weekAgo.setHours(0, 0, 0, 0);
+
+    const counts: Record<string, number> = {};
+    let totalSets = 0;
+
+    for (const session of history) {
+      if (new Date(session.date) < weekAgo) continue;
+      for (const ex of session.exercises) {
+        const bodyPart = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
+        const setCount = ex.sets.length;
+        counts[bodyPart] = (counts[bodyPart] || 0) + setCount;
+        totalSets += setCount;
+      }
+    }
+
+    return { counts, totalSets };
+  }, [history]);
+
+  const sorted = Object.entries(weeklyData.counts).sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length === 0) {
+    return (
+      <div className="bg-card rounded-xl p-4 border border-border text-center">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">This Week</p>
+        <p className="text-sm text-muted-foreground">No sets logged this week</p>
+      </div>
+    );
+  }
+
+  const maxSets = sorted[0][1];
+
+  return (
+    <div className="bg-card rounded-xl p-4 border border-border">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Weekly Sets</p>
+        <span className="text-xs font-bold text-primary">{weeklyData.totalSets} total</span>
+      </div>
+      <div className="space-y-2">
+        {sorted.map(([bodyPart, sets]) => (
+          <div key={bodyPart} className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-20 shrink-0 truncate">{bodyPart}</span>
+            <div className="flex-1 h-5 bg-secondary rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${BODY_PART_COLORS[bodyPart] || 'bg-primary/60'} transition-all`}
+                style={{ width: `${(sets / maxSets) * 100}%` }}
+              />
+            </div>
+            <span className="text-xs font-mono font-bold text-foreground w-6 text-right">{sets}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({
   history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises
 }) => {
