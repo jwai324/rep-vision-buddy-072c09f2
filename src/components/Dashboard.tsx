@@ -281,6 +281,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
+      {/* Weekly Program Calendar */}
+      {activeProgram && (
+        <WeeklyProgramCalendar
+          program={activeProgram}
+          templates={templates}
+          onStartTemplate={onStartTemplate}
+        />
+      )}
+
       {/* Weekly Sets by Body Part */}
       <WeeklySetsByBodyPart history={history} />
 
