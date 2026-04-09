@@ -108,6 +108,7 @@ const Index = () => {
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
             history={storage.history}
+            weightUnit={storage.preferences.weightUnit}
             onFinish={(session) => setScreen({ type: 'summary', session })}
             onCancel={() => setScreen({ type: 'dashboard' })}
           />
@@ -117,6 +118,7 @@ const Index = () => {
       {screen.type === 'summary' && (
         <SessionSummary
           session={screen.session}
+          weightUnit={storage.preferences.weightUnit}
           onSave={() => {
             storage.saveSession(screen.session);
             setScreen({ type: 'dashboard' });
@@ -194,6 +196,7 @@ const Index = () => {
       {screen.type === 'sessionDetail' && (
         <SessionSummary
           session={screen.session}
+          weightUnit={storage.preferences.weightUnit}
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
