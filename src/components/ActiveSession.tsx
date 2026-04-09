@@ -515,3 +515,4 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
       </button>
     </div>
   );
+};
