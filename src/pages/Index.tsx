@@ -9,6 +9,7 @@ import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { AnalyticsScreen } from '@/components/AnalyticsScreen';
 
 import { SettingsScreen } from '@/components/SettingsScreen';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
@@ -31,7 +32,8 @@ type Screen =
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
   | { type: 'programBuilder'; program?: WorkoutProgram }
-  | { type: 'settings' };
+  | { type: 'settings' }
+  | { type: 'analytics' };
 
 const Index = () => {
   const storage = useStorage();
