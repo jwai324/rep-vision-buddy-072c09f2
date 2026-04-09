@@ -1,4 +1,4 @@
-export type SetType = 'normal' | 'superset' | 'dropset' | 'failure';
+export type SetType = 'normal' | 'superset' | 'dropset' | 'failure' | 'warmup';
 
 export type ExerciseId = string;
 
@@ -122,4 +122,5 @@ export const SET_TYPE_CONFIG: Record<SetType, { label: string; colorClass: strin
   superset: { label: 'Superset', colorClass: 'bg-set-superset' },
   dropset: { label: 'Dropset', colorClass: 'bg-set-dropset' },
   failure: { label: 'To Failure', colorClass: 'bg-set-failure' },
+  warmup: { label: 'Warm-up', colorClass: 'bg-yellow-500/20' },
 };

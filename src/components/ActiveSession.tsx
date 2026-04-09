@@ -298,14 +298,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
       const lastSet = block.sets[block.sets.length - 1];
+      const normalCount = block.sets.filter(s => s.type !== 'warmup').length;
       return {
         ...block,
         sets: [...block.sets, {
-          setNumber: block.sets.length + 1,
+          setNumber: normalCount + 1,
           weight: lastSet?.weight ?? '',
           reps: lastSet?.reps ?? '',
           completed: false,
-          type: lastSet?.type ?? 'normal',
+          type: lastSet?.type === 'warmup' ? 'normal' : (lastSet?.type ?? 'normal'),
           rpe: '',
         }],
       };
@@ -342,9 +343,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const removeSet = useCallback((blockIdx: number, setIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
-      const newSets = block.sets.filter((_, si) => si !== setIdx)
-        .map((s, i) => ({ ...s, setNumber: i + 1 }));
-      return { ...block, sets: newSets };
+      const newSets = block.sets.filter((_, si) => si !== setIdx);
+      let warmupCount = 0;
+      let normalCount = 0;
+      const renumbered = newSets.map(s => {
+        if (s.type === 'warmup') {
+          warmupCount++;
+          return { ...s, setNumber: warmupCount };
+        }
+        normalCount++;
+        return { ...s, setNumber: normalCount };
+      });
+      return { ...block, sets: renumbered };
     }));
   }, []);
 
@@ -410,6 +420,36 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }));
   }, []);
 
+  const addWarmupSet = useCallback((blockIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      const warmupSet: SetRow = {
+        setNumber: 0,
+        weight: '',
+        reps: '',
+        completed: false,
+        type: 'warmup' as SetType,
+        rpe: '',
+      };
+      const newSets = [warmupSet, ...block.sets].map((s, i) => ({
+        ...s,
+        setNumber: s.type === 'warmup' ? 0 : i,
+      }));
+      // Re-number: warm-ups get "W1, W2..." and normals get "1, 2..."
+      let warmupCount = 0;
+      let normalCount = 0;
+      const renumbered = newSets.map(s => {
+        if (s.type === 'warmup') {
+          warmupCount++;
+          return { ...s, setNumber: warmupCount };
+        }
+        normalCount++;
+        return { ...s, setNumber: normalCount };
+      });
+      return { ...block, sets: renumbered };
+    }));
+  }, []);
+
   const handleMenuAction = useCallback((action: string, blockIdx: number) => {
     const block = blocks[blockIdx];
     switch (action) {
@@ -427,11 +467,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       case 'Drop Sets':
         toggleDropSets(blockIdx);
         break;
+      case 'Add Warm-up Sets':
+        addWarmupSet(blockIdx);
+        break;
       case 'Remove Exercise':
         removeExercise(blockIdx);
         break;
     }
-  }, [blocks, getStickyNote, removeExercise, toggleDropSets]);
+  }, [blocks, getStickyNote, removeExercise, toggleDropSets, addWarmupSet]);
 
   const saveNote = useCallback(() => {
     if (!editingNote) return;
@@ -901,7 +944,9 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   set.completed ? 'bg-primary/10' : ''
                 }`}
               >
-                <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+                <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                  {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
+                </span>
                 {previousSets[setIdx] ? (
                   <button
                     type="button"
