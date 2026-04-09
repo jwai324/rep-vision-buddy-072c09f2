@@ -257,13 +257,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
       const shouldCascade = (field === 'weight' || field === 'reps') && typeof value === 'string' && value !== '';
-      const wasBlank = shouldCascade && block.sets[setIdx][field] === '';
+      const oldValue = shouldCascade ? block.sets[setIdx][field] : null;
       return {
         ...block,
         sets: block.sets.map((set, si) => {
           if (si === setIdx) return { ...set, [field]: value };
-          // Cascade: fill blank fields below when the source field was blank
-          if (wasBlank && si > setIdx && set[field] === '') {
+          // Cascade: update fields below that are blank or still hold the previous cascaded value
+          if (shouldCascade && si > setIdx && (set[field] === '' || set[field] === oldValue)) {
             return { ...set, [field]: value };
           }
           return set;
