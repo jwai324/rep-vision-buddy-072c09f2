@@ -55,7 +55,7 @@ const SUPERSET_COLORS = [
   'border-l-4 border-l-cyan-500',
 ];
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, onFinish, onCancel }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], onFinish, onCancel }) => {
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
     initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
