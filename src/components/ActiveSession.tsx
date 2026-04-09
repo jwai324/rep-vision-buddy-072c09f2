@@ -453,12 +453,16 @@ interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
   stickyNote: string;
-  timerTrigger: number;
+  activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
+  restRecords: Record<string, number>;
   previousSets: { weight?: number; reps: number }[];
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
   onMenuAction: (action: string, blockIdx: number) => void;
+  onStartTimer: (id: TimerId, duration: number) => void;
+  onSkipTimer: () => void;
+  onExtendTimer: () => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -472,7 +476,9 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, timerTrigger, previousSets, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
+const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
+
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
     <div>
       {/* Exercise Header */}
@@ -575,11 +581,25 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
             placeholder="—"
             className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
           />
-          <ExerciseRestTimer
-            timerKey={set.completed ? timerTrigger : 0}
-            defaultDuration={block.restSeconds}
-            variant="inline"
-          />
+          {(() => {
+            const setTimerId: TimerId = { type: 'set', blockIdx, setIdx };
+            const key = timerIdKey(setTimerId);
+            const isSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === key;
+            return (
+              <ExerciseRestTimer
+                timerId={setTimerId}
+                defaultDuration={block.restSeconds}
+                variant="inline"
+                isActive={isSetActive}
+                remaining={isSetActive ? activeTimer!.remaining : 0}
+                totalDuration={isSetActive ? activeTimer!.duration : 0}
+                recordedRest={restRecords[key] ?? null}
+                onStart={onStartTimer}
+                onSkip={onSkipTimer}
+                onExtend={onExtendTimer}
+              />
+            );
+          })()}
           <button
             onClick={() => onToggleComplete(blockIdx, setIdx)}
             className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
