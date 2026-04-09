@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import { addDays, addWeeks, format, getDay, isSameDay, startOfWeek } from 'date-fns';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DashboardProps {
   history: WorkoutSession[];
