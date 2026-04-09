@@ -99,8 +99,29 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, onFinish, onCancel }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, editSession, onFinish, onCancel }) => {
+  const isEditMode = !!editSession;
+
+  // Convert saved session exercises back to blocks for editing
+  const editBlocks = useMemo<ExerciseBlock[] | null>(() => {
+    if (!editSession) return null;
+    return editSession.exercises.map(ex => ({
+      exerciseId: ex.exerciseId,
+      exerciseName: ex.exerciseName,
+      restSeconds: 90,
+      sets: ex.sets.map(s => ({
+        setNumber: s.setNumber,
+        weight: s.weight?.toString() ?? '',
+        reps: s.reps.toString(),
+        completed: true,
+        type: s.type,
+        rpe: s.rpe?.toString() ?? '',
+      })),
+    }));
+  }, [editSession]);
+
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
+    if (editBlocks) return editBlocks;
     if (cachedSession) return cachedSession.blocks;
     return initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
@@ -124,16 +145,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? 0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
+
+  // Edit mode: date/time state
+  const [editDate, setEditDate] = useState(() => {
+    if (!editSession) return '';
+    const d = new Date(editSession.date);
+    return format(d, 'yyyy-MM-dd');
+  });
+  const [editTime, setEditTime] = useState(() => {
+    if (!editSession) return '';
+    const d = new Date(editSession.date);
+    return format(d, 'HH:mm');
+  });
+  const [editDurationMin, setEditDurationMin] = useState(() => {
+    if (!editSession) return '';
+    return Math.floor(editSession.duration / 60).toString();
+  });
+
   // Centralized single-timer state
   const [activeTimer, setActiveTimer] = useState<{ id: TimerId; remaining: number; duration: number; startedAt: number } | null>(null);
   const [restRecords, setRestRecords] = useState<Record<string, number>>({});
   const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Cache session state to localStorage on changes
+  // Cache session state to localStorage on changes (skip in edit mode)
   useEffect(() => {
+    if (isEditMode) return;
     const cache: ActiveSessionCache = {
       blocks,
       workoutName,
@@ -141,7 +180,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       elapsedAtCache: elapsedSeconds,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  }, [blocks, workoutName, elapsedSeconds]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode]);
 
   const startTimer = useCallback((id: TimerId, duration: number) => {
     // Cancel any existing timer
