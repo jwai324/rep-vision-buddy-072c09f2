@@ -668,7 +668,16 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
+          <div className="flex items-center gap-2">
+            <p className={`text-sm ${timerPaused ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>{formatTime(elapsedSeconds)}</p>
+            <button
+              onClick={toggleTimerPause}
+              className="w-6 h-6 rounded-full flex items-center justify-center bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors"
+              title={timerPaused ? 'Resume timer' : 'Pause timer'}
+            >
+              {timerPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+            </button>
+          </div>
         )}
       </div>
 
