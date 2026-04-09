@@ -156,9 +156,11 @@ function buildProgramEvents(program: WorkoutProgram) {
 const WeeklyProgramCalendar: React.FC<{
   program: WorkoutProgram;
   templates: WorkoutTemplate[];
+  history: WorkoutSession[];
+  futureWorkouts: FutureWorkout[];
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
   onViewAll: () => void;
-}> = ({ program, templates, onDayClick, onViewAll }) => {
+}> = ({ program, templates, history, futureWorkouts, onDayClick, onViewAll }) => {
   const today = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -208,13 +210,46 @@ const WeeklyProgramCalendar: React.FC<{
       <div className="grid grid-cols-7 gap-1">
         {weekSchedule.map((day, i) => {
           const isDayToday = isSameDay(day.date, today);
+          const dayStr = format(day.date, 'yyyy-MM-dd');
+
+          // Check completed sessions for this day
+          const completedSessions = history.filter(s => s.date.startsWith(dayStr));
+          const hasCompletedWorkout = completedSessions.some(s => !s.isRestDay);
+          const hasCompletedRest = completedSessions.some(s => s.isRestDay);
+
+          // Check future workouts for this day
+          const dayFutureWorkouts = futureWorkouts.filter(f => f.date === dayStr);
+          const hasScheduledWorkout = dayFutureWorkouts.some(f => f.templateId !== 'rest');
+          const hasScheduledRest = dayFutureWorkouts.some(f => f.templateId === 'rest');
+
+          // Program events (for label)
           const hasWorkout = day.events.some(e => e.templateId !== 'rest');
           const isRest = day.events.some(e => e.templateId === 'rest');
-          const noEvent = day.events.length === 0;
 
           const template = hasWorkout
             ? templates.find(t => day.events.find(e => e.templateId === t.id))
             : null;
+
+          // Determine background & icon
+          const bgClass = hasCompletedWorkout ? 'bg-green-500/20'
+            : hasCompletedRest ? 'bg-blue-500/10'
+            : hasScheduledWorkout || hasWorkout ? 'bg-primary/15'
+            : hasScheduledRest || isRest ? 'bg-blue-500/15'
+            : 'bg-secondary/50';
+
+          const icon = hasCompletedWorkout ? '✅'
+            : hasCompletedRest ? '😴'
+            : hasScheduledWorkout || hasWorkout ? '🏋️'
+            : hasScheduledRest || isRest ? '😴'
+            : '—';
+
+          const label = hasCompletedWorkout
+            ? `${completedSessions.filter(s => !s.isRestDay).length} done`
+            : hasScheduledWorkout
+              ? dayFutureWorkouts.find(f => f.templateId !== 'rest')?.label
+              : hasWorkout
+                ? day.events.find(e => e.templateId !== 'rest')?.label
+                : null;
 
           return (
             <button
@@ -222,9 +257,7 @@ const WeeklyProgramCalendar: React.FC<{
               onClick={() => onDayClick(day.date, template ?? null)}
               className={`flex flex-col items-center rounded-lg py-2 px-1 transition-colors ${
                 isDayToday ? 'ring-2 ring-primary' : ''
-              } ${
-                hasWorkout ? 'bg-primary/15' : isRest ? 'bg-blue-500/15' : 'bg-secondary/50'
-              }`}
+              } ${bgClass}`}
             >
               <span className={`text-[10px] font-medium ${
                 isDayToday ? 'text-primary' : 'text-muted-foreground'
@@ -236,12 +269,12 @@ const WeeklyProgramCalendar: React.FC<{
               }`}>
                 {format(day.date, 'd')}
               </span>
-              <span className="text-base mt-0.5">
-                {hasWorkout ? '🏋️' : isRest ? '😴' : noEvent ? '—' : '—'}
-              </span>
-              {hasWorkout && (
-                <span className="text-[8px] text-primary font-medium truncate max-w-full mt-0.5">
-                  {day.events.find(e => e.templateId !== 'rest')?.label}
+              <span className="text-base mt-0.5">{icon}</span>
+              {label && (
+                <span className={`text-[8px] font-medium truncate max-w-full mt-0.5 ${
+                  hasCompletedWorkout ? 'text-green-400' : 'text-primary'
+                }`}>
+                  {label}
                 </span>
               )}
             </button>
@@ -321,6 +354,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <WeeklyProgramCalendar
           program={activeProgram}
           templates={templates}
+          history={history}
+          futureWorkouts={futureWorkouts}
           onDayClick={onDayClick}
           onViewAll={onGoToHistory}
         />
