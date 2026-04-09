@@ -510,7 +510,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
         <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
-        <Button variant="neon" size="sm" onClick={finishWorkout}>Finish</Button>
+        <Button variant="neon" size="sm" onClick={finishWorkout}>
+          {isEditMode ? 'Save Changes' : 'Finish'}
+        </Button>
       </div>
 
       {/* Title + Timer */}
@@ -521,13 +523,49 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           onChange={e => setWorkoutName(e.target.value)}
           className="text-xl font-bold text-foreground bg-transparent outline-none border-b border-transparent focus:border-primary transition-colors w-full"
         />
-        <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
+        {isEditMode ? (
+          <div className="flex flex-wrap gap-3 mt-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Date</label>
+              <input
+                type="date"
+                value={editDate}
+                onChange={e => setEditDate(e.target.value)}
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Time</label>
+              <input
+                type="time"
+                value={editTime}
+                onChange={e => setEditTime(e.target.value)}
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Duration (min)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                value={editDurationMin}
+                onChange={e => setEditDurationMin(e.target.value)}
+                className="w-20 bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
+        )}
       </div>
 
-      {/* Camera */}
-      <div className="px-4 pb-4">
-        <CameraFeed />
-      </div>
+      {/* Camera - hide in edit mode */}
+      {!isEditMode && (
+        <div className="px-4 pb-4">
+          <CameraFeed />
+        </div>
+      )}
 
       {/* Note Editor Modal */}
       {editingNote && (
