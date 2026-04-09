@@ -603,6 +603,7 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
 interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
+  weightUnit: string;
   blocks: ExerciseBlock[];
   stickyNote: string;
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
@@ -633,7 +634,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
     <div>
       {/* Exercise Header */}
