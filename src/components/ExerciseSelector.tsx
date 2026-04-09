@@ -53,6 +53,10 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
   }, [filtered]);
 
   const toggleSelect = (id: ExerciseId) => {
+    if (browseMode && onExerciseTap) {
+      onExerciseTap(id);
+      return;
+    }
     if (!multiSelect) {
       onSelect(id);
       return;
