@@ -303,7 +303,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -370,6 +370,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Weekly Sets by Body Part */}
       <WeeklySetsByBodyPart history={history} />
+
+      {/* Analytics Button */}
+      <button
+        onClick={onGoToAnalytics}
+        className="bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors flex items-center gap-3"
+      >
+        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          <BarChart3 className="w-5 h-5 text-primary" />
+        </div>
+        <div className="flex-1 text-left">
+          <p className="text-sm font-semibold text-foreground">Analytics</p>
+          <p className="text-xs text-muted-foreground">Track your volume trends</p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+      </button>
 
       {/* Quick actions */}
       <Button variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">
