@@ -128,11 +128,10 @@ export interface UserPreferences {
 
 export interface UserProfile {
   displayName: string | null;
-  avatarUrl: string | null;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'kg', defaultRestSeconds: 90 };
-const DEFAULT_PROFILE: UserProfile = { displayName: null, avatarUrl: null };
+const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 export function useStorage() {
   const { user } = useAuth();
@@ -183,7 +182,6 @@ export function useStorage() {
         if (profileRes.data) {
           setProfileState({
             displayName: profileRes.data.display_name,
-            avatarUrl: profileRes.data.avatar_url,
           });
         }
       } catch (e) {
@@ -404,7 +402,6 @@ export function useStorage() {
     const { error } = await supabase.from('profiles').upsert({
       user_id: user.id,
       display_name: updated.displayName,
-      avatar_url: updated.avatarUrl,
     }, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updateProfile error:', error);
@@ -412,26 +409,10 @@ export function useStorage() {
     }
   }, [user, profile]);
 
-  const uploadAvatar = useCallback(async (file: File): Promise<string | null> => {
-    if (!user) return null;
-    const ext = file.name.split('.').pop() ?? 'jpg';
-    const path = `${user.id}/avatar.${ext}`;
-    const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
-    if (error) {
-      console.error('[useStorage] uploadAvatar error:', error);
-      toast.error('Failed to upload avatar');
-      return null;
-    }
-    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-    const url = data.publicUrl + '?t=' + Date.now(); // cache bust
-    await updateProfile({ avatarUrl: url });
-    return url;
-  }, [user, updateProfile]);
-
   return {
     history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, loading,
     saveSession, saveTemplate, deleteTemplate,
     saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout, updatePreferences,
-    updateProfile, uploadAvatar,
+    updateProfile,
   };
 }

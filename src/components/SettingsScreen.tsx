@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Camera, Pencil, Check, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,7 +10,6 @@ interface SettingsScreenProps {
   profile: UserProfile;
   onUpdatePreferences: (prefs: Partial<UserPreferences>) => void;
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
-  onUploadAvatar: (file: File) => Promise<string | null>;
   onBack: () => void;
 }
 
@@ -22,21 +21,11 @@ const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
 const REST_OPTIONS = [30, 45, 60, 90, 120, 150, 180];
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
-  preferences, profile, onUpdatePreferences, onUpdateProfile, onUploadAvatar, onBack,
+  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack,
 }) => {
   const { user, signOut } = useAuth();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(profile.displayName ?? '');
-  const [uploading, setUploading] = useState(false);
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    await onUploadAvatar(file);
-    setUploading(false);
-  };
 
   const saveName = () => {
     onUpdateProfile({ displayName: nameDraft.trim() || null });
@@ -64,33 +53,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Profile</p>
         </div>
         <div className="px-4 py-5 flex flex-col items-center gap-4">
-          {/* Avatar */}
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center overflow-hidden ring-2 ring-primary/30">
-              {profile.avatarUrl ? (
-                <img src={profile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <User className="w-8 h-8 text-primary" />
-              )}
-            </div>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {uploading ? (
-                <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Camera className="w-4 h-4" />
-              )}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleAvatarChange}
-            />
+          {/* Avatar placeholder */}
+          <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center ring-2 ring-primary/30">
+            <User className="w-8 h-8 text-primary" />
           </div>
 
           {/* Display Name */}
