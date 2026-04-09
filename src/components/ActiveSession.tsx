@@ -6,6 +6,7 @@ import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
 import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X } from 'lucide-react';
+import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
@@ -247,6 +248,29 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }));
   }, []);
 
+  const removeSet = useCallback((blockIdx: number, setIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      const newSets = block.sets.filter((_, si) => si !== setIdx)
+        .map((s, i) => ({ ...s, setNumber: i + 1 }));
+      return { ...block, sets: newSets };
+    }));
+  }, []);
+
+  const removeDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      return {
+        ...block,
+        sets: block.sets.map((set, si) => {
+          if (si !== setIdx || !set.drops) return set;
+          const newDrops = set.drops.filter((_, di) => di !== dropIdx);
+          return { ...set, drops: newDrops.length > 0 ? newDrops : undefined, type: newDrops.length > 0 ? 'dropset' : 'normal' as SetType };
+        }),
+      };
+    }));
+  }, []);
+
   const addExercise = useCallback((id: ExerciseId) => {
     addMultipleExercises([id]);
   }, []);
@@ -476,6 +500,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 onAddSet={addSet}
                 onAddDrop={addDrop}
                 onUpdateDrop={updateDrop}
+                onRemoveSet={removeSet}
+                onRemoveDrop={removeDrop}
                 onMenuAction={handleMenuAction}
                 onStartTimer={startTimer}
                 onSkipTimer={skipTimer}
@@ -513,6 +539,8 @@ interface ExerciseTableProps {
   onAddSet: (blockIdx: number) => void;
   onAddDrop: (blockIdx: number, setIdx: number) => void;
   onUpdateDrop: (blockIdx: number, setIdx: number, dropIdx: number, field: keyof DropRow, value: string | boolean) => void;
+  onRemoveSet: (blockIdx: number, setIdx: number) => void;
+  onRemoveDrop: (blockIdx: number, setIdx: number, dropIdx: number) => void;
   onMenuAction: (action: string, blockIdx: number) => void;
   onStartTimer: (id: TimerId, duration: number) => void;
   onSkipTimer: () => void;
@@ -531,7 +559,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
     <div>
       {/* Exercise Header */}
@@ -598,111 +626,42 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
         const superscripts = ['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
         return (
           <React.Fragment key={setIdx}>
-            <div
-              className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
-                set.completed ? 'bg-primary/10' : ''
-              }`}
-            >
-              <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-              {previousSets[setIdx] ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const prev = previousSets[setIdx];
-                    if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
-                    onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
-                  }}
-                  className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
-                  title="Tap to copy to current set"
-                >
-                  {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
-                </button>
-              ) : (
-                <span className="text-xs text-muted-foreground text-center">—</span>
-              )}
-              <input
-                type="number"
-                inputMode="decimal"
-                value={set.weight}
-                onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-                placeholder="—"
-                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-              />
-              <input
-                type="number"
-                inputMode="numeric"
-                value={set.reps}
-                onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
-                placeholder="—"
-                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-              />
-              <input
-                type="number"
-                inputMode="decimal"
-                min="1"
-                max="10"
-                step="0.5"
-                value={set.rpe}
-                onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
-                placeholder="—"
-                className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-              />
-              {(() => {
-                const setTimerId: TimerId = { type: 'set', blockIdx, setIdx };
-                const key = timerIdKey(setTimerId);
-                const isSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === key;
-                return (
-                  <ExerciseRestTimer
-                    timerId={setTimerId}
-                    defaultDuration={block.restSeconds}
-                    variant="inline"
-                    isActive={isSetActive}
-                    remaining={isSetActive ? activeTimer!.remaining : 0}
-                    totalDuration={isSetActive ? activeTimer!.duration : 0}
-                    recordedRest={restRecords[key] ?? null}
-                    onStart={onStartTimer}
-                    onSkip={onSkipTimer}
-                    onExtend={onExtendTimer}
-                  />
-                );
-              })()}
-              <button
-                onClick={() => onToggleComplete(blockIdx, setIdx)}
-                className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                  set.completed
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Check className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Drop rows */}
-            {set.drops?.map((drop, dropIdx) => (
+            <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
               <div
-                key={`drop-${setIdx}-${dropIdx}`}
-                className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
-                  drop.completed ? 'bg-primary/10' : ''
+                className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+                  set.completed ? 'bg-primary/10' : ''
                 }`}
               >
-                <span className="text-xs font-bold text-set-dropset text-center">
-                  {set.setNumber}D{superscripts[dropIdx] ?? `${dropIdx + 1}`}
-                </span>
-                <span className="text-xs text-muted-foreground text-center">—</span>
+                <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+                {previousSets[setIdx] ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prev = previousSets[setIdx];
+                      if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
+                      onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
+                    }}
+                    className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
+                    title="Tap to copy to current set"
+                  >
+                    {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                  </button>
+                ) : (
+                  <span className="text-xs text-muted-foreground text-center">—</span>
+                )}
                 <input
                   type="number"
                   inputMode="decimal"
-                  value={drop.weight}
-                  onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                  value={set.weight}
+                  onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
                   placeholder="—"
                   className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
                 <input
                   type="number"
                   inputMode="numeric"
-                  value={drop.reps}
-                  onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
+                  value={set.reps}
+                  onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
                   placeholder="—"
                   className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
@@ -712,17 +671,34 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
                   min="1"
                   max="10"
                   step="0.5"
-                  value={drop.rpe}
-                  onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', e.target.value)}
+                  value={set.rpe}
+                  onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
                   placeholder="—"
                   className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
-                {/* No timer for drop rows */}
-                <span />
+                {(() => {
+                  const setTimerId: TimerId = { type: 'set', blockIdx, setIdx };
+                  const key = timerIdKey(setTimerId);
+                  const isSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === key;
+                  return (
+                    <ExerciseRestTimer
+                      timerId={setTimerId}
+                      defaultDuration={block.restSeconds}
+                      variant="inline"
+                      isActive={isSetActive}
+                      remaining={isSetActive ? activeTimer!.remaining : 0}
+                      totalDuration={isSetActive ? activeTimer!.duration : 0}
+                      recordedRest={restRecords[key] ?? null}
+                      onStart={onStartTimer}
+                      onSkip={onSkipTimer}
+                      onExtend={onExtendTimer}
+                    />
+                  );
+                })()}
                 <button
-                  onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
+                  onClick={() => onToggleComplete(blockIdx, setIdx)}
                   className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                    drop.completed
+                    set.completed
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
                   }`}
@@ -730,6 +706,60 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
                   <Check className="w-4 h-4" />
                 </button>
               </div>
+            </SwipeToDelete>
+
+            {/* Drop rows */}
+            {set.drops?.map((drop, dropIdx) => (
+              <SwipeToDelete key={`drop-${setIdx}-${dropIdx}`} onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}>
+                <div
+                  className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
+                    drop.completed ? 'bg-primary/10' : ''
+                  }`}
+                >
+                  <span className="text-xs font-bold text-set-dropset text-center">
+                    {set.setNumber}D{superscripts[dropIdx] ?? `${dropIdx + 1}`}
+                  </span>
+                  <span className="text-xs text-muted-foreground text-center">—</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={drop.weight}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                    placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={drop.reps}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
+                    placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="1"
+                    max="10"
+                    step="0.5"
+                    value={drop.rpe}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', e.target.value)}
+                    placeholder="—"
+                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <span />
+                  <button
+                    onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                      drop.completed
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
+              </SwipeToDelete>
             ))}
 
             {/* Add Drop button for any set */}
