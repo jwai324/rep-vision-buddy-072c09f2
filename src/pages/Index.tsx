@@ -13,7 +13,7 @@ import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram } from
 
 type Screen =
   | { type: 'dashboard' }
-  | { type: 'exerciseSelector' }
+  | { type: 'startWorkout' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession }
