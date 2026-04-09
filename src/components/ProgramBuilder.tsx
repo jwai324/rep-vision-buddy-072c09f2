@@ -141,6 +141,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
         )}
       </div>
 
+      {days.map((day, i) => (
         <div key={i} className="bg-card rounded-xl p-4 border border-border flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <input
