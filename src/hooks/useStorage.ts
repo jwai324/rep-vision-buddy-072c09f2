@@ -197,7 +197,10 @@ export function useStorage() {
 
   const updateFutureWorkout = useCallback((updated: FutureWorkout) => {
     setFutureWorkouts(prev => {
-      const next = prev.map(fw => fw.id === updated.id ? updated : fw);
+      const exists = prev.some(fw => fw.id === updated.id);
+      const next = exists
+        ? prev.map(fw => fw.id === updated.id ? updated : fw)
+        : [...prev, updated];
       setItem(KEYS.futureWorkouts, next);
       return next;
     });

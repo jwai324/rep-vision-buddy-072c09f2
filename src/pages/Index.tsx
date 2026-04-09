@@ -146,7 +146,8 @@ const Index = () => {
       )}
 
       {screen.type === 'futureWorkoutDetail' && (() => {
-        const fw = screen.futureWorkout;
+        const fwId = screen.futureWorkout.id;
+        const fw = storage.futureWorkouts.find(f => f.id === fwId) ?? screen.futureWorkout;
         const template = storage.templates.find(t => t.id === fw.templateId) ?? null;
         return (
           <FutureWorkoutDetail
