@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 
 interface FutureWorkoutsScreenProps {
   futureWorkouts: FutureWorkout[];
@@ -13,7 +13,11 @@ interface FutureWorkoutsScreenProps {
 export const FutureWorkoutsScreen: React.FC<FutureWorkoutsScreenProps> = ({
   futureWorkouts, templates, onSelectFutureWorkout, onBack,
 }) => {
-  const workouts = futureWorkouts.filter(fw => fw.templateId !== 'rest');
+  const [showRestDays, setShowRestDays] = useState(false);
+
+  const workouts = showRestDays
+    ? futureWorkouts
+    : futureWorkouts.filter(fw => fw.templateId !== 'rest');
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
@@ -21,7 +25,14 @@ export const FutureWorkoutsScreen: React.FC<FutureWorkoutsScreenProps> = ({
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-extrabold text-foreground">Future Workouts</h1>
+        <h1 className="text-xl font-extrabold text-foreground flex-1">Future Workouts</h1>
+        <button
+          onClick={() => setShowRestDays(prev => !prev)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/60 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showRestDays ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          Rest Days
+        </button>
       </div>
 
       {workouts.length === 0 ? (
@@ -33,14 +44,17 @@ export const FutureWorkoutsScreen: React.FC<FutureWorkoutsScreenProps> = ({
       ) : (
         <div className="flex flex-col gap-2">
           {workouts.map(fw => {
-            const template = templates.find(t => t.id === fw.templateId);
+            const isRest = fw.templateId === 'rest';
+            const template = !isRest ? templates.find(t => t.id === fw.templateId) : null;
             return (
               <button
                 key={fw.id}
                 onClick={() => onSelectFutureWorkout(fw)}
-                className="w-full bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors text-left flex items-center gap-3"
+                className={`w-full bg-card rounded-xl p-4 border transition-colors text-left flex items-center gap-3 ${
+                  isRest ? 'border-border/50 opacity-70' : 'border-border hover:border-primary/30'
+                }`}
               >
-                <span className="text-xl">🏋️</span>
+                <span className="text-xl">{isRest ? '😴' : '🏋️'}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">{fw.label}</p>
                   <p className="text-xs text-muted-foreground">
