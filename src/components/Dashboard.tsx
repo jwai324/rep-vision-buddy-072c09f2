@@ -207,7 +207,7 @@ const WeeklyProgramCalendar: React.FC<{
               <span className={`text-[10px] font-medium ${
                 isToday ? 'text-primary' : 'text-muted-foreground'
               }`}>
-                {dayLabels[i]}
+                {format(day.date, 'EEE')}
               </span>
               <span className={`text-sm font-bold ${
                 isToday ? 'text-foreground' : 'text-muted-foreground'
