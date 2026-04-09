@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { WorkoutProgram, WorkoutTemplate } from '@/types/workout';
+import type { WorkoutProgram, WorkoutTemplate, WorkoutSession } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 
 interface ProgramBuilderProps {
@@ -9,7 +9,7 @@ interface ProgramBuilderProps {
   onCancel: () => void;
 }
 
-export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, initial, onSave, onCancel }) => {
+export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, history, initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [days, setDays] = useState(initial?.days ?? [{ label: 'Day 1', templateId: 'rest' as string }]);
 
