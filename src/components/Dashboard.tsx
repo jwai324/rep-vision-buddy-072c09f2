@@ -16,6 +16,7 @@ interface DashboardProps {
   onGoToTemplates: () => void;
   onGoToPrograms: () => void;
   onBrowseExercises: () => void;
+  onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }
 
 function getStreak(sessions: WorkoutSession[]): number {

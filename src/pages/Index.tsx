@@ -12,6 +12,7 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram } from '@/types/workout';
+import { DayDetail } from '@/components/DayDetail';
 
 type Screen =
   | { type: 'dashboard' }
@@ -24,7 +25,8 @@ type Screen =
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
-  | { type: 'programBuilder'; program?: WorkoutProgram };
+  | { type: 'programBuilder'; program?: WorkoutProgram }
+  | { type: 'dayDetail'; date: Date; template: WorkoutTemplate | null };
 
 const Index = () => {
   const storage = useStorage();
