@@ -54,6 +54,7 @@ const Index = () => {
           activeProgram={activeProgram}
           templates={storage.templates}
           futureWorkouts={storage.futureWorkouts}
+          onStartWorkout={() => setScreen({ type: 'startWorkout' })}
           onGoToFutureWorkouts={() => setScreen({ type: 'futureWorkouts' })}
           onStartTemplate={startFromTemplate}
           onGoToHistory={() => setScreen({ type: 'history' })}
