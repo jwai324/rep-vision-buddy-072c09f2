@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
-import { ExerciseRestTimer } from '@/components/ExerciseRestTimer';
+import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
 
 interface ActiveSessionProps {
   exercises: ExerciseId[];
@@ -55,6 +55,8 @@ const SUPERSET_COLORS = [
   'border-l-4 border-l-cyan-500',
 ];
 
+const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
+
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], onFinish, onCancel }) => {
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
     initialExercises.map((id, idx) => {
@@ -81,8 +83,59 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTime = useRef(Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
-  // Timer triggers: incremented when a set is completed to auto-start rest timers
-  const [timerTriggers, setTimerTriggers] = useState<Record<number, number>>({});
+  // Centralized single-timer state
+  const [activeTimer, setActiveTimer] = useState<{ id: TimerId; remaining: number; duration: number; startedAt: number } | null>(null);
+  const [restRecords, setRestRecords] = useState<Record<string, number>>({});
+  const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startTimer = useCallback((id: TimerId, duration: number) => {
+    // Cancel any existing timer
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    // Record the old timer if it was running
+    setActiveTimer(prev => {
+      if (prev) {
+        const elapsed = prev.duration - prev.remaining;
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: elapsed }));
+      }
+      return null;
+    });
+    const timer = { id, remaining: duration, duration, startedAt: Date.now() };
+    setActiveTimer(timer);
+  }, []);
+
+  const skipTimer = useCallback(() => {
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    setActiveTimer(prev => {
+      if (prev) {
+        const elapsed = prev.duration - prev.remaining;
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: elapsed }));
+      }
+      return null;
+    });
+  }, []);
+
+  const extendTimer = useCallback(() => {
+    setActiveTimer(prev => prev ? { ...prev, remaining: prev.remaining + 30, duration: prev.duration + 30 } : null);
+  }, []);
+
+  // Timer tick effect
+  useEffect(() => {
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    if (activeTimer && activeTimer.remaining > 0) {
+      timerInterval.current = setInterval(() => {
+        setActiveTimer(prev => {
+          if (!prev) return null;
+          if (prev.remaining <= 1) {
+            // Timer finished - record it
+            setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.duration }));
+            return null;
+          }
+          return { ...prev, remaining: prev.remaining - 1 };
+        });
+      }, 1000);
+    }
+    return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
+  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer !== null]);
 
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
@@ -130,11 +183,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       });
       // Auto-start rest timer when completing a set (not unchecking)
       if (!wasCompleted) {
-        setTimerTriggers(prev => ({ ...prev, [blockIdx]: (prev[blockIdx] ?? 0) + 1 }));
+        startTimer({ type: 'set', blockIdx, setIdx }, block.restSeconds);
       }
       return updated;
     });
-  }, []);
+  }, [startTimer]);
 
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
@@ -340,13 +393,24 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
       {/* Exercise Blocks */}
       <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
-        {blocks.map((block, blockIdx) => (
+        {blocks.map((block, blockIdx) => {
+          const betweenId: TimerId = { type: 'between', blockIdx };
+          const betweenKey = timerIdKey(betweenId);
+          const isBetweenActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenKey;
+          return (
           <React.Fragment key={block.exerciseId}>
             {blockIdx > 0 && (
               <ExerciseRestTimer
-                timerKey={timerTriggers[blockIdx - 1] ?? 0}
+                timerId={betweenId}
                 defaultDuration={blocks[blockIdx - 1].restSeconds}
                 variant="between"
+                isActive={isBetweenActive}
+                remaining={isBetweenActive ? activeTimer!.remaining : 0}
+                totalDuration={isBetweenActive ? activeTimer!.duration : 0}
+                recordedRest={restRecords[betweenKey] ?? null}
+                onStart={startTimer}
+                onSkip={skipTimer}
+                onExtend={extendTimer}
               />
             )}
             <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
@@ -354,16 +418,21 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 block={block}
                 blockIdx={blockIdx}
                 stickyNote={getStickyNote(block.exerciseId)}
-                timerTrigger={timerTriggers[blockIdx] ?? 0}
+                activeTimer={activeTimer}
+                restRecords={restRecords}
                 previousSets={getPreviousExerciseData(history, block.exerciseId)}
                 onUpdateSet={updateSet}
                 onToggleComplete={toggleSetComplete}
                 onAddSet={addSet}
                 onMenuAction={handleMenuAction}
+                onStartTimer={startTimer}
+                onSkipTimer={skipTimer}
+                onExtendTimer={extendTimer}
               />
             </div>
           </React.Fragment>
-        ))}
+          );
+        })}
 
         {/* Add Exercise */}
         <button
@@ -384,12 +453,16 @@ interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
   stickyNote: string;
-  timerTrigger: number;
+  activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
+  restRecords: Record<string, number>;
   previousSets: { weight?: number; reps: number }[];
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
   onMenuAction: (action: string, blockIdx: number) => void;
+  onStartTimer: (id: TimerId, duration: number) => void;
+  onSkipTimer: () => void;
+  onExtendTimer: () => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -403,7 +476,8 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, timerTrigger, previousSets, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
+
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
     <div>
       {/* Exercise Header */}
@@ -506,11 +580,25 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
             placeholder="—"
             className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
           />
-          <ExerciseRestTimer
-            timerKey={set.completed ? timerTrigger : 0}
-            defaultDuration={block.restSeconds}
-            variant="inline"
-          />
+          {(() => {
+            const setTimerId: TimerId = { type: 'set', blockIdx, setIdx };
+            const key = timerIdKey(setTimerId);
+            const isSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === key;
+            return (
+              <ExerciseRestTimer
+                timerId={setTimerId}
+                defaultDuration={block.restSeconds}
+                variant="inline"
+                isActive={isSetActive}
+                remaining={isSetActive ? activeTimer!.remaining : 0}
+                totalDuration={isSetActive ? activeTimer!.duration : 0}
+                recordedRest={restRecords[key] ?? null}
+                onStart={onStartTimer}
+                onSkip={onSkipTimer}
+                onExtend={onExtendTimer}
+              />
+            );
+          })()}
           <button
             onClick={() => onToggleComplete(blockIdx, setIdx)}
             className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${

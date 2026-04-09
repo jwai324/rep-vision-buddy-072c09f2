@@ -1,73 +1,65 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Timer, SkipForward, Plus } from 'lucide-react';
+import React from 'react';
+import { Timer } from 'lucide-react';
 
-interface ExerciseRestTimerProps {
-  /** Timer key – changes reset the timer */
-  timerKey: number;
-  defaultDuration: number;
-  variant?: 'inline' | 'between';
+export interface TimerId {
+  type: 'set' | 'between';
+  blockIdx: number;
+  setIdx?: number;
 }
 
-export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({ timerKey, defaultDuration, variant = 'inline' }) => {
-  const [remaining, setRemaining] = useState(0);
-  const [duration, setDuration] = useState(defaultDuration);
-  const [isActive, setIsActive] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastKey = useRef(timerKey);
+interface ExerciseRestTimerProps {
+  timerId: TimerId;
+  defaultDuration: number;
+  variant?: 'inline' | 'between';
+  /** Whether this specific timer is currently the active one */
+  isActive: boolean;
+  /** Remaining seconds (only meaningful when isActive) */
+  remaining: number;
+  /** Total duration of the active timer */
+  totalDuration: number;
+  /** Recorded rest time after completion (seconds), or null */
+  recordedRest: number | null;
+  onStart: (id: TimerId, duration: number) => void;
+  onSkip: () => void;
+  onExtend: () => void;
+}
 
-  // Auto-start when timerKey changes (set completed)
-  useEffect(() => {
-    if (timerKey !== lastKey.current && timerKey > 0) {
-      lastKey.current = timerKey;
-      setDuration(defaultDuration);
-      setRemaining(defaultDuration);
-      setIsActive(true);
-    }
-  }, [timerKey, defaultDuration]);
-
-  useEffect(() => {
-    if (isActive && remaining > 0) {
-      intervalRef.current = setInterval(() => {
-        setRemaining(prev => {
-          if (prev <= 1) {
-            setIsActive(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isActive, remaining]);
-
-  const skip = useCallback(() => {
-    setRemaining(0);
-    setIsActive(false);
-  }, []);
-
-  const extend = useCallback(() => {
-    setRemaining(prev => prev + 30);
-    setDuration(prev => prev + 30);
-  }, []);
-
-  const startManually = useCallback(() => {
-    setDuration(defaultDuration);
-    setRemaining(defaultDuration);
-    setIsActive(true);
-  }, [defaultDuration]);
-
+export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
+  timerId, defaultDuration, variant = 'inline',
+  isActive, remaining, totalDuration, recordedRest,
+  onStart, onSkip, onExtend,
+}) => {
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
   const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
+  const formatRecorded = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
   if (variant === 'between') {
-    if (!isActive && remaining === 0) {
+    // Show recorded rest
+    if (!isActive && recordedRest !== null) {
       return (
         <div className="flex items-center justify-center py-2">
           <button
-            onClick={startManually}
+            onClick={() => onStart(timerId, defaultDuration)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-xs text-primary font-mono tabular-nums"
+          >
+            <Timer className="w-3 h-3" />
+            {formatRecorded(recordedRest)}
+          </button>
+        </div>
+      );
+    }
+
+    if (!isActive) {
+      return (
+        <div className="flex items-center justify-center py-2">
+          <button
+            onClick={() => onStart(timerId, defaultDuration)}
             className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/40 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
           >
             <Timer className="w-3 h-3" />
@@ -77,7 +69,7 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({ timerKey, 
       );
     }
 
-    const progress = duration > 0 ? (duration - remaining) / duration : 0;
+    const progress = totalDuration > 0 ? (totalDuration - remaining) / totalDuration : 0;
 
     return (
       <div className="flex flex-col items-center gap-1.5 py-3">
@@ -101,10 +93,10 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({ timerKey, 
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={skip} className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+          <button onClick={onSkip} className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
             Skip
           </button>
-          <button onClick={extend} className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+          <button onClick={onExtend} className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
             +30s
           </button>
         </div>
@@ -112,11 +104,24 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({ timerKey, 
     );
   }
 
-  // Inline variant (inside set row)
-  if (!isActive && remaining === 0) {
+  // Inline variant
+  // Show recorded rest
+  if (!isActive && recordedRest !== null) {
     return (
       <button
-        onClick={startManually}
+        onClick={() => onStart(timerId, defaultDuration)}
+        className="w-7 h-7 rounded-md flex items-center justify-center bg-primary/10 text-primary text-[9px] font-mono font-bold tabular-nums"
+        title="Rest completed – tap to restart"
+      >
+        {formatRecorded(recordedRest)}
+      </button>
+    );
+  }
+
+  if (!isActive) {
+    return (
+      <button
+        onClick={() => onStart(timerId, defaultDuration)}
         className="w-7 h-7 rounded-md flex items-center justify-center bg-secondary/60 text-muted-foreground hover:text-primary transition-colors"
         title="Start rest timer"
       >
@@ -127,7 +132,7 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({ timerKey, 
 
   return (
     <button
-      onClick={skip}
+      onClick={onSkip}
       className="w-full h-7 rounded-md flex items-center justify-center bg-primary/10 text-primary text-[10px] font-mono font-bold tabular-nums animate-pulse"
       title="Tap to skip"
     >
