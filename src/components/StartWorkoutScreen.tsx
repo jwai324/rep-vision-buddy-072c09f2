@@ -1,7 +1,7 @@
 import React from 'react';
 import type { WorkoutTemplate, WorkoutProgram } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
-import { Dumbbell, ClipboardList, Calendar, ChevronRight, Search } from 'lucide-react';
+import { Dumbbell, ClipboardList, Calendar, ChevronRight } from 'lucide-react';
 
 interface StartWorkoutScreenProps {
   templates: WorkoutTemplate[];
@@ -9,12 +9,11 @@ interface StartWorkoutScreenProps {
   onBlankWorkout: () => void;
   onSelectTemplate: (template: WorkoutTemplate) => void;
   onStartProgramDay: (template: WorkoutTemplate) => void;
-  onBrowseExercises: () => void;
   onBack: () => void;
 }
 
 export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
-  templates, activeProgram, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBrowseExercises, onBack,
+  templates, activeProgram, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
 }) => {
   const dayOfWeek = new Date().getDay();
   const todayDay = activeProgram?.days[(dayOfWeek + 6) % 7];
