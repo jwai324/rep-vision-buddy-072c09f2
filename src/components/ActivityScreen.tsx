@@ -46,7 +46,14 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-extrabold text-foreground flex-1">Activity</h1>
+        <div className="flex-1">
+          <h1 className="text-xl font-extrabold text-foreground">Activity</h1>
+          {filterDate && (
+            <p className="text-xs text-muted-foreground">
+              {new Date(filterDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            </p>
+          )}
+        </div>
         {restCount > 0 && (
           <button
             onClick={() => setShowRestDays(prev => !prev)}
