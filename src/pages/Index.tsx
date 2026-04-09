@@ -22,9 +22,9 @@ type Screen =
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
-  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'activity' }
+  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'activity' }
   | { type: 'activity'; initialTab?: 'history' | 'future'; filterDate?: string }
-  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'activity' }
+  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'activity' }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
