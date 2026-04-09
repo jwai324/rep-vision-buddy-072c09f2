@@ -63,7 +63,6 @@ const Index = () => {
           onBlankWorkout={() => setScreen({ type: 'activeSession', exercises: [] })}
           onSelectTemplate={startFromTemplate}
           onStartProgramDay={startFromTemplate}
-          onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
