@@ -597,7 +597,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         )}
         <div className="flex items-center gap-2">
           {!isEditMode && (
-            <Button variant="outline" size="sm" onClick={onCancel} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+            <Button variant="outline" size="sm" onClick={() => setShowDiscardConfirm(true)} className="text-destructive border-destructive/30 hover:bg-destructive/10">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Discard
             </Button>
