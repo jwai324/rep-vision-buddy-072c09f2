@@ -13,11 +13,35 @@ import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer'
 
 import type { WeightUnit } from '@/hooks/useStorage';
 
+const CACHE_KEY = 'active-session-cache';
+
+export interface ActiveSessionCache {
+  blocks: ExerciseBlock[];
+  workoutName: string;
+  startTimestamp: number;
+  elapsedAtCache: number;
+}
+
+export function clearSessionCache() {
+  localStorage.removeItem(CACHE_KEY);
+}
+
+export function getSessionCache(): ActiveSessionCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
+  cachedSession?: ActiveSessionCache | null;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
 }
