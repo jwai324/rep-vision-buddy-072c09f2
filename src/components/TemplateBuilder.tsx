@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Plus, MoreHorizontal, Trash2, Layers, ChevronDown, ArrowUp, ArrowDown, Timer, Check } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
+import type { WeightUnit } from '@/hooks/useStorage';
 
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
+  weightUnit?: WeightUnit;
   onSave: (template: WorkoutTemplate) => void;
   onCancel: () => void;
 }
