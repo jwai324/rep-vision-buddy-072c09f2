@@ -155,11 +155,10 @@ const WeeklyProgramCalendar: React.FC<{
   onStartTemplate: (template: WorkoutTemplate) => void;
 }> = ({ program, templates, onStartTemplate }) => {
   const today = new Date();
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
 
   const weekDays = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  }, [weekStart]);
+    return Array.from({ length: 7 }, (_, i) => addDays(today, i));
+  }, [today]);
 
   const events = useMemo(() => buildProgramEvents(program), [program]);
 
@@ -170,12 +169,10 @@ const WeeklyProgramCalendar: React.FC<{
     });
   }, [weekDays, events]);
 
-  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 This Week</p>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 Next 7 Days</p>
         <span className="text-xs text-muted-foreground">{program.name}</span>
       </div>
       <div className="grid grid-cols-7 gap-1">
@@ -193,7 +190,7 @@ const WeeklyProgramCalendar: React.FC<{
             <button
               key={i}
               onClick={() => {
-                if (template && isToday) onStartTemplate(template);
+                if (template) onStartTemplate(template);
               }}
               className={`flex flex-col items-center rounded-lg py-2 px-1 transition-colors ${
                 isToday
@@ -210,7 +207,7 @@ const WeeklyProgramCalendar: React.FC<{
               <span className={`text-[10px] font-medium ${
                 isToday ? 'text-primary' : 'text-muted-foreground'
               }`}>
-                {dayLabels[i]}
+                {format(day.date, 'EEE')}
               </span>
               <span className={`text-sm font-bold ${
                 isToday ? 'text-foreground' : 'text-muted-foreground'
