@@ -318,6 +318,12 @@ const Index = () => {
         />
       )}
 
+      {minimizedSession && screen.type !== 'activeSession' && (
+        <MinimizedSessionBar
+          workoutName={getSessionCache()?.workoutName ?? 'Workout'}
+          onExpand={handleExpand}
+        />
+      )}
     </div>
   );
 };
