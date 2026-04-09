@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { Search } from 'lucide-react';
 import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
+import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 
 interface TemplateBuilderProps {
@@ -10,7 +13,6 @@ interface TemplateBuilderProps {
   onCancel: () => void;
 }
 
-const exerciseIds: ExerciseId[] = ['squats', 'pushups', 'lunges', 'bicep-curls', 'shoulder-press'];
 const setTypes: SetType[] = ['normal', 'superset', 'dropset', 'failure'];
 
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSave, onCancel }) => {
