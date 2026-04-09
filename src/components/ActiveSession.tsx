@@ -494,6 +494,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               <ExerciseTable
                 block={block}
                 blockIdx={blockIdx}
+                weightUnit={weightUnit}
                 blocks={blocks}
                 stickyNote={getStickyNote(block.exerciseId)}
                 activeTimer={activeTimer}
