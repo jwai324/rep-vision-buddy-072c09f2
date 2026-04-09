@@ -86,6 +86,57 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [restRecords, setRestRecords] = useState<Record<string, number>>({});
   const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
+
+  const startTimer = useCallback((id: TimerId, duration: number) => {
+    // Cancel any existing timer
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    // Record the old timer if it was running
+    setActiveTimer(prev => {
+      if (prev) {
+        const elapsed = prev.duration - prev.remaining;
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: elapsed }));
+      }
+      return null;
+    });
+    const timer = { id, remaining: duration, duration, startedAt: Date.now() };
+    setActiveTimer(timer);
+  }, []);
+
+  const skipTimer = useCallback(() => {
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    setActiveTimer(prev => {
+      if (prev) {
+        const elapsed = prev.duration - prev.remaining;
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: elapsed }));
+      }
+      return null;
+    });
+  }, []);
+
+  const extendTimer = useCallback(() => {
+    setActiveTimer(prev => prev ? { ...prev, remaining: prev.remaining + 30, duration: prev.duration + 30 } : null);
+  }, []);
+
+  // Timer tick effect
+  useEffect(() => {
+    if (timerInterval.current) clearInterval(timerInterval.current);
+    if (activeTimer && activeTimer.remaining > 0) {
+      timerInterval.current = setInterval(() => {
+        setActiveTimer(prev => {
+          if (!prev) return null;
+          if (prev.remaining <= 1) {
+            // Timer finished - record it
+            setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.duration }));
+            return null;
+          }
+          return { ...prev, remaining: prev.remaining - 1 };
+        });
+      }, 1000);
+    }
+    return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
+  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer !== null]);
+
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
   const [noteText, setNoteText] = useState('');
