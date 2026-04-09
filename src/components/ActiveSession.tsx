@@ -563,34 +563,32 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
   const currentRowIdx = rows.findIndex(r => r.setIdx === setIdx && r.dropIdx === dropIdx);
   const currentFieldIdx = FIELD_ORDER.indexOf(field as typeof FIELD_ORDER[number]);
 
-  // Try next row in same column
-  if (currentRowIdx < rows.length - 1) {
-    const nextRow = rows[currentRowIdx + 1];
-    const nextId = buildInputId(blockIdx, nextRow.setIdx, field, nextRow.dropIdx);
+  // Try next column in same row (weight→reps→RPE)
+  if (currentFieldIdx < FIELD_ORDER.length - 1) {
+    const nextField = FIELD_ORDER[currentFieldIdx + 1];
+    const nextId = buildInputId(blockIdx, setIdx, nextField, dropIdx);
     const el = document.getElementById(nextId) as HTMLInputElement | null;
     if (el) { el.focus(); return; }
   }
 
-  // End of column → next column, first row (wrap to weight)
-  const nextFieldIdx = (currentFieldIdx + 1) % FIELD_ORDER.length;
-  const nextField = FIELD_ORDER[nextFieldIdx];
-  // If we wrapped back to weight, go to next block
-  if (nextFieldIdx === 0) {
-    if (blockIdx < blocks.length - 1) {
-      const nextBlock = blocks[blockIdx + 1];
-      const nextRows = getBlockRows(nextBlock);
-      if (nextRows.length > 0) {
-        const firstRow = nextRows[0];
-        const nextId = buildInputId(blockIdx + 1, firstRow.setIdx, FIELD_ORDER[0], firstRow.dropIdx);
-        const el = document.getElementById(nextId) as HTMLInputElement | null;
-        if (el) { el.focus(); return; }
-      }
-    }
-  } else {
-    const firstRow = rows[0];
-    const nextId = buildInputId(blockIdx, firstRow.setIdx, nextField, firstRow.dropIdx);
+  // End of row → next row's weight
+  if (currentRowIdx < rows.length - 1) {
+    const nextRow = rows[currentRowIdx + 1];
+    const nextId = buildInputId(blockIdx, nextRow.setIdx, FIELD_ORDER[0], nextRow.dropIdx);
     const el = document.getElementById(nextId) as HTMLInputElement | null;
     if (el) { el.focus(); return; }
+  }
+
+  // End of block → next block's first row weight
+  if (blockIdx < blocks.length - 1) {
+    const nextBlock = blocks[blockIdx + 1];
+    const nextRows = getBlockRows(nextBlock);
+    if (nextRows.length > 0) {
+      const firstRow = nextRows[0];
+      const nextId = buildInputId(blockIdx + 1, firstRow.setIdx, FIELD_ORDER[0], firstRow.dropIdx);
+      const el = document.getElementById(nextId) as HTMLInputElement | null;
+      if (el) { el.focus(); return; }
+    }
   }
 
   // Nothing left — blur
