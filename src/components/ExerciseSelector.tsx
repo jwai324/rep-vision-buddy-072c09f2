@@ -46,8 +46,9 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
   }, [debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
 
   const grouped = useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     const groups: Record<string, typeof filtered> = {};
-    for (const ex of filtered) {
+    for (const ex of sorted) {
       if (!groups[ex.primaryBodyPart]) groups[ex.primaryBodyPart] = [];
       groups[ex.primaryBodyPart].push(ex);
     }
