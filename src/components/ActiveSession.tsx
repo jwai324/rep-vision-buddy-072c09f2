@@ -589,88 +589,156 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
       </div>
 
       {/* Set Rows */}
-      {block.sets.map((set, setIdx) => (
-        <div
-          key={setIdx}
-          className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
-            set.completed ? 'bg-primary/10' : ''
-          }`}
-        >
-          <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-          {previousSets[setIdx] ? (
-            <button
-              type="button"
-              onClick={() => {
-                const prev = previousSets[setIdx];
-                if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
-                onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
-              }}
-              className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
-              title="Tap to copy to current set"
+      {block.sets.map((set, setIdx) => {
+        const superscripts = ['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+        return (
+          <React.Fragment key={setIdx}>
+            <div
+              className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+                set.completed ? 'bg-primary/10' : ''
+              }`}
             >
-              {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
-            </button>
-          ) : (
-            <span className="text-xs text-muted-foreground text-center">—</span>
-          )}
-          <input
-            type="number"
-            inputMode="decimal"
-            value={set.weight}
-            onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-            placeholder="—"
-            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-          />
-          <input
-            type="number"
-            inputMode="numeric"
-            value={set.reps}
-            onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
-            placeholder="—"
-            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-          />
-          <input
-            type="number"
-            inputMode="decimal"
-            min="1"
-            max="10"
-            step="0.5"
-            value={set.rpe}
-            onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
-            placeholder="—"
-            className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-          />
-          {(() => {
-            const setTimerId: TimerId = { type: 'set', blockIdx, setIdx };
-            const key = timerIdKey(setTimerId);
-            const isSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === key;
-            return (
-              <ExerciseRestTimer
-                timerId={setTimerId}
-                defaultDuration={block.restSeconds}
-                variant="inline"
-                isActive={isSetActive}
-                remaining={isSetActive ? activeTimer!.remaining : 0}
-                totalDuration={isSetActive ? activeTimer!.duration : 0}
-                recordedRest={restRecords[key] ?? null}
-                onStart={onStartTimer}
-                onSkip={onSkipTimer}
-                onExtend={onExtendTimer}
+              <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+              {previousSets[setIdx] ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prev = previousSets[setIdx];
+                    if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
+                    onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
+                  }}
+                  className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
+                  title="Tap to copy to current set"
+                >
+                  {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                </button>
+              ) : (
+                <span className="text-xs text-muted-foreground text-center">—</span>
+              )}
+              <input
+                type="number"
+                inputMode="decimal"
+                value={set.weight}
+                onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                placeholder="—"
+                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
               />
-            );
-          })()}
-          <button
-            onClick={() => onToggleComplete(blockIdx, setIdx)}
-            className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-              set.completed
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Check className="w-4 h-4" />
-          </button>
-        </div>
-      ))}
+              <input
+                type="number"
+                inputMode="numeric"
+                value={set.reps}
+                onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+                placeholder="—"
+                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+              />
+              <input
+                type="number"
+                inputMode="decimal"
+                min="1"
+                max="10"
+                step="0.5"
+                value={set.rpe}
+                onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+                placeholder="—"
+                className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+              />
+              {(() => {
+                const setTimerId: TimerId = { type: 'set', blockIdx, setIdx };
+                const key = timerIdKey(setTimerId);
+                const isSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === key;
+                return (
+                  <ExerciseRestTimer
+                    timerId={setTimerId}
+                    defaultDuration={block.restSeconds}
+                    variant="inline"
+                    isActive={isSetActive}
+                    remaining={isSetActive ? activeTimer!.remaining : 0}
+                    totalDuration={isSetActive ? activeTimer!.duration : 0}
+                    recordedRest={restRecords[key] ?? null}
+                    onStart={onStartTimer}
+                    onSkip={onSkipTimer}
+                    onExtend={onExtendTimer}
+                  />
+                );
+              })()}
+              <button
+                onClick={() => onToggleComplete(blockIdx, setIdx)}
+                className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                  set.completed
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Check className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Drop rows */}
+            {set.drops?.map((drop, dropIdx) => (
+              <div
+                key={`drop-${setIdx}-${dropIdx}`}
+                className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
+                  drop.completed ? 'bg-primary/10' : ''
+                }`}
+              >
+                <span className="text-xs font-bold text-set-dropset text-center">
+                  {set.setNumber}D{superscripts[dropIdx] ?? `${dropIdx + 1}`}
+                </span>
+                <span className="text-xs text-muted-foreground text-center">—</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={drop.weight}
+                  onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                  placeholder="—"
+                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                />
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={drop.reps}
+                  onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
+                  placeholder="—"
+                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                />
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="1"
+                  max="10"
+                  step="0.5"
+                  value={drop.rpe}
+                  onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', e.target.value)}
+                  placeholder="—"
+                  className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                />
+                {/* No timer for drop rows */}
+                <span />
+                <button
+                  onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
+                  className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                    drop.completed
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+
+            {/* Add Drop button for dropset-type sets */}
+            {set.type === 'dropset' && (
+              <button
+                onClick={() => onAddDrop(blockIdx, setIdx)}
+                className="ml-4 py-1 px-3 text-xs text-set-dropset/70 hover:text-set-dropset transition-colors"
+              >
+                + Add Drop
+              </button>
+            )}
+          </React.Fragment>
+        );
+      })}
 
       {/* Add Set */}
       <button
