@@ -853,7 +853,21 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
         <span className="text-center">Previous</span>
         <span className="text-center">{weightUnit}</span>
         <span className="text-center">Reps</span>
-        <span className="text-center">RPE</span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
+            <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
+            <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels. It helps prevent overtraining and optimizes training loads without specialized equipment.</p>
+            <ul className="mt-2 space-y-0.5 text-muted-foreground">
+              <li><span className="font-medium text-foreground">1–3:</span> Light</li>
+              <li><span className="font-medium text-foreground">4–6:</span> Moderate</li>
+              <li><span className="font-medium text-foreground">7–9:</span> Hard</li>
+              <li><span className="font-medium text-foreground">10:</span> Max effort / failure</li>
+            </ul>
+          </PopoverContent>
+        </Popover>
         <span className="text-center">
           <Timer className="w-3 h-3 mx-auto" />
         </span>
