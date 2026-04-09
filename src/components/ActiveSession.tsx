@@ -256,11 +256,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => {
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
+      const shouldCascade = (field === 'weight' || field === 'reps') && typeof value === 'string' && value !== '';
+      const wasBlank = shouldCascade && block.sets[setIdx][field] === '';
       return {
         ...block,
         sets: block.sets.map((set, si) => {
-          if (si !== setIdx) return set;
-          return { ...set, [field]: value };
+          if (si === setIdx) return { ...set, [field]: value };
+          // Cascade: fill blank fields below when the source field was blank
+          if (wasBlank && si > setIdx && set[field] === '') {
+            return { ...set, [field]: value };
+          }
+          return set;
         }),
       };
     }));
