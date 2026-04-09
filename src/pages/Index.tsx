@@ -69,6 +69,7 @@ const Index = () => {
         <ActiveSession
           exercises={screen.exercises}
           templateExercises={screen.templateExercises}
+          history={storage.history}
           onFinish={(session) => setScreen({ type: 'summary', session })}
           onCancel={() => setScreen({ type: 'dashboard' })}
         />

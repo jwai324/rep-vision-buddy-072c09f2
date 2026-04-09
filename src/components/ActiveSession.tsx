@@ -13,8 +13,20 @@ import { ExerciseRestTimer } from '@/components/ExerciseRestTimer';
 interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
+  history?: WorkoutSession[];
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
+}
+
+/** Look up the most recent session data for a given exercise */
+function getPreviousExerciseData(history: WorkoutSession[], exerciseId: ExerciseId): { weight?: number; reps: number }[] {
+  for (const session of history) {
+    const log = session.exercises.find(e => e.exerciseId === exerciseId);
+    if (log && log.sets.length > 0) {
+      return log.sets.map(s => ({ weight: s.weight, reps: s.reps }));
+    }
+  }
+  return [];
 }
 
 interface SetRow {
