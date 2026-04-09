@@ -8,13 +8,13 @@ import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { FutureWorkoutsScreen } from '@/components/FutureWorkoutsScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
+import { CalendarDayDetail } from '@/components/CalendarDayDetail';
 import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-// DayDetail removed — calendar now routes to FutureWorkoutDetail
 
 type Screen =
   | { type: 'dashboard' }
@@ -22,10 +22,11 @@ type Screen =
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
-  | { type: 'sessionDetail'; session: WorkoutSession }
+  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'history' }
   | { type: 'history' }
   | { type: 'futureWorkouts' }
   | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'list' }
+  | { type: 'calendarDay'; date: string }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
