@@ -87,25 +87,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* Last session */}
-      {lastSession && (
-        <div className="bg-card rounded-xl p-4 border border-border">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Last Session</p>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {lastSession.exercises.map(e => e.exerciseName).join(', ')}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {lastSession.totalSets} sets · {lastSession.totalReps} reps · {formatDuration(lastSession.duration)}
-              </p>
-            </div>
-            {lastSession.averageRpe && (
-              <span className="text-sm font-bold text-primary">RPE {lastSession.averageRpe.toFixed(1)}</span>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Weekly Sets by Body Part */}
+      <WeeklySetsByBodyPart history={history} />
 
       {/* Quick actions */}
       <Button variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">
