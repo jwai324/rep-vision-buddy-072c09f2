@@ -525,11 +525,82 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   );
 };
 
+/* ---------- Focus Navigation Helper ---------- */
+
+const FIELD_ORDER = ['weight', 'reps', 'rpe'] as const;
+
+function buildInputId(blockIdx: number, setIdx: number, field: string, dropIdx?: number) {
+  return dropIdx !== undefined
+    ? `input-${blockIdx}-${setIdx}-d${dropIdx}-${field}`
+    : `input-${blockIdx}-${setIdx}-${field}`;
+}
+
+/**
+ * Collect all row keys for a block in order: set0, set0-drops, set1, set1-drops, etc.
+ * Each row key is { setIdx, dropIdx? }
+ */
+function getBlockRows(block: ExerciseBlock): { setIdx: number; dropIdx?: number }[] {
+  const rows: { setIdx: number; dropIdx?: number }[] = [];
+  for (let si = 0; si < block.sets.length; si++) {
+    rows.push({ setIdx: si });
+    const drops = block.sets[si].drops;
+    if (drops) {
+      for (let di = 0; di < drops.length; di++) {
+        rows.push({ setIdx: si, dropIdx: di });
+      }
+    }
+  }
+  return rows;
+}
+
+function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: ExerciseBlock[], blockIdx: number, setIdx: number, field: string, dropIdx?: number) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+
+  const block = blocks[blockIdx];
+  const rows = getBlockRows(block);
+  const currentRowIdx = rows.findIndex(r => r.setIdx === setIdx && r.dropIdx === dropIdx);
+  const currentFieldIdx = FIELD_ORDER.indexOf(field as typeof FIELD_ORDER[number]);
+
+  // Try next row in same column
+  if (currentRowIdx < rows.length - 1) {
+    const nextRow = rows[currentRowIdx + 1];
+    const nextId = buildInputId(blockIdx, nextRow.setIdx, field, nextRow.dropIdx);
+    const el = document.getElementById(nextId) as HTMLInputElement | null;
+    if (el) { el.focus(); return; }
+  }
+
+  // End of column → next column, first row
+  if (currentFieldIdx < FIELD_ORDER.length - 1) {
+    const nextField = FIELD_ORDER[currentFieldIdx + 1];
+    const firstRow = rows[0];
+    const nextId = buildInputId(blockIdx, firstRow.setIdx, nextField, firstRow.dropIdx);
+    const el = document.getElementById(nextId) as HTMLInputElement | null;
+    if (el) { el.focus(); return; }
+  }
+
+  // End of all columns → next block, first row, first column
+  if (blockIdx < blocks.length - 1) {
+    const nextBlock = blocks[blockIdx + 1];
+    const nextRows = getBlockRows(nextBlock);
+    if (nextRows.length > 0) {
+      const firstRow = nextRows[0];
+      const nextId = buildInputId(blockIdx + 1, firstRow.setIdx, FIELD_ORDER[0], firstRow.dropIdx);
+      const el = document.getElementById(nextId) as HTMLInputElement | null;
+      if (el) { el.focus(); return; }
+    }
+  }
+
+  // Nothing left — blur
+  (e.target as HTMLInputElement).blur();
+}
+
 /* ---------- Exercise Table Sub-component ---------- */
 
 interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
+  blocks: ExerciseBlock[];
   stickyNote: string;
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
   restRecords: Record<string, number>;
@@ -559,7 +630,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
     <div>
       {/* Exercise Header */}
