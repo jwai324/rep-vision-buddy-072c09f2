@@ -73,6 +73,15 @@ export interface WorkoutProgram {
   schedule?: ProgramSchedule;
 }
 
+export interface FutureWorkout {
+  id: string;
+  programId: string;
+  date: string; // ISO date string
+  templateId: string; // or 'rest'
+  label: string;
+  completed?: boolean;
+}
+
 // Legacy lookup - now uses exercise database
 import { EXERCISE_DATABASE, getBodyPartIcon } from '@/data/exercises';
 
