@@ -265,7 +265,14 @@ const Index = () => {
         />
       )}
 
-    </div>
+      {screen.type === 'analytics' && (
+        <AnalyticsScreen
+          history={storage.history}
+          weightUnit={storage.preferences.weightUnit}
+          onBack={() => setScreen({ type: 'dashboard' })}
+        />
+      )}
+
   );
 };
 
