@@ -190,7 +190,7 @@ const WeeklyProgramCalendar: React.FC<{
             <button
               key={i}
               onClick={() => {
-                if (template && isToday) onStartTemplate(template);
+                if (template) onStartTemplate(template);
               }}
               className={`flex flex-col items-center rounded-lg py-2 px-1 transition-colors ${
                 isToday
