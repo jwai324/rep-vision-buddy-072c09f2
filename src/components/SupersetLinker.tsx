@@ -15,11 +15,15 @@ interface SupersetLinkerProps {
 }
 
 const SUPERSET_COLORS = [
-  'bg-set-superset/30 border-set-superset',
-  'bg-orange-500/20 border-orange-500',
-  'bg-purple-500/20 border-purple-500',
+  'bg-red-500/20 border-red-500',
+  'bg-blue-500/20 border-blue-500',
+  'bg-green-500/20 border-green-500',
+  'bg-yellow-500/20 border-yellow-500',
   'bg-pink-500/20 border-pink-500',
-  'bg-cyan-500/20 border-cyan-500',
+  'bg-orange-500/20 border-orange-500',
+  'bg-amber-800/20 border-amber-800',
+  'bg-purple-500/20 border-purple-500',
+  'bg-white/20 border-white',
 ];
 
 export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSave, onCancel }) => {

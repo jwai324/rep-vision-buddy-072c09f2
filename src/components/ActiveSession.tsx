@@ -48,8 +48,16 @@ interface ExerciseBlock {
 }
 
 const SUPERSET_COLORS = [
-  'border-l-4 border-l-set-superset',
-  'border-l-4 border-l-orange-500',
+  'bg-red-500/20',
+  'bg-blue-500/20',
+  'bg-green-500/20',
+  'bg-yellow-500/20',
+  'bg-pink-500/20',
+  'bg-orange-500/20',
+  'bg-amber-800/20',
+  'bg-purple-500/20',
+  'bg-white/20',
+];
   'border-l-4 border-l-purple-500',
   'border-l-4 border-l-pink-500',
   'border-l-4 border-l-cyan-500',
