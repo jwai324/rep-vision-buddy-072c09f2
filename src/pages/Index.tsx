@@ -154,6 +154,21 @@ const Index = () => {
             template={template}
             onPerformWorkout={startFromTemplate}
             onUpdateFutureWorkout={storage.updateFutureWorkout}
+            onSaveRestDay={(restFw) => {
+              const session: WorkoutSession = {
+                id: crypto.randomUUID(),
+                date: restFw.date,
+                exercises: [],
+                duration: 0,
+                totalVolume: 0,
+                totalSets: 0,
+                totalReps: 0,
+                isRestDay: true,
+                recoveryActivities: restFw.recoveryActivities,
+              };
+              storage.saveSession(session);
+              setScreen(screen.from === 'list' ? { type: 'futureWorkouts' } : { type: 'dashboard' });
+            }}
             onBack={() => setScreen(screen.from === 'list' ? { type: 'futureWorkouts' } : { type: 'dashboard' })}
           />
         );
