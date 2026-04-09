@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import { addDays, addWeeks, format, getDay, isSameDay, startOfWeek } from 'date-fns';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DashboardProps {
   history: WorkoutSession[];
@@ -158,10 +159,12 @@ const WeeklyProgramCalendar: React.FC<{
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }> = ({ program, templates, onDayClick }) => {
   const today = new Date();
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const weekDays = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => addDays(today, i));
-  }, [today]);
+    const start = addDays(today, weekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [weekOffset]);
 
   const events = useMemo(() => buildProgramEvents(program), [program]);
 
@@ -172,15 +175,38 @@ const WeeklyProgramCalendar: React.FC<{
     });
   }, [weekDays, events]);
 
+  const weekLabel = useMemo(() => {
+    const first = weekDays[0];
+    const last = weekDays[6];
+    if (first.getMonth() === last.getMonth()) {
+      return `${format(first, 'MMM d')} – ${format(last, 'd')}`;
+    }
+    return `${format(first, 'MMM d')} – ${format(last, 'MMM d')}`;
+  }, [weekDays]);
+
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 Next 7 Days</p>
-        <span className="text-xs text-muted-foreground">{program.name}</span>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 {program.name}</p>
+      </div>
+      <div className="flex items-center justify-between mb-2">
+        <button
+          onClick={() => setWeekOffset(o => o - 1)}
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <span className="text-xs font-semibold text-muted-foreground">{weekLabel}</span>
+        <button
+          onClick={() => setWeekOffset(o => o + 1)}
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
       <div className="grid grid-cols-7 gap-1">
         {weekSchedule.map((day, i) => {
-          const isToday = isSameDay(day.date, today);
+          const isDayToday = isSameDay(day.date, today);
           const hasWorkout = day.events.some(e => e.templateId !== 'rest');
           const isRest = day.events.some(e => e.templateId === 'rest');
           const noEvent = day.events.length === 0;
@@ -194,24 +220,18 @@ const WeeklyProgramCalendar: React.FC<{
               key={i}
               onClick={() => onDayClick(day.date, template ?? null)}
               className={`flex flex-col items-center rounded-lg py-2 px-1 transition-colors ${
-                isToday
-                  ? 'ring-2 ring-primary'
-                  : ''
+                isDayToday ? 'ring-2 ring-primary' : ''
               } ${
-                hasWorkout
-                  ? 'bg-primary/15'
-                  : isRest
-                  ? 'bg-blue-500/15'
-                  : 'bg-secondary/50'
+                hasWorkout ? 'bg-primary/15' : isRest ? 'bg-blue-500/15' : 'bg-secondary/50'
               }`}
             >
               <span className={`text-[10px] font-medium ${
-                isToday ? 'text-primary' : 'text-muted-foreground'
+                isDayToday ? 'text-primary' : 'text-muted-foreground'
               }`}>
                 {format(day.date, 'EEE')}
               </span>
               <span className={`text-sm font-bold ${
-                isToday ? 'text-foreground' : 'text-muted-foreground'
+                isDayToday ? 'text-foreground' : 'text-muted-foreground'
               }`}>
                 {format(day.date, 'd')}
               </span>
@@ -227,6 +247,14 @@ const WeeklyProgramCalendar: React.FC<{
           );
         })}
       </div>
+      {weekOffset !== 0 && (
+        <button
+          onClick={() => setWeekOffset(0)}
+          className="w-full mt-2 text-[10px] text-primary font-medium hover:underline"
+        >
+          Back to this week
+        </button>
+      )}
     </div>
   );
 };
