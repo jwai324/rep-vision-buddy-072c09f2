@@ -84,6 +84,7 @@ export type Database = {
         Row: {
           active_program_id: string | null
           created_at: string
+          default_drop_sets_enabled: boolean
           default_rest_seconds: number
           id: string
           updated_at: string
@@ -93,6 +94,7 @@ export type Database = {
         Insert: {
           active_program_id?: string | null
           created_at?: string
+          default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
           id?: string
           updated_at?: string
@@ -102,6 +104,7 @@ export type Database = {
         Update: {
           active_program_id?: string | null
           created_at?: string
+          default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
           id?: string
           updated_at?: string
