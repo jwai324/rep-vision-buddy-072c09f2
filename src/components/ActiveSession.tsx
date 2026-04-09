@@ -97,9 +97,10 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', onFinish, onCancel }) => {
-  const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
-    initialExercises.map((id, idx) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, onFinish, onCancel }) => {
+  const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
+    if (cachedSession) return cachedSession.blocks;
+    return initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
       const restSec = tpl?.restSeconds ?? 90;
@@ -116,18 +117,29 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           rpe: '',
         })),
       };
-    })
-  );
-  const [workoutName, setWorkoutName] = useState('Workout');
+    });
+  });
+  const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const startTime = useRef(Date.now());
+  const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? 0);
+  const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
   // Centralized single-timer state
   const [activeTimer, setActiveTimer] = useState<{ id: TimerId; remaining: number; duration: number; startedAt: number } | null>(null);
   const [restRecords, setRestRecords] = useState<Record<string, number>>({});
   const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cache session state to localStorage on changes
+  useEffect(() => {
+    const cache: ActiveSessionCache = {
+      blocks,
+      workoutName,
+      startTimestamp: startTime.current,
+      elapsedAtCache: elapsedSeconds,
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  }, [blocks, workoutName, elapsedSeconds]);
 
   const startTimer = useCallback((id: TimerId, duration: number) => {
     // Cancel any existing timer
