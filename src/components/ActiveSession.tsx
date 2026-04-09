@@ -355,6 +355,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 blockIdx={blockIdx}
                 stickyNote={getStickyNote(block.exerciseId)}
                 timerTrigger={timerTriggers[blockIdx] ?? 0}
+                previousSets={getPreviousExerciseData(history, block.exerciseId)}
                 onUpdateSet={updateSet}
                 onToggleComplete={toggleSetComplete}
                 onAddSet={addSet}
@@ -384,6 +385,7 @@ interface ExerciseTableProps {
   blockIdx: number;
   stickyNote: string;
   timerTrigger: number;
+  previousSets: { weight?: number; reps: number }[];
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
@@ -401,7 +403,7 @@ const EXERCISE_MENU_ITEMS = [
   { icon: Trash2, label: 'Remove Exercise', destructive: true },
 ] as const;
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, timerTrigger, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNote, timerTrigger, previousSets, onUpdateSet, onToggleComplete, onAddSet, onMenuAction }) => {
   return (
     <div>
       {/* Exercise Header */}
@@ -472,7 +474,11 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
           }`}
         >
           <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-          <span className="text-xs text-muted-foreground text-center">—</span>
+          <span className="text-xs text-muted-foreground text-center truncate">
+            {previousSets[setIdx]
+              ? `${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`
+              : '—'}
+          </span>
           <input
             type="number"
             inputMode="decimal"
