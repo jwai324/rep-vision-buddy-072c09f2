@@ -18,6 +18,16 @@ const setTypes: SetType[] = ['normal', 'superset', 'dropset', 'failure'];
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [exercises, setExercises] = useState<TemplateExercise[]>(initial?.exercises ?? []);
+  const [exerciseSearch, setExerciseSearch] = useState('');
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+
+  const filteredExercises = useMemo(() => {
+    if (!exerciseSearch) return EXERCISE_DATABASE.slice(0, 20);
+    return EXERCISE_DATABASE.filter(ex =>
+      ex.name.toLowerCase().includes(exerciseSearch.toLowerCase()) ||
+      ex.primaryBodyPart.toLowerCase().includes(exerciseSearch.toLowerCase())
+    ).slice(0, 20);
+  }, [exerciseSearch]);
 
   const addExercise = (id: ExerciseId) => {
     setExercises(prev => [...prev, {
