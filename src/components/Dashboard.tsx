@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Settings } from 'lucide-react';
 import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
