@@ -162,7 +162,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [timerPaused, setTimerPaused] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
+  const pausedElapsed = useRef<number | null>(null);
   const { getStickyNote, setStickyNote } = useStickyNotes();
 
   // Edit mode: date/time state
