@@ -14,7 +14,7 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-import { DayDetail } from '@/components/DayDetail';
+// DayDetail removed — calendar now routes to FutureWorkoutDetail
 
 type Screen =
   | { type: 'dashboard' }
@@ -140,7 +140,7 @@ const Index = () => {
         <FutureWorkoutsScreen
           futureWorkouts={storage.futureWorkouts}
           templates={storage.templates}
-          onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw })}
+          onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'list' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
@@ -153,7 +153,7 @@ const Index = () => {
             futureWorkout={fw}
             template={template}
             onPerformWorkout={startFromTemplate}
-            onBack={() => setScreen({ type: 'futureWorkouts' })}
+            onBack={() => setScreen(screen.from === 'list' ? { type: 'futureWorkouts' } : { type: 'dashboard' })}
           />
         );
       })()}
@@ -223,14 +223,6 @@ const Index = () => {
         />
       )}
 
-      {screen.type === 'dayDetail' && (
-        <DayDetail
-          date={screen.date}
-          template={screen.template}
-          onStartWorkout={startFromTemplate}
-          onBack={() => setScreen({ type: 'dashboard' })}
-        />
-      )}
     </div>
   );
 };
