@@ -1,7 +1,7 @@
 import React from 'react';
 import type { WorkoutTemplate, WorkoutProgram } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
-import { Dumbbell, ClipboardList, Calendar, ChevronRight } from 'lucide-react';
+import { Dumbbell, ClipboardList, Calendar, ChevronRight, Search } from 'lucide-react';
 
 interface StartWorkoutScreenProps {
   templates: WorkoutTemplate[];
@@ -9,11 +9,12 @@ interface StartWorkoutScreenProps {
   onBlankWorkout: () => void;
   onSelectTemplate: (template: WorkoutTemplate) => void;
   onStartProgramDay: (template: WorkoutTemplate) => void;
+  onBrowseExercises: () => void;
   onBack: () => void;
 }
 
 export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
-  templates, activeProgram, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
+  templates, activeProgram, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBrowseExercises, onBack,
 }) => {
   const dayOfWeek = new Date().getDay();
   const todayDay = activeProgram?.days[(dayOfWeek + 6) % 7];
@@ -41,6 +42,21 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
         <div className="flex-1">
           <h3 className="font-semibold text-foreground">Blank Workout</h3>
           <p className="text-xs text-muted-foreground mt-0.5">Start empty and add exercises as you go</p>
+        </div>
+        <ChevronRight className="w-5 h-5 text-muted-foreground" />
+      </button>
+
+      {/* Browse Exercises */}
+      <button
+        onClick={onBrowseExercises}
+        className="bg-card rounded-xl p-5 border border-border hover:border-primary/40 transition-colors flex items-center gap-4 text-left"
+      >
+        <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <Search className="w-6 h-6 text-primary" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-semibold text-foreground">Browse Exercises</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Search and filter the full exercise library</p>
         </div>
         <ChevronRight className="w-5 h-5 text-muted-foreground" />
       </button>
