@@ -423,7 +423,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 onExtend={extendTimer}
               />
             )}
-            <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'pl-2' : ''}`}>
+            <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
               <ExerciseTable
                 block={block}
                 blockIdx={blockIdx}
