@@ -1,6 +1,6 @@
 export type SetType = 'normal' | 'superset' | 'dropset' | 'failure';
 
-export type ExerciseId = 'squats' | 'pushups' | 'lunges' | 'bicep-curls' | 'shoulder-press';
+export type ExerciseId = string;
 
 export interface DropSegment {
   weight: number;
@@ -59,13 +59,12 @@ export interface WorkoutProgram {
   days: ProgramDay[];
 }
 
-export const EXERCISES: Record<ExerciseId, { name: string; icon: string }> = {
-  squats: { name: 'Squats', icon: '🏋️' },
-  pushups: { name: 'Push-Ups', icon: '💪' },
-  lunges: { name: 'Lunges', icon: '🦵' },
-  'bicep-curls': { name: 'Bicep Curls', icon: '💪' },
-  'shoulder-press': { name: 'Shoulder Press', icon: '🏋️' },
-};
+// Legacy lookup - now uses exercise database
+import { EXERCISE_DATABASE, getBodyPartIcon } from '@/data/exercises';
+
+export const EXERCISES: Record<string, { name: string; icon: string }> = Object.fromEntries(
+  EXERCISE_DATABASE.map(ex => [ex.id, { name: ex.name, icon: getBodyPartIcon(ex.primaryBodyPart) }])
+);
 
 export const SET_TYPE_CONFIG: Record<SetType, { label: string; colorClass: string }> = {
   normal: { label: 'Normal', colorClass: 'bg-set-normal' },

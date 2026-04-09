@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { Search } from 'lucide-react';
 import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
+import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 
 interface TemplateBuilderProps {
@@ -10,12 +13,21 @@ interface TemplateBuilderProps {
   onCancel: () => void;
 }
 
-const exerciseIds: ExerciseId[] = ['squats', 'pushups', 'lunges', 'bicep-curls', 'shoulder-press'];
 const setTypes: SetType[] = ['normal', 'superset', 'dropset', 'failure'];
 
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [exercises, setExercises] = useState<TemplateExercise[]>(initial?.exercises ?? []);
+  const [exerciseSearch, setExerciseSearch] = useState('');
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+
+  const filteredExercises = useMemo(() => {
+    if (!exerciseSearch) return EXERCISE_DATABASE.slice(0, 20);
+    return EXERCISE_DATABASE.filter(ex =>
+      ex.name.toLowerCase().includes(exerciseSearch.toLowerCase()) ||
+      ex.primaryBodyPart.toLowerCase().includes(exerciseSearch.toLowerCase())
+    ).slice(0, 20);
+  }, [exerciseSearch]);
 
   const addExercise = (id: ExerciseId) => {
     setExercises(prev => [...prev, {
@@ -125,15 +137,39 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSav
 
       {/* Add exercise */}
       <div className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">Add exercise:</p>
-        <div className="flex gap-2 flex-wrap">
-          {exerciseIds.map(id => (
-            <button key={id} onClick={() => addExercise(id)}
-              className="bg-secondary px-3 py-1.5 rounded-lg text-xs font-medium text-secondary-foreground hover:bg-secondary/80">
-              + {EXERCISES[id].name}
-            </button>
-          ))}
-        </div>
+        {!showExercisePicker ? (
+          <Button variant="outline" onClick={() => setShowExercisePicker(true)} className="w-full">
+            + Add Exercise
+          </Button>
+        ) : (
+          <div className="bg-card rounded-xl p-3 border border-border space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search exercises..."
+                value={exerciseSearch}
+                onChange={e => setExerciseSearch(e.target.value)}
+                className="pl-9 bg-secondary border-border text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-0.5">
+              {filteredExercises.map(ex => (
+                <button
+                  key={ex.id}
+                  onClick={() => { addExercise(ex.id); setShowExercisePicker(false); setExerciseSearch(''); }}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-secondary/80 transition-colors text-sm"
+                >
+                  <span className="text-foreground font-medium">{ex.name}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{ex.equipment} · {ex.primaryBodyPart}</span>
+                </button>
+              ))}
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => { setShowExercisePicker(false); setExerciseSearch(''); }} className="w-full text-xs">
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
 
       <Button variant="neon" onClick={save} disabled={!name.trim() || exercises.length === 0} className="w-full mt-2">
