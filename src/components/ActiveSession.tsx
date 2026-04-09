@@ -298,14 +298,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
       const lastSet = block.sets[block.sets.length - 1];
+      const normalCount = block.sets.filter(s => s.type !== 'warmup').length;
       return {
         ...block,
         sets: [...block.sets, {
-          setNumber: block.sets.length + 1,
+          setNumber: normalCount + 1,
           weight: lastSet?.weight ?? '',
           reps: lastSet?.reps ?? '',
           completed: false,
-          type: lastSet?.type ?? 'normal',
+          type: lastSet?.type === 'warmup' ? 'normal' : (lastSet?.type ?? 'normal'),
           rpe: '',
         }],
       };
