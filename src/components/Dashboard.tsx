@@ -74,9 +74,11 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
   const [weekOffset, setWeekOffset] = useState(0);
 
   const { weeklyData, weekLabel } = useMemo(() => {
-    const anchor = addDays(new Date(format(new Date(), 'yyyy-MM-dd') + 'T00:00:00'), weekOffset * 7);
-    const endStr = format(anchor, 'yyyy-MM-dd');
-    const startStr = format(addDays(anchor, -7), 'yyyy-MM-dd');
+    const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const weekStart = addDays(monday, weekOffset * 7);
+    const weekEnd = addDays(weekStart, 6);
+    const startStr = format(weekStart, 'yyyy-MM-dd');
+    const endStr = format(weekEnd, 'yyyy-MM-dd');
 
     const counts: Record<string, number> = {};
     let totalSets = 0;
@@ -94,10 +96,9 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
 
     const displayedSets = ALL_BODY_PARTS.reduce((sum, bp) => sum + (counts[bp] || 0), 0);
 
-    const startDate = addDays(anchor, -6);
-    const label = startDate.getMonth() === anchor.getMonth()
-      ? `${format(startDate, 'MMM d')} – ${format(anchor, 'd')}`
-      : `${format(startDate, 'MMM d')} – ${format(anchor, 'MMM d')}`;
+    const label = weekStart.getMonth() === weekEnd.getMonth()
+      ? `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'd')}`
+      : `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d')}`;
 
     return { weeklyData: { counts, totalSets, displayedSets }, weekLabel: label };
   }, [history, weekOffset]);
