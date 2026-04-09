@@ -750,6 +750,27 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           Add Exercise
         </button>
       </div>
+
+      {/* Discard confirmation dialog */}
+      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Workout</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to discard this workout? All progress will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={onCancel}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
