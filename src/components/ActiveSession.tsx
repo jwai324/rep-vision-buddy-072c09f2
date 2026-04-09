@@ -131,6 +131,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         completed: true,
         type: s.type,
         rpe: s.rpe?.toString() ?? '',
+        time: '',
       })),
     }));
   }, [editSession]);
@@ -154,6 +155,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           completed: false,
           type: tpl?.setType ?? 'normal',
           rpe: '',
+          time: '',
         })),
       };
     });
@@ -339,6 +341,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           completed: false,
           type: lastSet?.type === 'warmup' ? 'normal' : (lastSet?.type ?? 'normal'),
           rpe: '',
+          time: '',
         }],
       };
     }));
@@ -424,6 +427,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             completed: false,
             type: 'normal' as SetType,
             rpe: '',
+            time: '',
           })),
         }));
       return [...prev, ...newBlocks];
@@ -461,6 +465,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         completed: false,
         type: 'warmup' as SetType,
         rpe: '',
+        time: '',
       };
       const newSets = [warmupSet, ...block.sets].map((s, i) => ({
         ...s,
