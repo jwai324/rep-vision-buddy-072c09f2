@@ -6,6 +6,7 @@ import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
+import { FutureWorkoutsScreen } from '@/components/FutureWorkoutsScreen';
 import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
@@ -22,6 +23,7 @@ type Screen =
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession }
   | { type: 'history' }
+  | { type: 'futureWorkouts' }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
@@ -53,6 +55,7 @@ const Index = () => {
           templates={storage.templates}
           futureWorkouts={storage.futureWorkouts}
           onStartWorkout={() => setScreen({ type: 'startWorkout' })}
+          onGoToFutureWorkouts={() => setScreen({ type: 'futureWorkouts' })}
           onStartTemplate={startFromTemplate}
           onGoToHistory={() => setScreen({ type: 'history' })}
           onGoToTemplates={() => setScreen({ type: 'templates' })}
@@ -113,6 +116,15 @@ const Index = () => {
             setScreen({ type: 'dashboard' });
           }}
           onClose={() => setScreen({ type: 'dashboard' })}
+        />
+      )}
+
+      {screen.type === 'futureWorkouts' && (
+        <FutureWorkoutsScreen
+          futureWorkouts={storage.futureWorkouts}
+          templates={storage.templates}
+          onStartTemplate={startFromTemplate}
+          onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
 
