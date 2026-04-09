@@ -232,7 +232,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises
+  history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -284,7 +284,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <WeeklyProgramCalendar
           program={activeProgram}
           templates={templates}
-          onStartTemplate={onStartTemplate}
+          onDayClick={onDayClick}
         />
       )}
 

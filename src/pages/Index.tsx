@@ -57,6 +57,7 @@ const Index = () => {
           onGoToTemplates={() => setScreen({ type: 'templates' })}
           onGoToPrograms={() => setScreen({ type: 'programs' })}
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
+          onDayClick={(date, template) => setScreen({ type: 'dayDetail', date, template })}
         />
       )}
 
