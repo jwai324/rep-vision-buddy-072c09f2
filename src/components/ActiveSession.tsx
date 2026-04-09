@@ -1,16 +1,10 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { ExerciseId, ExerciseLog, SetType, WorkoutSet, WorkoutSession, DropSegment, TemplateExercise } from '@/types/workout';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import type { ExerciseId, ExerciseLog, SetType, WorkoutSet, WorkoutSession, TemplateExercise } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { CameraFeed } from '@/components/CameraFeed';
-import { WorkoutLog } from '@/components/WorkoutLog';
-import { RepCounterDisplay } from '@/components/RepCounterDisplay';
-import { SetTypeBadge } from '@/components/SetTypeBadge';
-import { RestTimerRing } from '@/components/RestTimerRing';
-import { RpeInput } from '@/components/RpeInput';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
-import { useRepCounter } from '@/hooks/useRepCounter';
-import { useRestTimer } from '@/hooks/useRestTimer';
 import { Button } from '@/components/ui/button';
+import { Check, Plus, MoreHorizontal } from 'lucide-react';
 
 interface ActiveSessionProps {
   exercises: ExerciseId[];
@@ -19,128 +13,138 @@ interface ActiveSessionProps {
   onCancel: () => void;
 }
 
+interface SetRow {
+  setNumber: number;
+  weight: string;
+  reps: string;
+  completed: boolean;
+  type: SetType;
+  rpe?: number;
+}
+
+interface ExerciseBlock {
+  exerciseId: ExerciseId;
+  exerciseName: string;
+  sets: SetRow[];
+}
+
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, onFinish, onCancel }) => {
-  const [activeExercises, setActiveExercises] = useState<ExerciseId[]>(initialExercises);
-  const [exerciseIndex, setExerciseIndex] = useState(0);
-  const [setIndex, setSetIndex] = useState(0);
-  const [setType, setSetType] = useState<SetType>('normal');
-  const [weight, setWeight] = useState<string>('');
-  const [rpe, setRpe] = useState<number | undefined>();
-  const [logs, setLogs] = useState<ExerciseLog[]>(initialExercises.map(id => ({ exerciseId: id, exerciseName: EXERCISES[id].name, sets: [] })));
-  const [phase, setPhase] = useState<'active' | 'rest' | 'rpe' | 'pickExercise'>('active');
-  const [dropSegments, setDropSegments] = useState<DropSegment[]>([]);
-  const [dropWeight, setDropWeight] = useState('');
+  const [blocks, setBlocks] = useState<ExerciseBlock[]>(() =>
+    initialExercises.map((id, idx) => {
+      const tpl = templateExercises?.[idx];
+      const numSets = tpl?.sets ?? 3;
+      return {
+        exerciseId: id,
+        exerciseName: EXERCISES[id]?.name ?? id,
+        sets: Array.from({ length: numSets }, (_, i) => ({
+          setNumber: i + 1,
+          weight: '',
+          reps: tpl?.targetReps === 'failure' ? '' : (tpl?.targetReps?.toString() ?? ''),
+          completed: false,
+          type: tpl?.setType ?? 'normal',
+        })),
+      };
+    })
+  );
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTime = useRef(Date.now());
 
-  const currentExercise = activeExercises[exerciseIndex];
-  const tplExercise = templateExercises?.[exerciseIndex];
-  const restSeconds = tplExercise?.restSeconds ?? 90;
-
-  const { reps, increment, reset: resetReps } = useRepCounter();
-  const restTimer = useRestTimer(restSeconds);
-
   useEffect(() => {
-    if (tplExercise) {
-      setSetType(tplExercise.setType);
-    }
-  }, [exerciseIndex, tplExercise]);
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTime.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
-  useEffect(() => {
-    if (phase === 'rest' && !restTimer.isActive && restTimer.remaining === 0) {
-      setPhase('rpe');
-    }
-  }, [phase, restTimer.isActive, restTimer.remaining]);
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
 
-  const endSet = useCallback(() => {
-    const newSet: WorkoutSet = {
-      setNumber: setIndex + 1,
-      type: setType,
-      reps,
-      weight: weight ? parseFloat(weight) : undefined,
-      drops: dropSegments.length > 0 ? dropSegments : undefined,
-    };
+  const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      return {
+        ...block,
+        sets: block.sets.map((set, si) => {
+          if (si !== setIdx) return set;
+          return { ...set, [field]: value };
+        }),
+      };
+    }));
+  }, []);
 
-    setLogs(prev => prev.map((log, i) =>
-      i === exerciseIndex ? { ...log, sets: [...log.sets, newSet] } : log
-    ));
+  const toggleSetComplete = useCallback((blockIdx: number, setIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      return {
+        ...block,
+        sets: block.sets.map((set, si) => {
+          if (si !== setIdx) return set;
+          return { ...set, completed: !set.completed };
+        }),
+      };
+    }));
+  }, []);
 
-    if (setType === 'superset' && exerciseIndex < activeExercises.length - 1) {
-      resetReps();
-      setExerciseIndex(prev => prev + 1);
-      setWeight('');
-      setDropSegments([]);
+  const addSet = useCallback((blockIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      const lastSet = block.sets[block.sets.length - 1];
+      return {
+        ...block,
+        sets: [...block.sets, {
+          setNumber: block.sets.length + 1,
+          weight: lastSet?.weight ?? '',
+          reps: lastSet?.reps ?? '',
+          completed: false,
+          type: lastSet?.type ?? 'normal',
+        }],
+      };
+    }));
+  }, []);
+
+  const addExercise = useCallback((id: ExerciseId) => {
+    const existing = blocks.find(b => b.exerciseId === id);
+    if (existing) {
+      setShowExercisePicker(false);
       return;
     }
-
-    setPhase('rest');
-    restTimer.start(restSeconds);
-    setDropSegments([]);
-  }, [reps, weight, setType, setIndex, exerciseIndex, activeExercises.length, resetReps, restTimer, restSeconds, dropSegments]);
-
-  const addDrop = useCallback(() => {
-    if (dropWeight && reps > 0) {
-      setDropSegments(prev => [...prev, { weight: parseFloat(dropWeight), reps }]);
-      resetReps();
-      setDropWeight('');
-    }
-  }, [dropWeight, reps, resetReps]);
-
-  const saveRpeAndContinue = useCallback(() => {
-    if (rpe !== undefined) {
-      setLogs(prev => prev.map((log, i) => {
-        if (i === exerciseIndex && log.sets.length > 0) {
-          const sets = [...log.sets];
-          sets[sets.length - 1] = { ...sets[sets.length - 1], rpe };
-          return { ...log, sets };
-        }
-        return log;
-      }));
-    }
-  }, [rpe, exerciseIndex]);
-
-  const nextSet = useCallback(() => {
-    saveRpeAndContinue();
-    setSetIndex(prev => prev + 1);
-    resetReps();
-    setWeight('');
-    setRpe(undefined);
-    setPhase('active');
-  }, [saveRpeAndContinue, resetReps]);
-
-  const switchExercise = useCallback((id: ExerciseId) => {
-    saveRpeAndContinue();
-    // Check if this exercise already exists in logs
-    const existingIndex = activeExercises.indexOf(id);
-    if (existingIndex >= 0) {
-      setExerciseIndex(existingIndex);
-      setSetIndex(logs[existingIndex]?.sets.length ?? 0);
-    } else {
-      // Add new exercise
-      setActiveExercises(prev => [...prev, id]);
-      setLogs(prev => [...prev, { exerciseId: id, exerciseName: EXERCISES[id].name, sets: [] }]);
-      setExerciseIndex(activeExercises.length);
-      setSetIndex(0);
-    }
-    resetReps();
-    setWeight('');
-    setRpe(undefined);
-    setPhase('active');
-  }, [saveRpeAndContinue, activeExercises, logs, resetReps]);
+    setBlocks(prev => [...prev, {
+      exerciseId: id,
+      exerciseName: EXERCISES[id]?.name ?? id,
+      sets: Array.from({ length: 3 }, (_, i) => ({
+        setNumber: i + 1,
+        weight: '',
+        reps: '',
+        completed: false,
+        type: 'normal' as SetType,
+      })),
+    }]);
+    setShowExercisePicker(false);
+  }, [blocks]);
 
   const finishWorkout = useCallback(() => {
-    const finalLogs = rpe !== undefined
-      ? logs.map((log, i) => {
-          if (i === exerciseIndex && log.sets.length > 0) {
-            const sets = [...log.sets];
-            sets[sets.length - 1] = { ...sets[sets.length - 1], rpe };
-            return { ...log, sets };
-          }
-          return log;
-        })
-      : logs;
-
     const duration = Math.floor((Date.now() - startTime.current) / 1000);
-    const allSets = finalLogs.flatMap(l => l.sets);
+    const exerciseLogs: ExerciseLog[] = blocks
+      .filter(b => b.sets.some(s => s.completed))
+      .map(b => ({
+        exerciseId: b.exerciseId,
+        exerciseName: b.exerciseName,
+        sets: b.sets
+          .filter(s => s.completed)
+          .map(s => ({
+            setNumber: s.setNumber,
+            type: s.type,
+            reps: parseInt(s.reps) || 0,
+            weight: s.weight ? parseFloat(s.weight) : undefined,
+            rpe: s.rpe,
+          })),
+      }));
+
+    const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
     const totalVolume = allSets.reduce((s, set) => s + set.reps * (set.weight ?? 0), 0);
     const rpeSets = allSets.filter(s => s.rpe !== undefined);
@@ -149,154 +153,158 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     onFinish({
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
-      exercises: finalLogs.filter(l => l.sets.length > 0),
+      exercises: exerciseLogs,
       duration,
       totalVolume,
       totalSets: allSets.length,
       totalReps,
       averageRpe,
     });
-  }, [logs, rpe, exerciseIndex, onFinish]);
+  }, [blocks, onFinish]);
 
-  const setTypes: SetType[] = ['normal', 'superset', 'dropset', 'failure'];
+  if (showExercisePicker) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <div className="p-4 pb-0">
+          <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
+        </div>
+        <ExerciseSelector onSelect={addExercise} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Workout Log */}
-      <WorkoutLog logs={logs} />
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 pb-2">
+        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        <Button variant="neon" size="sm" onClick={finishWorkout}>Finish</Button>
+      </div>
+
+      {/* Title + Timer */}
+      <div className="px-4 pb-3">
+        <h1 className="text-xl font-bold text-foreground">Workout</h1>
+        <p className="text-sm text-muted-foreground">{formatTime(elapsedSeconds)}</p>
+      </div>
 
       {/* Camera */}
-      <div className="p-4 pb-0">
+      <div className="px-4 pb-4">
         <CameraFeed />
       </div>
 
-      {/* Controls */}
-      <div className="flex-1 p-4 flex flex-col gap-3">
-        {phase === 'pickExercise' ? (
-          <>
-            <ExerciseSelector onSelect={switchExercise} />
-            <Button variant="outline" onClick={() => setPhase('active')} className="w-full">
-              Continue {EXERCISES[currentExercise].name}
-            </Button>
-          </>
-        ) : (
-          <>
-            {/* Exercise + Set info */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-foreground">
-                  {EXERCISES[currentExercise].icon} {EXERCISES[currentExercise].name}
-                </h2>
-                <p className="text-sm text-muted-foreground">Set {setIndex + 1}</p>
-              </div>
-              {tplExercise?.targetRpe && (
-                <span className="text-xs text-muted-foreground">Target RPE: {tplExercise.targetRpe}</span>
-              )}
-            </div>
+      {/* Exercise Blocks */}
+      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-6">
+        {blocks.map((block, blockIdx) => (
+          <ExerciseTable
+            key={block.exerciseId}
+            block={block}
+            blockIdx={blockIdx}
+            onUpdateSet={updateSet}
+            onToggleComplete={toggleSetComplete}
+            onAddSet={addSet}
+          />
+        ))}
 
-            {/* Set Type Selector */}
-            {phase === 'active' && (
-              <div className="flex gap-2 flex-wrap">
-                {setTypes.map(t => (
-                  <SetTypeBadge key={t} type={t} selected={setType === t} onClick={() => setSetType(t)} />
-                ))}
-              </div>
-            )}
-
-            {/* Weight input */}
-            {phase === 'active' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  placeholder="Weight (lbs)"
-                  value={weight}
-                  onChange={e => setWeight(e.target.value)}
-                  className="flex-1 bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-            )}
-
-            {/* Rep Counter or Rest Timer */}
-            {phase === 'active' && (
-              <>
-                <RepCounterDisplay reps={reps} />
-                <Button variant="simulate" size="lg" onClick={increment} className="w-full text-lg">
-                  ⚡ Simulate Rep
-                </Button>
-
-                {setType === 'dropset' && reps > 0 && (
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      placeholder="Drop weight"
-                      value={dropWeight}
-                      onChange={e => setDropWeight(e.target.value)}
-                      className="flex-1 bg-secondary rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary"
-                    />
-                    <Button variant="outline" onClick={addDrop}>Add Drop</Button>
-                  </div>
-                )}
-
-                {dropSegments.length > 0 && (
-                  <div className="flex gap-1 flex-wrap">
-                    {dropSegments.map((d, i) => (
-                      <span key={i} className="text-xs bg-set-dropset/20 text-set-dropset px-2 py-1 rounded">
-                        {d.weight}lbs × {d.reps}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <Button variant="neon" size="lg" onClick={endSet} className="w-full">
-                  End Set
-                </Button>
-              </>
-            )}
-
-            {phase === 'rest' && restTimer.isActive && (
-              <RestTimerRing
-                remaining={restTimer.remaining}
-                progress={restTimer.progress}
-                onSkip={restTimer.skip}
-                onExtend={() => restTimer.extend(30)}
-              />
-            )}
-
-            {phase === 'rpe' && (
-              <>
-                <RpeInput value={rpe} onChange={setRpe} />
-                <div className="flex gap-2">
-                  <Button variant="neon" onClick={nextSet} className="flex-1">
-                    Next Set
-                  </Button>
-                  <Button variant="outline" onClick={() => {
-                    saveRpeAndContinue();
-                    setPhase('pickExercise');
-                  }} className="flex-1">
-                    Switch Exercise
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {/* Bottom actions */}
-            <div className="flex gap-2 mt-auto pt-2">
-              {phase === 'active' && (
-                <Button variant="outline" className="flex-1" onClick={() => setPhase('pickExercise')}>
-                  Switch Exercise
-                </Button>
-              )}
-              <Button variant="secondary" className="flex-1" onClick={finishWorkout}>
-                Finish Workout
-              </Button>
-            </div>
-
-            <button onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground text-center py-2">
-              Cancel Workout
-            </button>
-          </>
-        )}
+        {/* Add Exercise */}
+        <button
+          onClick={() => setShowExercisePicker(true)}
+          className="w-full py-3 rounded-lg border border-dashed border-muted-foreground/30 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Add Exercise
+        </button>
       </div>
+    </div>
+  );
+};
+
+/* ---------- Exercise Table Sub-component ---------- */
+
+interface ExerciseTableProps {
+  block: ExerciseBlock;
+  blockIdx: number;
+  onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
+  onToggleComplete: (blockIdx: number, setIdx: number) => void;
+  onAddSet: (blockIdx: number) => void;
+}
+
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdateSet, onToggleComplete, onAddSet }) => {
+  return (
+    <div>
+      {/* Exercise Header */}
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
+        <button className="text-muted-foreground hover:text-foreground p-1">
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Table Header */}
+      <div className="grid grid-cols-[40px_1fr_1fr_1fr_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+        <span>Set</span>
+        <span className="text-center">Previous</span>
+        <span className="text-center">lbs</span>
+        <span className="text-center">Reps</span>
+        <span className="text-center">
+          <Check className="w-3 h-3 mx-auto" />
+        </span>
+      </div>
+
+      {/* Set Rows */}
+      {block.sets.map((set, setIdx) => (
+        <div
+          key={setIdx}
+          className={`grid grid-cols-[40px_1fr_1fr_1fr_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+            set.completed ? 'bg-primary/10' : ''
+          }`}
+        >
+          {/* Set Number */}
+          <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+
+          {/* Previous */}
+          <span className="text-xs text-muted-foreground text-center">—</span>
+
+          {/* Weight */}
+          <input
+            type="number"
+            inputMode="decimal"
+            value={set.weight}
+            onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+            placeholder="—"
+            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary"
+          />
+
+          {/* Reps */}
+          <input
+            type="number"
+            inputMode="numeric"
+            value={set.reps}
+            onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+            placeholder="—"
+            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary"
+          />
+
+          {/* Check */}
+          <button
+            onClick={() => onToggleComplete(blockIdx, setIdx)}
+            className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+              set.completed
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Check className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+
+      {/* Add Set */}
+      <button
+        onClick={() => onAddSet(blockIdx)}
+        className="w-full py-2 mt-1 rounded-md bg-secondary/40 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+      >
+        + Add Set
+      </button>
     </div>
   );
 };
