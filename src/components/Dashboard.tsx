@@ -155,11 +155,10 @@ const WeeklyProgramCalendar: React.FC<{
   onStartTemplate: (template: WorkoutTemplate) => void;
 }> = ({ program, templates, onStartTemplate }) => {
   const today = new Date();
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
 
   const weekDays = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  }, [weekStart]);
+    return Array.from({ length: 7 }, (_, i) => addDays(today, i));
+  }, [today]);
 
   const events = useMemo(() => buildProgramEvents(program), [program]);
 
@@ -169,8 +168,6 @@ const WeeklyProgramCalendar: React.FC<{
       return { date: day, events: dayEvents };
     });
   }, [weekDays, events]);
-
-  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
