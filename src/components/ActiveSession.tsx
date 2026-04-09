@@ -554,11 +554,22 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, stickyNo
           }`}
         >
           <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-          <span className="text-xs text-muted-foreground text-center truncate">
-            {previousSets[setIdx]
-              ? `${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`
-              : '—'}
-          </span>
+          {previousSets[setIdx] ? (
+            <button
+              type="button"
+              onClick={() => {
+                const prev = previousSets[setIdx];
+                if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
+                onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
+              }}
+              className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
+              title="Tap to copy to current set"
+            >
+              {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground text-center">—</span>
+          )}
           <input
             type="number"
             inputMode="decimal"
