@@ -99,7 +99,7 @@ const Index = () => {
       )}
 
       {screen.type === 'browseExercises' && (
-        <BrowseExercisesScreen onBack={() => setScreen({ type: 'dashboard' })} history={storage.history} />
+        <BrowseExercisesScreen onBack={() => setScreen({ type: 'dashboard' })} history={storage.history} weightUnit={storage.preferences.weightUnit} />
       )}
 
       {screen.type === 'activeSession' && (

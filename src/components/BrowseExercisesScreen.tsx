@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
+import type { WeightUnit } from '@/hooks/useStorage';
 
 interface BrowseExercisesScreenProps {
   onBack: () => void;
   history: WorkoutSession[];
+  weightUnit?: WeightUnit;
 }
 
-export const BrowseExercisesScreen: React.FC<BrowseExercisesScreenProps> = ({ onBack, history }) => {
+export const BrowseExercisesScreen: React.FC<BrowseExercisesScreenProps> = ({ onBack, history, weightUnit = 'kg' }) => {
   const [selectedExercise, setSelectedExercise] = useState<ExerciseId | null>(null);
 
   return (
