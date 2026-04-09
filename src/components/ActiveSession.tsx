@@ -425,7 +425,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const finishWorkout = useCallback(() => {
-    const duration = Math.floor((Date.now() - startTime.current) / 1000);
     const exerciseLogs: ExerciseLog[] = blocks
       .filter(b => b.sets.some(s => s.completed))
       .map(b => ({
@@ -448,9 +447,25 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const rpeSets = allSets.filter(s => s.rpe !== undefined);
     const averageRpe = rpeSets.length > 0 ? rpeSets.reduce((s, set) => s + (set.rpe ?? 0), 0) / rpeSets.length : undefined;
 
+    let sessionDate: string;
+    let duration: number;
+
+    if (isEditMode && editSession) {
+      // Use edited date/time
+      sessionDate = editDate && editTime
+        ? new Date(`${editDate}T${editTime}`).toISOString()
+        : editDate
+          ? new Date(`${editDate}T00:00:00`).toISOString()
+          : editSession.date;
+      duration = editDurationMin ? parseInt(editDurationMin) * 60 : editSession.duration;
+    } else {
+      sessionDate = new Date().toISOString();
+      duration = Math.floor((Date.now() - startTime.current) / 1000);
+    }
+
     onFinish({
-      id: crypto.randomUUID(),
-      date: new Date().toISOString(),
+      id: isEditMode && editSession ? editSession.id : crypto.randomUUID(),
+      date: sessionDate,
       exercises: exerciseLogs,
       duration,
       totalVolume,
@@ -458,7 +473,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalReps,
       averageRpe,
     });
-  }, [blocks, onFinish]);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin]);
 
   if (showSupersetLinker) {
     return (
