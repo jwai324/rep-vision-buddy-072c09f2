@@ -137,15 +137,39 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSav
 
       {/* Add exercise */}
       <div className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">Add exercise:</p>
-        <div className="flex gap-2 flex-wrap">
-          {exerciseIds.map(id => (
-            <button key={id} onClick={() => addExercise(id)}
-              className="bg-secondary px-3 py-1.5 rounded-lg text-xs font-medium text-secondary-foreground hover:bg-secondary/80">
-              + {EXERCISES[id].name}
-            </button>
-          ))}
-        </div>
+        {!showExercisePicker ? (
+          <Button variant="outline" onClick={() => setShowExercisePicker(true)} className="w-full">
+            + Add Exercise
+          </Button>
+        ) : (
+          <div className="bg-card rounded-xl p-3 border border-border space-y-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search exercises..."
+                value={exerciseSearch}
+                onChange={e => setExerciseSearch(e.target.value)}
+                className="pl-9 bg-secondary border-border text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-0.5">
+              {filteredExercises.map(ex => (
+                <button
+                  key={ex.id}
+                  onClick={() => { addExercise(ex.id); setShowExercisePicker(false); setExerciseSearch(''); }}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-secondary/80 transition-colors text-sm"
+                >
+                  <span className="text-foreground font-medium">{ex.name}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{ex.equipment} · {ex.primaryBodyPart}</span>
+                </button>
+              ))}
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => { setShowExercisePicker(false); setExerciseSearch(''); }} className="w-full text-xs">
+              Cancel
+            </Button>
+          </div>
+        )}
       </div>
 
       <Button variant="neon" onClick={save} disabled={!name.trim() || exercises.length === 0} className="w-full mt-2">
