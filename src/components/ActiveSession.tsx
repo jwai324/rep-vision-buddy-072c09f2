@@ -161,6 +161,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
 
