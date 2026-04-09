@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStorage } from '@/hooks/useStorage';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
-import { ActiveSession } from '@/components/ActiveSession';
+import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
@@ -37,7 +37,12 @@ type Screen =
 
 const Index = () => {
   const storage = useStorage();
-  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  // Check for cached active session on mount
+  const [screen, setScreen] = useState<Screen>(() => {
+    const cached = getSessionCache();
+    if (cached) return { type: 'activeSession', exercises: [] };
+    return { type: 'dashboard' };
+  });
 
   if (storage.loading) {
     return (
@@ -106,14 +111,15 @@ const Index = () => {
       )}
 
       {screen.type === 'activeSession' && (
-        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => setScreen({ type: 'dashboard' })}>
+        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}>
           <ActiveSession
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
+            cachedSession={getSessionCache()}
             onFinish={(session) => setScreen({ type: 'summary', session })}
-            onCancel={() => setScreen({ type: 'dashboard' })}
+            onCancel={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
           />
         </ErrorBoundary>
       )}
@@ -124,10 +130,12 @@ const Index = () => {
           weightUnit={storage.preferences.weightUnit}
           onSave={() => {
             storage.saveSession(screen.session);
+            clearSessionCache();
             setScreen({ type: 'dashboard' });
           }}
           onSaveAsTemplate={() => {
             storage.saveSession(screen.session);
+            clearSessionCache();
             // Auto-create template from session
             const template: WorkoutTemplate = {
               id: crypto.randomUUID(),
@@ -143,7 +151,7 @@ const Index = () => {
             storage.saveTemplate(template);
             setScreen({ type: 'dashboard' });
           }}
-          onClose={() => setScreen({ type: 'dashboard' })}
+          onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
         />
       )}
 
