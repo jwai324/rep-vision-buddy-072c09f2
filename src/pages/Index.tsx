@@ -6,10 +6,9 @@ import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
-import { FutureWorkoutsScreen } from '@/components/FutureWorkoutsScreen';
+import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
 import { CalendarDayDetail } from '@/components/CalendarDayDetail';
-import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
@@ -23,10 +22,9 @@ type Screen =
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
-  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'history' }
-  | { type: 'history' }
-  | { type: 'futureWorkouts' }
-  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'list' }
+  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'activity' }
+  | { type: 'activity'; initialTab?: 'history' | 'future' }
+  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'activity' }
   | { type: 'calendarDay'; date: string }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
@@ -58,9 +56,9 @@ const Index = () => {
           templates={storage.templates}
           futureWorkouts={storage.futureWorkouts}
           onStartWorkout={() => setScreen({ type: 'startWorkout' })}
-          onGoToFutureWorkouts={() => setScreen({ type: 'futureWorkouts' })}
+          onGoToFutureWorkouts={() => setScreen({ type: 'activity', initialTab: 'future' })}
           onStartTemplate={startFromTemplate}
-          onGoToHistory={() => setScreen({ type: 'history' })}
+          onGoToHistory={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onGoToTemplates={() => setScreen({ type: 'templates' })}
           onGoToPrograms={() => setScreen({ type: 'programs' })}
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
@@ -125,12 +123,15 @@ const Index = () => {
         />
       )}
 
-      {screen.type === 'futureWorkouts' && (
-        <FutureWorkoutsScreen
+      {screen.type === 'activity' && (
+        <ActivityScreen
+          history={storage.history}
           futureWorkouts={storage.futureWorkouts}
           templates={storage.templates}
-          onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'list' })}
+          onSelectSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'activity' })}
+          onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'activity' })}
           onBack={() => setScreen({ type: 'dashboard' })}
+          initialTab={screen.initialTab}
         />
       )}
 
@@ -157,15 +158,15 @@ const Index = () => {
                 recoveryActivities: restFw.recoveryActivities,
               };
               storage.saveSession(session);
-              setScreen(screen.from === 'list'
-                ? { type: 'futureWorkouts' }
+              setScreen(screen.from === 'activity'
+                ? { type: 'activity', initialTab: 'future' }
                 : screen.from === 'calendar'
                   ? { type: 'calendarDay', date: restFw.date }
                   : { type: 'dashboard' });
             }}
             onBack={() => setScreen(
-              screen.from === 'list'
-                ? { type: 'futureWorkouts' }
+              screen.from === 'activity'
+                ? { type: 'activity', initialTab: 'future' }
                 : screen.from === 'calendar'
                   ? { type: 'calendarDay', date: fw.date }
                   : { type: 'dashboard' }
@@ -201,20 +202,12 @@ const Index = () => {
         );
       })()}
 
-      {screen.type === 'history' && (
-        <WorkoutHistory
-          sessions={storage.history}
-          onSelectSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'history' })}
-          onBack={() => setScreen({ type: 'dashboard' })}
-        />
-      )}
-
       {screen.type === 'sessionDetail' && (
         <SessionSummary
           session={screen.session}
-          onSave={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'history' })}
-          onSaveAsTemplate={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'history' })}
-          onClose={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'history' })}
+          onSave={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
+          onSaveAsTemplate={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
+          onClose={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
         />
       )}
 

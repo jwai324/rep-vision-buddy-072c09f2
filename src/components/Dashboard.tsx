@@ -359,22 +359,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onViewAll={onGoToHistory}
       />
 
-      {/* Future Workouts button */}
-      {futureWorkouts.filter(fw => fw.templateId !== 'rest').length > 0 && (
-        <button
-          onClick={onGoToFutureWorkouts}
-          className="w-full bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors flex items-center gap-3"
-        >
-          <span className="text-2xl">🗓️</span>
-          <div className="flex-1 text-left">
-            <h3 className="text-sm font-semibold text-foreground">Future Workouts</h3>
-            <p className="text-xs text-muted-foreground">
-              {futureWorkouts.filter(fw => fw.templateId !== 'rest').length} upcoming workouts
-            </p>
-          </div>
-          <span className="text-muted-foreground">→</span>
-        </button>
-      )}
+      {/* Activity button */}
+      <button
+        onClick={onGoToFutureWorkouts}
+        className="w-full bg-card rounded-xl p-4 border border-border hover:border-primary/30 transition-colors flex items-center gap-3"
+      >
+        <span className="text-2xl">📋</span>
+        <div className="flex-1 text-left">
+          <h3 className="text-sm font-semibold text-foreground">Activity</h3>
+          <p className="text-xs text-muted-foreground">
+            {futureWorkouts.filter(fw => fw.templateId !== 'rest').length} upcoming · {history.filter(s => !s.isRestDay).length} completed
+          </p>
+        </div>
+        <span className="text-muted-foreground">→</span>
+      </button>
 
       {/* Weekly Sets by Body Part */}
       <WeeklySetsByBodyPart history={history} />
@@ -388,7 +386,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {[
           { label: 'Templates', icon: '📋', onClick: onGoToTemplates },
           { label: 'Programs', icon: '📅', onClick: onGoToPrograms },
-          { label: 'History', icon: '📊', onClick: onGoToHistory },
+          { label: 'Activity', icon: '📊', onClick: onGoToHistory },
           { label: 'Exercises', icon: '🔍', onClick: onBrowseExercises },
         ].map(item => (
           <button
