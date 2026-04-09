@@ -1,0 +1,144 @@
+import React, { useState } from 'react';
+import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
+import { EXERCISES } from '@/types/workout';
+import { Button } from '@/components/ui/button';
+import { SetTypeBadge } from '@/components/SetTypeBadge';
+
+interface TemplateBuilderProps {
+  initial?: WorkoutTemplate;
+  onSave: (template: WorkoutTemplate) => void;
+  onCancel: () => void;
+}
+
+const exerciseIds: ExerciseId[] = ['squats', 'pushups', 'lunges', 'bicep-curls', 'shoulder-press'];
+const setTypes: SetType[] = ['normal', 'superset', 'dropset', 'failure'];
+
+export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, onSave, onCancel }) => {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [exercises, setExercises] = useState<TemplateExercise[]>(initial?.exercises ?? []);
+
+  const addExercise = (id: ExerciseId) => {
+    setExercises(prev => [...prev, {
+      exerciseId: id,
+      sets: 3,
+      targetReps: 10,
+      setType: 'normal',
+      restSeconds: 90,
+    }]);
+  };
+
+  const updateExercise = (index: number, update: Partial<TemplateExercise>) => {
+    setExercises(prev => prev.map((e, i) => i === index ? { ...e, ...update } : e));
+  };
+
+  const removeExercise = (index: number) => {
+    setExercises(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const moveExercise = (from: number, to: number) => {
+    if (to < 0 || to >= exercises.length) return;
+    setExercises(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  };
+
+  const save = () => {
+    if (!name.trim() || exercises.length === 0) return;
+    onSave({
+      id: initial?.id ?? crypto.randomUUID(),
+      name: name.trim(),
+      exercises,
+    });
+  };
+
+  return (
+    <div className="p-4 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-foreground">{initial ? 'Edit' : 'New'} Template</h2>
+        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+      </div>
+
+      <input
+        type="text"
+        placeholder="Template name..."
+        value={name}
+        onChange={e => setName(e.target.value)}
+        className="bg-secondary rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary font-medium"
+      />
+
+      {/* Exercises */}
+      {exercises.map((ex, i) => (
+        <div key={i} className="bg-card rounded-xl p-4 border border-border flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-foreground">{EXERCISES[ex.exerciseId].icon} {EXERCISES[ex.exerciseId].name}</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => moveExercise(i, i - 1)} className="text-muted-foreground hover:text-foreground text-xs px-1">↑</button>
+              <button onClick={() => moveExercise(i, i + 1)} className="text-muted-foreground hover:text-foreground text-xs px-1">↓</button>
+              <button onClick={() => removeExercise(i)} className="text-set-failure hover:opacity-80 text-xs px-1">✕</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Sets</label>
+              <input type="number" value={ex.sets} min={1} onChange={e => updateExercise(i, { sets: parseInt(e.target.value) || 1 })}
+                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Target Reps</label>
+              <input
+                type={ex.targetReps === 'failure' ? 'text' : 'number'}
+                value={ex.targetReps === 'failure' ? 'Failure' : ex.targetReps}
+                readOnly={ex.targetReps === 'failure'}
+                onChange={e => updateExercise(i, { targetReps: parseInt(e.target.value) || 1 })}
+                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Rest (sec)</label>
+              <input type="number" value={ex.restSeconds} min={0} step={15} onChange={e => updateExercise(i, { restSeconds: parseInt(e.target.value) || 0 })}
+                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none" />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Target RPE</label>
+              <input type="number" value={ex.targetRpe ?? ''} min={1} max={10} placeholder="–" onChange={e => updateExercise(i, { targetRpe: e.target.value ? parseInt(e.target.value) : undefined })}
+                className="w-full bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none" />
+            </div>
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            {setTypes.map(t => (
+              <SetTypeBadge
+                key={t} type={t} selected={ex.setType === t}
+                onClick={() => updateExercise(i, {
+                  setType: t,
+                  targetReps: t === 'failure' ? 'failure' : (ex.targetReps === 'failure' ? 10 : ex.targetReps),
+                })}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Add exercise */}
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-muted-foreground">Add exercise:</p>
+        <div className="flex gap-2 flex-wrap">
+          {exerciseIds.map(id => (
+            <button key={id} onClick={() => addExercise(id)}
+              className="bg-secondary px-3 py-1.5 rounded-lg text-xs font-medium text-secondary-foreground hover:bg-secondary/80">
+              + {EXERCISES[id].name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Button variant="neon" onClick={save} disabled={!name.trim() || exercises.length === 0} className="w-full mt-2">
+        Save Template
+      </Button>
+    </div>
+  );
+};
