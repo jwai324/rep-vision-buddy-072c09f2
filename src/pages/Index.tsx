@@ -53,6 +53,7 @@ const Index = () => {
           onGoToHistory={() => setScreen({ type: 'history' })}
           onGoToTemplates={() => setScreen({ type: 'templates' })}
           onGoToPrograms={() => setScreen({ type: 'programs' })}
+          onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
         />
       )}
 
