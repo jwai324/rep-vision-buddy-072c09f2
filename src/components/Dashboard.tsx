@@ -25,16 +25,18 @@ interface DashboardProps {
 function getStreak(sessions: WorkoutSession[]): number {
   if (sessions.length === 0) return 0;
   let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // Build a set of workout date strings for fast lookup
+  const workoutDates = new Set(
+    sessions.map(s => s.date.length >= 10 ? s.date.substring(0, 10) : format(new Date(s.date), 'yyyy-MM-dd'))
+  );
 
   for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dayStr = d.toDateString();
-    const hasWorkout = sessions.some(s => new Date(s.date).toDateString() === dayStr);
-    if (hasWorkout) streak++;
-    else if (i > 0) break; // Allow today to not have a workout yet
+    const d = addDays(new Date(today + 'T00:00:00'), -i);
+    const dayStr = format(d, 'yyyy-MM-dd');
+    if (workoutDates.has(dayStr)) streak++;
+    else if (i > 0) break;
     else continue;
   }
   return streak;
@@ -66,16 +68,15 @@ const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All');
 
 const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
   const weeklyData = useMemo(() => {
-    const now = new Date();
-    const weekAgo = new Date(now);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    weekAgo.setHours(0, 0, 0, 0);
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const weekAgoStr = format(addDays(new Date(todayStr + 'T00:00:00'), -7), 'yyyy-MM-dd');
 
     const counts: Record<string, number> = {};
     let totalSets = 0;
 
     for (const session of history) {
-      if (new Date(session.date) < weekAgo) continue;
+      const sessionDate = session.date.length >= 10 ? session.date.substring(0, 10) : format(new Date(session.date), 'yyyy-MM-dd');
+      if (sessionDate < weekAgoStr) continue;
       for (const ex of session.exercises) {
         const bodyPart = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
         const setCount = ex.sets.length;
