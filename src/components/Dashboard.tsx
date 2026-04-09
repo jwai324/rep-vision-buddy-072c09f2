@@ -93,8 +93,8 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
           const sets = weeklyData.counts[bp] || 0;
           return (
             <div key={bp} className="flex items-center justify-between">
-              <span className={`text-xs truncate ${sets > 0 ? 'text-foreground' : 'text-muted-foreground/50'}`}>{bp}</span>
-              <span className={`text-xs font-mono font-bold ml-1 ${sets > 0 ? 'text-primary' : 'text-muted-foreground/30'}`}>{sets}</span>
+              <span className="text-xs truncate text-foreground">{bp}</span>
+              <span className="text-xs font-mono font-bold ml-1 text-primary">{sets}</span>
             </div>
           );
         })}
