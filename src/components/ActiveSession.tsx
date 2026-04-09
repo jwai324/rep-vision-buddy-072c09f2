@@ -292,6 +292,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       case 'Create Superset':
         setShowSupersetLinker(true);
         break;
+      case 'Create Drop Set': {
+        const lastSetIdx = blocks[blockIdx].sets.length - 1;
+        if (lastSetIdx >= 0) addDrop(blockIdx, lastSetIdx);
+        break;
+      }
       case 'Remove Exercise':
         removeExercise(blockIdx);
         break;
