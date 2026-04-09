@@ -799,22 +799,27 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, 
                   </span>
                   <span className="text-xs text-muted-foreground text-center">—</span>
                   <input
+                    id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)}
                     type="number"
                     inputMode="decimal"
                     value={drop.weight}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)}
                     placeholder="—"
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
                   <input
+                    id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)}
                     type="number"
                     inputMode="numeric"
                     value={drop.reps}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps', dropIdx)}
                     placeholder="—"
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
                   <input
+                    id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)}
                     type="number"
                     inputMode="decimal"
                     min="1"
@@ -822,6 +827,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, blocks, 
                     step="0.5"
                     value={drop.rpe}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe', dropIdx)}
                     placeholder="—"
                     className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
