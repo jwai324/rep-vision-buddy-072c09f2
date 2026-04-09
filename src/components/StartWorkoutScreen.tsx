@@ -9,6 +9,7 @@ interface StartWorkoutScreenProps {
   onBlankWorkout: () => void;
   onSelectTemplate: (template: WorkoutTemplate) => void;
   onStartProgramDay: (template: WorkoutTemplate) => void;
+  onBrowseExercises: () => void;
   onBack: () => void;
 }
 
