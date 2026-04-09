@@ -86,8 +86,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [restRecords, setRestRecords] = useState<Record<string, number>>({});
   const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
-
   const startTimer = useCallback((id: TimerId, duration: number) => {
     // Cancel any existing timer
     if (timerInterval.current) clearInterval(timerInterval.current);
