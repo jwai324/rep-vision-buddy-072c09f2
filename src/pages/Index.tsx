@@ -200,9 +200,14 @@ const Index = () => {
         <SessionSummary
           session={screen.session}
           weightUnit={storage.preferences.weightUnit}
+          isViewMode
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onDelete={(id) => {
+            storage.deleteSession(id);
+            setScreen({ type: 'activity', initialTab: 'history' });
+          }}
         />
       )}
 
