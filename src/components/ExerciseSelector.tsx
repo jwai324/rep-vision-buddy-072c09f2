@@ -269,7 +269,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
                           </div>
                         </div>
                       </div>
-                      {!multiSelect && (
+                      {!multiSelect && !browseMode && (
                         <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium">
                           + Add
                         </span>
