@@ -1065,25 +1065,16 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   placeholder="—"
                   className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                 />
-                {(() => {
-                  const setTimerId: TimerId = { type: 'set', blockIdx, setIdx };
-                  const key = timerIdKey(setTimerId);
-                  const isSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === key;
-                  return (
-                    <ExerciseRestTimer
-                      timerId={setTimerId}
-                      defaultDuration={block.restSeconds}
-                      variant="inline"
-                      isActive={isSetActive}
-                      remaining={isSetActive ? activeTimer!.remaining : 0}
-                      totalDuration={isSetActive ? activeTimer!.duration : 0}
-                      recordedRest={restRecords[key] ?? null}
-                      onStart={onStartTimer}
-                      onSkip={onSkipTimer}
-                      onExtend={onExtendTimer}
-                    />
-                  );
-                })()}
+                <input
+                  id={buildInputId(blockIdx, setIdx, 'time')}
+                  type="text"
+                  inputMode="numeric"
+                  value={set.time}
+                  onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
+                  onFocus={e => e.target.value && e.target.select()}
+                  placeholder="—"
+                  className="w-full text-center text-[10px] bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary font-mono"
+                />
                 <button
                   onClick={() => onToggleComplete(blockIdx, setIdx)}
                   className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
