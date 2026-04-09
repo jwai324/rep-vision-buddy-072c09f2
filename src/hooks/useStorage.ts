@@ -130,7 +130,7 @@ export interface UserProfile {
   displayName: string | null;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'kg', defaultRestSeconds: 90 };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90 };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 export function useStorage() {
