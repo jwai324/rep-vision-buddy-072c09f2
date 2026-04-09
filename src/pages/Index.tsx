@@ -8,7 +8,7 @@ import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
-import { CalendarDayDetail } from '@/components/CalendarDayDetail';
+
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
@@ -22,10 +22,9 @@ type Screen =
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
-  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'activity' }
-  | { type: 'activity'; initialTab?: 'history' | 'future' }
-  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'activity' }
-  | { type: 'calendarDay'; date: string }
+  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'activity' }
+  | { type: 'activity'; initialTab?: 'history' | 'future'; filterDate?: string }
+  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'activity' }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
@@ -64,7 +63,8 @@ const Index = () => {
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
           onDayClick={(date) => {
             const dateStr = format(date, 'yyyy-MM-dd');
-            setScreen({ type: 'calendarDay', date: dateStr });
+            const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
+            setScreen({ type: 'activity', initialTab: isPast ? 'history' : 'future', filterDate: dateStr });
           }}
         />
       )}
@@ -132,6 +132,7 @@ const Index = () => {
           onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'activity' })}
           onBack={() => setScreen({ type: 'dashboard' })}
           initialTab={screen.initialTab}
+          filterDate={screen.filterDate}
         />
       )}
 
@@ -160,44 +161,13 @@ const Index = () => {
               storage.saveSession(session);
               setScreen(screen.from === 'activity'
                 ? { type: 'activity', initialTab: 'future' }
-                : screen.from === 'calendar'
-                  ? { type: 'calendarDay', date: restFw.date }
-                  : { type: 'dashboard' });
+                : { type: 'dashboard' });
             }}
             onBack={() => setScreen(
               screen.from === 'activity'
                 ? { type: 'activity', initialTab: 'future' }
-                : screen.from === 'calendar'
-                  ? { type: 'calendarDay', date: fw.date }
-                  : { type: 'dashboard' }
+                : { type: 'dashboard' }
             )}
-          />
-        );
-      })()}
-
-      {screen.type === 'calendarDay' && (() => {
-        const dateStr = screen.date;
-        const pastSessions = storage.history.filter(s => s.date.startsWith(dateStr));
-        const fws = storage.futureWorkouts.filter(f => f.date === dateStr);
-        return (
-          <CalendarDayDetail
-            date={dateStr}
-            pastSessions={pastSessions}
-            futureWorkouts={fws}
-            templates={storage.templates}
-            onViewSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'calendar' })}
-            onViewFutureWorkout={(selectedFw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: selectedFw, from: 'calendar' })}
-            onAddRestDay={(d) => {
-              const restFw: FutureWorkout = {
-                id: 'temp-' + d,
-                programId: '',
-                date: d,
-                templateId: 'rest',
-                label: 'Rest Day',
-              };
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
-            }}
-            onBack={() => setScreen({ type: 'dashboard' })}
           />
         );
       })()}
@@ -205,9 +175,9 @@ const Index = () => {
       {screen.type === 'sessionDetail' && (
         <SessionSummary
           session={screen.session}
-          onSave={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
-          onSaveAsTemplate={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
-          onClose={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
+          onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onSaveAsTemplate={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
         />
       )}
 

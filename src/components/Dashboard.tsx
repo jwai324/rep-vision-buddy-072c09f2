@@ -159,8 +159,7 @@ const WeeklyProgramCalendar: React.FC<{
   history: WorkoutSession[];
   futureWorkouts: FutureWorkout[];
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
-  onViewAll: () => void;
-}> = ({ program, templates, history, futureWorkouts, onDayClick, onViewAll }) => {
+}> = ({ program, templates, history, futureWorkouts, onDayClick }) => {
   const today = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -281,22 +280,16 @@ const WeeklyProgramCalendar: React.FC<{
           );
         })}
       </div>
-      <div className="flex items-center justify-between mt-2">
-        {weekOffset !== 0 ? (
+      {weekOffset !== 0 && (
+        <div className="flex justify-start mt-2">
           <button
             onClick={() => setWeekOffset(0)}
             className="text-[10px] text-primary font-medium hover:underline"
           >
             Back to this week
           </button>
-        ) : <span />}
-        <button
-          onClick={onViewAll}
-          className="text-[10px] text-primary font-medium hover:underline"
-        >
-          View All →
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -356,7 +349,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         history={history}
         futureWorkouts={futureWorkouts}
         onDayClick={onDayClick}
-        onViewAll={onGoToHistory}
       />
 
       {/* Activity button */}
