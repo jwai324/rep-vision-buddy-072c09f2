@@ -1,5 +1,6 @@
 import React from 'react';
 import type { WorkoutSession, FutureWorkout, WorkoutTemplate } from '@/types/workout';
+import type { WeightUnit } from '@/hooks/useStorage';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ArrowLeft, Dumbbell, Clock, TrendingUp, ChevronRight, Plus } from 'lucide-react';
@@ -7,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 
 interface CalendarDayDetailProps {
-  date: string; // ISO date string
+  date: string;
   pastSessions: WorkoutSession[];
   futureWorkouts: FutureWorkout[];
   templates: WorkoutTemplate[];
+  weightUnit?: WeightUnit;
   onViewSession: (session: WorkoutSession) => void;
   onViewFutureWorkout: (fw: FutureWorkout) => void;
   onAddRestDay: (date: string) => void;
@@ -18,7 +20,7 @@ interface CalendarDayDetailProps {
 }
 
 export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
-  date, pastSessions, futureWorkouts, templates, onViewSession, onViewFutureWorkout, onAddRestDay, onBack,
+  date, pastSessions, futureWorkouts, templates, weightUnit = 'kg', onViewSession, onViewFutureWorkout, onAddRestDay, onBack,
 }) => {
   const dateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -116,7 +118,7 @@ export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
                       </span>
                       <span className="flex items-center gap-1">
                         <TrendingUp className="w-3 h-3" />
-                        {session.totalVolume.toLocaleString()} lbs
+                        {session.totalVolume.toLocaleString()} {weightUnit}
                       </span>
                       <span>{session.totalSets} sets</span>
                     </div>
