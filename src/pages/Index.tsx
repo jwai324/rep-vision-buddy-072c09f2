@@ -63,7 +63,8 @@ const Index = () => {
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
           onDayClick={(date) => {
             const dateStr = format(date, 'yyyy-MM-dd');
-            setScreen({ type: 'calendarDay', date: dateStr });
+            const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
+            setScreen({ type: 'activity', initialTab: isPast ? 'history' : 'future', filterDate: dateStr });
           }}
         />
       )}
@@ -131,6 +132,7 @@ const Index = () => {
           onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'activity' })}
           onBack={() => setScreen({ type: 'dashboard' })}
           initialTab={screen.initialTab}
+          filterDate={screen.filterDate}
         />
       )}
 
@@ -159,16 +161,12 @@ const Index = () => {
               storage.saveSession(session);
               setScreen(screen.from === 'activity'
                 ? { type: 'activity', initialTab: 'future' }
-                : screen.from === 'calendar'
-                  ? { type: 'calendarDay', date: restFw.date }
-                  : { type: 'dashboard' });
+                : { type: 'dashboard' });
             }}
             onBack={() => setScreen(
               screen.from === 'activity'
                 ? { type: 'activity', initialTab: 'future' }
-                : screen.from === 'calendar'
-                  ? { type: 'calendarDay', date: fw.date }
-                  : { type: 'dashboard' }
+                : { type: 'dashboard' }
             )}
           />
         );
