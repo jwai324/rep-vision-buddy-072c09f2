@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useStorage } from '@/hooks/useStorage';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
+import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
@@ -69,12 +70,7 @@ const Index = () => {
       )}
 
       {screen.type === 'browseExercises' && (
-        <div className="min-h-screen bg-background flex flex-col">
-          <div className="p-4 pb-0">
-            <button onClick={() => setScreen({ type: 'dashboard' })} className="text-sm text-muted-foreground hover:text-foreground mb-2">← Back</button>
-          </div>
-          <ExerciseSelector onSelect={() => {}} multiSelect={false} />
-        </div>
+        <BrowseExercisesScreen onBack={() => setScreen({ type: 'dashboard' })} history={storage.history} />
       )}
 
       {screen.type === 'activeSession' && (
