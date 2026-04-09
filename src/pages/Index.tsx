@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useStorage } from '@/hooks/useStorage';
 import { Dashboard } from '@/components/Dashboard';
-import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { ActiveSession } from '@/components/ActiveSession';
+import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
