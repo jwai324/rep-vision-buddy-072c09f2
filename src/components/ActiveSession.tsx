@@ -10,6 +10,16 @@ import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, Refres
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
 
 import type { WeightUnit } from '@/hooks/useStorage';
