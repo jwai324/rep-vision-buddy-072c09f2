@@ -24,6 +24,7 @@ type Screen =
   | { type: 'startWorkout' }
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
+  | { type: 'editSession'; session: WorkoutSession }
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession; from?: 'activity' }
   | { type: 'activity'; initialTab?: 'history' | 'future'; filterDate?: string }
