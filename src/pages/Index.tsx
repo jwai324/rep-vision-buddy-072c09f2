@@ -25,12 +25,11 @@ type Screen =
   | { type: 'sessionDetail'; session: WorkoutSession }
   | { type: 'history' }
   | { type: 'futureWorkouts' }
-  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout }
+  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'list' }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
-  | { type: 'programBuilder'; program?: WorkoutProgram }
-  | { type: 'dayDetail'; date: Date; template: WorkoutTemplate | null };
+  | { type: 'programBuilder'; program?: WorkoutProgram };
 
 const Index = () => {
   const storage = useStorage();
