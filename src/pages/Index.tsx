@@ -228,6 +228,7 @@ const Index = () => {
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {
             storage.deleteSession(id);
             setScreen({ type: 'activity', initialTab: 'history' });
