@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
+import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 
 interface DashboardProps {
