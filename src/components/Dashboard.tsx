@@ -115,7 +115,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
 // Build all scheduled events from a program's days + frequencies + duration
 function buildProgramEvents(program: WorkoutProgram) {
   const events: { date: Date; label: string; templateId: string }[] = [];
-  const start = program.startDate ? new Date(program.startDate) : new Date();
+  const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
   const endDate = addWeeks(start, program.durationWeeks ?? 8);
 
   program.days.forEach((day) => {
