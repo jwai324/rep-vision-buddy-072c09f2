@@ -48,9 +48,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
+      const restSec = tpl?.restSeconds ?? 90;
       return {
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? id,
+        restSeconds: restSec,
         sets: Array.from({ length: numSets }, (_, i) => ({
           setNumber: i + 1,
           weight: '',
@@ -67,6 +69,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTime = useRef(Date.now());
   const { getStickyNote, setStickyNote } = useStickyNotes();
+  // Timer triggers: incremented when a set is completed to auto-start rest timers
+  const [timerTriggers, setTimerTriggers] = useState<Record<number, number>>({});
 
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
