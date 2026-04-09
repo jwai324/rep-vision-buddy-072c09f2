@@ -28,6 +28,7 @@ export const BrowseExercisesScreen: React.FC<BrowseExercisesScreenProps> = ({ on
         exerciseId={selectedExercise}
         onClose={() => setSelectedExercise(null)}
         history={history}
+        weightUnit={weightUnit}
       />
     </div>
   );
