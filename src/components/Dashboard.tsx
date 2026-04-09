@@ -157,7 +157,8 @@ const WeeklyProgramCalendar: React.FC<{
   program: WorkoutProgram;
   templates: WorkoutTemplate[];
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
-}> = ({ program, templates, onDayClick }) => {
+  onViewAll: () => void;
+}> = ({ program, templates, onDayClick, onViewAll }) => {
   const today = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -247,14 +248,22 @@ const WeeklyProgramCalendar: React.FC<{
           );
         })}
       </div>
-      {weekOffset !== 0 && (
+      <div className="flex items-center justify-between mt-2">
+        {weekOffset !== 0 ? (
+          <button
+            onClick={() => setWeekOffset(0)}
+            className="text-[10px] text-primary font-medium hover:underline"
+          >
+            Back to this week
+          </button>
+        ) : <span />}
         <button
-          onClick={() => setWeekOffset(0)}
-          className="w-full mt-2 text-[10px] text-primary font-medium hover:underline"
+          onClick={onViewAll}
+          className="text-[10px] text-primary font-medium hover:underline"
         >
-          Back to this week
+          View All →
         </button>
-      )}
+      </div>
     </div>
   );
 };
@@ -313,6 +322,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           program={activeProgram}
           templates={templates}
           onDayClick={onDayClick}
+          onViewAll={onGoToHistory}
         />
       )}
 
@@ -359,28 +369,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ))}
       </div>
 
-      {/* History preview */}
-      {history.length > 1 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs uppercase tracking-widest text-muted-foreground">Recent</p>
-            <button onClick={onGoToHistory} className="text-xs text-primary hover:underline">View All</button>
-          </div>
-          <div className="flex flex-col gap-2">
-            {history.slice(1, 4).map(s => (
-              <div key={s.id} className="bg-card rounded-lg p-3 border border-border flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-foreground">
-                    {new Date(s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">{s.exercises.map(e => e.exerciseName).join(', ')}</p>
-                </div>
-                <span className="text-xs text-muted-foreground">{s.totalSets}s · {s.totalReps}r</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
