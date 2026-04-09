@@ -14,7 +14,7 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-import { DayDetail } from '@/components/DayDetail';
+// DayDetail removed — calendar now routes to FutureWorkoutDetail
 
 type Screen =
   | { type: 'dashboard' }
@@ -25,12 +25,11 @@ type Screen =
   | { type: 'sessionDetail'; session: WorkoutSession }
   | { type: 'history' }
   | { type: 'futureWorkouts' }
-  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout }
+  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'list' }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
-  | { type: 'programBuilder'; program?: WorkoutProgram }
-  | { type: 'dayDetail'; date: Date; template: WorkoutTemplate | null };
+  | { type: 'programBuilder'; program?: WorkoutProgram };
 
 const Index = () => {
   const storage = useStorage();
@@ -63,7 +62,23 @@ const Index = () => {
           onGoToTemplates={() => setScreen({ type: 'templates' })}
           onGoToPrograms={() => setScreen({ type: 'programs' })}
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
-          onDayClick={(date, template) => setScreen({ type: 'dayDetail', date, template })}
+          onDayClick={(date, template) => {
+            const dateStr = date.toISOString().split('T')[0];
+            const fw = storage.futureWorkouts.find(f => f.date === dateStr);
+            if (fw) {
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'calendar' });
+            } else {
+              // No future workout for this date — create a temporary rest day entry
+              const restFw: FutureWorkout = {
+                id: 'temp-' + dateStr,
+                programId: '',
+                date: dateStr,
+                templateId: template ? template.id : 'rest',
+                label: template ? template.name : 'Rest Day',
+              };
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
+            }
+          }}
         />
       )}
 
@@ -125,7 +140,7 @@ const Index = () => {
         <FutureWorkoutsScreen
           futureWorkouts={storage.futureWorkouts}
           templates={storage.templates}
-          onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw })}
+          onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'list' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
@@ -138,7 +153,7 @@ const Index = () => {
             futureWorkout={fw}
             template={template}
             onPerformWorkout={startFromTemplate}
-            onBack={() => setScreen({ type: 'futureWorkouts' })}
+            onBack={() => setScreen(screen.from === 'list' ? { type: 'futureWorkouts' } : { type: 'dashboard' })}
           />
         );
       })()}
@@ -208,14 +223,6 @@ const Index = () => {
         />
       )}
 
-      {screen.type === 'dayDetail' && (
-        <DayDetail
-          date={screen.date}
-          template={screen.template}
-          onStartWorkout={startFromTemplate}
-          onBack={() => setScreen({ type: 'dashboard' })}
-        />
-      )}
     </div>
   );
 };
