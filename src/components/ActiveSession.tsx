@@ -220,6 +220,33 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }));
   }, []);
 
+  const addDrop = useCallback((blockIdx: number, setIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      return {
+        ...block,
+        sets: block.sets.map((set, si) => {
+          if (si !== setIdx) return set;
+          const drops = set.drops ?? [];
+          return { ...set, type: 'dropset' as SetType, drops: [...drops, { weight: '', reps: '', rpe: '', completed: false }] };
+        }),
+      };
+    }));
+  }, []);
+
+  const updateDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number, field: keyof DropRow, value: string | boolean) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      return {
+        ...block,
+        sets: block.sets.map((set, si) => {
+          if (si !== setIdx || !set.drops) return set;
+          return { ...set, drops: set.drops.map((d, di) => di === dropIdx ? { ...d, [field]: value } : d) };
+        }),
+      };
+    }));
+  }, []);
+
   const addExercise = useCallback((id: ExerciseId) => {
     addMultipleExercises([id]);
   }, []);
