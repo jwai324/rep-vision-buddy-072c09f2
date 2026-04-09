@@ -4,7 +4,8 @@ import { EXERCISES } from '@/types/workout';
 import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
-import { Check, Plus, MoreHorizontal } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ActiveSessionProps {
   exercises: ExerciseId[];
