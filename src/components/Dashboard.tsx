@@ -249,7 +249,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between pt-2">
         <div>
-          <h1 className="text-2xl font-extrabold text-foreground">RepLog</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">RepVision</h1>
           <p className="text-sm text-muted-foreground">AI-Powered Workout Tracker</p>
         </div>
         <div className="flex items-center gap-1">
