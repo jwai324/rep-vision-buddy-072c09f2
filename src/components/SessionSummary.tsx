@@ -100,6 +100,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
         )}
         {isViewMode && (
           <>
+            {onEdit && (
+              <Button variant="neon" onClick={() => onEdit(session)} className="w-full">Edit Workout</Button>
+            )}
             <Button variant="outline" onClick={onClose} className="w-full">Back</Button>
             {onDelete && (
               <button
