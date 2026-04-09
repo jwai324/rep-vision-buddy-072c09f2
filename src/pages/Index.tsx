@@ -63,22 +63,9 @@ const Index = () => {
           onGoToTemplates={() => setScreen({ type: 'templates' })}
           onGoToPrograms={() => setScreen({ type: 'programs' })}
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
-          onDayClick={(date, template) => {
+          onDayClick={(date) => {
             const dateStr = date.toISOString().split('T')[0];
-            const fw = storage.futureWorkouts.find(f => f.date === dateStr);
-            if (fw) {
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'calendar' });
-            } else {
-              // No future workout for this date — create a temporary rest day entry
-              const restFw: FutureWorkout = {
-                id: 'temp-' + dateStr,
-                programId: '',
-                date: dateStr,
-                templateId: template ? template.id : 'rest',
-                label: template ? template.name : 'Rest Day',
-              };
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
-            }
+            setScreen({ type: 'calendarDay', date: dateStr });
           }}
         />
       )}
