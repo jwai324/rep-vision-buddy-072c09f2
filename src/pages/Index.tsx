@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStorage } from '@/hooks/useStorage';
+import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
