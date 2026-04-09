@@ -6,10 +6,9 @@ import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession } from '@/components/ActiveSession';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
-import { FutureWorkoutsScreen } from '@/components/FutureWorkoutsScreen';
+import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
 import { CalendarDayDetail } from '@/components/CalendarDayDetail';
-import { WorkoutHistory } from '@/components/WorkoutHistory';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
@@ -23,10 +22,9 @@ type Screen =
   | { type: 'browseExercises' }
   | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
   | { type: 'summary'; session: WorkoutSession }
-  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'history' }
-  | { type: 'history' }
-  | { type: 'futureWorkouts' }
-  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'list' }
+  | { type: 'sessionDetail'; session: WorkoutSession; from?: 'calendar' | 'activity' }
+  | { type: 'activity'; initialTab?: 'history' | 'future' }
+  | { type: 'futureWorkoutDetail'; futureWorkout: FutureWorkout; from?: 'calendar' | 'activity' }
   | { type: 'calendarDay'; date: string }
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
