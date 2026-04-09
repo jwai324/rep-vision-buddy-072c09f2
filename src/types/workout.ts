@@ -53,10 +53,16 @@ export interface ProgramDay {
   templateId: string | 'rest';
 }
 
+export type ProgramSchedule =
+  | { type: 'weekly'; weekdays: number[] }       // 0=Sun,1=Mon,...6=Sat
+  | { type: 'monthly'; dayOfMonth: number }       // 1-31
+  | { type: 'everyNDays'; interval: number };     // 2,3,4...
+
 export interface WorkoutProgram {
   id: string;
   name: string;
   days: ProgramDay[];
+  schedule?: ProgramSchedule;
 }
 
 // Legacy lookup - now uses exercise database

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { WorkoutProgram, WorkoutTemplate, WorkoutSession } from '@/types/workout';
+import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, ProgramSchedule } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 
 interface ProgramBuilderProps {
@@ -13,6 +13,31 @@ interface ProgramBuilderProps {
 export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, history, initial, onSave, onCancel }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [days, setDays] = useState(initial?.days ?? [{ label: 'Day 1', templateId: 'rest' as string }]);
+  const [scheduleType, setScheduleType] = useState<string>(initial?.schedule?.type ?? 'none');
+  const [weekdays, setWeekdays] = useState<number[]>(
+    initial?.schedule?.type === 'weekly' ? initial.schedule.weekdays : [1]
+  );
+  const [dayOfMonth, setDayOfMonth] = useState<number>(
+    initial?.schedule?.type === 'monthly' ? initial.schedule.dayOfMonth : 1
+  );
+  const [interval, setInterval] = useState<number>(
+    initial?.schedule?.type === 'everyNDays' ? initial.schedule.interval : 2
+  );
+
+  const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const toggleWeekday = (day: number) => {
+    setWeekdays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+    );
+  };
+
+  const buildSchedule = (): ProgramSchedule | undefined => {
+    if (scheduleType === 'weekly') return { type: 'weekly', weekdays };
+    if (scheduleType === 'monthly') return { type: 'monthly', dayOfMonth };
+    if (scheduleType === 'everyNDays') return { type: 'everyNDays', interval };
+    return undefined;
+  };
 
   const addDay = () => {
     setDays(prev => [...prev, { label: `Day ${prev.length + 1}`, templateId: 'rest' }]);
@@ -32,7 +57,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
 
   const save = () => {
     if (!name.trim() || days.length === 0) return;
-    onSave({ id: initial?.id ?? crypto.randomUUID(), name: name.trim(), days });
+    onSave({ id: initial?.id ?? crypto.randomUUID(), name: name.trim(), days, schedule: buildSchedule() });
   };
 
   return (
