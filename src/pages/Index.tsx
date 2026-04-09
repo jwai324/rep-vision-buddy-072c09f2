@@ -188,6 +188,16 @@ const Index = () => {
             template={template}
             onViewSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'calendar' })}
             onViewFutureWorkout={(selectedFw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: selectedFw, from: 'calendar' })}
+            onAddRestDay={(d) => {
+              const restFw: FutureWorkout = {
+                id: 'temp-' + d,
+                programId: '',
+                date: d,
+                templateId: 'rest',
+                label: 'Rest Day',
+              };
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
+            }}
             onBack={() => setScreen({ type: 'dashboard' })}
           />
         );
