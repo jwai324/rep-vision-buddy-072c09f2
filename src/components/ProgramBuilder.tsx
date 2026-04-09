@@ -75,7 +75,72 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
         className="bg-secondary rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary font-medium"
       />
 
-      {days.map((day, i) => (
+      {/* Frequency / Schedule */}
+      <div className="bg-card rounded-xl p-4 border border-border flex flex-col gap-3">
+        <label className="text-sm font-semibold text-foreground">Frequency</label>
+        <select
+          value={scheduleType}
+          onChange={e => setScheduleType(e.target.value)}
+          className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+        >
+          <option value="none">No schedule</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="everyNDays">Every N days</option>
+        </select>
+
+        {scheduleType === 'weekly' && (
+          <div className="flex flex-wrap gap-1.5">
+            {WEEKDAY_LABELS.map((label, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => toggleWeekday(idx)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  weekdays.includes(idx)
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {scheduleType === 'monthly' && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Day</span>
+            <select
+              value={dayOfMonth}
+              onChange={e => setDayOfMonth(Number(e.target.value))}
+              className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+            >
+              {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+            <span className="text-sm text-muted-foreground">of each month</span>
+          </div>
+        )}
+
+        {scheduleType === 'everyNDays' && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Every</span>
+            <select
+              value={interval}
+              onChange={e => setInterval(Number(e.target.value))}
+              className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+            >
+              {[2, 3, 4, 5, 6, 7].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <span className="text-sm text-muted-foreground">days</span>
+          </div>
+        )}
+      </div>
+
         <div key={i} className="bg-card rounded-xl p-4 border border-border flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <input
