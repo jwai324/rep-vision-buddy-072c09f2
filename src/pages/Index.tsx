@@ -172,39 +172,12 @@ const Index = () => {
         );
       })()}
 
-      {screen.type === 'calendarDay' && (() => {
-        const dateStr = screen.date;
-        const pastSessions = storage.history.filter(s => s.date.startsWith(dateStr));
-        const fws = storage.futureWorkouts.filter(f => f.date === dateStr);
-        return (
-          <CalendarDayDetail
-            date={dateStr}
-            pastSessions={pastSessions}
-            futureWorkouts={fws}
-            templates={storage.templates}
-            onViewSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'calendar' })}
-            onViewFutureWorkout={(selectedFw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: selectedFw, from: 'calendar' })}
-            onAddRestDay={(d) => {
-              const restFw: FutureWorkout = {
-                id: 'temp-' + d,
-                programId: '',
-                date: d,
-                templateId: 'rest',
-                label: 'Rest Day',
-              };
-              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw, from: 'calendar' });
-            }}
-            onBack={() => setScreen({ type: 'dashboard' })}
-          />
-        );
-      })()}
-
       {screen.type === 'sessionDetail' && (
         <SessionSummary
           session={screen.session}
-          onSave={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
-          onSaveAsTemplate={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
-          onClose={() => setScreen(screen.from === 'calendar' ? { type: 'calendarDay', date: screen.session.date.split('T')[0] } : { type: 'activity', initialTab: 'history' })}
+          onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onSaveAsTemplate={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
         />
       )}
 
