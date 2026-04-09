@@ -125,6 +125,21 @@ const Index = () => {
         </ErrorBoundary>
       )}
 
+      {screen.type === 'editSession' && (
+        <ErrorBoundary fallbackTitle="Edit session error" onReset={() => setScreen({ type: 'activity', initialTab: 'history' })}>
+          <ActiveSession
+            exercises={[]}
+            history={storage.history}
+            weightUnit={storage.preferences.weightUnit}
+            editSession={screen.session}
+            onFinish={(session) => {
+              storage.saveSession(session);
+              setScreen({ type: 'activity', initialTab: 'history' });
+            }}
+            onCancel={() => setScreen({ type: 'sessionDetail', session: screen.session, from: 'activity' })}
+          />
+        </ErrorBoundary>
+
       {screen.type === 'summary' && (
         <SessionSummary
           session={screen.session}
