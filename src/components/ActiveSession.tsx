@@ -232,17 +232,51 @@ interface ExerciseTableProps {
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
+  onRemoveExercise: (blockIdx: number) => void;
 }
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdateSet, onToggleComplete, onAddSet }) => {
+const EXERCISE_MENU_ITEMS = [
+  { icon: FileText, label: 'Add Note' },
+  { icon: StickyNote, label: 'Add Sticky Note' },
+  { icon: Flame, label: 'Add Warm-up Sets' },
+  { icon: Timer, label: 'Update Rest Timer' },
+  { icon: RefreshCw, label: 'Replace Exercise' },
+  { icon: Layers, label: 'Create Superset' },
+  { icon: ChevronDown, label: 'Create Drop Set' },
+  { icon: Trash2, label: 'Remove Exercise', destructive: true },
+] as const;
+
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdateSet, onToggleComplete, onAddSet, onRemoveExercise }) => {
   return (
     <div>
       {/* Exercise Header */}
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
-        <button className="text-muted-foreground hover:text-foreground p-1">
-          <MoreHorizontal className="w-4 h-4" />
-        </button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="text-muted-foreground hover:text-foreground p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-52 p-1">
+            {EXERCISE_MENU_ITEMS.map(item => (
+              <button
+                key={item.label}
+                onClick={() => {
+                  if (item.label === 'Remove Exercise') onRemoveExercise(blockIdx);
+                }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+                  'destructive' in item && item.destructive
+                    ? 'text-destructive hover:bg-destructive/10'
+                    : 'text-foreground hover:bg-secondary'
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Table Header */}
@@ -264,33 +298,24 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, onUpdate
             set.completed ? 'bg-primary/10' : ''
           }`}
         >
-          {/* Set Number */}
           <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-
-          {/* Previous */}
           <span className="text-xs text-muted-foreground text-center">—</span>
-
-          {/* Weight */}
           <input
             type="number"
             inputMode="decimal"
             value={set.weight}
             onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
             placeholder="—"
-            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary"
+            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
           />
-
-          {/* Reps */}
           <input
             type="number"
             inputMode="numeric"
             value={set.reps}
             onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
             placeholder="—"
-            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary"
+            className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
           />
-
-          {/* Check */}
           <button
             onClick={() => onToggleComplete(blockIdx, setIdx)}
             className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
