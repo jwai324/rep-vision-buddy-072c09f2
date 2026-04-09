@@ -267,15 +267,15 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
         <div className="bg-card rounded-xl p-3 border border-border">
           <Calendar
             mode="multiple"
-            selected={calendarEvents.map(e => e.date)}
-            className={cn('p-3 pointer-events-auto w-full')}
+            selected={[]}
+            className={cn('p-3 pointer-events-auto w-full [&_.day-selected]:bg-transparent')}
             modifiers={{
               workout: calendarEvents.filter(e => e.templateId !== 'rest').map(e => e.date),
               rest: calendarEvents.filter(e => e.templateId === 'rest').map(e => e.date),
             }}
             modifiersClassNames={{
-              workout: 'bg-primary/20 text-primary font-bold',
-              rest: 'bg-blue-500/20 font-bold',
+              workout: '!bg-primary/20 !text-primary font-bold',
+              rest: '!bg-blue-500/20 font-bold',
             }}
             numberOfMonths={1}
             defaultMonth={startDate}
