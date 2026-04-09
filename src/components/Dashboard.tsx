@@ -91,10 +91,14 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       <div className="grid grid-cols-3 gap-x-4 gap-y-1.5">
         {ALL_BODY_PARTS.map(bp => {
           const sets = weeklyData.counts[bp] || 0;
+          const colorClass = sets === 0 ? 'text-muted-foreground/50'
+            : (sets <= 5 || sets >= 20) ? 'text-red-400'
+            : (sets <= 8 || sets >= 17) ? 'text-yellow-400'
+            : 'text-green-400';
           return (
             <div key={bp} className="flex items-center justify-between">
-              <span className="text-xs truncate text-foreground">{bp}</span>
-              <span className="text-xs font-mono font-bold ml-1 text-primary">{sets}</span>
+              <span className={`text-xs truncate ${colorClass}`}>{bp}</span>
+              <span className={`text-xs font-mono font-bold ml-1 ${colorClass}`}>{sets}</span>
             </div>
           );
         })}
