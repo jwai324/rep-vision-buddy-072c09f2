@@ -307,6 +307,16 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'shuttle-runs', name: 'Shuttle Runs', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
   { id: 'running-steady-state', name: 'Running (Steady State)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
   { id: 'high-knees', name: 'High Knees', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hip Flexors', 'Calves', 'Core'] },
+
+  // Recovery / Wellness
+  { id: 'sleep-focus', name: 'Sleep Focus', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
+  { id: 'cold-plunge', name: 'Cold Plunge', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
+  { id: 'sauna', name: 'Sauna', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
+  { id: 'meditation', name: 'Meditation', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
+  { id: 'massage', name: 'Massage', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Lower Back', 'Hamstrings', 'Upper Back'] },
+  { id: 'foam-rolling', name: 'Foam Rolling', primaryBodyPart: 'Full Body', equipment: 'Foam Roller', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Upper Back', 'Calves'] },
+  { id: 'active-rest', name: 'Active Rest', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Isometric', secondaryMuscles: [] },
+  { id: 'compression-cuff', name: 'Compression Cuff', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
 ];
 
 // Body part groupings for filtering
@@ -318,7 +328,7 @@ export const BODY_PARTS = [
 export const EQUIPMENT_LIST = [
   'All', 'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 'Band',
   'Kettlebell', 'EZ Bar', 'Trap Bar', 'Smith Machine', 'TRX/Suspension',
-  'Medicine Ball', 'Plate', 'Landmine', 'None',
+  'Medicine Ball', 'Plate', 'Landmine', 'Foam Roller', 'None',
 ] as const;
 
 // Helper to get icon by body part
