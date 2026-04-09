@@ -123,7 +123,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       return updated;
     });
   }, []);
-  }, []);
 
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
