@@ -4,6 +4,7 @@ import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ArrowLeft, Dumbbell, Clock, TrendingUp, ChevronRight, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
 
 interface CalendarDayDetailProps {
   date: string; // ISO date string
@@ -23,8 +24,8 @@ export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   });
 
-  const isToday = new Date().toISOString().split('T')[0] === date;
-  const isPast = date < new Date().toISOString().split('T')[0];
+  const isToday = format(new Date(), 'yyyy-MM-dd') === date;
+  const isPast = date < format(new Date(), 'yyyy-MM-dd');
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-import { addDays, addWeeks, getDay } from 'date-fns';
+import { addDays, addWeeks, getDay, format } from 'date-fns';
 
 const KEYS = {
   history: 'replog:history',
@@ -36,7 +36,7 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
     const freq = day.frequency;
 
     const addEvent = (date: Date) => {
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = format(date, 'yyyy-MM-dd');
       scheduledDates.add(dateStr);
       workouts.push({
         id: crypto.randomUUID(),
@@ -78,7 +78,7 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
   // Fill in rest days for any unscheduled dates in the program range
   let cursor = new Date(start);
   while (cursor < endDate) {
-    const dateStr = cursor.toISOString().split('T')[0];
+    const dateStr = format(cursor, 'yyyy-MM-dd');
     if (!scheduledDates.has(dateStr)) {
       workouts.push({
         id: crypto.randomUUID(),
@@ -95,7 +95,7 @@ function generateFutureWorkouts(program: WorkoutProgram): FutureWorkout[] {
 }
 
 function cleanFutureWorkouts(workouts: FutureWorkout[], history: WorkoutSession[]): FutureWorkout[] {
-  const today = new Date().toISOString().split('T')[0];
+  const today = format(new Date(), 'yyyy-MM-dd');
   return workouts.filter(fw => {
     if (fw.date < today) return false;
     if (fw.completed) return false;
