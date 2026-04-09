@@ -410,6 +410,36 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }));
   }, []);
 
+  const addWarmupSet = useCallback((blockIdx: number) => {
+    setBlocks(prev => prev.map((block, bi) => {
+      if (bi !== blockIdx) return block;
+      const warmupSet: SetRow = {
+        setNumber: 0,
+        weight: '',
+        reps: '',
+        completed: false,
+        type: 'warmup' as SetType,
+        rpe: '',
+      };
+      const newSets = [warmupSet, ...block.sets].map((s, i) => ({
+        ...s,
+        setNumber: s.type === 'warmup' ? 0 : i,
+      }));
+      // Re-number: warm-ups get "W1, W2..." and normals get "1, 2..."
+      let warmupCount = 0;
+      let normalCount = 0;
+      const renumbered = newSets.map(s => {
+        if (s.type === 'warmup') {
+          warmupCount++;
+          return { ...s, setNumber: warmupCount };
+        }
+        normalCount++;
+        return { ...s, setNumber: normalCount };
+      });
+      return { ...block, sets: renumbered };
+    }));
+  }, []);
+
   const handleMenuAction = useCallback((action: string, blockIdx: number) => {
     const block = blocks[blockIdx];
     switch (action) {
@@ -427,11 +457,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       case 'Drop Sets':
         toggleDropSets(blockIdx);
         break;
+      case 'Add Warm-up Sets':
+        addWarmupSet(blockIdx);
+        break;
       case 'Remove Exercise':
         removeExercise(blockIdx);
         break;
     }
-  }, [blocks, getStickyNote, removeExercise, toggleDropSets]);
+  }, [blocks, getStickyNote, removeExercise, toggleDropSets, addWarmupSet]);
 
   const saveNote = useCallback(() => {
     if (!editingNote) return;
