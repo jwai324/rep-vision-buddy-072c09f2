@@ -4,6 +4,7 @@ import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
+import { MinimizedSessionBar } from '@/components/MinimizedSessionBar';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
@@ -38,12 +39,25 @@ type Screen =
 
 const Index = () => {
   const storage = useStorage();
+  const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
   // Check for cached active session on mount
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
     if (cached) return { type: 'activeSession', exercises: [] };
     return { type: 'dashboard' };
   });
+
+  const handleMinimize = () => {
+    setMinimizedSession(screen);
+    setScreen({ type: 'dashboard' });
+  };
+
+  const handleExpand = () => {
+    if (minimizedSession) {
+      setScreen(minimizedSession);
+      setMinimizedSession(null);
+    }
+  };
 
   if (storage.loading) {
     return (
@@ -112,15 +126,16 @@ const Index = () => {
       )}
 
       {screen.type === 'activeSession' && (
-        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}>
+        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => { clearSessionCache(); setMinimizedSession(null); setScreen({ type: 'dashboard' }); }}>
           <ActiveSession
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
             cachedSession={getSessionCache()}
-            onFinish={(session) => setScreen({ type: 'summary', session })}
-            onCancel={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
+            onFinish={(session) => { setMinimizedSession(null); setScreen({ type: 'summary', session }); }}
+            onCancel={() => { clearSessionCache(); setMinimizedSession(null); setScreen({ type: 'dashboard' }); }}
+            onMinimize={handleMinimize}
           />
         </ErrorBoundary>
       )}
@@ -303,6 +318,12 @@ const Index = () => {
         />
       )}
 
+      {minimizedSession && screen.type !== 'activeSession' && (
+        <MinimizedSessionBar
+          workoutName={getSessionCache()?.workoutName ?? 'Workout'}
+          onExpand={handleExpand}
+        />
+      )}
     </div>
   );
 };

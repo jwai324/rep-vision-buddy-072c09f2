@@ -6,7 +6,7 @@ import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
-import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
@@ -47,6 +47,7 @@ interface ActiveSessionProps {
   editSession?: WorkoutSession | null;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
+  onMinimize?: () => void;
 }
 
 /** Look up the most recent session data for a given exercise */
@@ -100,7 +101,7 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, editSession, onFinish, onCancel }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
   const isEditMode = !!editSession;
 
   // Convert saved session exercises back to blocks for editing
@@ -509,7 +510,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
-        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        {isEditMode ? (
+          <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        ) : (
+          <button onClick={onMinimize ?? onCancel} className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
         <Button variant="neon" size="sm" onClick={finishWorkout}>
           {isEditMode ? 'Save Changes' : 'Finish'}
         </Button>
