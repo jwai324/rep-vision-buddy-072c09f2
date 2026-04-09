@@ -208,6 +208,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             onUpdateSet={updateSet}
             onToggleComplete={toggleSetComplete}
             onAddSet={addSet}
+            onRemoveExercise={removeExercise}
           />
         ))}
 
