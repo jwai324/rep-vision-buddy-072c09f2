@@ -47,6 +47,7 @@ interface ActiveSessionProps {
   editSession?: WorkoutSession | null;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
+  onMinimize?: () => void;
 }
 
 /** Look up the most recent session data for a given exercise */
