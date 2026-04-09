@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
+import { ExerciseRestTimer } from '@/components/ExerciseRestTimer';
 
 interface ActiveSessionProps {
   exercises: ExerciseId[];
