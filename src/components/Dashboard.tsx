@@ -16,6 +16,7 @@ interface DashboardProps {
   onGoToTemplates: () => void;
   onGoToPrograms: () => void;
   onBrowseExercises: () => void;
+  onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }
 
 function getStreak(sessions: WorkoutSession[]): number {
@@ -152,8 +153,8 @@ function buildProgramEvents(program: WorkoutProgram) {
 const WeeklyProgramCalendar: React.FC<{
   program: WorkoutProgram;
   templates: WorkoutTemplate[];
-  onStartTemplate: (template: WorkoutTemplate) => void;
-}> = ({ program, templates, onStartTemplate }) => {
+  onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
+}> = ({ program, templates, onDayClick }) => {
   const today = new Date();
 
   const weekDays = useMemo(() => {
@@ -189,9 +190,7 @@ const WeeklyProgramCalendar: React.FC<{
           return (
             <button
               key={i}
-              onClick={() => {
-                if (template) onStartTemplate(template);
-              }}
+              onClick={() => onDayClick(day.date, template ?? null)}
               className={`flex flex-col items-center rounded-lg py-2 px-1 transition-colors ${
                 isToday
                   ? 'ring-2 ring-primary'
@@ -231,7 +230,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises
+  history, activeProgram, templates, onStartWorkout, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -283,7 +282,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <WeeklyProgramCalendar
           program={activeProgram}
           templates={templates}
-          onStartTemplate={onStartTemplate}
+          onDayClick={onDayClick}
         />
       )}
 

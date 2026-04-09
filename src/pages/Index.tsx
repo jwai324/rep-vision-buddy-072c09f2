@@ -12,6 +12,7 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram } from '@/types/workout';
+import { DayDetail } from '@/components/DayDetail';
 
 type Screen =
   | { type: 'dashboard' }
@@ -24,7 +25,8 @@ type Screen =
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
-  | { type: 'programBuilder'; program?: WorkoutProgram };
+  | { type: 'programBuilder'; program?: WorkoutProgram }
+  | { type: 'dayDetail'; date: Date; template: WorkoutTemplate | null };
 
 const Index = () => {
   const storage = useStorage();
@@ -55,6 +57,7 @@ const Index = () => {
           onGoToTemplates={() => setScreen({ type: 'templates' })}
           onGoToPrograms={() => setScreen({ type: 'programs' })}
           onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
+          onDayClick={(date, template) => setScreen({ type: 'dayDetail', date, template })}
         />
       )}
 
@@ -173,6 +176,15 @@ const Index = () => {
             setScreen({ type: 'programs' });
           }}
           onCancel={() => setScreen({ type: 'programs' })}
+        />
+      )}
+
+      {screen.type === 'dayDetail' && (
+        <DayDetail
+          date={screen.date}
+          template={screen.template}
+          onStartWorkout={startFromTemplate}
+          onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}
     </div>
