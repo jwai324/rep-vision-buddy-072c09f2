@@ -934,7 +934,9 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   set.completed ? 'bg-primary/10' : ''
                 }`}
               >
-                <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+                <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                  {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
+                </span>
                 {previousSets[setIdx] ? (
                   <button
                     type="button"
