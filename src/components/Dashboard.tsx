@@ -118,9 +118,8 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
         </button>
         <span className="text-xs font-semibold text-muted-foreground">{weekLabel}</span>
         <button
-          onClick={() => setWeekOffset(o => Math.min(o + 1, 0))}
+          onClick={() => setWeekOffset(o => o + 1)}
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          disabled={weekOffset >= 0}
         >
           <ChevronRight className="w-4 h-4" />
         </button>
