@@ -1,19 +1,31 @@
-import React, { useState } from 'react';
-import type { FutureWorkout, WorkoutTemplate, RecoveryActivity } from '@/types/workout';
-import { EXERCISES, RECOVERY_ACTIVITIES } from '@/types/workout';
-import { ArrowLeft, Dumbbell, Plus, X, Check } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import type { FutureWorkout, WorkoutTemplate, RecoveryActivity, WorkoutSession } from '@/types/workout';
+import { EXERCISES } from '@/types/workout';
+import { EXERCISE_DATABASE } from '@/data/exercises';
+import { ArrowLeft, Dumbbell, Plus, X, Check, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+// Rest-day eligible exercises (recovery/wellness type)
+const REST_DAY_EXERCISE_IDS = [
+  'sleep-focus', 'cold-plunge', 'sauna', 'yoga', 'walking', 'meditation',
+  'massage', 'stretching', 'foam-rolling', 'swimming-full-body', 'active-rest', 'compression-cuff',
+];
+
+const REST_DAY_EXERCISES = EXERCISE_DATABASE.filter(ex => REST_DAY_EXERCISE_IDS.includes(ex.id));
 
 interface FutureWorkoutDetailProps {
   futureWorkout: FutureWorkout;
   template: WorkoutTemplate | null;
   onPerformWorkout: (template: WorkoutTemplate) => void;
   onUpdateFutureWorkout: (fw: FutureWorkout) => void;
+  onSaveRestDay?: (fw: FutureWorkout) => void;
   onBack: () => void;
 }
 
 export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
-  futureWorkout, template, onPerformWorkout, onUpdateFutureWorkout, onBack,
+  futureWorkout, template, onPerformWorkout, onUpdateFutureWorkout, onSaveRestDay, onBack,
 }) => {
   const isRest = futureWorkout.templateId === 'rest';
   const dateStr = new Date(futureWorkout.date + 'T00:00:00').toLocaleDateString('en-US', {
@@ -21,12 +33,19 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
   });
 
   const [showPicker, setShowPicker] = useState(false);
+  const [search, setSearch] = useState('');
   const activities = futureWorkout.recoveryActivities ?? [];
 
-  const addActivity = (activityId: string) => {
+  const filteredExercises = useMemo(() => {
+    if (!search) return REST_DAY_EXERCISES;
+    const q = search.toLowerCase();
+    return REST_DAY_EXERCISES.filter(ex => ex.name.toLowerCase().includes(q));
+  }, [search]);
+
+  const addActivity = (exerciseId: string) => {
     const activity: RecoveryActivity = {
       id: crypto.randomUUID(),
-      activityId,
+      activityId: exerciseId,
     };
     const updated: FutureWorkout = {
       ...futureWorkout,
@@ -34,6 +53,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
     };
     onUpdateFutureWorkout(updated);
     setShowPicker(false);
+    setSearch('');
   };
 
   const removeActivity = (activityInstanceId: string) => {
@@ -54,8 +74,13 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
     onUpdateFutureWorkout(updated);
   };
 
-  // Group recovery activities by category for the picker
-  const categories = [...new Set(RECOVERY_ACTIVITIES.map(a => a.category))];
+  const allCompleted = activities.length > 0 && activities.every(a => a.completed);
+
+  const handleSaveRestDay = () => {
+    if (onSaveRestDay) {
+      onSaveRestDay(futureWorkout);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
@@ -84,8 +109,11 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">Recovery Plan</p>
               <div className="flex flex-col gap-2">
                 {activities.map(a => {
-                  const info = RECOVERY_ACTIVITIES.find(ra => ra.id === a.activityId);
-                  if (!info) return null;
+                  const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId);
+                  const lookup = EXERCISES[a.activityId];
+                  if (!info && !lookup) return null;
+                  const name = info?.name ?? lookup?.name ?? a.activityId;
+                  const icon = lookup?.icon ?? '🏋️';
                   return (
                     <div
                       key={a.id}
@@ -97,22 +125,24 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                     >
                       <button
                         onClick={() => toggleActivityComplete(a.id)}
-                        className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors ${
+                        className={`w-7 h-7 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
                           a.completed
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'border-muted-foreground/30 text-transparent hover:border-muted-foreground/50'
                         }`}
                       >
-                        {a.completed ? <Check className="w-4 h-4" /> : null}
+                        {a.completed && <Check className="w-4 h-4" />}
                       </button>
-                      <span className="text-lg">{info.icon}</span>
+                      <span className="text-lg">{icon}</span>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-semibold truncate ${
                           a.completed ? 'text-muted-foreground line-through' : 'text-foreground'
                         }`}>
-                          {info.name}
+                          {name}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">{info.category}</p>
+                        {info && (
+                          <p className="text-[10px] text-muted-foreground">{info.equipment} · {info.primaryBodyPart}</p>
+                        )}
                       </div>
                       <button
                         onClick={() => removeActivity(a.id)}
@@ -134,41 +164,78 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
               className="w-full border-2 border-dashed border-border rounded-xl p-4 flex items-center justify-center gap-2 text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors"
             >
               <Plus className="w-4 h-4" />
-              <span className="text-sm font-medium">Add Recovery Activity</span>
+              <span className="text-sm font-medium">Add Recovery Exercise</span>
             </button>
           )}
 
-          {/* Activity Picker */}
+          {/* Exercise Picker */}
           {showPicker && (
             <div className="bg-card rounded-xl border border-border p-4">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-bold text-foreground">Add Activity</p>
+                <p className="text-sm font-bold text-foreground">Add Exercise</p>
                 <button
-                  onClick={() => setShowPicker(false)}
+                  onClick={() => { setShowPicker(false); setSearch(''); }}
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="flex flex-col gap-4">
-                {categories.map(cat => (
-                  <div key={cat}>
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">{cat}</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {RECOVERY_ACTIVITIES.filter(a => a.category === cat).map(activity => (
-                        <button
-                          key={activity.id}
-                          onClick={() => addActivity(activity.id)}
-                          className="flex items-center gap-2 p-3 rounded-lg bg-secondary/40 border border-border hover:border-primary/30 hover:bg-secondary/60 transition-colors text-left"
-                        >
-                          <span className="text-lg">{activity.icon}</span>
-                          <span className="text-xs font-semibold text-foreground">{activity.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search exercises..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9 bg-secondary border-border"
+                />
               </div>
+              <ScrollArea className="max-h-64">
+                <div className="flex flex-col gap-1">
+                  {filteredExercises.map(ex => {
+                    const icon = EXERCISES[ex.id]?.icon ?? '🏋️';
+                    const alreadyAdded = activities.some(a => a.activityId === ex.id);
+                    return (
+                      <button
+                        key={ex.id}
+                        onClick={() => !alreadyAdded && addActivity(ex.id)}
+                        disabled={alreadyAdded}
+                        className={`flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
+                          alreadyAdded
+                            ? 'opacity-40 cursor-not-allowed'
+                            : 'hover:bg-secondary/60'
+                        }`}
+                      >
+                        <span className="text-lg">{icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">{ex.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{ex.equipment} · {ex.primaryBodyPart}</p>
+                        </div>
+                        {alreadyAdded && (
+                          <span className="text-[10px] text-muted-foreground font-medium">Added</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {filteredExercises.length === 0 && (
+                    <p className="text-center py-4 text-sm text-muted-foreground">No exercises found</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* Save Rest Day to History */}
+          {activities.length > 0 && onSaveRestDay && (
+            <div className="mt-auto pb-4">
+              <Button
+                variant={allCompleted ? 'default' : 'outline'}
+                size="lg"
+                className="w-full text-base"
+                onClick={handleSaveRestDay}
+              >
+                <Check className="w-5 h-5 mr-2" />
+                {allCompleted ? 'Complete Rest Day' : 'Save Rest Day'}
+              </Button>
             </div>
           )}
         </div>
