@@ -147,7 +147,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
         <div className="px-4 py-3 flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Version</span>
-          <span className="text-sm font-mono text-foreground">1.0.0</span>
+          <span className="text-sm font-mono text-foreground">1.1.0</span>
         </div>
       </div>
 
