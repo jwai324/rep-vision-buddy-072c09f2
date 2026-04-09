@@ -130,10 +130,12 @@ const Index = () => {
           weightUnit={storage.preferences.weightUnit}
           onSave={() => {
             storage.saveSession(screen.session);
+            clearSessionCache();
             setScreen({ type: 'dashboard' });
           }}
           onSaveAsTemplate={() => {
             storage.saveSession(screen.session);
+            clearSessionCache();
             // Auto-create template from session
             const template: WorkoutTemplate = {
               id: crypto.randomUUID(),
@@ -149,7 +151,7 @@ const Index = () => {
             storage.saveTemplate(template);
             setScreen({ type: 'dashboard' });
           }}
-          onClose={() => setScreen({ type: 'dashboard' })}
+          onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
         />
       )}
 
