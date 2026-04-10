@@ -768,7 +768,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-2">
             <p className={`text-sm ${timerPaused ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}>{formatTime(elapsedSeconds)}</p>
             <button
               onClick={toggleTimerPause}
