@@ -6,7 +6,7 @@ import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
-import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
@@ -25,12 +25,30 @@ import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer'
 import type { WeightUnit } from '@/hooks/useStorage';
 
 const CACHE_KEY = 'active-session-cache';
+const LOCATIONS_KEY = 'workout-locations';
+const DEFAULT_LOCATION = 'Home Gym';
+
+function getSavedLocations(): string[] {
+  try {
+    const raw = localStorage.getItem(LOCATIONS_KEY);
+    if (!raw) return [DEFAULT_LOCATION];
+    const parsed = JSON.parse(raw) as string[];
+    return parsed.includes(DEFAULT_LOCATION) ? parsed : [DEFAULT_LOCATION, ...parsed];
+  } catch {
+    return [DEFAULT_LOCATION];
+  }
+}
+
+function saveLocations(locations: string[]) {
+  localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locations));
+}
 
 export interface ActiveSessionCache {
   blocks: ExerciseBlock[];
   workoutName: string;
   startTimestamp: number;
   elapsedAtCache: number;
+  location?: string;
 }
 
 export function clearSessionCache() {
@@ -161,6 +179,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   });
   const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
+  const [location, setLocation] = useState(cachedSession?.location ?? DEFAULT_LOCATION);
+  const [locations, setLocations] = useState<string[]>(getSavedLocations);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [newLocationInput, setNewLocationInput] = useState('');
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
@@ -199,9 +221,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       workoutName,
       startTimestamp: startTime.current,
       elapsedAtCache: elapsedSeconds,
+      location,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  }, [blocks, workoutName, elapsedSeconds, isEditMode]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location]);
+
+  const addCustomLocation = useCallback(() => {
+    const trimmed = newLocationInput.trim();
+    if (trimmed && !locations.includes(trimmed)) {
+      const updated = [...locations, trimmed];
+      setLocations(updated);
+      saveLocations(updated);
+    }
+    setLocation(trimmed || location);
+    setNewLocationInput('');
+    setShowLocationDropdown(false);
+  }, [newLocationInput, locations, location]);
 
   const startTimer = useCallback((id: TimerId, duration: number) => {
     // Cancel any existing timer
@@ -641,6 +676,49 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           onChange={e => setWorkoutName(e.target.value)}
           className="text-xl font-bold text-foreground bg-transparent outline-none border-b border-transparent focus:border-primary transition-colors w-full"
         />
+        {/* Location selector */}
+        <div className="relative mt-1">
+          <button
+            onClick={() => setShowLocationDropdown(!showLocationDropdown)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <MapPin className="w-3 h-3" />
+            <span>{location}</span>
+            <ChevronDown className="w-3 h-3" />
+          </button>
+          {showLocationDropdown && (
+            <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg min-w-[180px] py-1">
+              {locations.map(loc => (
+                <button
+                  key={loc}
+                  onClick={() => { setLocation(loc); setShowLocationDropdown(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
+                >
+                  {loc}
+                </button>
+              ))}
+              <div className="border-t border-border mt-1 pt-1 px-2 pb-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={newLocationInput}
+                    onChange={e => setNewLocationInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addCustomLocation()}
+                    placeholder="Add location..."
+                    className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground px-1 py-1"
+                  />
+                  <button
+                    onClick={addCustomLocation}
+                    disabled={!newLocationInput.trim()}
+                    className="text-primary hover:text-primary/80 disabled:opacity-30"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
         {isEditMode ? (
           <div className="flex flex-wrap gap-3 mt-2">
             <div className="flex flex-col gap-1">
