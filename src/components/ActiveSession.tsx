@@ -179,6 +179,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   });
   const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
+  const [location, setLocation] = useState(cachedSession?.location ?? DEFAULT_LOCATION);
+  const [locations, setLocations] = useState<string[]>(getSavedLocations);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [newLocationInput, setNewLocationInput] = useState('');
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
