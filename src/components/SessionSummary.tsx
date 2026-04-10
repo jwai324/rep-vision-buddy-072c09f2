@@ -117,14 +117,14 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             {onEdit && (
               <Button variant="neon" onClick={() => onEdit(session)} className="w-full">Edit Workout</Button>
             )}
-            <Button variant="outline" onClick={onClose} className="w-full">Back</Button>
             {onDelete && (
-              <button
+              <Button
+                variant="destructive"
                 onClick={() => setShowDeleteConfirm(true)}
-                className="text-xs text-destructive hover:text-destructive/80 font-medium py-2"
+                className="w-full"
               >
                 Delete Workout
-              </button>
+              </Button>
             )}
           </>
         )}
