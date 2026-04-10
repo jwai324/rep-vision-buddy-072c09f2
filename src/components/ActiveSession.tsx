@@ -183,6 +183,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [locations, setLocations] = useState<string[]>(getSavedLocations);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [newLocationInput, setNewLocationInput] = useState('');
+  const [deleteLocationConfirm, setDeleteLocationConfirm] = useState<string | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
@@ -691,8 +693,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               {locations.map(loc => (
                 <button
                   key={loc}
-                  onClick={() => { setLocation(loc); setShowLocationDropdown(false); }}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
+                  onClick={() => { if (!longPressTimer.current) return; setLocation(loc); setShowLocationDropdown(false); }}
+                  onPointerDown={() => {
+                    longPressTimer.current = setTimeout(() => {
+                      longPressTimer.current = null;
+                      if (loc !== DEFAULT_LOCATION) setDeleteLocationConfirm(loc);
+                    }, 500);
+                  }}
+                  onPointerUp={() => {
+                    if (longPressTimer.current) {
+                      clearTimeout(longPressTimer.current);
+                      setLocation(loc);
+                      setShowLocationDropdown(false);
+                    }
+                  }}
+                  onPointerLeave={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors select-none ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
                 >
                   {loc}
                 </button>
@@ -879,6 +895,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete location confirmation */}
+      <AlertDialog open={!!deleteLocationConfirm} onOpenChange={open => { if (!open) setDeleteLocationConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Location</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove "{deleteLocationConfirm}" from your saved locations?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!deleteLocationConfirm) return;
+                const updated = locations.filter(l => l !== deleteLocationConfirm);
+                setLocations(updated);
+                saveLocations(updated);
+                if (location === deleteLocationConfirm) setLocation(DEFAULT_LOCATION);
+                setDeleteLocationConfirm(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
