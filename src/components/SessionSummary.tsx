@@ -37,10 +37,23 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-foreground">Workout Complete 🎉</h1>
-        <p className="text-sm text-muted-foreground mt-1">{new Date(session.date).toLocaleDateString()}</p>
-      </div>
+      {/* Header */}
+      {isViewMode ? (
+        <div className="flex items-center gap-3 pt-2">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-xl font-extrabold text-foreground">Workout Details</h1>
+            <p className="text-xs text-muted-foreground">{new Date(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground">Workout Complete 🎉</h1>
+          <p className="text-sm text-muted-foreground mt-1">{new Date(session.date).toLocaleDateString()}</p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3">
