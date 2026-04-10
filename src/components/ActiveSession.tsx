@@ -676,6 +676,49 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           onChange={e => setWorkoutName(e.target.value)}
           className="text-xl font-bold text-foreground bg-transparent outline-none border-b border-transparent focus:border-primary transition-colors w-full"
         />
+        {/* Location selector */}
+        <div className="relative mt-1">
+          <button
+            onClick={() => setShowLocationDropdown(!showLocationDropdown)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <MapPin className="w-3 h-3" />
+            <span>{location}</span>
+            <ChevronDown className="w-3 h-3" />
+          </button>
+          {showLocationDropdown && (
+            <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg min-w-[180px] py-1">
+              {locations.map(loc => (
+                <button
+                  key={loc}
+                  onClick={() => { setLocation(loc); setShowLocationDropdown(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
+                >
+                  {loc}
+                </button>
+              ))}
+              <div className="border-t border-border mt-1 pt-1 px-2 pb-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={newLocationInput}
+                    onChange={e => setNewLocationInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addCustomLocation()}
+                    placeholder="Add location..."
+                    className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground px-1 py-1"
+                  />
+                  <button
+                    onClick={addCustomLocation}
+                    disabled={!newLocationInput.trim()}
+                    className="text-primary hover:text-primary/80 disabled:opacity-30"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
         {isEditMode ? (
           <div className="flex flex-wrap gap-3 mt-2">
             <div className="flex flex-col gap-1">
