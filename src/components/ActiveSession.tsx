@@ -899,6 +899,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete location confirmation */}
+      <AlertDialog open={!!deleteLocationConfirm} onOpenChange={open => { if (!open) setDeleteLocationConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Location</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove "{deleteLocationConfirm}" from your saved locations?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!deleteLocationConfirm) return;
+                const updated = locations.filter(l => l !== deleteLocationConfirm);
+                setLocations(updated);
+                saveLocations(updated);
+                if (location === deleteLocationConfirm) setLocation(DEFAULT_LOCATION);
+                setDeleteLocationConfirm(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
