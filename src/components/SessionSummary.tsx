@@ -3,6 +3,7 @@ import type { WorkoutSession } from '@/types/workout';
 import { SET_TYPE_CONFIG } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
+import { ArrowLeft } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
