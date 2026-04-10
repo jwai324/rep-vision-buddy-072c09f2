@@ -221,9 +221,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       workoutName,
       startTimestamp: startTime.current,
       elapsedAtCache: elapsedSeconds,
+      location,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  }, [blocks, workoutName, elapsedSeconds, isEditMode]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location]);
+
+  const addCustomLocation = useCallback(() => {
+    const trimmed = newLocationInput.trim();
+    if (trimmed && !locations.includes(trimmed)) {
+      const updated = [...locations, trimmed];
+      setLocations(updated);
+      saveLocations(updated);
+    }
+    setLocation(trimmed || location);
+    setNewLocationInput('');
+    setShowLocationDropdown(false);
+  }, [newLocationInput, locations, location]);
 
   const startTimer = useCallback((id: TimerId, duration: number) => {
     // Cancel any existing timer
