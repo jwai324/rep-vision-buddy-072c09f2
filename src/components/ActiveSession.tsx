@@ -693,8 +693,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               {locations.map(loc => (
                 <button
                   key={loc}
-                  onClick={() => { setLocation(loc); setShowLocationDropdown(false); }}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
+                  onClick={() => { if (!longPressTimer.current) return; setLocation(loc); setShowLocationDropdown(false); }}
+                  onPointerDown={() => {
+                    longPressTimer.current = setTimeout(() => {
+                      longPressTimer.current = null;
+                      if (loc !== DEFAULT_LOCATION) setDeleteLocationConfirm(loc);
+                    }, 500);
+                  }}
+                  onPointerUp={() => {
+                    if (longPressTimer.current) {
+                      clearTimeout(longPressTimer.current);
+                      setLocation(loc);
+                      setShowLocationDropdown(false);
+                    }
+                  }}
+                  onPointerLeave={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors select-none ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
                 >
                   {loc}
                 </button>
