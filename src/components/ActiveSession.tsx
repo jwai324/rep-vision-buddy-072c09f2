@@ -25,12 +25,30 @@ import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer'
 import type { WeightUnit } from '@/hooks/useStorage';
 
 const CACHE_KEY = 'active-session-cache';
+const LOCATIONS_KEY = 'workout-locations';
+const DEFAULT_LOCATION = 'Home Gym';
+
+function getSavedLocations(): string[] {
+  try {
+    const raw = localStorage.getItem(LOCATIONS_KEY);
+    if (!raw) return [DEFAULT_LOCATION];
+    const parsed = JSON.parse(raw) as string[];
+    return parsed.includes(DEFAULT_LOCATION) ? parsed : [DEFAULT_LOCATION, ...parsed];
+  } catch {
+    return [DEFAULT_LOCATION];
+  }
+}
+
+function saveLocations(locations: string[]) {
+  localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locations));
+}
 
 export interface ActiveSessionCache {
   blocks: ExerciseBlock[];
   workoutName: string;
   startTimestamp: number;
   elapsedAtCache: number;
+  location?: string;
 }
 
 export function clearSessionCache() {
