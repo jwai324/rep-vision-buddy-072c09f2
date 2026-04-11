@@ -3,11 +3,15 @@ import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/t
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreHorizontal, Trash2, Layers, ChevronDown, ArrowUp, ArrowDown, Timer, Check } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Timer } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
@@ -142,13 +146,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
   }, []);
 
-  const moveExercise = useCallback((from: number, to: number) => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
     setBlocks(prev => {
-      if (to < 0 || to >= prev.length) return prev;
-      const next = [...prev];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      return next;
+      const oldIndex = prev.findIndex(b => b.exerciseId === active.id);
+      const newIndex = prev.findIndex(b => b.exerciseId === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
     });
   }, []);
 
@@ -239,119 +249,113 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
 
       {/* Exercise Blocks */}
       <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
-        {blocks.map((block, blockIdx) => (
-          <div key={`${block.exerciseId}-${blockIdx}`} className="rounded-lg">
-            {/* Exercise Header */}
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="text-muted-foreground hover:text-foreground p-1">
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-48 p-1">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
+          <SortableContext items={blocks.map(b => b.exerciseId)} strategy={verticalListSortingStrategy}>
+            {blocks.map((block, blockIdx) => (
+              <SortableExerciseItem key={block.exerciseId} id={block.exerciseId}>
+                <div className="rounded-lg">
+                  {/* Exercise Header */}
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="text-muted-foreground hover:text-foreground p-1">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-48 p-1">
+                        <button
+                          onClick={() => removeExercise(blockIdx)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4" /> Remove Exercise
+                        </button>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  {/* Set Type Badges */}
+                  <div className="flex gap-1.5 flex-wrap mb-2">
+                    {setTypes.map(t => (
+                      <SetTypeBadge
+                        key={t} type={t} selected={block.setType === t}
+                        onClick={() => updateBlockType(blockIdx, t)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Rest Timer Setting */}
+                  <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+                    <Timer className="w-3 h-3" />
+                    <span>Rest:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={15}
+                      value={block.restSeconds}
+                      onChange={e => updateRestSeconds(blockIdx, parseInt(e.target.value) || 0)}
+                      className="w-16 text-center text-xs bg-secondary/60 rounded-md py-1 text-foreground outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <span>sec</span>
+                  </div>
+
+                  {/* Table Header */}
+                  <div className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+                    <span>Set</span>
+                    <span className="text-center">{weightUnit}</span>
+                    <span className="text-center">Reps</span>
+                    <span className="text-center">RPE</span>
+                  </div>
+
+                  {/* Set Rows */}
+                  {block.sets.map((set, setIdx) => (
+                    <div
+                      key={setIdx}
+                      className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 items-center py-1.5 px-1 rounded-md"
+                    >
+                      <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={set.targetWeight}
+                        onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)}
+                        placeholder="—"
+                        className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                      />
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={set.targetReps}
+                        onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
+                        placeholder={block.setType === 'failure' ? 'Fail' : '—'}
+                        className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                      />
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="1"
+                        max="10"
+                        step="0.5"
+                        value={set.targetRpe}
+                        onChange={e => updateSet(blockIdx, setIdx, 'targetRpe', e.target.value)}
+                        placeholder="—"
+                        className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                      />
+                    </div>
+                  ))}
+
+                  {/* Add Set */}
                   <button
-                    onClick={() => moveExercise(blockIdx, blockIdx - 1)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
+                    onClick={() => addSet(blockIdx)}
+                    className="w-full py-2 mt-1 rounded-md bg-secondary/40 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
                   >
-                    <ArrowUp className="w-4 h-4" /> Move Up
+                    + Add Set
                   </button>
-                  <button
-                    onClick={() => moveExercise(blockIdx, blockIdx + 1)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
-                  >
-                    <ArrowDown className="w-4 h-4" /> Move Down
-                  </button>
-                  <button
-                    onClick={() => removeExercise(blockIdx)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="w-4 h-4" /> Remove Exercise
-                  </button>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Set Type Badges */}
-            <div className="flex gap-1.5 flex-wrap mb-2">
-              {setTypes.map(t => (
-                <SetTypeBadge
-                  key={t} type={t} selected={block.setType === t}
-                  onClick={() => updateBlockType(blockIdx, t)}
-                />
-              ))}
-            </div>
-
-            {/* Rest Timer Setting */}
-            <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
-              <Timer className="w-3 h-3" />
-              <span>Rest:</span>
-              <input
-                type="number"
-                min={0}
-                step={15}
-                value={block.restSeconds}
-                onChange={e => updateRestSeconds(blockIdx, parseInt(e.target.value) || 0)}
-                className="w-16 text-center text-xs bg-secondary/60 rounded-md py-1 text-foreground outline-none focus:ring-1 focus:ring-primary"
-              />
-              <span>sec</span>
-            </div>
-
-            {/* Table Header */}
-            <div className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
-              <span>Set</span>
-              <span className="text-center">{weightUnit}</span>
-              <span className="text-center">Reps</span>
-              <span className="text-center">RPE</span>
-            </div>
-
-            {/* Set Rows */}
-            {block.sets.map((set, setIdx) => (
-              <div
-                key={setIdx}
-                className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 items-center py-1.5 px-1 rounded-md"
-              >
-                <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={set.targetWeight}
-                  onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)}
-                  placeholder="—"
-                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  value={set.targetReps}
-                  onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
-                  placeholder={block.setType === 'failure' ? 'Fail' : '—'}
-                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="1"
-                  max="10"
-                  step="0.5"
-                  value={set.targetRpe}
-                  onChange={e => updateSet(blockIdx, setIdx, 'targetRpe', e.target.value)}
-                  placeholder="—"
-                  className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-              </div>
+                </div>
+              </SortableExerciseItem>
             ))}
-
-            {/* Add Set */}
-            <button
-              onClick={() => addSet(blockIdx)}
-              className="w-full py-2 mt-1 rounded-md bg-secondary/40 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-            >
-              + Add Set
-            </button>
-          </div>
-        ))}
+          </SortableContext>
+        </DndContext>
 
         {/* Add Exercise */}
         <button
