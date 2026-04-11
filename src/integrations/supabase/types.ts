@@ -41,6 +41,51 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_exercises: {
+        Row: {
+          created_at: string
+          difficulty: string
+          equipment: string
+          exercise_type: string
+          id: string
+          is_recovery: boolean
+          movement_pattern: string
+          name: string
+          primary_body_part: string
+          secondary_muscles: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          difficulty?: string
+          equipment?: string
+          exercise_type?: string
+          id?: string
+          is_recovery?: boolean
+          movement_pattern?: string
+          name: string
+          primary_body_part?: string
+          secondary_muscles?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          difficulty?: string
+          equipment?: string
+          exercise_type?: string
+          id?: string
+          is_recovery?: boolean
+          movement_pattern?: string
+          name?: string
+          primary_body_part?: string
+          secondary_muscles?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       future_workouts: {
         Row: {
           completed: boolean | null
