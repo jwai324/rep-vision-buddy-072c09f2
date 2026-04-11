@@ -101,28 +101,27 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
             </div>
           </div>
 
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Difficulty</label>
-              <div className="flex gap-1">
-                {DIFFICULTIES.map(d => (
-                  <button key={d} onClick={() => setDifficulty(d)}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${difficulty === d ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-                    {d}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Difficulty</label>
+            <div className="flex gap-1 flex-wrap">
+              {DIFFICULTIES.map(d => (
+                <button key={d} onClick={() => setDifficulty(d)}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${difficulty === d ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
+                  {d}
+                </button>
+              ))}
             </div>
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Type</label>
-              <div className="flex gap-1">
-                {EXERCISE_TYPES.map(t => (
-                  <button key={t} onClick={() => setExerciseType(t)}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${exerciseType === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Type</label>
+            <div className="flex gap-1 flex-wrap">
+              {EXERCISE_TYPES.map(t => (
+                <button key={t} onClick={() => setExerciseType(t)}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${exerciseType === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
+                  {t}
+                </button>
+              ))}
             </div>
           </div>
 
