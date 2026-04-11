@@ -54,7 +54,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
+    <div className="min-h-screen bg-background p-4 flex flex-col gap-4 overflow-y-auto">
       <div className="flex items-center gap-3 pt-2">
         <button onClick={onBack} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
           <ArrowLeft className="w-5 h-5" />
@@ -69,7 +69,6 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
       )}
 
       {showForm && (
-        <ScrollArea className="max-h-[60vh]">
         <div className="bg-card rounded-xl border border-border p-4 space-y-4">
           <p className="text-sm font-bold text-foreground">New Exercise</p>
 
@@ -142,7 +141,6 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
             <Button className="flex-1" onClick={handleSave} disabled={!name.trim()}>Save</Button>
           </div>
         </div>
-        </ScrollArea>
       )}
 
       <ScrollArea className="flex-1">
