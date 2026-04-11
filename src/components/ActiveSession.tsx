@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
+import { registerSession, unregisterSession } from '@/hooks/useSessionController';
 
 import type { WeightUnit } from '@/hooks/useStorage';
 

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
+import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
 
 export interface ChatMessage {
   id: string;
@@ -77,11 +78,14 @@ const AI_ALLOWED_ACTIONS = new Set([
   'create_template', 'edit_template', 'delete_template',
   'create_program', 'delete_program', 'set_active_program',
   'confirm_destructive_action', 'get_workout_history',
+  'add_exercise_to_workout', 'add_sets_to_exercise',
+  'update_set_weight_reps', 'swap_exercise_in_workout',
 ]);
 
 // Actions that require exercise validation before execution
 const ACTIONS_REQUIRING_EXERCISE_VALIDATION = new Set([
   'create_template', 'edit_template', 'create_program',
+  'add_exercise_to_workout', 'swap_exercise_in_workout',
 ]);
 
 function validateExerciseReference(exerciseId: string, exerciseName?: string): { valid: boolean; resolvedId?: string; error?: string; suggestions?: string[] } {
