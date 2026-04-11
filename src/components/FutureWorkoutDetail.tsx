@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 // Rest-day eligible exercises (recovery/wellness type)
 const REST_DAY_EXERCISE_IDS = [
   'sleep-focus', 'cold-plunge', 'sauna', 'yoga', 'walking', 'meditation',
-  'massage', 'stretching', 'foam-rolling', 'swimming-full-body', 'active-rest', 'compression-cuff',
+  'massage', 'stretching', 'foam-rolling', 'swimming-full-body', 'active-rest', 'compression-cuff', 'breathing-exercises',
 ];
 
 const REST_DAY_EXERCISES = EXERCISE_DATABASE.filter(ex => REST_DAY_EXERCISE_IDS.includes(ex.id));
