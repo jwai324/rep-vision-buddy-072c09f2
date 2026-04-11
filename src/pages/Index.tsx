@@ -358,7 +358,18 @@ const IndexInner = () => {
           onExpand={handleExpand}
         />
       )}
+
+      <AIChatBubble />
     </div>
+  );
+};
+
+const Index = () => {
+  const storage = useStorage();
+  return (
+    <ChatProvider storage={storage}>
+      <IndexInner />
+    </ChatProvider>
   );
 };
 
