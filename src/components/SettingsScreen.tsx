@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +12,7 @@ interface SettingsScreenProps {
   onUpdatePreferences: (prefs: Partial<UserPreferences>) => void;
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onBack: () => void;
+  onGoToCustomExercises?: () => void;
 }
 
 const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
@@ -22,7 +23,7 @@ const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
 const REST_OPTIONS = [30, 45, 60, 90, 120, 150, 180];
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
-  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack,
+  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises,
 }) => {
   const { user, signOut } = useAuth();
   const [editingName, setEditingName] = useState(false);
