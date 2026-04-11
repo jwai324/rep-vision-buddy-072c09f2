@@ -3,10 +3,7 @@ import type { WorkoutSession } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts';
 import { subDays, isAfter } from 'date-fns';
-
-const exercisePatternMap = new Map(
-  EXERCISE_DATABASE.map(ex => [ex.id, ex.movementPattern])
-);
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 const PATTERNS = ['Push', 'Pull', 'Hinge', 'Squat', 'Lunge', 'Fly', 'Carry', 'Rotation'];
 
@@ -16,6 +13,12 @@ interface BalanceTabProps {
 
 export const BalanceTab: React.FC<BalanceTabProps> = ({ history }) => {
   const [period, setPeriod] = useState<30 | 60 | 90>(30);
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exercisePatternMap = useMemo(() => {
+    const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.movementPattern]));
+    for (const ce of customExercises) map.set(ce.id, ce.movementPattern);
+    return map;
+  }, [customExercises]);
 
   const data = useMemo(() => {
     const cutoff = subDays(new Date(), period);

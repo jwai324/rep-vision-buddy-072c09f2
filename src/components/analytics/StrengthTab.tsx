@@ -4,6 +4,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 const COLORS = ['hsl(var(--primary))', '#ef4444', '#3b82f6', '#10b981', '#f97316', '#a855f7'];
 
@@ -14,6 +15,12 @@ interface StrengthTabProps {
 
 export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit }) => {
   const [selectedExercises, setSelectedExercises] = useState<string[]>([]);
+  const { exercises: customExercises } = useCustomExercisesContext();
+
+  const allExercises = useMemo(() => {
+    const combined = [...EXERCISE_DATABASE, ...customExercises];
+    return combined;
+  }, [customExercises]);
 
   // Find exercises that appear in history
   const exercisesInHistory = useMemo(() => {
@@ -25,8 +32,8 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
         }
       }
     }
-    return EXERCISE_DATABASE.filter(e => ids.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
-  }, [history]);
+    return allExercises.filter(e => ids.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
+  }, [history, allExercises]);
 
   const toggleExercise = (id: string) => {
     setSelectedExercises(prev =>
@@ -57,7 +64,7 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
     }).filter(Boolean);
   }, [history, selectedExercises]);
 
-  const getExerciseName = (id: string) => EXERCISE_DATABASE.find(e => e.id === id)?.name || id;
+  const getExerciseName = (id: string) => allExercises.find(e => e.id === id)?.name || id;
 
   if (exercisesInHistory.length === 0) {
     return (

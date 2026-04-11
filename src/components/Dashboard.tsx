@@ -7,6 +7,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import { addDays, addWeeks, format, getDay, isSameDay, startOfWeek } from 'date-fns';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 interface DashboardProps {
   history: WorkoutSession[];
@@ -64,14 +65,16 @@ const BODY_PART_COLORS: Record<string, string> = {
   Calves: 'bg-cyan-500/80',
 };
 
-const exerciseBodyPartMap = new Map(
-  EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart])
-);
-
 const HIDDEN_BODY_PARTS = new Set(['Full Body', 'Cardio', 'Neck', 'Forearms']);
 const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All' && !HIDDEN_BODY_PARTS.has(bp));
 
 const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseBodyPartMap = useMemo(() => {
+    const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
+    for (const ce of customExercises) map.set(ce.id, ce.primaryBodyPart);
+    return map;
+  }, [customExercises]);
   const [weekOffset, setWeekOffset] = useState(0);
 
   const { weeklyData, weekLabel } = useMemo(() => {
