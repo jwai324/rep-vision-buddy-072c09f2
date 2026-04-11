@@ -939,52 +939,58 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
       {/* Exercise Blocks */}
       <div className="flex-1 overflow-y-auto px-4 pb-44 space-y-2">
-        {blocks.map((block, blockIdx) => {
-          const betweenId: TimerId = { type: 'between', blockIdx };
-          const betweenKey = timerIdKey(betweenId);
-          const isBetweenActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenKey;
-          return (
-          <React.Fragment key={block.exerciseId}>
-            {blockIdx > 0 && (
-              <ExerciseRestTimer
-                timerId={betweenId}
-                defaultDuration={blocks[blockIdx - 1].restSeconds}
-                variant="between"
-                isActive={isBetweenActive}
-                remaining={isBetweenActive ? activeTimer!.remaining : 0}
-                totalDuration={isBetweenActive ? activeTimer!.duration : 0}
-                recordedRest={restRecords[betweenKey] ?? null}
-                onStart={startTimer}
-                onSkip={skipTimer}
-                onExtend={extendTimer}
-              />
-            )}
-            <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
-              <ExerciseTable
-                block={block}
-                blockIdx={blockIdx}
-                weightUnit={weightUnit}
-                blocks={blocks}
-                stickyNote={getStickyNote(block.exerciseId)}
-                activeTimer={activeTimer}
-                restRecords={restRecords}
-                previousSets={getPreviousExerciseData(history, block.exerciseId)}
-                onUpdateSet={updateSet}
-                onToggleComplete={toggleSetComplete}
-                onAddSet={addSet}
-                onAddDrop={addDrop}
-                onUpdateDrop={updateDrop}
-                onRemoveSet={removeSet}
-                onRemoveDrop={removeDrop}
-                onMenuAction={handleMenuAction}
-                onStartTimer={startTimer}
-                onSkipTimer={skipTimer}
-                onExtendTimer={extendTimer}
-              />
-            </div>
-          </React.Fragment>
-          );
-        })}
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
+          <SortableContext items={blocks.map(b => b.exerciseId)} strategy={verticalListSortingStrategy}>
+            {blocks.map((block, blockIdx) => {
+              const betweenId: TimerId = { type: 'between', blockIdx };
+              const betweenKey = timerIdKey(betweenId);
+              const isBetweenActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenKey;
+              return (
+              <React.Fragment key={block.exerciseId}>
+                {blockIdx > 0 && (
+                  <ExerciseRestTimer
+                    timerId={betweenId}
+                    defaultDuration={blocks[blockIdx - 1].restSeconds}
+                    variant="between"
+                    isActive={isBetweenActive}
+                    remaining={isBetweenActive ? activeTimer!.remaining : 0}
+                    totalDuration={isBetweenActive ? activeTimer!.duration : 0}
+                    recordedRest={restRecords[betweenKey] ?? null}
+                    onStart={startTimer}
+                    onSkip={skipTimer}
+                    onExtend={extendTimer}
+                  />
+                )}
+                <SortableExerciseItem id={block.exerciseId}>
+                  <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
+                    <ExerciseTable
+                      block={block}
+                      blockIdx={blockIdx}
+                      weightUnit={weightUnit}
+                      blocks={blocks}
+                      stickyNote={getStickyNote(block.exerciseId)}
+                      activeTimer={activeTimer}
+                      restRecords={restRecords}
+                      previousSets={getPreviousExerciseData(history, block.exerciseId)}
+                      onUpdateSet={updateSet}
+                      onToggleComplete={toggleSetComplete}
+                      onAddSet={addSet}
+                      onAddDrop={addDrop}
+                      onUpdateDrop={updateDrop}
+                      onRemoveSet={removeSet}
+                      onRemoveDrop={removeDrop}
+                      onMenuAction={handleMenuAction}
+                      onStartTimer={startTimer}
+                      onSkipTimer={skipTimer}
+                      onExtendTimer={extendTimer}
+                    />
+                  </div>
+                </SortableExerciseItem>
+              </React.Fragment>
+              );
+            })}
+          </SortableContext>
+        </DndContext>
 
         {/* Add Exercise */}
         <button
