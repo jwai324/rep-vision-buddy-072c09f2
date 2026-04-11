@@ -358,7 +358,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
-      <AIChatBubble />
+      {/* <AIChatBubble /> — disabled for rework */}
     </div>
   );
 };
