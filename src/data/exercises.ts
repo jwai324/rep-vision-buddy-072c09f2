@@ -43,6 +43,10 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-arm-cable-chest-press', name: 'Single-Arm Cable Chest Press', primaryBodyPart: 'Chest', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-landmine-press', name: 'Single-Arm Landmine Press', primaryBodyPart: 'Chest', equipment: 'Landmine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts', 'Core'] },
   { id: 'medicine-ball-chest-pass', name: 'Medicine Ball Chest Pass', primaryBodyPart: 'Chest', equipment: 'Medicine Ball', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
+  { id: 'diamond-push-up', name: 'Diamond Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts'] },
+  { id: 'archer-push-up', name: 'Archer Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core', 'Shoulders'] },
+  { id: 'plyo-push-up', name: 'Plyo Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Triceps', 'Core'] },
+  { id: 'single-arm-push-up', name: 'Single-Arm Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core', 'Shoulders'] },
 
   // Back
   { id: 'conventional-deadlift', name: 'Conventional Deadlift', primaryBodyPart: 'Back', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Glutes', 'Core', 'Forearms', 'Traps'] },
