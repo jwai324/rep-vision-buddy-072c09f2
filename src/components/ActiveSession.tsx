@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
+import { registerSession, unregisterSession } from '@/hooks/useSessionController';
 
 import type { WeightUnit } from '@/hooks/useStorage';
 
@@ -475,6 +476,91 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const removeExercise = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
   }, []);
+
+  // Register session controller for AI chat mutations
+  useEffect(() => {
+    registerSession({
+      addExercise: (exerciseId, sets = 3, targetReps, weight) => {
+        let added = false;
+        setBlocks(prev => {
+          if (prev.some(b => b.exerciseId === exerciseId)) return prev;
+          added = true;
+          return [...prev, {
+            exerciseId,
+            exerciseName: EXERCISES[exerciseId]?.name ?? exerciseId,
+            restSeconds: 90,
+            dropSetsEnabled: defaultDropSetsEnabled,
+            sets: Array.from({ length: sets }, (_, i) => ({
+              setNumber: i + 1,
+              weight: weight?.toString() ?? '',
+              reps: targetReps?.toString() ?? '',
+              completed: false,
+              type: 'normal' as SetType,
+              rpe: '',
+              time: '',
+            })),
+          }];
+        });
+        return added;
+      },
+      addSets: (identifier, count) => {
+        let found = false;
+        setBlocks(prev => prev.map((block, idx) => {
+          const match = block.exerciseName.toLowerCase() === identifier.toLowerCase()
+            || idx.toString() === identifier;
+          if (!match) return block;
+          found = true;
+          const lastSet = block.sets[block.sets.length - 1];
+          const normalCount = block.sets.filter(s => s.type !== 'warmup').length;
+          const newSets = Array.from({ length: count }, (_, i) => ({
+            setNumber: normalCount + i + 1,
+            weight: lastSet?.weight ?? '',
+            reps: lastSet?.reps ?? '',
+            completed: false,
+            type: (lastSet?.type === 'warmup' ? 'normal' : lastSet?.type ?? 'normal') as SetType,
+            rpe: '',
+            time: '',
+          }));
+          return { ...block, sets: [...block.sets, ...newSets] };
+        }));
+        return found;
+      },
+      updateSet: (exerciseName, setNumber, updates) => {
+        let found = false;
+        setBlocks(prev => prev.map(block => {
+          if (block.exerciseName.toLowerCase() !== exerciseName.toLowerCase()) return block;
+          return {
+            ...block,
+            sets: block.sets.map(set => {
+              if (set.setNumber !== setNumber) return set;
+              found = true;
+              return {
+                ...set,
+                ...(updates.weight !== undefined ? { weight: updates.weight.toString() } : {}),
+                ...(updates.reps !== undefined ? { reps: updates.reps.toString() } : {}),
+              };
+            }),
+          };
+        }));
+        return found;
+      },
+      swapExercise: (currentName, newExerciseId) => {
+        let found = false;
+        setBlocks(prev => prev.map(block => {
+          if (block.exerciseName.toLowerCase() !== currentName.toLowerCase()) return block;
+          found = true;
+          return {
+            ...block,
+            exerciseId: newExerciseId,
+            exerciseName: EXERCISES[newExerciseId]?.name ?? newExerciseId,
+          };
+        }));
+        return found;
+      },
+      getBlocks: () => blocks,
+    });
+    return () => unregisterSession();
+  }, [blocks, defaultDropSetsEnabled]);
 
   const toggleDropSets = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((b, i) => {
