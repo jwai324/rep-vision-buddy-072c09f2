@@ -22,7 +22,7 @@ import { CustomExercisesScreen } from '@/components/CustomExercisesScreen';
 import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
 import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { AIChatBubble } from '@/components/AIChatBubble';
-import { useCustomExercises } from '@/hooks/useCustomExercises';
+
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
 
@@ -381,9 +381,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 const Index = () => {
   const storage = useStorage();
   return (
-    <ChatProvider storage={storage}>
-      <IndexInner storage={storage} />
-    </ChatProvider>
+    <CustomExercisesProvider>
+      <ChatProvider storage={storage}>
+        <IndexInner storage={storage} />
+      </ChatProvider>
+    </CustomExercisesProvider>
   );
 };
 
