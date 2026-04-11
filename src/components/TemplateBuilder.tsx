@@ -247,12 +247,24 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   };
 
   if (showExercisePicker) {
+    const isSwapMode = swapTarget !== null;
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <div className="p-4 pb-0">
-          <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
+          <Button variant="outline" onClick={() => { setShowExercisePicker(false); setSwapTarget(null); }} className="mb-2">← Back</Button>
         </div>
-        <ExerciseSelector onSelect={addExercise} onSelectMultiple={addMultipleExercises} />
+        <ExerciseSelector
+          onSelect={(id) => {
+            if (isSwapMode) {
+              swapExercise(swapTarget, id);
+              setShowExercisePicker(false);
+            } else {
+              addExercise(id);
+            }
+          }}
+          onSelectMultiple={isSwapMode ? undefined : addMultipleExercises}
+          multiSelect={!isSwapMode}
+        />
       </div>
     );
   }
@@ -296,6 +308,12 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                       </PopoverTrigger>
                       <PopoverContent align="end" className="w-48 p-1">
                         <button
+                          onClick={() => setSwapTarget(blockIdx)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
+                        >
+                          <ArrowLeftRight className="w-4 h-4" /> Swap Exercise
+                        </button>
+                        <button
                           onClick={() => removeExercise(blockIdx)}
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-destructive hover:bg-destructive/10"
                         >
@@ -304,6 +322,36 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                       </PopoverContent>
                     </Popover>
                   </div>
+
+                  {/* Swap Panel */}
+                  {swapTarget === blockIdx && (
+                    <div className="bg-secondary/50 rounded-lg border border-border p-3 mb-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Similar Exercises</p>
+                        <button onClick={() => setSwapTarget(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                      </div>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {getSimilarExercises(block.exerciseId).map(ex => (
+                          <button
+                            key={ex.id}
+                            onClick={() => swapExercise(blockIdx, ex.id)}
+                            className="w-full text-left px-2.5 py-2 rounded-md hover:bg-primary/10 transition-colors flex items-center justify-between"
+                          >
+                            <div>
+                              <span className="text-sm font-medium text-foreground">{ex.name}</span>
+                              <span className="text-[10px] text-muted-foreground ml-2">{ex.equipment}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => { setShowExercisePicker(true); }}
+                        className="w-full mt-2 py-2 rounded-md border border-dashed border-muted-foreground/30 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Search className="w-3 h-3" /> Browse All Exercises
+                      </button>
+                    </div>
+                  )
 
                   {/* Set Type Badges */}
                   <div className="flex gap-1.5 flex-wrap mb-2">
