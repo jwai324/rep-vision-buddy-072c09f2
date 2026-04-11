@@ -1,44 +1,37 @@
 
 
-## Plan: Include Custom Exercises in Analytics & Dashboard
+## Plan: Sync Notion Exercise Database → App
 
-### Problem
-All analytics tabs (Volume, Strength, Frequency, Balance, Set Types, RPE) and the Dashboard's "Weekly Sets" widget build their exercise-to-body-part/pattern lookup maps using only `EXERCISE_DATABASE`. Custom exercises are ignored, causing their sets to be uncounted or categorized as "Other."
+### Overview
+Pull all exercises from the Notion "Exercise Database" and regenerate `src/data/exercises.ts` to match. This ensures the app reflects any additions, edits, or removals made in Notion.
 
-### Fix
-Each component that builds a static map from `EXERCISE_DATABASE` needs to also include custom exercises. Since these are loaded asynchronously via React context, the static module-level maps must be moved inside the component and combined with custom exercises via `useMemo`.
+### Steps
 
-### Files to Change
+**1. Query all exercises from Notion**
+- Use the Notion database query tool to fetch every row from `collection://6609d987-d72a-4821-b241-fd83beff7f15`
+- The database has 300+ entries; will need to paginate through search results or use the view query tool
 
-**1. `src/components/Dashboard.tsx`**
-- Import `useCustomExercisesContext`
-- Move `exerciseBodyPartMap` (line 67-69) inside the component as a `useMemo` that merges `EXERCISE_DATABASE` + custom exercises
+**2. Generate updated `src/data/exercises.ts`**
+- Write a script that maps each Notion row's properties to the `Exercise` interface:
+  - `Exercise` (title) → `name`
+  - `Primary Body Part` → `primaryBodyPart`
+  - `Equipment` → `equipment`
+  - `Difficulty` → `difficulty`
+  - `Exercise Type` → `exerciseType`
+  - `Movement Pattern` → `movementPattern`
+  - `Secondary Muscles` → `secondaryMuscles`
+- Auto-generate `id` from the name (lowercase, hyphenated, e.g. "Back Extension (45°)" → `back-extension-45`)
+- Keep the existing `BODY_PARTS`, `EQUIPMENT_LIST`, `getBodyPartIcon` constants/helpers — update them if Notion introduces new body parts or equipment
+- Preserve the Recovery/Wellness section exercises and the `Training Style` field from Notion will be ignored (not used in-app)
 
-**2. `src/components/analytics/VolumeTab.tsx`**
-- Import `useCustomExercisesContext`
-- Move `exerciseBodyPartMap` (line 8-10) inside the component as a `useMemo`
+**3. Validate no breaking changes**
+- Ensure all exercise IDs currently referenced in saved templates/sessions still exist in the new list
+- If Notion removed or renamed exercises, the old IDs will be preserved or aliased
 
-**3. `src/components/analytics/FrequencyTab.tsx`**
-- Same pattern: move `exerciseBodyPartMap` inside component with custom exercises merged
+### What changes
+- `src/data/exercises.ts` — regenerated `EXERCISE_DATABASE` array from Notion data; `BODY_PARTS` and `EQUIPMENT_LIST` updated if needed
 
-**4. `src/components/analytics/BalanceTab.tsx`**
-- Move `exercisePatternMap` (line 7-9) inside component, merge custom exercises
-
-**5. `src/components/analytics/StrengthTab.tsx`**
-- Update `exercisesInHistory` filter (line 28) and `getExerciseName` (line 60) to also search custom exercises
-
-**6. `src/components/analytics/SetTypesTab.tsx`** and **`src/components/analytics/RpeTab.tsx`**
-- Check if they use exercise lookups; update if needed
-
-### Pattern (repeated in each file)
-```tsx
-const { exercises: customExercises } = useCustomExercisesContext();
-const exerciseBodyPartMap = useMemo(() => {
-  const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
-  for (const ce of customExercises) map.set(ce.id, ce.primaryBodyPart);
-  return map;
-}, [customExercises]);
-```
-
-No database or backend changes needed.
+### What stays the same
+- Custom exercises (stored in database, unaffected)
+- All other components — they reference `EXERCISE_DATABASE` which keeps the same interface
 
