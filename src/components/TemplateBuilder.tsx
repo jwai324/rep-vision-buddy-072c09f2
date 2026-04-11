@@ -200,7 +200,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
-        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        <button onClick={handleCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
         <Button variant="neon" size="sm" onClick={save} disabled={!name.trim() || blocks.length === 0}>
           Save Template
         </Button>
