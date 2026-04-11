@@ -18,6 +18,8 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import { AIProgramBuilder } from '@/components/AIProgramBuilder';
+import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
+import { AIChatBubble } from '@/components/AIChatBubble';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
 
