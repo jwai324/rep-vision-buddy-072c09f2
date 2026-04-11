@@ -18,8 +18,11 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import { AIProgramBuilder } from '@/components/AIProgramBuilder';
+import { CustomExercisesScreen } from '@/components/CustomExercisesScreen';
 import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
+import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { AIChatBubble } from '@/components/AIChatBubble';
+
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
 
@@ -39,10 +42,12 @@ type Screen =
   | { type: 'programBuilder'; program?: WorkoutProgram }
   | { type: 'settings' }
   | { type: 'analytics' }
-  | { type: 'aiProgramBuilder' };
+  | { type: 'aiProgramBuilder' }
+  | { type: 'customExercises' };
 
 const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
   const { registerScreen } = useChatContext();
+  const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise } = useCustomExercisesContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
@@ -326,6 +331,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onUpdatePreferences={storage.updatePreferences}
           onUpdateProfile={storage.updateProfile}
           onBack={() => setScreen({ type: 'dashboard' })}
+          onGoToCustomExercises={() => setScreen({ type: 'customExercises' })}
         />
       )}
 
@@ -351,6 +357,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
+      {screen.type === 'customExercises' && (
+        <CustomExercisesScreen
+          exercises={customExercises}
+          onAdd={addCustomExercise}
+          onDelete={deleteCustomExercise}
+          onBack={() => setScreen({ type: 'settings' })}
+        />
+      )}
+
       {minimizedSession && screen.type !== 'activeSession' && (
         <MinimizedSessionBar
           workoutName={getSessionCache()?.workoutName ?? 'Workout'}
@@ -366,9 +381,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 const Index = () => {
   const storage = useStorage();
   return (
-    <ChatProvider storage={storage}>
-      <IndexInner storage={storage} />
-    </ChatProvider>
+    <CustomExercisesProvider>
+      <ChatProvider storage={storage}>
+        <IndexInner storage={storage} />
+      </ChatProvider>
+    </CustomExercisesProvider>
   );
 };
 

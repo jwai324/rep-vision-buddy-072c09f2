@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -12,6 +12,7 @@ interface SettingsScreenProps {
   onUpdatePreferences: (prefs: Partial<UserPreferences>) => void;
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onBack: () => void;
+  onGoToCustomExercises?: () => void;
 }
 
 const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
@@ -22,7 +23,7 @@ const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
 const REST_OPTIONS = [30, 45, 60, 90, 120, 150, 180];
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
-  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack,
+  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises,
 }) => {
   const { user, signOut } = useAuth();
   const [editingName, setEditingName] = useState(false);
@@ -157,6 +158,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           />
         </div>
       </div>
+
+      {/* My Exercises */}
+      {onGoToCustomExercises && (
+        <button
+          onClick={onGoToCustomExercises}
+          className="w-full bg-card rounded-xl border border-border overflow-hidden text-left"
+        >
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Dumbbell className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium text-foreground">My Exercises</p>
+                <p className="text-xs text-muted-foreground">Create & manage custom exercises</p>
+              </div>
+            </div>
+            <ChevronLeft className="w-4 h-4 text-muted-foreground rotate-180" />
+          </div>
+        </button>
+      )}
 
       {/* App Info */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">

@@ -5,7 +5,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { EXERCISE_DATABASE, BODY_PARTS, EQUIPMENT_LIST, getBodyPartIcon } from '@/data/exercises';
 import type { ExerciseId } from '@/types/workout';
+import type { Exercise } from '@/data/exercises';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 interface ExerciseSelectorProps {
   onSelect: (id: ExerciseId) => void;
@@ -20,6 +22,7 @@ const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
 
 export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
+  const { exercises: customExercises } = useCustomExercisesContext();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 250);
   const [bodyPartFilter, setBodyPartFilter] = useState<string>('All');
@@ -31,8 +34,10 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
 
   const activeFilterCount = [equipmentFilter, difficultyFilter, typeFilter].filter(f => f !== 'All').length + (bodyPartFilter !== 'All' ? 1 : 0);
 
+  const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
+
   const filtered = useMemo(() => {
-    return EXERCISE_DATABASE.filter(ex => {
+    return allExercises.filter(ex => {
       const matchesSearch = debouncedSearch === '' ||
         ex.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
         ex.primaryBodyPart.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
@@ -43,7 +48,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
       const matchesType = typeFilter === 'All' || ex.exerciseType === typeFilter;
       return matchesSearch && matchesBodyPart && matchesEquipment && matchesDifficulty && matchesType;
     });
-  }, [debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
+  }, [allExercises, debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
 
   const grouped = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
