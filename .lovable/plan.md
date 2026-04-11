@@ -1,22 +1,42 @@
 
 
-## Plan: Show Custom Exercise Names in Template Builder
+## Plan: Drag-and-Drop Exercise Reordering
 
-### Problem
-When a custom exercise is added to a template, the `EXERCISES` lookup table (built only from the built-in exercise database) doesn't contain custom exercises. The fallback shows the raw ID (e.g., `custom-abc123`) instead of the exercise name.
+### Overview
+Replace the "Move Up / Move Down" menu buttons with press-and-hold drag-to-reorder for exercise blocks in both the Template Builder and Active Session.
 
-### Fix
-Two locations in `src/components/TemplateBuilder.tsx` need updating:
+### Approach
+Use `@dnd-kit/core` and `@dnd-kit/sortable` — the standard React drag-and-drop library that supports both mouse and touch (long-press) interactions.
 
-1. **Import** `useCustomExercisesContext` and call it in the component to get custom exercises.
-2. **Create a merged lookup** that combines `EXERCISES` with custom exercises, so any exercise ID resolves to its proper name.
-3. **Use the merged lookup** in both:
-   - `exerciseToBlock()` (line 36-48) — move this logic inside the component or pass the lookup to it
-   - `addMultipleExercises()` (line 148-163) — where new blocks are created
+### Changes
 
-Similarly, the same fix is needed in `src/components/ActiveSession.tsx` at lines 167, 458, 490, and 555 where `EXERCISES[id]?.name ?? id` is used.
+**1. Install dependency**
+- `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
 
-### Files Changed
-- `src/components/TemplateBuilder.tsx` — use custom exercises context for name resolution
-- `src/components/ActiveSession.tsx` — use custom exercises context for name resolution
+**2. Create a reusable `DraggableExerciseBlock` wrapper** (`src/components/DraggableExerciseBlock.tsx`)
+- Uses `useSortable` from dnd-kit
+- Renders a drag handle (grip icon) on the left side of the exercise header
+- Long-press activates drag on touch devices via dnd-kit's `TouchSensor` with `activationConstraint: { delay: 250, tolerance: 5 }`
+
+**3. Update `src/components/TemplateBuilder.tsx`**
+- Wrap exercise list in `DndContext` + `SortableContext` (vertical list strategy)
+- Each exercise block becomes a `SortableItem`
+- On `onDragEnd`, call existing `moveExercise(oldIndex, newIndex)`
+- Remove "Move Up" / "Move Down" buttons from the popover menu
+
+**4. Update `src/components/ActiveSession.tsx`**
+- Add a `moveExercise` callback (same pattern as TemplateBuilder)
+- Wrap exercise blocks in `DndContext` + `SortableContext`
+- Each block becomes sortable with a drag handle
+- Remove any move-related menu items if present
+
+**5. Visual feedback**
+- Dragged item gets a subtle scale + shadow overlay via dnd-kit's `DragOverlay`
+- Drop placeholder shown between items
+
+### Technical Details
+- `MouseSensor` with `activationConstraint: { distance: 8 }` for desktop
+- `TouchSensor` with `activationConstraint: { delay: 200, tolerance: 5 }` for mobile long-press
+- `arrayMove` utility from `@dnd-kit/sortable` handles the reorder logic
+- `restrictToVerticalAxis` modifier keeps drag locked to Y-axis
 
