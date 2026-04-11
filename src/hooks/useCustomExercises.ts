@@ -71,5 +71,23 @@ export function useCustomExercises() {
     fetchExercises();
   }, [user, fetchExercises]);
 
-  return { exercises, loading, addExercise, deleteExercise, refetch: fetchExercises };
+  const updateExercise = useCallback(async (customId: string, input: CustomExerciseInput) => {
+    if (!user) return;
+    const dbId = customId.replace('custom-', '');
+    const { error } = await supabase.from('custom_exercises').update({
+      name: input.name,
+      primary_body_part: input.primaryBodyPart,
+      equipment: input.equipment,
+      difficulty: input.difficulty,
+      exercise_type: input.exerciseType,
+      movement_pattern: input.movementPattern,
+      secondary_muscles: input.secondaryMuscles as any,
+      is_recovery: input.isRecovery,
+    }).eq('id', dbId);
+    if (error) { toast.error('Failed to update exercise'); return; }
+    toast.success('Exercise updated');
+    fetchExercises();
+  }, [user, fetchExercises]);
+
+  return { exercises, loading, addExercise, deleteExercise, updateExercise, refetch: fetchExercises };
 }

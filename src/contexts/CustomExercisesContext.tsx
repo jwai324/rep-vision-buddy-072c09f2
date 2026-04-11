@@ -8,6 +8,7 @@ interface CustomExercisesContextValue {
   loading: boolean;
   addExercise: (input: CustomExerciseInput) => Promise<void>;
   deleteExercise: (id: string) => Promise<void>;
+  updateExercise: (id: string, input: CustomExerciseInput) => Promise<void>;
 }
 
 const CustomExercisesContext = createContext<CustomExercisesContextValue>({
@@ -15,6 +16,7 @@ const CustomExercisesContext = createContext<CustomExercisesContextValue>({
   loading: true,
   addExercise: async () => {},
   deleteExercise: async () => {},
+  updateExercise: async () => {},
 });
 
 export const useCustomExercisesContext = () => useContext(CustomExercisesContext);
