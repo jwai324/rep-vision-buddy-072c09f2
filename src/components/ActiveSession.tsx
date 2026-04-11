@@ -492,6 +492,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
   }, []);
 
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setBlocks(prev => {
+      const oldIndex = prev.findIndex(b => b.exerciseId === active.id);
+      const newIndex = prev.findIndex(b => b.exerciseId === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }, []);
+
   // Register session controller for AI chat mutations
   useEffect(() => {
     registerSession({
