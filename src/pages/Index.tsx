@@ -18,6 +18,8 @@ import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import { AIProgramBuilder } from '@/components/AIProgramBuilder';
+import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
+import { AIChatBubble } from '@/components/AIChatBubble';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
 
@@ -39,15 +41,27 @@ type Screen =
   | { type: 'analytics' }
   | { type: 'aiProgramBuilder' };
 
-const Index = () => {
-  const storage = useStorage();
+const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
+  const { registerScreen } = useChatContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
-  // Check for cached active session on mount
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
     if (cached) return { type: 'activeSession', exercises: [] };
     return { type: 'dashboard' };
   });
+
+  // Register screen context with AI chat
+  useEffect(() => {
+    const screenMap: Record<string, string> = {
+      dashboard: 'dashboard', startWorkout: 'dashboard', browseExercises: 'exercises',
+      activeSession: 'active_workout', editSession: 'active_workout',
+      summary: 'dashboard', sessionDetail: 'activity', activity: 'activity',
+      futureWorkoutDetail: 'activity', templates: 'templates', templateBuilder: 'templates',
+      programs: 'programs', programBuilder: 'programs', settings: 'settings',
+      analytics: 'analytics', aiProgramBuilder: 'programs',
+    };
+    registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
+  }, [screen.type, registerScreen]);
 
   const handleMinimize = () => {
     setMinimizedSession(screen);
@@ -343,7 +357,18 @@ const Index = () => {
           onExpand={handleExpand}
         />
       )}
+
+      <AIChatBubble />
     </div>
+  );
+};
+
+const Index = () => {
+  const storage = useStorage();
+  return (
+    <ChatProvider storage={storage}>
+      <IndexInner storage={storage} />
+    </ChatProvider>
   );
 };
 
