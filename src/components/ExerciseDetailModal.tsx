@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EXERCISE_DATABASE } from '@/data/exercises';
+import { ExerciseAnimation } from '@/components/ExerciseAnimation';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -52,13 +53,10 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
           </TabsList>
 
           <TabsContent value="info" className="flex-1 overflow-y-auto space-y-4 mt-4">
-            {/* Animated placeholder */}
-            <div className="bg-secondary rounded-xl aspect-video flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <div className="text-4xl mb-2">🏋️</div>
-                <span className="text-xs">Animation coming soon</span>
-              </div>
-            </div>
+            <ExerciseAnimation
+              exerciseName={exercise.name}
+              movementPattern={exercise.movementPattern}
+            />
 
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
