@@ -3,11 +3,12 @@ import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/t
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreHorizontal, Trash2, Timer } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Timer, ArrowLeftRight, Search } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { EXERCISE_DATABASE } from '@/data/exercises';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
