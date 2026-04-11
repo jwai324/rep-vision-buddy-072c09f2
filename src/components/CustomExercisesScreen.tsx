@@ -69,6 +69,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
       )}
 
       {showForm && (
+        <ScrollArea className="max-h-[60vh]">
         <div className="bg-card rounded-xl border border-border p-4 space-y-4">
           <p className="text-sm font-bold text-foreground">New Exercise</p>
 
