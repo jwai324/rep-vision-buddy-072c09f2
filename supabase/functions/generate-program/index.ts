@@ -172,6 +172,14 @@ ${exercises.map((e: any) => `- ${e.name} (${e.primaryBodyPart}, ${e.equipment}, 
     }
 
     const data = await response.json();
+    const finishReason = data.choices?.[0]?.finish_reason;
+    if (finishReason === "length") {
+      console.error("AI response truncated (finish_reason=length)");
+      return new Response(JSON.stringify({ error: "AI response was too long and got cut off. Try reducing days or session duration." }), {
+        status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     let content = data.choices?.[0]?.message?.content ?? "";
     content = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
 
