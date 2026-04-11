@@ -1,5 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { WorkoutProgram, WorkoutTemplate } from '@/types/workout';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 
 interface ProgramsScreenProps {
