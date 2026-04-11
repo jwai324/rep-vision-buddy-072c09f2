@@ -33,15 +33,21 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
     weekday: 'long', month: 'long', day: 'numeric',
   });
 
+  const { exercises: customExercises } = useCustomExercisesContext();
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
   const activities = futureWorkout.recoveryActivities ?? [];
 
+  const allRestDayExercises = useMemo(() => {
+    const customRecovery = customExercises.filter(ex => ex.isRecovery);
+    return [...REST_DAY_EXERCISES, ...customRecovery];
+  }, [customExercises]);
+
   const filteredExercises = useMemo(() => {
-    if (!search) return REST_DAY_EXERCISES;
+    if (!search) return allRestDayExercises;
     const q = search.toLowerCase();
-    return REST_DAY_EXERCISES.filter(ex => ex.name.toLowerCase().includes(q));
-  }, [search]);
+    return allRestDayExercises.filter(ex => ex.name.toLowerCase().includes(q));
+  }, [search, allRestDayExercises]);
 
   const addActivity = (exerciseId: string) => {
     const activity: RecoveryActivity = {
