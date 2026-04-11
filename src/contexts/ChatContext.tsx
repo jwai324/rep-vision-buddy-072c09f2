@@ -221,6 +221,28 @@ export const ChatProvider: React.FC<{
       ctx.active_program_id = storage.activeProgramId;
     }
 
+    // Include active session state when in a workout
+    if (isSessionActive()) {
+      const controller = getSessionController();
+      if (controller) {
+        const blocks = controller.getBlocks();
+        ctx.active_session = {
+          exercises: blocks.map((b, i) => ({
+            index: i,
+            exerciseId: b.exerciseId,
+            exerciseName: b.exerciseName,
+            sets: b.sets.map(s => ({
+              setNumber: s.setNumber,
+              weight: s.weight,
+              reps: s.reps,
+              completed: s.completed,
+              type: s.type,
+            })),
+          })),
+        };
+      }
+    }
+
     return ctx;
   }, [storage]);
 
@@ -233,12 +255,30 @@ export const ChatProvider: React.FC<{
     const args = tc.arguments;
 
     // Exercise validation for actions that reference exercises
-    if (ACTIONS_REQUIRING_EXERCISE_VALIDATION.has(tc.name) && args.exercises?.length > 0) {
-      const { valid, validated, errors } = validateAllExercises(args.exercises);
-      if (!valid) {
-        return { success: false, message: errors.join('\n'), validation_errors: errors };
+    if (ACTIONS_REQUIRING_EXERCISE_VALIDATION.has(tc.name)) {
+      // For template/program actions, validate exercises array
+      if (args.exercises?.length > 0) {
+        const { valid, validated, errors } = validateAllExercises(args.exercises);
+        if (!valid) {
+          return { success: false, message: errors.join('\n'), validation_errors: errors };
+        }
+        args.exercises = validated;
       }
-      args.exercises = validated;
+      // For workout actions, validate single exercise references
+      if (args.exerciseId) {
+        const result = validateExerciseReference(args.exerciseId, args.exerciseName);
+        if (!result.valid) {
+          return { success: false, message: result.error, suggestions: result.suggestions };
+        }
+        args.exerciseId = result.resolvedId;
+      }
+      if (args.newExerciseId) {
+        const result = validateExerciseReference(args.newExerciseId, args.newExerciseName);
+        if (!result.valid) {
+          return { success: false, message: result.error, suggestions: result.suggestions };
+        }
+        args.newExerciseId = result.resolvedId;
+      }
     }
 
     switch (tc.name) {
@@ -285,6 +325,40 @@ export const ChatProvider: React.FC<{
       }
       case 'confirm_destructive_action':
         return { needs_confirmation: true, action: args.action, itemName: args.itemName };
+      
+      // Active workout mutation actions
+      case 'add_exercise_to_workout': {
+        const controller = getSessionController();
+        if (!controller) return { success: false, message: "No active workout session. Start a workout first." };
+        const ok = controller.addExercise(args.exerciseId, args.sets || 3, args.targetReps, args.weight);
+        if (!ok) return { success: false, message: "Exercise is already in the workout." };
+        const exName = EXERCISE_DATABASE.find(e => e.id === args.exerciseId)?.name || args.exerciseId;
+        return { success: true, message: `Added ${exName} to your workout.` };
+      }
+      case 'add_sets_to_exercise': {
+        const controller = getSessionController();
+        if (!controller) return { success: false, message: "No active workout session." };
+        const identifier = args.exerciseName || args.exerciseIndex?.toString();
+        const ok = controller.addSets(identifier, args.count || 1);
+        if (!ok) return { success: false, message: `Couldn't find "${args.exerciseName || args.exerciseIndex}" in the current workout.` };
+        return { success: true, message: `Added ${args.count || 1} set(s) to ${args.exerciseName || 'the exercise'}.` };
+      }
+      case 'update_set_weight_reps': {
+        const controller = getSessionController();
+        if (!controller) return { success: false, message: "No active workout session." };
+        const ok = controller.updateSet(args.exerciseName, args.setNumber, { weight: args.weight, reps: args.reps });
+        if (!ok) return { success: false, message: `Couldn't find set ${args.setNumber} of "${args.exerciseName}" in the current workout.` };
+        return { success: true, message: `Updated set ${args.setNumber} of ${args.exerciseName}.` };
+      }
+      case 'swap_exercise_in_workout': {
+        const controller = getSessionController();
+        if (!controller) return { success: false, message: "No active workout session." };
+        const ok = controller.swapExercise(args.exerciseName, args.newExerciseId);
+        if (!ok) return { success: false, message: `Couldn't find "${args.exerciseName}" in the current workout.` };
+        const newName = EXERCISE_DATABASE.find(e => e.id === args.newExerciseId)?.name || args.newExerciseId;
+        return { success: true, message: `Swapped ${args.exerciseName} for ${newName}.` };
+      }
+
       case 'get_workout_history': {
         const days = args.days || 14;
         const cutoff = new Date();
