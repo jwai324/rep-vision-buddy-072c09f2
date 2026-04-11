@@ -68,6 +68,67 @@ const exerciseListLean = EXERCISE_DATABASE.map(e => ({
   difficulty: e.difficulty,
 }));
 
+// Build lookup maps for fast validation
+const EXERCISE_BY_ID = new Map(EXERCISE_DATABASE.map(e => [e.id, e]));
+const EXERCISE_BY_NAME_LOWER = new Map(EXERCISE_DATABASE.map(e => [e.name.toLowerCase(), e]));
+
+// Allowed AI actions — anything not here is blocked
+const AI_ALLOWED_ACTIONS = new Set([
+  'create_template', 'edit_template', 'delete_template',
+  'create_program', 'delete_program', 'set_active_program',
+  'confirm_destructive_action', 'get_workout_history',
+]);
+
+// Actions that require exercise validation before execution
+const ACTIONS_REQUIRING_EXERCISE_VALIDATION = new Set([
+  'create_template', 'edit_template', 'create_program',
+]);
+
+function validateExerciseReference(exerciseId: string, exerciseName?: string): { valid: boolean; resolvedId?: string; error?: string; suggestions?: string[] } {
+  // Check by ID first
+  if (EXERCISE_BY_ID.has(exerciseId)) return { valid: true, resolvedId: exerciseId };
+
+  // Check by name (exact, case-insensitive)
+  if (exerciseName) {
+    const byName = EXERCISE_BY_NAME_LOWER.get(exerciseName.toLowerCase());
+    if (byName) return { valid: true, resolvedId: byName.id };
+  }
+
+  // Fuzzy search by partial name match
+  const searchTerm = (exerciseName || exerciseId).toLowerCase();
+  const fuzzyMatches = EXERCISE_DATABASE
+    .filter(e => e.name.toLowerCase().includes(searchTerm) || searchTerm.includes(e.name.toLowerCase()))
+    .slice(0, 5);
+
+  if (fuzzyMatches.length > 0) {
+    return {
+      valid: false,
+      suggestions: fuzzyMatches.map(e => e.name),
+      error: `"${exerciseName || exerciseId}" is not in the exercise library. Did you mean: ${fuzzyMatches.map(e => e.name).join(', ')}?`,
+    };
+  }
+
+  return {
+    valid: false,
+    suggestions: [],
+    error: `"${exerciseName || exerciseId}" is not in the exercise library. Only existing exercises can be used.`,
+  };
+}
+
+function validateAllExercises(exercises: any[]): { valid: boolean; validated: any[]; errors: string[] } {
+  const errors: string[] = [];
+  const validated = exercises.map(e => {
+    const result = validateExerciseReference(e.exerciseId, e.exerciseName);
+    if (!result.valid) {
+      errors.push(result.error!);
+      return null;
+    }
+    return { ...e, exerciseId: result.resolvedId };
+  }).filter(Boolean);
+
+  return { valid: errors.length === 0, validated: validated as any[], errors };
+}
+
 const SCREEN_CHIPS: Record<string, string[]> = {
   programs: ["Build me a program", "Edit current program", "What should I train today?"],
   templates: ["Create a template", "Duplicate this template", "Add an exercise"],
@@ -160,7 +221,22 @@ export const ChatProvider: React.FC<{
   }, [storage]);
 
   const executeToolCall = useCallback(async (tc: ToolCall): Promise<any> => {
+    // Allowlist check — block any action not explicitly permitted
+    if (!AI_ALLOWED_ACTIONS.has(tc.name)) {
+      return { error: `Action "${tc.name}" is not allowed. I can only perform actions available through the app's UI.` };
+    }
+
     const args = tc.arguments;
+
+    // Exercise validation for actions that reference exercises
+    if (ACTIONS_REQUIRING_EXERCISE_VALIDATION.has(tc.name) && args.exercises?.length > 0) {
+      const { valid, validated, errors } = validateAllExercises(args.exercises);
+      if (!valid) {
+        return { success: false, message: errors.join('\n'), validation_errors: errors };
+      }
+      args.exercises = validated;
+    }
+
     switch (tc.name) {
       case 'create_template': {
         const template = {
@@ -256,7 +332,7 @@ export const ChatProvider: React.FC<{
         return { workouts: recent.length };
       }
       default:
-        return { error: `Unknown action: ${tc.name}` };
+        return { error: `Action "${tc.name}" is not allowed.` };
     }
   }, [storage]);
 
