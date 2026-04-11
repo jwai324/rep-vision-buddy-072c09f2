@@ -33,10 +33,11 @@ interface TemplateBlock {
   restSeconds: number;
 }
 
-function exerciseToBlock(ex: TemplateExercise, lookup: Record<string, string>): TemplateBlock {
+function exerciseToBlock(ex: TemplateExercise, lookup?: Record<string, string>): TemplateBlock {
+  const name = lookup?.[ex.exerciseId] ?? EXERCISES[ex.exerciseId]?.name ?? ex.exerciseId;
   return {
     exerciseId: ex.exerciseId,
-    exerciseName: lookup[ex.exerciseId] ?? ex.exerciseId,
+    exerciseName: name,
     setType: ex.setType,
     restSeconds: ex.restSeconds,
     sets: Array.from({ length: ex.sets }, (_, i) => ({
