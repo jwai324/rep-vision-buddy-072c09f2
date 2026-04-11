@@ -363,6 +363,9 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'stretching', name: 'Stretching', primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: ['Hip Flexors', 'Hamstrings', 'Lower Back'] },
   { id: 'walking', name: 'Walking', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves'] },
   { id: 'swimming-full-body', name: 'Swimming', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads', 'Triceps', 'Lats'] },
+  { id: 'crawl-to-push-up', name: 'Crawl to Push-Up', primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Shoulders', 'Core', 'Chest', 'Triceps'] },
+  { id: 'worlds-greatest-stretch', name: "World's Greatest Stretch", primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Rotation', secondaryMuscles: ['Hip Flexors', 'Hamstrings', 'Core', 'Shoulders'] },
+  { id: 'treadmill-incline-walk', name: 'Treadmill Incline Walk', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Glutes', 'Calves', 'Hamstrings'] },
 
   // Cardio / Sport
   { id: 'elliptical', name: 'Elliptical', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Shoulders'] },
