@@ -33,7 +33,14 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
   const [typeFilter, setTypeFilter] = useState<string>('All');
   const [showFilters, setShowFilters] = useState(false);
   const [selected, setSelected] = useState<Set<ExerciseId>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (scrollRef.current) {
+      const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) viewport.scrollTop = 0;
+    }
+  }, []);
   const activeFilterCount = [equipmentFilter, difficultyFilter, typeFilter].filter(f => f !== 'All').length + (bodyPartFilter !== 'All' ? 1 : 0);
 
   const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
