@@ -821,7 +821,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       )}
 
       {/* Exercise Blocks */}
-      <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
+      <div className="flex-1 overflow-y-auto px-4 pb-44 space-y-2">
         {blocks.map((block, blockIdx) => {
           const betweenId: TimerId = { type: 'between', blockIdx };
           const betweenKey = timerIdKey(betweenId);
