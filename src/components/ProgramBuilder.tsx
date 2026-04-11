@@ -145,6 +145,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
 
   const save = () => {
     if (!name.trim() || days.length === 0) return;
+    clearDraft();
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
@@ -152,6 +153,11 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
       durationWeeks,
       startDate: format(startDate, 'yyyy-MM-dd'),
     });
+  };
+
+  const handleCancel = () => {
+    clearDraft();
+    onCancel();
   };
 
   return (
