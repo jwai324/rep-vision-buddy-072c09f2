@@ -359,9 +359,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
       {screen.type === 'customExercises' && (
         <CustomExercisesScreen
-          exercises={customExercises.exercises}
-          onAdd={customExercises.addExercise}
-          onDelete={customExercises.deleteExercise}
+          exercises={customExercises}
+          onAdd={addCustomExercise}
+          onDelete={deleteCustomExercise}
           onBack={() => setScreen({ type: 'settings' })}
         />
       )}
