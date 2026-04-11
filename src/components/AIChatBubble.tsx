@@ -217,7 +217,7 @@ export const AIChatBubble: React.FC = () => {
           )}
           {consecutiveErrors >= 2 && (
             <div className="px-4 pb-2 flex-shrink-0">
-              <p className="text-xs text-center text-amber-500 font-medium">
+              <p className="text-xs text-center text-destructive/80 font-medium">
                 AI is temporarily unavailable. You can still build templates manually.
               </p>
             </div>
