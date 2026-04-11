@@ -41,15 +41,28 @@ type Screen =
   | { type: 'analytics' }
   | { type: 'aiProgramBuilder' };
 
-const Index = () => {
+const IndexInner = () => {
   const storage = useStorage();
+  const { registerScreen } = useChatContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
-  // Check for cached active session on mount
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
     if (cached) return { type: 'activeSession', exercises: [] };
     return { type: 'dashboard' };
   });
+
+  // Register screen context with AI chat
+  useEffect(() => {
+    const screenMap: Record<string, string> = {
+      dashboard: 'dashboard', startWorkout: 'dashboard', browseExercises: 'exercises',
+      activeSession: 'active_workout', editSession: 'active_workout',
+      summary: 'dashboard', sessionDetail: 'activity', activity: 'activity',
+      futureWorkoutDetail: 'activity', templates: 'templates', templateBuilder: 'templates',
+      programs: 'programs', programBuilder: 'programs', settings: 'settings',
+      analytics: 'analytics', aiProgramBuilder: 'programs',
+    };
+    registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
+  }, [screen.type, registerScreen]);
 
   const handleMinimize = () => {
     setMinimizedSession(screen);
