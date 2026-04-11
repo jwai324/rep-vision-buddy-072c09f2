@@ -43,7 +43,6 @@ type Screen =
 
 const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
   const { registerScreen } = useChatContext();
-  const { registerScreen } = useChatContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
@@ -368,7 +367,7 @@ const Index = () => {
   const storage = useStorage();
   return (
     <ChatProvider storage={storage}>
-      <IndexInner />
+      <IndexInner storage={storage} />
     </ChatProvider>
   );
 };
