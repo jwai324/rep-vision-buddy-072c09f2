@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Filter, X, Check } from 'lucide-react';
+import { Search, Filter, X, Check, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import type { ExerciseId } from '@/types/workout';
 import type { Exercise } from '@/data/exercises';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { CreateExerciseForm } from '@/components/CreateExerciseForm';
 
 interface ExerciseSelectorProps {
   onSelect: (id: ExerciseId) => void;
@@ -22,7 +23,8 @@ const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
 
 export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
-  const { exercises: customExercises } = useCustomExercisesContext();
+  const { exercises: customExercises, addExercise } = useCustomExercisesContext();
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 250);
   const [bodyPartFilter, setBodyPartFilter] = useState<string>('All');
@@ -235,6 +237,24 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
 
       <ScrollArea className="flex-1 px-4">
         <div className="space-y-4 pb-20">
+          {showCreateForm ? (
+            <CreateExerciseForm
+              onSave={async (input) => {
+                await addExercise(input);
+                setShowCreateForm(false);
+              }}
+              onCancel={() => setShowCreateForm(false)}
+            />
+          ) : (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="w-full px-3 py-3 rounded-lg border border-dashed border-primary/40 hover:border-primary/70 hover:bg-primary/5 transition-colors flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-primary">Create Custom Exercise</span>
+            </button>
+          )}
+
           {Object.entries(grouped).map(([bodyPart, exercises]) => (
             <div key={bodyPart}>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
@@ -289,7 +309,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
             </div>
           ))}
 
-          {filtered.length === 0 && (
+          {filtered.length === 0 && !showCreateForm && (
             <div className="text-center py-8 text-muted-foreground text-sm">
               No exercises found for "{search}"
             </div>

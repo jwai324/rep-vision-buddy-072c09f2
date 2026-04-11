@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Plus, Trash2, Dumbbell, Heart, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BODY_PARTS, EQUIPMENT_LIST, getBodyPartIcon } from '@/data/exercises';
+import { getBodyPartIcon } from '@/data/exercises';
 import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
 import type { Exercise } from '@/data/exercises';
+import { CreateExerciseForm } from '@/components/CreateExerciseForm';
 
 interface CustomExercisesScreenProps {
   exercises: (Exercise & { isCustom: true; isRecovery: boolean })[];
@@ -16,59 +15,31 @@ interface CustomExercisesScreenProps {
   onBack: () => void;
 }
 
-const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'] as const;
-const EXERCISE_TYPES = ['Compound', 'Isolation'] as const;
-const BODY_PART_OPTIONS = BODY_PARTS.filter(b => b !== 'All');
-const EQUIPMENT_OPTIONS = EQUIPMENT_LIST.filter(e => e !== 'All');
-
 export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
   exercises, onAdd, onUpdate, onDelete, onBack,
 }) => {
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingExercise, setEditingExercise] = useState<(Exercise & { isCustom: true; isRecovery: boolean }) | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState('');
-  const [bodyPart, setBodyPart] = useState('Full Body');
-  const [equipment, setEquipment] = useState('None');
-  const [difficulty, setDifficulty] = useState<'Beginner' | 'Intermediate' | 'Advanced'>('Intermediate');
-  const [exerciseType, setExerciseType] = useState<'Compound' | 'Isolation'>('Isolation');
-  const [isRecovery, setIsRecovery] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const resetForm = () => {
-    setName(''); setBodyPart('Full Body'); setEquipment('None');
-    setDifficulty('Intermediate'); setExerciseType('Isolation');
-    setIsRecovery(false); setShowForm(false); setEditingId(null);
-  };
-
-  const openEdit = (ex: Exercise & { isCustom: true; isRecovery: boolean }) => {
-    setEditingId(ex.id);
-    setName(ex.name);
-    setBodyPart(ex.primaryBodyPart);
-    setEquipment(ex.equipment);
-    setDifficulty(ex.difficulty as 'Beginner' | 'Intermediate' | 'Advanced');
-    setExerciseType(ex.exerciseType as 'Compound' | 'Isolation');
-    setIsRecovery(ex.isRecovery);
-    setShowForm(true);
-  };
-
-  const handleSave = () => {
-    if (!name.trim()) return;
-    const input: CustomExerciseInput = {
-      name: name.trim(),
-      primaryBodyPart: bodyPart,
-      equipment,
-      difficulty,
-      exerciseType,
-      movementPattern: 'Other',
-      secondaryMuscles: [],
-      isRecovery,
-    };
-    if (editingId) {
-      onUpdate(editingId, input);
+  const handleSave = (input: CustomExerciseInput) => {
+    if (editingExercise) {
+      onUpdate(editingExercise.id, input);
     } else {
       onAdd(input);
     }
-    resetForm();
+    setShowForm(false);
+    setEditingExercise(null);
+  };
+
+  const handleCancel = () => {
+    setShowForm(false);
+    setEditingExercise(null);
+  };
+
+  const openEdit = (ex: Exercise & { isCustom: true; isRecovery: boolean }) => {
+    setEditingExercise(ex);
+    setShowForm(true);
   };
 
   return (
@@ -81,86 +52,17 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
       </div>
 
       {!showForm && (
-        <Button onClick={() => { resetForm(); setShowForm(true); }} variant="outline" className="w-full border-dashed">
+        <Button onClick={() => { setEditingExercise(null); setShowForm(true); }} variant="outline" className="w-full border-dashed">
           <Plus className="w-4 h-4 mr-2" /> Create Exercise
         </Button>
       )}
 
       {showForm && (
-        <div className="bg-card rounded-xl border border-border p-4 space-y-4">
-          <p className="text-sm font-bold text-foreground">{editingId ? 'Edit Exercise' : 'New Exercise'}</p>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Name *</label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Bulgarian Split Squat" className="bg-secondary border-border" />
-          </div>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Body Part</label>
-            <div className="flex flex-wrap gap-1">
-              {BODY_PART_OPTIONS.map(bp => (
-                <button key={bp} onClick={() => setBodyPart(bp)}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${bodyPart === bp ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-                  {bp}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Equipment</label>
-            <div className="flex flex-wrap gap-1">
-              {EQUIPMENT_OPTIONS.map(eq => (
-                <button key={eq} onClick={() => setEquipment(eq)}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${equipment === eq ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-                  {eq}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Difficulty</label>
-            <div className="flex gap-1 flex-wrap">
-              {DIFFICULTIES.map(d => (
-                <button key={d} onClick={() => setDifficulty(d)}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${difficulty === d ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Type</label>
-            <div className="flex gap-1 flex-wrap">
-              {EXERCISE_TYPES.map(t => (
-                <button key={t} onClick={() => setExerciseType(t)}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${exerciseType === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Heart className="w-4 h-4 text-primary" />
-              <div>
-                <p className="text-sm font-medium text-foreground">Rest Day Activity</p>
-                <p className="text-xs text-muted-foreground">Available on rest days</p>
-              </div>
-            </div>
-            <Switch checked={isRecovery} onCheckedChange={setIsRecovery} />
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={resetForm}>Cancel</Button>
-            <Button className="flex-1" onClick={handleSave} disabled={!name.trim()}>
-              {editingId ? 'Update' : 'Save'}
-            </Button>
-          </div>
-        </div>
+        <CreateExerciseForm
+          onSave={handleSave}
+          onCancel={handleCancel}
+          editingExercise={editingExercise}
+        />
       )}
 
       <ScrollArea className="flex-1">
