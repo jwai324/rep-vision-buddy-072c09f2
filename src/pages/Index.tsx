@@ -355,6 +355,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
+      {screen.type === 'customExercises' && (
+        <CustomExercisesScreen
+          exercises={customExercises.exercises}
+          onAdd={customExercises.addExercise}
+          onDelete={customExercises.deleteExercise}
+          onBack={() => setScreen({ type: 'settings' })}
+        />
+      )}
+
       {minimizedSession && screen.type !== 'activeSession' && (
         <MinimizedSessionBar
           workoutName={getSessionCache()?.workoutName ?? 'Workout'}
