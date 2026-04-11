@@ -388,6 +388,20 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     const templates: WorkoutTemplate[] = [];
     const programDays: WorkoutProgram['days'] = [];
 
+    // Spread training days evenly across the week (Mon=1 through Sat=6, Sun=0)
+    const totalDays = generatedProgram.training_days.length;
+    const evenlySpacedWeekdays: number[] = [];
+    if (totalDays >= 7) {
+      // All 7 days
+      for (let i = 0; i < totalDays; i++) evenlySpacedWeekdays.push((i + 1) % 7);
+    } else {
+      // Spread evenly: e.g. 3 days → Mon(1), Wed(3), Fri(5); 4 days → Mon(1), Tue(2), Thu(4), Sat(6)
+      const spacing = 7 / totalDays;
+      for (let i = 0; i < totalDays; i++) {
+        evenlySpacedWeekdays.push(Math.round(1 + i * spacing) % 7);
+      }
+    }
+
     generatedProgram.training_days.forEach((day, i) => {
       const templateId = crypto.randomUUID();
       const templateExercises: TemplateExercise[] = day.exercises.map(ex => {
@@ -406,7 +420,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       programDays.push({
         label: day.day_name,
         templateId,
-        frequency: { type: 'weekly', weekday: (i + 1) % 7 },
+        frequency: { type: 'weekly', weekday: evenlySpacedWeekdays[i] },
       });
     });
 
