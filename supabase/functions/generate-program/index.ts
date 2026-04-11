@@ -29,6 +29,11 @@ COST CONTROL RULES:
 - Generate only ONE program per request. Do not generate variations.
 - Keep the response as compact JSON — no extra whitespace or commentary.
 
+HARD CONSTRAINTS:
+- You CANNOT invent or create new exercises. ONLY use exercise names that EXACTLY match the provided exercise list.
+- If an exercise the user wants is not in the list, pick the closest available alternative and use that instead.
+- Every exercise_name in your output MUST appear verbatim in the provided exercise list.
+
 IMPORTANT: Return ONLY valid JSON, no markdown, no code fences.
 
 JSON SCHEMA:
