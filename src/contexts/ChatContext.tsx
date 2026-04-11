@@ -147,11 +147,11 @@ const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I
 // Actions that need the exercise list
 const EXERCISE_LIST_ACTIONS = ['create_template', 'edit_template', 'create_program', 'edit_program'];
 // Keywords that suggest exercise list is needed
-const EXERCISE_KEYWORDS = ['template', 'program', 'exercise', 'create', 'build', 'swap', 'add exercise', 'workout plan'];
+const EXERCISE_KEYWORDS = ['template', 'program', 'exercise', 'create', 'build', 'swap', 'add exercise', 'workout plan', 'add a', 'replace', 'switch'];
 
 function needsExerciseList(messageText: string, screen: string): boolean {
   const lower = messageText.toLowerCase();
-  if (['templates', 'programs'].includes(screen)) return true;
+  if (['templates', 'programs', 'active_workout'].includes(screen)) return true;
   return EXERCISE_KEYWORDS.some(kw => lower.includes(kw));
 }
 
