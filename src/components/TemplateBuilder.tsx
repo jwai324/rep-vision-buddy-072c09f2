@@ -33,11 +33,10 @@ interface TemplateBlock {
   restSeconds: number;
 }
 
-function exerciseToBlock(ex: TemplateExercise): TemplateBlock {
-  const info = EXERCISES[ex.exerciseId];
+function exerciseToBlock(ex: TemplateExercise, lookup: Record<string, string>): TemplateBlock {
   return {
     exerciseId: ex.exerciseId,
-    exerciseName: info?.name ?? ex.exerciseId,
+    exerciseName: lookup[ex.exerciseId] ?? ex.exerciseId,
     setType: ex.setType,
     restSeconds: ex.restSeconds,
     sets: Array.from({ length: ex.sets }, (_, i) => ({
@@ -164,7 +163,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
         .filter(id => !existingIds.has(id))
         .map(id => ({
           exerciseId: id,
-          exerciseName: EXERCISES[id]?.name ?? id,
+          exerciseName: exerciseLookup[id] ?? id,
           setType: 'normal' as SetType,
           restSeconds: 90,
           sets: Array.from({ length: 3 }, (_, i) => ({
