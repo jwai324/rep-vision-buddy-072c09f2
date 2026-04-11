@@ -175,7 +175,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const restSec = tpl?.restSeconds ?? 90;
       return {
         exerciseId: id,
-        exerciseName: EXERCISES[id]?.name ?? id,
+        exerciseName: exerciseLookup[id] ?? id,
         restSeconds: restSec,
         dropSetsEnabled: defaultDropSetsEnabled,
         sets: Array.from({ length: numSets }, (_, i) => ({
@@ -466,7 +466,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         .filter(id => !existingIds.has(id))
         .map(id => ({
           exerciseId: id,
-          exerciseName: EXERCISES[id]?.name ?? id,
+          exerciseName: exerciseLookup[id] ?? id,
           restSeconds: 90,
           dropSetsEnabled: defaultDropSetsEnabled,
           sets: Array.from({ length: 3 }, (_, i) => ({
@@ -498,7 +498,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           added = true;
           return [...prev, {
             exerciseId,
-            exerciseName: EXERCISES[exerciseId]?.name ?? exerciseId,
+            exerciseName: exerciseLookup[exerciseId] ?? exerciseId,
             restSeconds: 90,
             dropSetsEnabled: defaultDropSetsEnabled,
             sets: Array.from({ length: sets }, (_, i) => ({
@@ -563,7 +563,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           return {
             ...block,
             exerciseId: newExerciseId,
-            exerciseName: EXERCISES[newExerciseId]?.name ?? newExerciseId,
+            exerciseName: exerciseLookup[newExerciseId] ?? newExerciseId,
           };
         }));
         return found;
