@@ -159,6 +159,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
       </div>
 
+      {/* My Exercises */}
+      {onGoToCustomExercises && (
+        <button
+          onClick={onGoToCustomExercises}
+          className="w-full bg-card rounded-xl border border-border overflow-hidden text-left"
+        >
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Dumbbell className="w-4 h-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium text-foreground">My Exercises</p>
+                <p className="text-xs text-muted-foreground">Create & manage custom exercises</p>
+              </div>
+            </div>
+            <ChevronLeft className="w-4 h-4 text-muted-foreground rotate-180" />
+          </div>
+        </button>
+      )}
+
       {/* App Info */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
