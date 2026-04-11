@@ -20,6 +20,7 @@ import { ProgramBuilder } from '@/components/ProgramBuilder';
 import { AIProgramBuilder } from '@/components/AIProgramBuilder';
 import { CustomExercisesScreen } from '@/components/CustomExercisesScreen';
 import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
+import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { AIChatBubble } from '@/components/AIChatBubble';
 import { useCustomExercises } from '@/hooks/useCustomExercises';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
@@ -46,7 +47,7 @@ type Screen =
 
 const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
   const { registerScreen } = useChatContext();
-  const customExercises = useCustomExercises();
+  const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise } = useCustomExercisesContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
