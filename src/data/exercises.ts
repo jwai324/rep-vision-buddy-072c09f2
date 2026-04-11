@@ -284,6 +284,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'medicine-ball-slam', name: 'Medicine Ball Slam', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Flexion', secondaryMuscles: ['Shoulders', 'Lats'] },
   { id: 'medicine-ball-side-throw', name: 'Medicine Ball Side Throw', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Obliques', 'Shoulders'] },
   { id: 'medicine-ball-rotational-throw', name: 'Medicine Ball Rotational Throw', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Obliques', 'Shoulders', 'Hip Flexors'] },
+  { id: 'copenhagen-plank', name: 'Copenhagen Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Adductors', 'Obliques'] },
+  { id: 'single-arm-farmers-carry', name: "Single-Arm Farmer's Carry", primaryBodyPart: 'Core', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Obliques', 'Forearms', 'Traps'] },
 
   // Hip Flexors
   { id: 'standing-hip-flexion-cable', name: 'Standing Hip Flexion (Cable)', primaryBodyPart: 'Hip Flexors', equipment: 'Cable', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: [] },
@@ -296,6 +298,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'machine-shrug', name: 'Machine Shrug', primaryBodyPart: 'Traps', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Shrug', secondaryMuscles: [] },
   { id: 'kettlebell-shrug', name: 'Kettlebell Shrug', primaryBodyPart: 'Traps', equipment: 'Kettlebell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Shrug', secondaryMuscles: [] },
   { id: 'trap-bar-shrug', name: 'Trap Bar Shrug', primaryBodyPart: 'Traps', equipment: 'Trap Bar', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Pull', secondaryMuscles: ['Upper Back', 'Forearms'] },
+  { id: 'farmers-carry', name: "Farmer's Carry", primaryBodyPart: 'Traps', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Forearms', 'Core', 'Obliques', 'Shoulders', 'Glutes', 'Calves'] },
   { id: 'neck-extension-plate', name: 'Neck Extension (Plate)', primaryBodyPart: 'Neck', equipment: 'Plate', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'neck-curl-plate', name: 'Neck Curl (Plate)', primaryBodyPart: 'Neck', equipment: 'Plate', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: [] },
   { id: 'band-neck-extension', name: 'Band Neck Extension', primaryBodyPart: 'Neck', equipment: 'Band', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
@@ -307,6 +310,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'barbell-reverse-wrist-curl', name: 'Barbell Reverse Wrist Curl', primaryBodyPart: 'Forearms', equipment: 'Barbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'dumbbell-reverse-wrist-curl', name: 'Dumbbell Reverse Wrist Curl', primaryBodyPart: 'Forearms', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'trap-bar-farmers-walk', name: "Trap Bar Farmer's Walk", primaryBodyPart: 'Forearms', equipment: 'Trap Bar', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Traps', 'Core'] },
+  { id: 'towel-hang', name: 'Towel Hang', primaryBodyPart: 'Forearms', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'] },
 
   // Full Body / Olympic
   { id: 'barbell-snatch', name: 'Barbell Snatch', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Shoulders', 'Back', 'Quads', 'Glutes'] },
