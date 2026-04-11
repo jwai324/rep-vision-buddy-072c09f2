@@ -30,7 +30,7 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
             <div key={t.id} className="bg-card rounded-xl p-4 border border-border">
               <h3 className="font-semibold text-foreground mb-1">{t.name}</h3>
               <p className="text-xs text-muted-foreground mb-3">
-                {t.exercises.map(e => EXERCISES[e.exerciseId].name).join(' → ')}
+                {t.exercises.map(e => EXERCISES[e.exerciseId]?.name ?? e.exerciseId).join(' → ')}
               </p>
               <p className="text-xs text-muted-foreground mb-3">
                 {t.exercises.reduce((s, e) => s + e.sets, 0)} sets total
