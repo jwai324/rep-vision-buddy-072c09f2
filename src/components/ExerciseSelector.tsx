@@ -5,6 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { EXERCISE_DATABASE, BODY_PARTS, EQUIPMENT_LIST, getBodyPartIcon } from '@/data/exercises';
 import type { ExerciseId } from '@/types/workout';
+import type { Exercise } from '@/data/exercises';
 import { useDebounce } from '@/hooks/useDebounce';
 
 interface ExerciseSelectorProps {
@@ -14,12 +15,13 @@ interface ExerciseSelectorProps {
   multiSelect?: boolean;
   browseMode?: boolean;
   onExerciseTap?: (id: ExerciseId) => void;
+  customExercises?: Exercise[];
 }
 
 const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
 
-export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
+export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap, customExercises = [] }) => {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 250);
   const [bodyPartFilter, setBodyPartFilter] = useState<string>('All');

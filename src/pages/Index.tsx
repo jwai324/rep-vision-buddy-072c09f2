@@ -330,6 +330,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onUpdatePreferences={storage.updatePreferences}
           onUpdateProfile={storage.updateProfile}
           onBack={() => setScreen({ type: 'dashboard' })}
+          onGoToCustomExercises={() => setScreen({ type: 'customExercises' })}
         />
       )}
 
