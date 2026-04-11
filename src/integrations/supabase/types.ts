@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_error_log: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          error_type: string
+          id: string
+          request_size_tokens: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          error_type: string
+          id?: string
+          request_size_tokens?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          error_type?: string
+          id?: string
+          request_size_tokens?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       future_workouts: {
         Row: {
           completed: boolean | null
@@ -75,6 +102,39 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_ai_usage: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          message_count: number
+          total_input_tokens: number
+          total_output_tokens: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string
+          id?: string
+          message_count?: number
+          total_input_tokens?: number
+          total_output_tokens?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          message_count?: number
+          total_input_tokens?: number
+          total_output_tokens?: number
           updated_at?: string
           user_id?: string
         }
@@ -226,7 +286,17 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      ai_usage_daily_summary: {
+        Row: {
+          avg_input_tokens: number | null
+          avg_output_tokens: number | null
+          date: string | null
+          estimated_cost_usd: number | null
+          total_calls: number | null
+          total_users: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
