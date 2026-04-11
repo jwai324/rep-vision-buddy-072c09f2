@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import type { WorkoutSession } from '@/types/workout';
-import { EXERCISES } from '@/types/workout';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 
 interface WorkoutHistoryProps {
   sessions: WorkoutSession[];
@@ -15,6 +15,7 @@ function formatDuration(s: number) {
 }
 
 export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ sessions, onSelectSession, onBack }) => {
+  const exerciseLookup = useExerciseLookup();
   const [showRestDays, setShowRestDays] = useState(false);
 
   const filtered = useMemo(() => {
@@ -80,8 +81,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ sessions, onSele
                   {s.recoveryActivities && s.recoveryActivities.length > 0 ? (
                     <span>
                       {s.recoveryActivities.map(a => {
-                        const info = EXERCISES[a.activityId];
-                        return info?.name ?? a.activityId;
+                        return exerciseLookup[a.activityId] ?? a.activityId;
                       }).join(', ')}
                     </span>
                   ) : (

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
-import { EXERCISES } from '@/types/workout';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 
 interface ActivityScreenProps {
   history: WorkoutSession[];
@@ -22,6 +22,7 @@ function formatDuration(s: number) {
 export const ActivityScreen: React.FC<ActivityScreenProps> = ({
   history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onBack, initialTab = 'future', filterDate,
 }) => {
+  const exerciseLookup = useExerciseLookup();
   const [tab, setTab] = useState<'history' | 'future'>(initialTab);
   const [showRestDays, setShowRestDays] = useState(!!filterDate);
 
@@ -118,7 +119,7 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                     </p>
                     {template && (
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {template.exercises.map(e => EXERCISES[e.exerciseId]?.name).join(' → ')}
+                        {template.exercises.map(e => exerciseLookup[e.exerciseId] ?? e.exerciseId).join(' → ')}
                       </p>
                     )}
                   </div>
@@ -169,8 +170,8 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                     {s.recoveryActivities && s.recoveryActivities.length > 0 ? (
                       <span>
                         {s.recoveryActivities.map(a => {
-                          const info = EXERCISES[a.activityId];
-                          return info?.name ?? a.activityId;
+                          const name = exerciseLookup[a.activityId] ?? a.activityId;
+                          return name;
                         }).join(', ')}
                       </span>
                     ) : (
