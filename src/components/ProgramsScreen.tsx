@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { WorkoutProgram, WorkoutTemplate } from '@/types/workout';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface ProgramsScreenProps {
   programs: WorkoutProgram[];
@@ -16,6 +20,8 @@ interface ProgramsScreenProps {
 export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
   programs, templates, activeProgramId, onSetActive, onEdit, onDelete, onCreate, onBack
 }) => {
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
   return (
     <div className="p-4 flex flex-col gap-4">
       <div className="flex items-center gap-3">
@@ -54,7 +60,7 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
                   {activeProgramId === p.id ? 'Deactivate' : 'Set Active'}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onEdit(p)}>Edit</Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(p.id)} className="text-set-failure">Delete</Button>
+                <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ id: p.id, name: p.name })} className="text-set-failure">Delete</Button>
               </div>
             </div>
           ))}
@@ -62,6 +68,19 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
       )}
 
       <Button variant="outline" onClick={onCreate} className="w-full">+ Create New Program</Button>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>This will permanently remove this program. This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (deleteTarget) { onDelete(deleteTarget.id); setDeleteTarget(null); } }}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
