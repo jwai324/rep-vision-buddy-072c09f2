@@ -406,7 +406,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       programDays.push({
         label: day.day_name,
         templateId,
-        frequency: { type: 'weekly', weekday: (i + 1) % 7 },
+        frequency: { type: 'weekly', weekday: evenlySpacedWeekdays[i] },
       });
     });
 
