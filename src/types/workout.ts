@@ -96,6 +96,7 @@ export const RECOVERY_ACTIVITIES = [
   { id: 'walking', name: 'Walking', icon: '🚶‍♂️', category: 'Active' },
   { id: 'meditation', name: 'Meditation', icon: '🧠', category: 'Mental' },
   { id: 'sleep-focus', name: 'Sleep Focus', icon: '😴', category: 'Recovery' },
+  { id: 'breathing-exercises', name: 'Breathing Exercises', icon: '🌬️', category: 'Mental' },
 ] as const;
 
 export type RecoveryActivityId = typeof RECOVERY_ACTIVITIES[number]['id'];

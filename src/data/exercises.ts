@@ -366,6 +366,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'foam-rolling', name: 'Foam Rolling', primaryBodyPart: 'Full Body', equipment: 'Foam Roller', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Upper Back', 'Calves'] },
   { id: 'active-rest', name: 'Active Rest', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Isometric', secondaryMuscles: [] },
   { id: 'compression-cuff', name: 'Compression Cuff', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
+  { id: 'breathing-exercises', name: 'Breathing Exercises', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Core'] },
 ];
 
 // Body part groupings for filtering
