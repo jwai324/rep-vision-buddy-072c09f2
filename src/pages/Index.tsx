@@ -17,6 +17,7 @@ import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
+import { AIProgramBuilder } from '@/components/AIProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
 
@@ -35,7 +36,8 @@ type Screen =
   | { type: 'programs' }
   | { type: 'programBuilder'; program?: WorkoutProgram }
   | { type: 'settings' }
-  | { type: 'analytics' };
+  | { type: 'analytics' }
+  | { type: 'aiProgramBuilder' };
 
 const Index = () => {
   const storage = useStorage();
