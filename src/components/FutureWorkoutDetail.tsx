@@ -6,6 +6,7 @@ import { ArrowLeft, Dumbbell, Plus, X, Check, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 // Rest-day eligible exercises (recovery/wellness type)
 const REST_DAY_EXERCISE_IDS = [
