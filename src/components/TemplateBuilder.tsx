@@ -146,13 +146,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
   }, []);
 
-  const moveExercise = useCallback((from: number, to: number) => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
     setBlocks(prev => {
-      if (to < 0 || to >= prev.length) return prev;
-      const next = [...prev];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      return next;
+      const oldIndex = prev.findIndex(b => b.exerciseId === active.id);
+      const newIndex = prev.findIndex(b => b.exerciseId === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
     });
   }, []);
 
