@@ -61,12 +61,36 @@ function blockToExercise(block: TemplateBlock): TemplateExercise {
   };
 }
 
+const DRAFT_KEY = 'template_builder_draft';
+
+function loadDraft(initialTemplate?: WorkoutTemplate): { name: string; blocks: TemplateBlock[] } {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      // Only restore if editing the same template (or both are new)
+      if ((draft.id ?? null) === (initialTemplate?.id ?? null)) {
+        return { name: draft.name ?? '', blocks: draft.blocks ?? [] };
+      }
+    }
+  } catch { /* ignore corrupt data */ }
+  return {
+    name: initialTemplate?.name ?? '',
+    blocks: initialTemplate?.exercises.map(exerciseToBlock) ?? [],
+  };
+}
+
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', onSave, onCancel }) => {
-  const [name, setName] = useState(initial?.name ?? '');
-  const [blocks, setBlocks] = useState<TemplateBlock[]>(() =>
-    initial?.exercises.map(exerciseToBlock) ?? []
-  );
+  const [name, setName] = useState(() => loadDraft(initial).name);
+  const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+
+  // Cache draft to localStorage on every change
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, blocks }));
+    } catch { /* quota exceeded, ignore */ }
+  }, [name, blocks, initial?.id]);
 
   const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof TemplateSetRow, value: string) => {
     setBlocks(prev => prev.map((block, bi) => {
@@ -142,13 +166,23 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     setShowExercisePicker(false);
   }, []);
 
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }, []);
+
   const save = () => {
     if (!name.trim() || blocks.length === 0) return;
+    clearDraft();
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
       exercises: blocks.map(blockToExercise),
     });
+  };
+
+  const handleCancel = () => {
+    clearDraft();
+    onCancel();
   };
 
   if (showExercisePicker) {
@@ -166,7 +200,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
-        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        <button onClick={handleCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
         <Button variant="neon" size="sm" onClick={save} disabled={!name.trim() || blocks.length === 0}>
           Save Template
         </Button>
