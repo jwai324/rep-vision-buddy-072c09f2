@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { EXERCISE_DATABASE } from '@/data/exercises';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface ChatMessage {
   id: string;
@@ -33,6 +34,9 @@ interface ChatContextType {
   registerScreen: (ctx: ScreenContext) => void;
   confirmAction: (toolCallId: string, confirmed: boolean) => void;
   quickChips: string[];
+  dailyUsage: { count: number; limit: number; limitReached: boolean };
+  consecutiveErrors: number;
+  cooldownActive: boolean;
 }
 
 const ChatContext = createContext<ChatContextType>({
@@ -46,6 +50,9 @@ const ChatContext = createContext<ChatContextType>({
   registerScreen: () => {},
   confirmAction: () => {},
   quickChips: [],
+  dailyUsage: { count: 0, limit: 30, limitReached: false },
+  consecutiveErrors: 0,
+  cooldownActive: false,
 });
 
 export const useChatContext = () => useContext(ChatContext);
@@ -72,15 +79,35 @@ const SCREEN_CHIPS: Record<string, string[]> = {
 
 const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I train today?"];
 
+// Actions that need the exercise list
+const EXERCISE_LIST_ACTIONS = ['create_template', 'edit_template', 'create_program', 'edit_program'];
+// Keywords that suggest exercise list is needed
+const EXERCISE_KEYWORDS = ['template', 'program', 'exercise', 'create', 'build', 'swap', 'add exercise', 'workout plan'];
+
+function needsExerciseList(messageText: string, screen: string): boolean {
+  const lower = messageText.toLowerCase();
+  if (['templates', 'programs'].includes(screen)) return true;
+  return EXERCISE_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+const DAILY_LIMIT = 30;
+const COOLDOWN_MS = 2000;
+const MESSAGE_WINDOW = 10;
+const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
 export const ChatProvider: React.FC<{
   children: React.ReactNode;
-  storage: any; // useStorage return type
+  storage: any;
 }> = ({ children, storage }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isOpen, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const screenRef = useRef<ScreenContext>({ screen: 'dashboard' });
   const [currentScreen, setCurrentScreen] = useState('dashboard');
+  const [dailyUsage, setDailyUsage] = useState({ count: 0, limit: DAILY_LIMIT, limitReached: false });
+  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
+  const [cooldownActive, setCooldownActive] = useState(false);
+  const [disabledUntil, setDisabledUntil] = useState(0);
   const sendDisabledUntil = useRef(0);
 
   const registerScreen = useCallback((ctx: ScreenContext) => {
@@ -90,14 +117,35 @@ export const ChatProvider: React.FC<{
 
   const quickChips = SCREEN_CHIPS[currentScreen] || DEFAULT_CHIPS;
 
-  const buildContext = useCallback(() => {
+  // Fetch daily usage on mount
+  useEffect(() => {
+    const fetchUsage = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from('user_ai_usage')
+        .select('message_count')
+        .eq('user_id', user.id)
+        .eq('date', today)
+        .maybeSingle();
+      const count = data?.message_count || 0;
+      setDailyUsage({ count, limit: DAILY_LIMIT, limitReached: count >= DAILY_LIMIT });
+    };
+    fetchUsage();
+  }, []);
+
+  const buildContext = useCallback((messageText: string) => {
     const ctx: any = {
       current_screen: screenRef.current.screen,
       current_data: screenRef.current.data || {},
-      available_exercises: exerciseListLean,
     };
 
-    // Add user templates/programs summary
+    // Only include exercise list when needed
+    if (needsExerciseList(messageText, screenRef.current.screen)) {
+      ctx.available_exercises = exerciseListLean;
+    }
+
     if (storage.templates?.length > 0) {
       ctx.user_templates = storage.templates.map((t: any) => ({ id: t.id, name: t.name, exerciseCount: t.exercises?.length }));
     }
@@ -111,7 +159,6 @@ export const ChatProvider: React.FC<{
     return ctx;
   }, [storage]);
 
-  // Execute tool calls client-side
   const executeToolCall = useCallback(async (tc: ToolCall): Promise<any> => {
     const args = tc.arguments;
     switch (tc.name) {
@@ -119,7 +166,7 @@ export const ChatProvider: React.FC<{
         const template = {
           id: crypto.randomUUID(),
           name: args.name,
-          exercises: args.exercises.map((e: any, i: number) => ({
+          exercises: args.exercises.map((e: any) => ({
             exerciseId: e.exerciseId,
             sets: e.sets,
             targetReps: e.targetReps,
@@ -134,11 +181,7 @@ export const ChatProvider: React.FC<{
       case 'edit_template': {
         const existing = storage.templates.find((t: any) => t.id === args.templateId);
         if (!existing) return { success: false, message: "Template not found" };
-        const updated = {
-          ...existing,
-          name: args.name || existing.name,
-          exercises: args.exercises || existing.exercises,
-        };
+        const updated = { ...existing, name: args.name || existing.name, exercises: args.exercises || existing.exercises };
         await storage.saveTemplate(updated);
         return { success: true, message: `Updated template "${updated.name}".` };
       }
@@ -147,15 +190,8 @@ export const ChatProvider: React.FC<{
         return { success: true, message: "Template deleted." };
       }
       case 'create_program': {
-        // First create templates for any inline exercises, then create the program
         const programId = crypto.randomUUID();
-        const program = {
-          id: programId,
-          name: args.name,
-          days: args.days,
-          durationWeeks: args.durationWeeks || 8,
-          startDate: args.startDate || new Date().toISOString().split('T')[0],
-        };
+        const program = { id: programId, name: args.name, days: args.days, durationWeeks: args.durationWeeks || 8, startDate: args.startDate || new Date().toISOString().split('T')[0] };
         await storage.saveProgram(program);
         return { success: true, programId, message: `Created program "${args.name}".` };
       }
@@ -167,10 +203,8 @@ export const ChatProvider: React.FC<{
         await storage.setActiveProgram(args.programId);
         return { success: true, message: "Active program updated." };
       }
-      case 'confirm_destructive_action': {
-        // This is handled specially — we show a confirmation in the UI
+      case 'confirm_destructive_action':
         return { needs_confirmation: true, action: args.action, itemName: args.itemName };
-      }
       case 'get_workout_history': {
         const days = args.days || 14;
         const cutoff = new Date();
@@ -180,8 +214,7 @@ export const ChatProvider: React.FC<{
 
         if (args.analysisType === 'summary') {
           return {
-            period_days: days,
-            total_workouts: recent.length,
+            period_days: days, total_workouts: recent.length,
             total_volume: recent.reduce((s: number, w: any) => s + w.totalVolume, 0),
             total_sets: recent.reduce((s: number, w: any) => s + w.totalSets, 0),
             total_reps: recent.reduce((s: number, w: any) => s + w.totalReps, 0),
@@ -194,9 +227,7 @@ export const ChatProvider: React.FC<{
             for (const ex of session.exercises) {
               for (const set of ex.sets) {
                 const key = ex.exerciseName || ex.exerciseId;
-                if (!prs[key] || (set.weight || 0) > prs[key].weight) {
-                  prs[key] = { weight: set.weight || 0, reps: set.reps };
-                }
+                if (!prs[key] || (set.weight || 0) > prs[key].weight) prs[key] = { weight: set.weight || 0, reps: set.reps };
               }
             }
           }
@@ -230,15 +261,30 @@ export const ChatProvider: React.FC<{
   }, [storage]);
 
   const sendMessage = useCallback(async (text: string) => {
+    // Cooldown check
     if (Date.now() < sendDisabledUntil.current) return;
-    sendDisabledUntil.current = Date.now() + 1000; // 1s debounce
+    sendDisabledUntil.current = Date.now() + COOLDOWN_MS;
+    setCooldownActive(true);
+    setTimeout(() => setCooldownActive(false), COOLDOWN_MS);
 
-    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text };
+    // Daily limit check (client-side, server also enforces)
+    if (dailyUsage.limitReached) return;
+
+    // Disabled due to consecutive errors
+    if (Date.now() < disabledUntil) return;
+
+    // Cap input to 500 chars
+    const cappedText = text.slice(0, 500);
+
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: cappedText };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
 
-    const context = buildContext();
-    const apiMessages = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
+    const context = buildContext(cappedText);
+
+    // Window: only send last MESSAGE_WINDOW messages
+    const allMessages = [...messages, userMsg];
+    const windowedMessages = allMessages.slice(-MESSAGE_WINDOW).map(m => ({ role: m.role, content: m.content }));
 
     try {
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
@@ -247,13 +293,22 @@ export const ChatProvider: React.FC<{
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: apiMessages, context }),
+        body: JSON.stringify({ messages: windowedMessages, context }),
       });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "Unknown error" }));
+        if (err.limit_reached) {
+          setDailyUsage(prev => ({ ...prev, limitReached: true, count: prev.limit }));
+        }
         throw new Error(err.error || `Error ${resp.status}`);
       }
+
+      // Reset consecutive errors on success
+      setConsecutiveErrors(0);
+
+      // Update daily usage count
+      setDailyUsage(prev => ({ ...prev, count: prev.count + 1, limitReached: prev.count + 1 >= prev.limit }));
 
       // Parse SSE stream
       const reader = resp.body!.getReader();
@@ -272,7 +327,6 @@ export const ChatProvider: React.FC<{
         });
       };
 
-      // Add initial assistant placeholder
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: '', isLoading: true }]);
 
       let streamDone = false;
@@ -298,18 +352,12 @@ export const ChatProvider: React.FC<{
             if (!choice) continue;
 
             const delta = choice.delta;
-            if (delta?.content) {
-              assistantContent += delta.content;
-              updateAssistant();
-            }
+            if (delta?.content) { assistantContent += delta.content; updateAssistant(); }
 
-            // Collect tool calls
             if (delta?.tool_calls) {
               for (const tc of delta.tool_calls) {
                 if (tc.index !== undefined) {
-                  if (!toolCalls[tc.index]) {
-                    toolCalls[tc.index] = { id: tc.id || '', name: '', arguments: '' };
-                  }
+                  if (!toolCalls[tc.index]) toolCalls[tc.index] = { id: tc.id || '', name: '', arguments: '' };
                   if (tc.id) toolCalls[tc.index].id = tc.id;
                   if (tc.function?.name) toolCalls[tc.index].name = tc.function.name;
                   if (tc.function?.arguments) toolCalls[tc.index].arguments += tc.function.arguments;
@@ -317,9 +365,7 @@ export const ChatProvider: React.FC<{
               }
             }
 
-            if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
-              streamDone = true;
-            }
+            if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') streamDone = true;
           } catch {
             textBuffer = line + "\n" + textBuffer;
             break;
@@ -327,18 +373,16 @@ export const ChatProvider: React.FC<{
         }
       }
 
-      // Process tool calls if any
+      // Process tool calls
       if (toolCalls.length > 0) {
         const parsedToolCalls: ToolCall[] = toolCalls
           .filter(tc => tc && tc.name)
           .map(tc => ({
-            id: tc.id,
-            name: tc.name,
+            id: tc.id, name: tc.name,
             arguments: (() => { try { return JSON.parse(tc.arguments); } catch { return {}; } })(),
             status: 'pending' as const,
           }));
 
-        // Execute all tool calls
         const results: any[] = [];
         for (const tc of parsedToolCalls) {
           tc.status = 'executing';
@@ -354,26 +398,21 @@ export const ChatProvider: React.FC<{
           }
         }
 
-        // If there are confirmation-needed tool calls, show them
         const needsConfirm = parsedToolCalls.some(tc => tc.status === 'confirm');
-
         if (needsConfirm) {
-          // Update last assistant message with the confirmation request
           const confirmTc = parsedToolCalls.find(tc => tc.status === 'confirm')!;
           const confirmContent = assistantContent || `I'll ${confirmTc.arguments.action} "${confirmTc.arguments.itemName}". This can't be undone. Go ahead?`;
           setMessages(prev => prev.map((m, i) =>
             i === prev.length - 1 ? { ...m, content: confirmContent, isLoading: false, toolCalls: parsedToolCalls } : m
           ));
         } else {
-          // Send tool results back to AI for a natural language response
           const followUpMessages = [
-            ...apiMessages,
+            ...windowedMessages,
             {
               role: 'assistant' as const,
               content: assistantContent || null,
               tool_calls: parsedToolCalls.map(tc => ({
-                id: tc.id,
-                type: 'function',
+                id: tc.id, type: 'function',
                 function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
               })),
             },
@@ -381,10 +420,7 @@ export const ChatProvider: React.FC<{
 
           const followResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-            },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
             body: JSON.stringify({ messages: followUpMessages, context, action_results: results }),
           });
 
@@ -392,13 +428,11 @@ export const ChatProvider: React.FC<{
             const followReader = followResp.body!.getReader();
             let followBuffer = "";
             let followContent = "";
-
             let done2 = false;
             while (!done2) {
               const { done, value } = await followReader.read();
               if (done) break;
               followBuffer += decoder.decode(value, { stream: true });
-
               let nlIdx: number;
               while ((nlIdx = followBuffer.indexOf("\n")) !== -1) {
                 let fLine = followBuffer.slice(0, nlIdx);
@@ -425,7 +459,6 @@ export const ChatProvider: React.FC<{
                 i === prev.length - 1 ? { ...m, content: followContent, isLoading: false, toolCalls: parsedToolCalls } : m
               ));
             } else {
-              // Fallback
               const summary = parsedToolCalls.map(tc => tc.result?.message || `${tc.name} completed`).join('. ');
               setMessages(prev => prev.map((m, i) =>
                 i === prev.length - 1 ? { ...m, content: summary, isLoading: false, toolCalls: parsedToolCalls } : m
@@ -434,44 +467,47 @@ export const ChatProvider: React.FC<{
           }
         }
       } else {
-        // No tool calls, just finalize the message
         setMessages(prev => prev.map((m, i) =>
           i === prev.length - 1 ? { ...m, content: assistantContent, isLoading: false } : m
         ));
       }
     } catch (err) {
       console.error('Chat error:', err);
-      setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant') {
-          return prev.map((m, i) => i === prev.length - 1
-            ? { ...m, content: `Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}. Try again.`, isLoading: false }
-            : m);
-        }
-        return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Something went wrong. Try again.', isLoading: false }];
-      });
+      const newErrorCount = consecutiveErrors + 1;
+      setConsecutiveErrors(newErrorCount);
+
+      // After 2 consecutive failures, disable for 5 minutes
+      if (newErrorCount >= 2) {
+        setDisabledUntil(Date.now() + DISABLE_DURATION_MS);
+        setMessages(prev => {
+          const errMsg = "AI is temporarily unavailable. You can still build templates manually. Will retry in 5 minutes.";
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant') {
+            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
+          }
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errMsg, isLoading: false }];
+        });
+      } else {
+        setMessages(prev => {
+          const errMsg = `Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}. Try again.`;
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant') {
+            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
+          }
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errMsg, isLoading: false }];
+        });
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [messages, buildContext, executeToolCall]);
+  }, [messages, buildContext, executeToolCall, dailyUsage, consecutiveErrors, disabledUntil]);
 
   const confirmAction = useCallback(async (toolCallId: string, confirmed: boolean) => {
     if (!confirmed) {
       setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: "No problem, cancelled.", isLoading: false }]);
       return;
     }
-
-    // Find the tool call and execute the actual destructive action
-    const msg = messages.find(m => m.toolCalls?.some(tc => tc.id === toolCallId));
-    const tc = msg?.toolCalls?.find(t => t.id === toolCallId);
-    if (!tc) return;
-
-    // The confirm_destructive_action tool tells us what to do next
-    // We need to determine the actual action from context
-    // For now, the AI should call the actual delete action after confirmation
-    setMessages(prev => [...prev,
-      { id: crypto.randomUUID(), role: 'user', content: 'Yes, go ahead.' },
-    ]);
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: 'Yes, go ahead.' }]);
     await sendMessage('Yes, go ahead.');
   }, [messages, sendMessage]);
 
@@ -481,6 +517,7 @@ export const ChatProvider: React.FC<{
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
       setOpen, sendMessage, clearChat, registerScreen, confirmAction, quickChips,
+      dailyUsage, consecutiveErrors, cooldownActive,
     }}>
       {children}
     </ChatContext.Provider>
