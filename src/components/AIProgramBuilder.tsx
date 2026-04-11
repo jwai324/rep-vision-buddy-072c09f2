@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw, Check, ArrowRight, Sparkles, Loader2, Replace } from 'lucide-react';
 import { EXERCISE_DATABASE, EQUIPMENT_LIST, type Exercise } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +18,7 @@ interface UserInputs {
   equipment: string[];
   injuries: string;
   splitPreference: string;
+  additionalNotes: string;
 }
 
 interface AIExercise {
@@ -44,7 +46,7 @@ interface AIProgram {
   training_days: AITrainingDay[];
 }
 
-type ChatStep = 'goal' | 'experience' | 'daysPerWeek' | 'sessionDuration' | 'equipment' | 'injuries' | 'splitPreference' | 'summary';
+type ChatStep = 'goal' | 'experience' | 'daysPerWeek' | 'sessionDuration' | 'equipment' | 'injuries' | 'splitPreference' | 'additionalNotes' | 'summary';
 
 interface ChatMessage {
   role: 'ai' | 'user';
@@ -55,7 +57,7 @@ interface ChatMessage {
   freeText?: boolean;
 }
 
-const STEPS: ChatStep[] = ['goal', 'experience', 'daysPerWeek', 'sessionDuration', 'equipment', 'injuries', 'splitPreference', 'summary'];
+const STEPS: ChatStep[] = ['goal', 'experience', 'daysPerWeek', 'sessionDuration', 'equipment', 'injuries', 'splitPreference', 'additionalNotes', 'summary'];
 
 const STEP_QUESTIONS: Record<ChatStep, string> = {
   goal: "What's your primary training goal?",
@@ -65,6 +67,7 @@ const STEP_QUESTIONS: Record<ChatStep, string> = {
   equipment: "What equipment do you have access to?",
   injuries: "Any injuries or body parts to avoid?",
   splitPreference: "Any split preference?",
+  additionalNotes: "Anything else I should know? Training history, weak points you want to bring up, exercises you love or hate, time constraints — whatever helps me build this for you.",
   summary: "Here's your program configuration. Review and edit anything before generating.",
 };
 
@@ -90,7 +93,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>('chat');
   const [currentStep, setCurrentStep] = useState(0);
   const [inputs, setInputs] = useState<UserInputs>({
-    goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', equipment: [], injuries: '', splitPreference: '',
+    goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', equipment: [], injuries: '', splitPreference: '', additionalNotes: '',
   });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingVisible, setTypingVisible] = useState(false);
@@ -99,7 +102,15 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [generatedProgram, setGeneratedProgram] = useState<AIProgram | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
   const [swappingExercise, setSwappingExercise] = useState<{ dayIdx: number; exIdx: number } | null>(null);
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [otherText, setOtherText] = useState('');
+  const [customEquipmentText, setCustomEquipmentText] = useState('');
+  const [showEquipmentOther, setShowEquipmentOther] = useState(false);
+  const [additionalNotesText, setAdditionalNotesText] = useState('');
+  const [showFullNotes, setShowFullNotes] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const otherInputRef = useRef<HTMLInputElement>(null);
+  const notesInputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 50);
@@ -110,9 +121,26 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     showAIMessage(0);
   }, []);
 
+  // Auto-focus other input when shown
+  useEffect(() => {
+    if (showOtherInput && otherInputRef.current) {
+      otherInputRef.current.focus();
+    }
+  }, [showOtherInput]);
+
+  useEffect(() => {
+    if (showEquipmentOther && otherInputRef.current) {
+      otherInputRef.current.focus();
+    }
+  }, [showEquipmentOther]);
+
   const showAIMessage = (stepIndex: number) => {
     const step = STEPS[stepIndex];
     setTypingVisible(true);
+    setShowOtherInput(false);
+    setOtherText('');
+    setShowEquipmentOther(false);
+    setCustomEquipmentText('');
     setTimeout(() => {
       setTypingVisible(false);
       const msg: ChatMessage = {
@@ -121,7 +149,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
         step,
         chips: STEP_CHIPS[step],
         multiSelect: step === 'equipment',
-        freeText: step === 'injuries',
+        freeText: step === 'injuries' || step === 'additionalNotes',
       };
       setMessages(prev => [...prev, msg]);
       setCurrentStep(stepIndex);
@@ -129,10 +157,22 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     }, 400);
   };
 
+  const advanceToNext = (updatedInputs: UserInputs) => {
+    setInputs(updatedInputs);
+    const next = currentStep + 1;
+    if (next < STEPS.length) {
+      showAIMessage(next);
+    }
+  };
+
   const handleChipSelect = (value: string) => {
     const step = STEPS[currentStep];
 
     if (step === 'equipment') {
+      if (value === 'Other') {
+        setShowEquipmentOther(true);
+        return;
+      }
       if (value === 'Full Gym') {
         setSelectedEquipment(ALL_EQUIPMENT);
       } else {
@@ -140,6 +180,12 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
           prev.includes(value) ? prev.filter(e => e !== value) : [...prev, value]
         );
       }
+      return;
+    }
+
+    // "Other" tapped for single-select steps
+    if (value === 'Other') {
+      setShowOtherInput(true);
       return;
     }
 
@@ -153,13 +199,35 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     else if (step === 'daysPerWeek') updated.daysPerWeek = parseInt(value);
     else if (step === 'sessionDuration') updated.sessionDuration = value;
     else if (step === 'splitPreference') updated.splitPreference = value;
-    setInputs(updated);
+    advanceToNext(updated);
+  };
 
-    // Next step
-    const next = currentStep + 1;
-    if (next < STEPS.length) {
-      showAIMessage(next);
+  const submitOtherText = () => {
+    if (!otherText.trim()) return;
+    const step = STEPS[currentStep];
+    const value = otherText.trim();
+    const userMsg: ChatMessage = { role: 'user', content: value };
+    setMessages(prev => [...prev, userMsg]);
+    setShowOtherInput(false);
+    setOtherText('');
+
+    const updated = { ...inputs };
+    if (step === 'goal') updated.goal = value;
+    else if (step === 'experience') updated.experience = value;
+    else if (step === 'daysPerWeek') updated.daysPerWeek = parseInt(value) || 4;
+    else if (step === 'sessionDuration') updated.sessionDuration = value;
+    else if (step === 'splitPreference') updated.splitPreference = value;
+    advanceToNext(updated);
+  };
+
+  const addCustomEquipment = () => {
+    if (!customEquipmentText.trim()) return;
+    const custom = customEquipmentText.trim();
+    if (!selectedEquipment.includes(custom)) {
+      setSelectedEquipment(prev => [...prev, custom]);
     }
+    setCustomEquipmentText('');
+    setShowEquipmentOther(false);
   };
 
   const confirmEquipment = () => {
@@ -169,23 +237,24 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     }
     const userMsg: ChatMessage = { role: 'user', content: selectedEquipment.join(', ') };
     setMessages(prev => [...prev, userMsg]);
-    setInputs(prev => ({ ...prev, equipment: selectedEquipment }));
-    showAIMessage(currentStep + 1);
+    advanceToNext({ ...inputs, equipment: selectedEquipment });
   };
 
   const confirmInjuries = (value: string) => {
     const userMsg: ChatMessage = { role: 'user', content: value || 'None' };
     setMessages(prev => [...prev, userMsg]);
-    setInputs(prev => ({ ...prev, injuries: value || '' }));
-    showAIMessage(currentStep + 1);
+    advanceToNext({ ...inputs, injuries: value || '' });
+  };
+
+  const confirmAdditionalNotes = (value: string) => {
+    const userMsg: ChatMessage = { role: 'user', content: value || 'Skipped' };
+    setMessages(prev => [...prev, userMsg]);
+    advanceToNext({ ...inputs, additionalNotes: value || '' });
   };
 
   const goBack = () => {
     if (currentStep <= 0) return;
-    // Remove messages from current and previous step answer
-    const prevStep = STEPS[currentStep];
     const targetStep = currentStep - 1;
-    // Remove all messages from targetStep answer onward
     setMessages(prev => {
       const idx = prev.findIndex(m => m.step === STEPS[targetStep]);
       if (idx >= 0) return prev.slice(0, idx);
@@ -205,6 +274,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     { key: 'equipment', label: 'Equipment', value: inputs.equipment.join(', ') },
     { key: 'injuries', label: 'Injuries', value: inputs.injuries || 'None' },
     { key: 'splitPreference', label: 'Split', value: inputs.splitPreference },
+    ...(inputs.additionalNotes ? [{ key: 'additionalNotes', label: 'Additional Notes', value: inputs.additionalNotes }] : []),
   ];
 
   const handleSummaryEdit = (key: string, value: string) => {
@@ -219,7 +289,6 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const generateProgram = async () => {
     setPhase('generating');
 
-    // Filter exercises
     const difficultyLevel = inputs.experience.includes('Beginner') ? 1 : inputs.experience.includes('Intermediate') ? 2 : 3;
     const difficultyMap: Record<string, number> = { Beginner: 1, Intermediate: 2, Advanced: 3 };
     const injuryParts = inputs.injuries.toLowerCase().split(/[,&]/).map(s => s.trim()).filter(Boolean);
@@ -237,7 +306,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     try {
       const { data, error } = await supabase.functions.invoke('generate-program', {
         body: {
-          userInputs: inputs,
+          userInputs: { ...inputs, custom_notes: inputs.additionalNotes },
           exercises: filtered.map(ex => ({
             name: ex.name,
             primaryBodyPart: ex.primaryBodyPart,
@@ -258,7 +327,6 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       for (const day of program.training_days) {
         day.exercises = day.exercises.filter(ex => {
           if (exerciseNames.has(ex.exercise_name)) return true;
-          // Try fuzzy match
           const match = EXERCISE_DATABASE.find(e =>
             e.name.toLowerCase() === ex.exercise_name.toLowerCase()
           );
@@ -337,7 +405,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       programDays.push({
         label: day.day_name,
         templateId,
-        frequency: { type: 'weekly', weekday: (i + 1) % 7 }, // Mon=1, etc.
+        frequency: { type: 'weekly', weekday: (i + 1) % 7 },
       });
     });
 
@@ -373,7 +441,6 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   if (phase === 'review' && generatedProgram) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
-        {/* Header */}
         <div className="flex items-center gap-3 p-4 border-b border-border">
           <button onClick={() => setPhase('chat')} className="p-2 rounded-lg hover:bg-secondary">
             <ArrowLeft className="w-5 h-5 text-foreground" />
@@ -387,7 +454,6 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
           </Button>
         </div>
 
-        {/* Days */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {generatedProgram.training_days.map((day, dayIdx) => (
             <div key={dayIdx} className="bg-card rounded-xl border border-border overflow-hidden">
@@ -424,7 +490,6 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                       </button>
                     </div>
                   ))}
-                  {/* Swap picker */}
                   {swappingExercise?.dayIdx === dayIdx && (
                     <div className="p-3 bg-secondary/50 border-t border-border max-h-48 overflow-y-auto">
                       <p className="text-xs text-muted-foreground mb-2 font-medium">Swap with:</p>
@@ -448,7 +513,6 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
           ))}
         </div>
 
-        {/* Save */}
         <div className="p-4 border-t border-border">
           <Button variant="neon" size="lg" className="w-full font-bold" onClick={saveProgram}>
             <Check className="w-5 h-5 mr-2" /> Save Program
@@ -462,6 +526,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
 
   const step = STEPS[currentStep];
   const isSummary = step === 'summary';
+  const totalSteps = STEPS.length - 1; // exclude summary
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -472,7 +537,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
         </button>
         <div className="flex-1">
           <h2 className="text-lg font-bold text-foreground">Build My Program</h2>
-          <p className="text-xs text-muted-foreground">Step {Math.min(currentStep + 1, 7)} of 7</p>
+          <p className="text-xs text-muted-foreground">Step {Math.min(currentStep + 1, totalSteps)} of {totalSteps}</p>
         </div>
         <Sparkles className="w-5 h-5 text-primary" />
       </div>
@@ -509,22 +574,43 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
           <div className="bg-card border border-border rounded-xl p-4 space-y-3">
             <p className="text-sm font-semibold text-foreground">Program Configuration</p>
             {summaryFields.map(field => (
-              <div key={field.key} className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{field.label}</span>
+              <div key={field.key} className="flex items-start justify-between gap-2">
+                <span className="text-xs text-muted-foreground shrink-0 pt-0.5">{field.label}</span>
                 {editingField === field.key ? (
-                  <Input
-                    autoFocus
-                    defaultValue={field.value}
-                    className="w-40 h-7 text-xs"
-                    onBlur={(e) => handleSummaryEdit(field.key, e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSummaryEdit(field.key, (e.target as HTMLInputElement).value)}
-                  />
+                  field.key === 'additionalNotes' ? (
+                    <Textarea
+                      autoFocus
+                      defaultValue={field.value}
+                      className="w-48 text-xs min-h-[60px]"
+                      onBlur={(e) => handleSummaryEdit(field.key, e.target.value)}
+                    />
+                  ) : (
+                    <Input
+                      autoFocus
+                      defaultValue={field.value}
+                      className="w-40 h-7 text-xs"
+                      onBlur={(e) => handleSummaryEdit(field.key, e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSummaryEdit(field.key, (e.target as HTMLInputElement).value)}
+                    />
+                  )
                 ) : (
                   <button
                     onClick={() => setEditingField(field.key)}
-                    className="text-xs text-foreground font-medium hover:text-primary transition-colors"
+                    className="text-xs text-foreground font-medium hover:text-primary transition-colors text-right max-w-[60%]"
                   >
-                    {field.value}
+                    {field.key === 'additionalNotes' && field.value.length > 80 && !showFullNotes ? (
+                      <span>
+                        {field.value.slice(0, 80)}…{' '}
+                        <span
+                          className="text-primary underline"
+                          onClick={(e) => { e.stopPropagation(); setShowFullNotes(true); }}
+                        >
+                          Show more
+                        </span>
+                      </span>
+                    ) : (
+                      field.value
+                    )}
                   </button>
                 )}
               </div>
@@ -561,7 +647,41 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                     </button>
                   );
                 })}
+                {/* Other chip for equipment */}
+                <button
+                  onClick={() => handleChipSelect('Other')}
+                  className="px-3 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                >
+                  Other
+                </button>
               </div>
+              {/* Custom equipment already added */}
+              {selectedEquipment.filter(e => !ALL_EQUIPMENT.includes(e)).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedEquipment.filter(e => !ALL_EQUIPMENT.includes(e)).map(custom => (
+                    <span key={custom} className="px-2 py-1 rounded-lg text-xs bg-primary text-primary-foreground flex items-center gap-1">
+                      {custom}
+                      <button onClick={() => setSelectedEquipment(prev => prev.filter(e => e !== custom))} className="hover:opacity-70">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Other text input for equipment */}
+              {showEquipmentOther && (
+                <div className="flex gap-2">
+                  <Input
+                    ref={otherInputRef}
+                    placeholder="Type your equipment..."
+                    value={customEquipmentText}
+                    onChange={(e) => setCustomEquipmentText(e.target.value)}
+                    className="flex-1"
+                    onKeyDown={(e) => e.key === 'Enter' && addCustomEquipment()}
+                  />
+                  <Button variant="neon" size="sm" onClick={addCustomEquipment}>
+                    Add
+                  </Button>
+                </div>
+              )}
               {selectedEquipment.length > 0 && (
                 <Button variant="neon" size="sm" className="w-full" onClick={confirmEquipment}>
                   Continue <ArrowRight className="w-4 h-4 ml-1" />
@@ -589,6 +709,55 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                 None
               </button>
             </div>
+          ) : step === 'additionalNotes' ? (
+            <div className="space-y-3">
+              <Textarea
+                ref={notesInputRef}
+                placeholder="Training history, weak points, exercise preferences, time constraints..."
+                value={additionalNotesText}
+                onChange={(e) => setAdditionalNotesText(e.target.value)}
+                className="min-h-[80px] resize-none"
+                rows={3}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => confirmAdditionalNotes('')}
+                  className="px-3 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                >
+                  Skip
+                </button>
+                <Button variant="neon" size="sm" className="flex-1" onClick={() => confirmAdditionalNotes(additionalNotesText)}>
+                  Submit <ArrowRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          ) : showOtherInput ? (
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Input
+                  ref={otherInputRef}
+                  placeholder="Type your answer..."
+                  value={otherText}
+                  onChange={(e) => setOtherText(e.target.value)}
+                  className="flex-1"
+                  onKeyDown={(e) => e.key === 'Enter' && submitOtherText()}
+                />
+                <Button variant="neon" size="sm" onClick={submitOtherText}>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(STEP_CHIPS[step] ?? []).map(chip => (
+                  <button
+                    key={chip}
+                    onClick={() => { setShowOtherInput(false); setOtherText(''); handleChipSelect(chip); }}
+                    className="px-3 py-2 rounded-xl text-sm font-medium bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground transition-colors"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(STEP_CHIPS[step] ?? []).map(chip => (
@@ -600,6 +769,13 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                   {chip}
                 </button>
               ))}
+              {/* Other chip */}
+              <button
+                onClick={() => handleChipSelect('Other')}
+                className="px-3 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              >
+                Other
+              </button>
             </div>
           )}
         </div>
