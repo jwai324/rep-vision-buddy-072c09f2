@@ -102,6 +102,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   const [name, setName] = useState(() => loadDraft(initial).name);
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [swapTarget, setSwapTarget] = useState<number | null>(null); // blockIdx being swapped
 
   // Re-resolve exercise names when custom exercises load
   React.useEffect(() => {
@@ -195,7 +196,36 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
       return [...prev, ...newBlocks];
     });
     setShowExercisePicker(false);
-  }, []);
+  }, [exerciseLookup]);
+
+  const swapExercise = useCallback((blockIdx: number, newId: ExerciseId) => {
+    setBlocks(prev => prev.map((b, i) => {
+      if (i !== blockIdx) return b;
+      return { ...b, exerciseId: newId, exerciseName: exerciseLookup[newId] ?? newId };
+    }));
+    setSwapTarget(null);
+  }, [exerciseLookup]);
+
+  const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
+
+  const getSimilarExercises = useCallback((exerciseId: ExerciseId) => {
+    const current = allExercises.find(e => e.id === exerciseId);
+    if (!current) return [];
+    const usedIds = new Set(blocks.map(b => b.exerciseId));
+    return allExercises
+      .filter(e => e.id !== exerciseId && !usedIds.has(e.id) && e.primaryBodyPart === current.primaryBodyPart)
+      .sort((a, b) => {
+        // Prioritize same movement pattern, then same equipment
+        const aPattern = a.movementPattern === current.movementPattern ? 0 : 1;
+        const bPattern = b.movementPattern === current.movementPattern ? 0 : 1;
+        if (aPattern !== bPattern) return aPattern - bPattern;
+        const aEquip = a.equipment === current.equipment ? 0 : 1;
+        const bEquip = b.equipment === current.equipment ? 0 : 1;
+        if (aEquip !== bEquip) return aEquip - bEquip;
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 8);
+  }, [allExercises, blocks]);
 
   const clearDraft = useCallback(() => {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
