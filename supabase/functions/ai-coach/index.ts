@@ -7,6 +7,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const COST_CONTROL_RULES = `
+COST CONTROL RULES:
+- Keep responses concise. Maximum 3 sentences for chat replies.
+- If the user asks you to generate multiple programs or templates in a single message, generate only ONE and ask if they want another.
+- If the user asks open-ended questions unrelated to their workouts (e.g., general fitness essays, nutrition plans, life advice), respond with: "I'm built to help with your workouts, templates, and programs. For that question, I'd suggest checking a dedicated resource. What can I help you with in the app?"
+- Do not engage in extended back-and-forth conversation. Answer the question or execute the action, then stop.
+- Never repeat the exercise list or large data sets back to the user. Summarize instead.`;
+
 const SYSTEM_PROMPT = `You are an AI training coach built into a workout tracking app. You help users create, edit, and manage their workout templates, programs, and active workouts through conversation.
 
 RULES:
@@ -25,6 +33,8 @@ RULES:
 8. Always put compound movements before isolation movements.
 9. For destructive actions (delete, overwrite), ask the user to confirm before executing. Use the confirm_destructive_action tool.
 10. If you can't do something (e.g., the user asks about nutrition and you don't have that data), say so directly and suggest what you can help with.
+
+${COST_CONTROL_RULES}
 
 CONTEXT: You will receive the user's current screen, profile, relevant workout data, and available exercises with every message. Use this context to give relevant, specific answers — not generic advice.`;
 
@@ -192,6 +202,52 @@ const tools = [
   },
 ];
 
+async function checkAndIncrementUsage(supabase: any, userId: string, cost: number = 1): Promise<{ allowed: boolean; remaining: number }> {
+  const today = new Date().toISOString().split('T')[0];
+  const DAILY_LIMIT = 30;
+
+  // Upsert usage record
+  const { data: existing } = await supabase
+    .from('user_ai_usage')
+    .select('message_count')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .maybeSingle();
+
+  const currentCount = existing?.message_count || 0;
+
+  if (currentCount + cost > DAILY_LIMIT) {
+    return { allowed: false, remaining: Math.max(0, DAILY_LIMIT - currentCount) };
+  }
+
+  if (existing) {
+    await supabase
+      .from('user_ai_usage')
+      .update({ message_count: currentCount + cost })
+      .eq('user_id', userId)
+      .eq('date', today);
+  } else {
+    await supabase
+      .from('user_ai_usage')
+      .insert({ user_id: userId, date: today, message_count: cost });
+  }
+
+  return { allowed: true, remaining: DAILY_LIMIT - currentCount - cost };
+}
+
+async function logError(supabase: any, userId: string | null, errorType: string, errorMessage: string, requestTokens: number = 0) {
+  try {
+    await supabase.from('ai_error_log').insert({
+      user_id: userId,
+      error_type: errorType,
+      error_message: errorMessage,
+      request_size_tokens: requestTokens,
+    });
+  } catch (e) {
+    console.error('Failed to log error:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -212,6 +268,21 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
+    // Rate limit check
+    if (userId) {
+      const { allowed, remaining } = await checkAndIncrementUsage(supabase, userId);
+      if (!allowed) {
+        return new Response(JSON.stringify({
+          error: "You've hit your daily AI limit (30 messages). Resets at midnight.",
+          limit_reached: true,
+          remaining: 0,
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const { messages, context, action_results } = await req.json();
 
     // Build context message
@@ -220,10 +291,11 @@ serve(async (req) => {
       contextContent = `\n\nCURRENT APP CONTEXT:\n${JSON.stringify(context, null, 0)}`;
     }
 
-    // If we have action results, add them
-    const allMessages = [...(messages || [])];
+    // Only send last 10 messages (already windowed on client, but enforce here too)
+    const windowedMessages = (messages || []).slice(-10);
 
-    // Handle tool call results from the client
+    // Handle tool call results
+    const allMessages = [...windowedMessages];
     if (action_results && action_results.length > 0) {
       for (const result of action_results) {
         allMessages.push({
@@ -248,11 +320,15 @@ serve(async (req) => {
         ],
         tools,
         stream: true,
+        max_tokens: 300,
       }),
     });
 
     if (!response.ok) {
       const status = response.status;
+      const errText = await response.text();
+      await logError(supabase, userId, `gateway_${status}`, errText);
+
       if (status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -263,8 +339,7 @@ serve(async (req) => {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const text = await response.text();
-      console.error("AI gateway error:", status, text);
+      console.error("AI gateway error:", status, errText);
       return new Response(JSON.stringify({ error: "AI service error" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
