@@ -77,7 +77,7 @@ function loadDraft(initialTemplate?: WorkoutTemplate): { name: string; blocks: T
   } catch { /* ignore corrupt data */ }
   return {
     name: initialTemplate?.name ?? '',
-    blocks: initialTemplate?.exercises.map(exerciseToBlock) ?? [],
+    blocks: initialTemplate?.exercises.map(ex => exerciseToBlock(ex)) ?? [],
   };
 }
 
