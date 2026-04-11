@@ -102,6 +102,7 @@ const Index = () => {
             onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
             onGoToSettings={() => setScreen({ type: 'settings' })}
             onGoToAnalytics={() => setScreen({ type: 'analytics' })}
+            onBuildAIProgram={() => setScreen({ type: 'aiProgramBuilder' })}
             onDayClick={(date) => {
               const dateStr = format(date, 'yyyy-MM-dd');
               const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
