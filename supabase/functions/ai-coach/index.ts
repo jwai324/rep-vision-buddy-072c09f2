@@ -214,6 +214,73 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "add_exercise_to_workout",
+      description: "Add an exercise to the user's currently active workout session",
+      parameters: {
+        type: "object",
+        properties: {
+          exerciseId: { type: "string", description: "Exercise ID from the exercise library" },
+          exerciseName: { type: "string", description: "Exercise name for validation" },
+          sets: { type: "number", description: "Number of sets to add (default 3)" },
+          targetReps: { type: "number", description: "Target reps per set" },
+          weight: { type: "number", description: "Starting weight" },
+        },
+        required: ["exerciseId", "exerciseName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_sets_to_exercise",
+      description: "Add additional sets to an exercise already in the active workout",
+      parameters: {
+        type: "object",
+        properties: {
+          exerciseName: { type: "string", description: "Name of the exercise in the workout" },
+          exerciseIndex: { type: "number", description: "Index of the exercise in the workout (alternative to name)" },
+          count: { type: "number", description: "Number of sets to add (default 1)" },
+        },
+        required: ["exerciseName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_set_weight_reps",
+      description: "Update weight or reps on a specific set in the active workout",
+      parameters: {
+        type: "object",
+        properties: {
+          exerciseName: { type: "string", description: "Name of the exercise" },
+          setNumber: { type: "number", description: "Set number to update (1-based)" },
+          weight: { type: "number", description: "New weight value" },
+          reps: { type: "number", description: "New reps value" },
+        },
+        required: ["exerciseName", "setNumber"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "swap_exercise_in_workout",
+      description: "Replace an exercise in the active workout with a different one, keeping set structure",
+      parameters: {
+        type: "object",
+        properties: {
+          exerciseName: { type: "string", description: "Name of the current exercise to replace" },
+          newExerciseId: { type: "string", description: "ID of the replacement exercise" },
+          newExerciseName: { type: "string", description: "Name of the replacement exercise for validation" },
+        },
+        required: ["exerciseName", "newExerciseId", "newExerciseName"],
+      },
+    },
+  },
 ];
 
 async function checkAndIncrementUsage(supabase: any, userId: string, cost: number = 1): Promise<{ allowed: boolean; remaining: number }> {
