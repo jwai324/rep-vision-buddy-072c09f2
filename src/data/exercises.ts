@@ -131,6 +131,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'hack-squat-machine', name: 'Hack Squat Machine', primaryBodyPart: 'Quads', equipment: 'Machine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
   { id: 'barbell-hack-squat', name: 'Barbell Hack Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
   { id: 'zercher-squat', name: 'Zercher Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Core', 'Biceps'] },
+  { id: 'paused-squat', name: 'Paused Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Core'] },
+  { id: 'single-leg-leg-press', name: 'Single-Leg Leg Press', primaryBodyPart: 'Quads', equipment: 'Machine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Hamstrings'] },
   { id: 'overhead-squat', name: 'Overhead Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Core', 'Shoulders'] },
   { id: 'air-squat', name: 'Air Squat', primaryBodyPart: 'Quads', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
   { id: 'dumbbell-squat', name: 'Dumbbell Squat', primaryBodyPart: 'Quads', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
