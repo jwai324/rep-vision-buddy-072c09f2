@@ -43,6 +43,10 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-arm-cable-chest-press', name: 'Single-Arm Cable Chest Press', primaryBodyPart: 'Chest', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-landmine-press', name: 'Single-Arm Landmine Press', primaryBodyPart: 'Chest', equipment: 'Landmine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts', 'Core'] },
   { id: 'medicine-ball-chest-pass', name: 'Medicine Ball Chest Pass', primaryBodyPart: 'Chest', equipment: 'Medicine Ball', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
+  { id: 'diamond-push-up', name: 'Diamond Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts'] },
+  { id: 'archer-push-up', name: 'Archer Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core', 'Shoulders'] },
+  { id: 'plyo-push-up', name: 'Plyo Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Triceps', 'Core'] },
+  { id: 'single-arm-push-up', name: 'Single-Arm Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core', 'Shoulders'] },
 
   // Back
   { id: 'conventional-deadlift', name: 'Conventional Deadlift', primaryBodyPart: 'Back', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Glutes', 'Core', 'Forearms', 'Traps'] },
@@ -65,6 +69,10 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'rope-climb', name: 'Rope Climb', primaryBodyPart: 'Back', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Biceps', 'Forearms', 'Core'] },
   { id: 'straight-arm-pulldown', name: 'Straight-Arm Pulldown', primaryBodyPart: 'Back', equipment: 'Cable', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Pull', secondaryMuscles: ['Lats'] },
   { id: 'face-pull', name: 'Face Pull', primaryBodyPart: 'Back', equipment: 'Cable', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Rear Delts', 'Rotator Cuff'] },
+  { id: 'pull-up', name: 'Pull-Up', primaryBodyPart: 'Back', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Biceps', 'Lats', 'Core'] },
+  { id: 'weighted-pull-up', name: 'Weighted Pull-Up', primaryBodyPart: 'Back', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Lats', 'Biceps', 'Rhomboids', 'Rear Delts', 'Core', 'Forearms'] },
+  { id: 'back-extension-45', name: 'Back Extension (45°)', primaryBodyPart: 'Back', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Hamstrings'] },
+  { id: 'dumbbell-w-raise', name: 'Dumbbell W-Raise', primaryBodyPart: 'Back', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Pull', secondaryMuscles: ['Rear Delts', 'Rhomboids', 'Rotator Cuff'] },
   { id: 'cable-face-pull-external-rotation', name: 'Cable Face Pull (External Rotation)', primaryBodyPart: 'Back', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Rear Delts', 'Rotator Cuff'] },
   { id: 'foam-roller-thoracic-extension', name: 'Foam Roller Thoracic Extension', primaryBodyPart: 'Back', equipment: 'Foam Roller', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: ['Upper Back'] },
   { id: 'chest-supported-dumbbell-row', name: 'Chest-Supported Dumbbell Row', primaryBodyPart: 'Back', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Biceps', 'Rear Delts'] },
@@ -105,6 +113,11 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-arm-dumbbell-shoulder-press', name: 'Single-Arm Dumbbell Shoulder Press', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-band-shoulder-press', name: 'Single-Arm Band Shoulder Press', primaryBodyPart: 'Shoulders', equipment: 'Band', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-dumbbell-front-raise', name: 'Single-Arm Dumbbell Front Raise', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Front Delts'] },
+  { id: 'dumbbell-push-press', name: 'Dumbbell Push Press', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Traps'] },
+  { id: 'dumbbell-y-raise', name: 'Dumbbell Y-Raise', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Pull', secondaryMuscles: ['Traps', 'Rotator Cuff'] },
+  { id: 'cable-overhead-press', name: 'Cable Overhead Press', primaryBodyPart: 'Shoulders', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps'] },
+  { id: 'handstand-push-up', name: 'Handstand Push-Up', primaryBodyPart: 'Shoulders', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
+  { id: 'pike-push-up', name: 'Pike Push-Up', primaryBodyPart: 'Shoulders', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
 
   // Quads / Legs
   { id: 'back-squat', name: 'Back Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Hamstrings', 'Core', 'Lower Back'] },
@@ -118,6 +131,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'hack-squat-machine', name: 'Hack Squat Machine', primaryBodyPart: 'Quads', equipment: 'Machine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
   { id: 'barbell-hack-squat', name: 'Barbell Hack Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
   { id: 'zercher-squat', name: 'Zercher Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Core', 'Biceps'] },
+  { id: 'paused-squat', name: 'Paused Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Core'] },
+  { id: 'single-leg-leg-press', name: 'Single-Leg Leg Press', primaryBodyPart: 'Quads', equipment: 'Machine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Hamstrings'] },
   { id: 'overhead-squat', name: 'Overhead Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Core', 'Shoulders'] },
   { id: 'air-squat', name: 'Air Squat', primaryBodyPart: 'Quads', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
   { id: 'dumbbell-squat', name: 'Dumbbell Squat', primaryBodyPart: 'Quads', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes'] },
@@ -139,6 +154,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'barbell-walking-lunge', name: 'Barbell Walking Lunge', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings', 'Core'] },
   { id: 'reverse-lunge-barbell', name: 'Reverse Lunge (Barbell)', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings', 'Core'] },
   { id: 'lateral-lunge-dumbbell', name: 'Lateral Lunge (Dumbbell)', primaryBodyPart: 'Quads', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Adductors'] },
+  { id: 'reverse-lunge-dumbbell', name: 'Reverse Lunge (Dumbbell)', primaryBodyPart: 'Quads', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings'] },
+  { id: 'reverse-lunge-bodyweight', name: 'Reverse Lunge (Bodyweight)', primaryBodyPart: 'Quads', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings'] },
 
   // Hamstrings
   { id: 'barbell-romanian-deadlift', name: 'Barbell Romanian Deadlift', primaryBodyPart: 'Hamstrings', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Lower Back'] },
@@ -158,6 +175,9 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-leg-swiss-ball-hamstring-curl', name: 'Single-Leg Swiss Ball Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Swiss Ball', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes', 'Core'] },
   { id: 'glute-ham-raise', name: 'Glute-Ham Raise', primaryBodyPart: 'Hamstrings', equipment: 'Machine', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Flexion', secondaryMuscles: ['Glutes'] },
   { id: 'kettlebell-sumo-deadlift', name: 'Kettlebell Sumo Deadlift', primaryBodyPart: 'Hamstrings', equipment: 'Kettlebell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Quads'] },
+  { id: 'kickstand-deadlift', name: 'Kickstand Deadlift', primaryBodyPart: 'Hamstrings', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Lower Back', 'Core', 'Adductors', 'Forearms'] },
+  { id: 'nordic-hamstring-curl', name: 'Nordic Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes'] },
+  { id: 'swiss-ball-hamstring-curl', name: 'Swiss Ball Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Swiss Ball', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes', 'Core'] },
 
   // Glutes
   { id: 'barbell-hip-thrust', name: 'Barbell Hip Thrust', primaryBodyPart: 'Glutes', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hip Extension', secondaryMuscles: ['Hamstrings'] },
@@ -183,6 +203,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'kettlebell-swing', name: 'Kettlebell Swing', primaryBodyPart: 'Glutes', equipment: 'Kettlebell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Core', 'Shoulders'] },
   { id: 'single-arm-kettlebell-swing', name: 'Single-Arm Kettlebell Swing', primaryBodyPart: 'Glutes', equipment: 'Kettlebell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Core'] },
   { id: 'dumbbell-sumo-squat', name: 'Dumbbell Sumo Squat', primaryBodyPart: 'Glutes', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Quads', 'Adductors'] },
+  { id: 'curtsy-lunge', name: 'Curtsy Lunge', primaryBodyPart: 'Glutes', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Adductors'] },
 
   // Calves
   { id: 'standing-calf-raise-machine', name: 'Standing Calf Raise Machine', primaryBodyPart: 'Calves', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Raise', secondaryMuscles: [] },
@@ -222,6 +243,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'dumbbell-overhead-tricep-extension', name: 'Dumbbell Overhead Tricep Extension', primaryBodyPart: 'Triceps', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'kettlebell-overhead-tricep-extension', name: 'Kettlebell Overhead Tricep Extension', primaryBodyPart: 'Triceps', equipment: 'Kettlebell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'band-overhead-tricep-extension', name: 'Band Overhead Tricep Extension', primaryBodyPart: 'Triceps', equipment: 'Band', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
+  { id: 'barbell-skull-crusher', name: 'Barbell Skull Crusher', primaryBodyPart: 'Triceps', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Push', secondaryMuscles: [] },
   { id: 'ez-bar-skull-crusher', name: 'EZ Bar Skull Crusher', primaryBodyPart: 'Triceps', equipment: 'EZ Bar', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'dumbbell-skull-crusher', name: 'Dumbbell Skull Crusher', primaryBodyPart: 'Triceps', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'bodyweight-skull-crusher', name: 'Bodyweight Skull Crusher', primaryBodyPart: 'Triceps', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
@@ -263,6 +285,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'medicine-ball-slam', name: 'Medicine Ball Slam', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Flexion', secondaryMuscles: ['Shoulders', 'Lats'] },
   { id: 'medicine-ball-side-throw', name: 'Medicine Ball Side Throw', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Obliques', 'Shoulders'] },
   { id: 'medicine-ball-rotational-throw', name: 'Medicine Ball Rotational Throw', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Obliques', 'Shoulders', 'Hip Flexors'] },
+  { id: 'copenhagen-plank', name: 'Copenhagen Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Adductors', 'Obliques'] },
+  { id: 'single-arm-farmers-carry', name: "Single-Arm Farmer's Carry", primaryBodyPart: 'Core', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Obliques', 'Forearms', 'Traps'] },
 
   // Hip Flexors
   { id: 'standing-hip-flexion-cable', name: 'Standing Hip Flexion (Cable)', primaryBodyPart: 'Hip Flexors', equipment: 'Cable', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: [] },
@@ -275,6 +299,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'machine-shrug', name: 'Machine Shrug', primaryBodyPart: 'Traps', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Shrug', secondaryMuscles: [] },
   { id: 'kettlebell-shrug', name: 'Kettlebell Shrug', primaryBodyPart: 'Traps', equipment: 'Kettlebell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Shrug', secondaryMuscles: [] },
   { id: 'trap-bar-shrug', name: 'Trap Bar Shrug', primaryBodyPart: 'Traps', equipment: 'Trap Bar', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Pull', secondaryMuscles: ['Upper Back', 'Forearms'] },
+  { id: 'farmers-carry', name: "Farmer's Carry", primaryBodyPart: 'Traps', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Forearms', 'Core', 'Obliques', 'Shoulders', 'Glutes', 'Calves'] },
   { id: 'neck-extension-plate', name: 'Neck Extension (Plate)', primaryBodyPart: 'Neck', equipment: 'Plate', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'neck-curl-plate', name: 'Neck Curl (Plate)', primaryBodyPart: 'Neck', equipment: 'Plate', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: [] },
   { id: 'band-neck-extension', name: 'Band Neck Extension', primaryBodyPart: 'Neck', equipment: 'Band', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
@@ -286,10 +311,12 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'barbell-reverse-wrist-curl', name: 'Barbell Reverse Wrist Curl', primaryBodyPart: 'Forearms', equipment: 'Barbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'dumbbell-reverse-wrist-curl', name: 'Dumbbell Reverse Wrist Curl', primaryBodyPart: 'Forearms', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'trap-bar-farmers-walk', name: "Trap Bar Farmer's Walk", primaryBodyPart: 'Forearms', equipment: 'Trap Bar', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Traps', 'Core'] },
+  { id: 'towel-hang', name: 'Towel Hang', primaryBodyPart: 'Forearms', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'] },
 
   // Full Body / Olympic
   { id: 'barbell-snatch', name: 'Barbell Snatch', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Shoulders', 'Back', 'Quads', 'Glutes'] },
   { id: 'hang-clean', name: 'Hang Clean', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Quads', 'Back', 'Traps'] },
+  { id: 'hang-snatch', name: 'Hang Snatch', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Shoulders', 'Traps', 'Hamstrings'] },
   { id: 'barbell-thruster', name: 'Barbell Thruster', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Shoulders', 'Core'] },
   { id: 'dumbbell-thruster', name: 'Dumbbell Thruster', primaryBodyPart: 'Full Body', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Shoulders', 'Core'] },
   { id: 'dumbbell-clean-and-press', name: 'Dumbbell Clean and Press', primaryBodyPart: 'Full Body', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Shoulders', 'Core'] },
@@ -337,6 +364,9 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'stretching', name: 'Stretching', primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: ['Hip Flexors', 'Hamstrings', 'Lower Back'] },
   { id: 'walking', name: 'Walking', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves'] },
   { id: 'swimming-full-body', name: 'Swimming', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads', 'Triceps', 'Lats'] },
+  { id: 'crawl-to-push-up', name: 'Crawl to Push-Up', primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Shoulders', 'Core', 'Chest', 'Triceps'] },
+  { id: 'worlds-greatest-stretch', name: "World's Greatest Stretch", primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Rotation', secondaryMuscles: ['Hip Flexors', 'Hamstrings', 'Core', 'Shoulders'] },
+  { id: 'treadmill-incline-walk', name: 'Treadmill Incline Walk', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Glutes', 'Calves', 'Hamstrings'] },
 
   // Cardio / Sport
   { id: 'elliptical', name: 'Elliptical', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Shoulders'] },
@@ -354,6 +384,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'hiking', name: 'Hiking', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
   { id: 'shuttle-runs', name: 'Shuttle Runs', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
   { id: 'running-steady-state', name: 'Running (Steady State)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'] },
+  { id: 'running-interval', name: 'Running (Interval)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Glutes'] },
+  { id: 'running-tempo', name: 'Running (Tempo)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Glutes'] },
   { id: 'high-knees', name: 'High Knees', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hip Flexors', 'Calves', 'Core'] },
   { id: 'swimming-cardio', name: 'Swimming', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads'] },
 
