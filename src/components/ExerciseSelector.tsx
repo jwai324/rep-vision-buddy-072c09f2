@@ -7,6 +7,7 @@ import { EXERCISE_DATABASE, BODY_PARTS, EQUIPMENT_LIST, getBodyPartIcon } from '
 import type { ExerciseId } from '@/types/workout';
 import type { Exercise } from '@/data/exercises';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 interface ExerciseSelectorProps {
   onSelect: (id: ExerciseId) => void;
@@ -15,13 +16,13 @@ interface ExerciseSelectorProps {
   multiSelect?: boolean;
   browseMode?: boolean;
   onExerciseTap?: (id: ExerciseId) => void;
-  customExercises?: Exercise[];
 }
 
 const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
 
-export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap, customExercises = [] }) => {
+export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
+  const { exercises: customExercises } = useCustomExercisesContext();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 250);
   const [bodyPartFilter, setBodyPartFilter] = useState<string>('All');
