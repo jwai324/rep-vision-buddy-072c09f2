@@ -47,7 +47,7 @@ type Screen =
 
 const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
   const { registerScreen } = useChatContext();
-  const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise } = useCustomExercisesContext();
+  const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise, updateExercise: updateCustomExercise } = useCustomExercisesContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
@@ -361,6 +361,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <CustomExercisesScreen
           exercises={customExercises}
           onAdd={addCustomExercise}
+          onUpdate={updateCustomExercise}
           onDelete={deleteCustomExercise}
           onBack={() => setScreen({ type: 'settings' })}
         />
