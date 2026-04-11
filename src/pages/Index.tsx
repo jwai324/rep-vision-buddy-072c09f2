@@ -41,8 +41,8 @@ type Screen =
   | { type: 'analytics' }
   | { type: 'aiProgramBuilder' };
 
-const IndexInner = () => {
-  const storage = useStorage();
+const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
+  const { registerScreen } = useChatContext();
   const { registerScreen } = useChatContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
