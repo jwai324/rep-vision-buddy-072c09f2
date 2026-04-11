@@ -98,7 +98,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
 
-  // Cache draft to localStorage on every change
+  // Re-resolve exercise names when custom exercises load
+  React.useEffect(() => {
+    setBlocks(prev => prev.map(b => ({
+      ...b,
+      exerciseName: exerciseLookup[b.exerciseId] ?? b.exerciseName,
+    })));
+  }, [exerciseLookup]);
+
   React.useEffect(() => {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, blocks }));
