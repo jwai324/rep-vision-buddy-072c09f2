@@ -203,6 +203,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'kettlebell-swing', name: 'Kettlebell Swing', primaryBodyPart: 'Glutes', equipment: 'Kettlebell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Core', 'Shoulders'] },
   { id: 'single-arm-kettlebell-swing', name: 'Single-Arm Kettlebell Swing', primaryBodyPart: 'Glutes', equipment: 'Kettlebell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Core'] },
   { id: 'dumbbell-sumo-squat', name: 'Dumbbell Sumo Squat', primaryBodyPart: 'Glutes', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Quads', 'Adductors'] },
+  { id: 'curtsy-lunge', name: 'Curtsy Lunge', primaryBodyPart: 'Glutes', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Adductors'] },
 
   // Calves
   { id: 'standing-calf-raise-machine', name: 'Standing Calf Raise Machine', primaryBodyPart: 'Calves', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Raise', secondaryMuscles: [] },
