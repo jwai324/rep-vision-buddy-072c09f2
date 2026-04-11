@@ -235,7 +235,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
         )}
       </div>
 
-      <ScrollArea className="flex-1 px-4">
+      <ScrollArea className="flex-1 px-4" ref={scrollRef}>
         <div className="space-y-4 pb-20">
           {showCreateForm ? (
             <CreateExerciseForm
