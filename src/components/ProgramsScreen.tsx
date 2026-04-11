@@ -20,6 +20,8 @@ interface ProgramsScreenProps {
 export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
   programs, templates, activeProgramId, onSetActive, onEdit, onDelete, onCreate, onBack
 }) => {
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+
   return (
     <div className="p-4 flex flex-col gap-4">
       <div className="flex items-center gap-3">
