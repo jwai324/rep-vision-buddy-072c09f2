@@ -351,7 +351,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                         <Search className="w-3 h-3" /> Browse All Exercises
                       </button>
                     </div>
-                  }
+                  )}
 
                   {/* Set Type Badges */}
                   <div className="flex gap-1.5 flex-wrap mb-2">
