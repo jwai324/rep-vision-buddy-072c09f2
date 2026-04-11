@@ -33,8 +33,10 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
 
   const activeFilterCount = [equipmentFilter, difficultyFilter, typeFilter].filter(f => f !== 'All').length + (bodyPartFilter !== 'All' ? 1 : 0);
 
+  const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
+
   const filtered = useMemo(() => {
-    return EXERCISE_DATABASE.filter(ex => {
+    return allExercises.filter(ex => {
       const matchesSearch = debouncedSearch === '' ||
         ex.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
         ex.primaryBodyPart.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
@@ -45,7 +47,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
       const matchesType = typeFilter === 'All' || ex.exerciseType === typeFilter;
       return matchesSearch && matchesBodyPart && matchesEquipment && matchesDifficulty && matchesType;
     });
-  }, [debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
+  }, [allExercises, debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
 
   const grouped = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
