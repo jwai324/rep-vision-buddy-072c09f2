@@ -23,6 +23,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
 import { registerSession, unregisterSession } from '@/hooks/useSessionController';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 
 import type { WeightUnit } from '@/hooks/useStorage';
 
