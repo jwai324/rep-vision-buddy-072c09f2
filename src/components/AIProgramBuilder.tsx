@@ -711,13 +711,23 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
             </div>
           ) : step === 'additionalNotes' ? (
             <div className="space-y-3">
-              <Textarea
-                ref={notesInputRef}
-                placeholder="Training history, weak points, exercise preferences, time constraints..."
-                value={additionalNotesText}
-                onChange={(e) => setAdditionalNotesText(e.target.value)}
-                className="min-h-[80px] resize-none"
-                rows={3}
+              <div className="relative">
+                <Textarea
+                  ref={notesInputRef}
+                  placeholder="Training history, weak points, exercise preferences, time constraints..."
+                  value={additionalNotesText}
+                  onChange={(e) => { if (e.target.value.length <= 300) setAdditionalNotesText(e.target.value); }}
+                  className="min-h-[80px] resize-none pr-16"
+                  rows={3}
+                  maxLength={300}
+                />
+                <span className={cn(
+                  "absolute bottom-2 right-3 text-[10px]",
+                  additionalNotesText.length >= 280 ? "text-destructive" : "text-muted-foreground"
+                )}>
+                  {additionalNotesText.length}/300
+                </span>
+              </div
               />
               <div className="flex gap-2">
                 <button
