@@ -22,6 +22,7 @@ interface DashboardProps {
   onBrowseExercises: () => void;
   onGoToSettings: () => void;
   onGoToAnalytics: () => void;
+  onBuildAIProgram: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }
 
@@ -337,7 +338,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -419,6 +420,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
         <ChevronRight className="w-4 h-4 text-muted-foreground" />
       </button>
+
+      {/* AI Program Builder */}
+      <Button variant="simulate" size="lg" onClick={onBuildAIProgram} className="w-full text-lg font-bold">
+        ✨ Build My Program with AI
+      </Button>
 
       {/* Quick actions */}
       <Button variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">

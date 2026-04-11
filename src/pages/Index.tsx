@@ -17,6 +17,7 @@ import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
+import { AIProgramBuilder } from '@/components/AIProgramBuilder';
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
 
@@ -35,7 +36,8 @@ type Screen =
   | { type: 'programs' }
   | { type: 'programBuilder'; program?: WorkoutProgram }
   | { type: 'settings' }
-  | { type: 'analytics' };
+  | { type: 'analytics' }
+  | { type: 'aiProgramBuilder' };
 
 const Index = () => {
   const storage = useStorage();
@@ -100,6 +102,7 @@ const Index = () => {
             onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
             onGoToSettings={() => setScreen({ type: 'settings' })}
             onGoToAnalytics={() => setScreen({ type: 'analytics' })}
+            onBuildAIProgram={() => setScreen({ type: 'aiProgramBuilder' })}
             onDayClick={(date) => {
               const dateStr = format(date, 'yyyy-MM-dd');
               const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');
@@ -317,6 +320,20 @@ const Index = () => {
           history={storage.history}
           weightUnit={storage.preferences.weightUnit}
           onBack={() => setScreen({ type: 'dashboard' })}
+        />
+      )}
+
+      {screen.type === 'aiProgramBuilder' && (
+        <AIProgramBuilder
+          onBack={() => setScreen({ type: 'dashboard' })}
+          onSaveProgram={async (program, templates) => {
+            for (const t of templates) {
+              await storage.saveTemplate(t);
+            }
+            await storage.saveProgram(program);
+            await storage.setActiveProgram(program.id);
+            setScreen({ type: 'programs' });
+          }}
         />
       )}
 
