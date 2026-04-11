@@ -166,13 +166,23 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     setShowExercisePicker(false);
   }, []);
 
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }, []);
+
   const save = () => {
     if (!name.trim() || blocks.length === 0) return;
+    clearDraft();
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
       exercises: blocks.map(blockToExercise),
     });
+  };
+
+  const handleCancel = () => {
+    clearDraft();
+    onCancel();
   };
 
   if (showExercisePicker) {
