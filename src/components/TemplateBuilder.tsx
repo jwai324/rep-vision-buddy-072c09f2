@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
@@ -7,6 +7,7 @@ import { Plus, MoreHorizontal, Trash2, Layers, ChevronDown, ArrowUp, ArrowDown, 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
@@ -81,6 +82,18 @@ function loadDraft(initialTemplate?: WorkoutTemplate): { name: string; blocks: T
 }
 
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', onSave, onCancel }) => {
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseLookup = useMemo(() => {
+    const lookup: Record<string, string> = {};
+    for (const [id, ex] of Object.entries(EXERCISES)) {
+      lookup[id] = ex.name;
+    }
+    for (const ce of customExercises) {
+      lookup[ce.id] = ce.name;
+    }
+    return lookup;
+  }, [customExercises]);
+
   const [name, setName] = useState(() => loadDraft(initial).name);
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
