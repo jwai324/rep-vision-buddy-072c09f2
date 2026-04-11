@@ -21,14 +21,47 @@ const FREQUENCY_OPTIONS = [
   { value: 'monthly', label: 'Monthly on day…' },
 ];
 
+const DRAFT_KEY = 'program_builder_draft';
+
+function loadDraft(initial?: WorkoutProgram): { name: string; durationWeeks: number; days: ProgramDay[] } {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      if ((draft.id ?? null) === (initial?.id ?? null)) {
+        return {
+          name: draft.name ?? '',
+          durationWeeks: draft.durationWeeks ?? 8,
+          days: draft.days ?? [{ label: 'Day 1', templateId: 'rest' }],
+        };
+      }
+    }
+  } catch { /* ignore */ }
+  return {
+    name: initial?.name ?? '',
+    durationWeeks: initial?.durationWeeks ?? 8,
+    days: initial?.days ?? [{ label: 'Day 1', templateId: 'rest' }],
+  };
+}
+
 export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, history, initial, onSave, onCancel }) => {
-  const [name, setName] = useState(initial?.name ?? '');
-  const [durationWeeks, setDurationWeeks] = useState(initial?.durationWeeks ?? 8);
+  const draft = React.useMemo(() => loadDraft(initial), []);
+  const [name, setName] = useState(draft.name);
+  const [durationWeeks, setDurationWeeks] = useState(draft.durationWeeks);
   const [startDate] = useState(() => initial?.startDate ? new Date(initial.startDate + 'T00:00:00') : new Date());
-  const [days, setDays] = useState<ProgramDay[]>(
-    initial?.days ?? [{ label: 'Day 1', templateId: 'rest' }]
-  );
+  const [days, setDays] = useState<ProgramDay[]>(draft.days);
   const [showCalendar, setShowCalendar] = useState(false);
+
+  // Cache draft to localStorage on every change
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, durationWeeks, days }));
+    } catch { /* ignore */ }
+  }, [name, durationWeeks, days, initial?.id]);
+
+  const clearDraft = React.useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }, []);
 
   const addDay = () => {
     setDays(prev => [...prev, { label: `Day ${prev.length + 1}`, templateId: 'rest' }]);
