@@ -189,7 +189,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                   className="pl-9 bg-secondary border-border"
                 />
               </div>
-              <ScrollArea className="max-h-64">
+              <ScrollArea className="h-80">
                 <div className="flex flex-col gap-1">
                   {filteredExercises.map(ex => {
                     const icon = EXERCISES[ex.id]?.icon ?? '🏋️';
