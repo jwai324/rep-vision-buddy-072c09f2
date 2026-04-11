@@ -281,6 +281,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onStart={startFromTemplate}
           onEdit={(t) => setScreen({ type: 'templateBuilder', template: t })}
           onDelete={storage.deleteTemplate}
+          onDuplicate={(t) => {
+            const copy = { ...t, id: crypto.randomUUID(), name: `${t.name} (2)` };
+            storage.saveTemplate(copy);
+          }}
           onCreate={() => setScreen({ type: 'templateBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
