@@ -142,6 +142,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
             <Button className="flex-1" onClick={handleSave} disabled={!name.trim()}>Save</Button>
           </div>
         </div>
+        </ScrollArea>
       )}
 
       <ScrollArea className="flex-1">
