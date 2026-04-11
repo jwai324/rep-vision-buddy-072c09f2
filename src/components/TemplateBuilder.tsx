@@ -3,11 +3,12 @@ import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/t
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreHorizontal, Trash2, Timer } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Timer, ArrowLeftRight, Search } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { EXERCISE_DATABASE } from '@/data/exercises';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -101,6 +102,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   const [name, setName] = useState(() => loadDraft(initial).name);
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [swapTarget, setSwapTarget] = useState<number | null>(null); // blockIdx being swapped
 
   // Re-resolve exercise names when custom exercises load
   React.useEffect(() => {
@@ -194,7 +196,36 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
       return [...prev, ...newBlocks];
     });
     setShowExercisePicker(false);
-  }, []);
+  }, [exerciseLookup]);
+
+  const swapExercise = useCallback((blockIdx: number, newId: ExerciseId) => {
+    setBlocks(prev => prev.map((b, i) => {
+      if (i !== blockIdx) return b;
+      return { ...b, exerciseId: newId, exerciseName: exerciseLookup[newId] ?? newId };
+    }));
+    setSwapTarget(null);
+  }, [exerciseLookup]);
+
+  const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
+
+  const getSimilarExercises = useCallback((exerciseId: ExerciseId) => {
+    const current = allExercises.find(e => e.id === exerciseId);
+    if (!current) return [];
+    const usedIds = new Set(blocks.map(b => b.exerciseId));
+    return allExercises
+      .filter(e => e.id !== exerciseId && !usedIds.has(e.id) && e.primaryBodyPart === current.primaryBodyPart)
+      .sort((a, b) => {
+        // Prioritize same movement pattern, then same equipment
+        const aPattern = a.movementPattern === current.movementPattern ? 0 : 1;
+        const bPattern = b.movementPattern === current.movementPattern ? 0 : 1;
+        if (aPattern !== bPattern) return aPattern - bPattern;
+        const aEquip = a.equipment === current.equipment ? 0 : 1;
+        const bEquip = b.equipment === current.equipment ? 0 : 1;
+        if (aEquip !== bEquip) return aEquip - bEquip;
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 8);
+  }, [allExercises, blocks]);
 
   const clearDraft = useCallback(() => {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
@@ -216,12 +247,24 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   };
 
   if (showExercisePicker) {
+    const isSwapMode = swapTarget !== null;
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <div className="p-4 pb-0">
-          <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
+          <Button variant="outline" onClick={() => { setShowExercisePicker(false); setSwapTarget(null); }} className="mb-2">← Back</Button>
         </div>
-        <ExerciseSelector onSelect={addExercise} onSelectMultiple={addMultipleExercises} />
+        <ExerciseSelector
+          onSelect={(id) => {
+            if (isSwapMode) {
+              swapExercise(swapTarget, id);
+              setShowExercisePicker(false);
+            } else {
+              addExercise(id);
+            }
+          }}
+          onSelectMultiple={isSwapMode ? undefined : addMultipleExercises}
+          multiSelect={!isSwapMode}
+        />
       </div>
     );
   }
@@ -265,6 +308,12 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                       </PopoverTrigger>
                       <PopoverContent align="end" className="w-48 p-1">
                         <button
+                          onClick={() => setSwapTarget(blockIdx)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
+                        >
+                          <ArrowLeftRight className="w-4 h-4" /> Swap Exercise
+                        </button>
+                        <button
                           onClick={() => removeExercise(blockIdx)}
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-destructive hover:bg-destructive/10"
                         >
@@ -273,6 +322,36 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                       </PopoverContent>
                     </Popover>
                   </div>
+
+                  {/* Swap Panel */}
+                  {swapTarget === blockIdx && (
+                    <div className="bg-secondary/50 rounded-lg border border-border p-3 mb-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Similar Exercises</p>
+                        <button onClick={() => setSwapTarget(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                      </div>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {getSimilarExercises(block.exerciseId).map(ex => (
+                          <button
+                            key={ex.id}
+                            onClick={() => swapExercise(blockIdx, ex.id)}
+                            className="w-full text-left px-2.5 py-2 rounded-md hover:bg-primary/10 transition-colors flex items-center justify-between"
+                          >
+                            <div>
+                              <span className="text-sm font-medium text-foreground">{ex.name}</span>
+                              <span className="text-[10px] text-muted-foreground ml-2">{ex.equipment}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => { setShowExercisePicker(true); }}
+                        className="w-full mt-2 py-2 rounded-md border border-dashed border-muted-foreground/30 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Search className="w-3 h-3" /> Browse All Exercises
+                      </button>
+                    </div>
+                  )}
 
                   {/* Set Type Badges */}
                   <div className="flex gap-1.5 flex-wrap mb-2">
