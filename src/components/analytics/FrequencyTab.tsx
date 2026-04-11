@@ -3,10 +3,7 @@ import type { WorkoutSession } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { subDays, isAfter } from 'date-fns';
-
-const exerciseBodyPartMap = new Map(
-  EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart])
-);
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 const BODY_PARTS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Traps'];
 
@@ -16,6 +13,12 @@ interface FrequencyTabProps {
 
 export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
   const [period, setPeriod] = useState<7 | 14 | 30>(7);
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseBodyPartMap = useMemo(() => {
+    const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
+    for (const ce of customExercises) map.set(ce.id, ce.primaryBodyPart);
+    return map;
+  }, [customExercises]);
 
   const data = useMemo(() => {
     const cutoff = subDays(new Date(), period);

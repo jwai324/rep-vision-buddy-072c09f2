@@ -4,10 +4,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format, addDays, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
-
-const exerciseBodyPartMap = new Map(
-  EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart])
-);
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 const BODY_PART_COLORS: Record<string, string> = {
   Chest: '#ef4444', Back: '#3b82f6', Shoulders: '#f97316', Biceps: '#a855f7',
@@ -24,6 +21,12 @@ interface VolumeTabProps {
 
 export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => {
   const [selectedBodyPart, setSelectedBodyPart] = useState<string | null>(null);
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseBodyPartMap = useMemo(() => {
+    const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
+    for (const ce of customExercises) map.set(ce.id, ce.primaryBodyPart);
+    return map;
+  }, [customExercises]);
 
   const weeklyData = useMemo(() => {
     if (history.length === 0) return [];
