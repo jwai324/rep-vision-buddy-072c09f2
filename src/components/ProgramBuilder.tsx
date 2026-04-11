@@ -164,7 +164,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
     <div className="p-4 flex flex-col gap-4 pb-24">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-foreground">{initial ? 'Edit' : 'New'} Program</h2>
-        <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+        <button onClick={handleCancel} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
       </div>
 
       <input
