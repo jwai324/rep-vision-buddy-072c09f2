@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
-import { EXERCISES } from '@/types/workout';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 
 interface ActivityScreenProps {
   history: WorkoutSession[];

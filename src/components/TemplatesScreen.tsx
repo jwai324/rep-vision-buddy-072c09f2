@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { WorkoutTemplate } from '@/types/workout';
-import { EXERCISES } from '@/types/workout';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -24,6 +24,7 @@ interface TemplatesScreenProps {
 
 export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onStart, onEdit, onDelete, onCreate, onBack }) => {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const exerciseLookup = useExerciseLookup();
 
   return (
     <div className="p-4 flex flex-col gap-4">
@@ -42,7 +43,7 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
             <div key={t.id} className="bg-card rounded-xl p-4 border border-border">
               <h3 className="font-semibold text-foreground mb-1">{t.name}</h3>
               <p className="text-xs text-muted-foreground mb-3">
-                {t.exercises.map(e => EXERCISES[e.exerciseId]?.name ?? e.exerciseId).join(' → ')}
+                {t.exercises.map(e => exerciseLookup[e.exerciseId] ?? e.exerciseId).join(' → ')}
               </p>
               <p className="text-xs text-muted-foreground mb-3">
                 {t.exercises.reduce((s, e) => s + e.sets, 0)} sets total
