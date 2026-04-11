@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw, Check, ArrowRight, Sparkles, Loader2, Replace } from 'lucide-react';
 import { EXERCISE_DATABASE, EQUIPMENT_LIST, type Exercise } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
 import type { WorkoutTemplate, WorkoutProgram, TemplateExercise, SetType } from '@/types/workout';
 import { toast } from 'sonner';
 
