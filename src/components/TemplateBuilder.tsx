@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
@@ -7,6 +7,7 @@ import { Plus, MoreHorizontal, Trash2, Layers, ChevronDown, ArrowUp, ArrowDown, 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
@@ -32,11 +33,11 @@ interface TemplateBlock {
   restSeconds: number;
 }
 
-function exerciseToBlock(ex: TemplateExercise): TemplateBlock {
-  const info = EXERCISES[ex.exerciseId];
+function exerciseToBlock(ex: TemplateExercise, lookup?: Record<string, string>): TemplateBlock {
+  const name = lookup?.[ex.exerciseId] ?? EXERCISES[ex.exerciseId]?.name ?? ex.exerciseId;
   return {
     exerciseId: ex.exerciseId,
-    exerciseName: info?.name ?? ex.exerciseId,
+    exerciseName: name,
     setType: ex.setType,
     restSeconds: ex.restSeconds,
     sets: Array.from({ length: ex.sets }, (_, i) => ({
@@ -76,16 +77,35 @@ function loadDraft(initialTemplate?: WorkoutTemplate): { name: string; blocks: T
   } catch { /* ignore corrupt data */ }
   return {
     name: initialTemplate?.name ?? '',
-    blocks: initialTemplate?.exercises.map(exerciseToBlock) ?? [],
+    blocks: initialTemplate?.exercises.map(ex => exerciseToBlock(ex)) ?? [],
   };
 }
 
 export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', onSave, onCancel }) => {
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseLookup = useMemo(() => {
+    const lookup: Record<string, string> = {};
+    for (const [id, ex] of Object.entries(EXERCISES)) {
+      lookup[id] = ex.name;
+    }
+    for (const ce of customExercises) {
+      lookup[ce.id] = ce.name;
+    }
+    return lookup;
+  }, [customExercises]);
+
   const [name, setName] = useState(() => loadDraft(initial).name);
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
 
-  // Cache draft to localStorage on every change
+  // Re-resolve exercise names when custom exercises load
+  React.useEffect(() => {
+    setBlocks(prev => prev.map(b => ({
+      ...b,
+      exerciseName: exerciseLookup[b.exerciseId] ?? b.exerciseName,
+    })));
+  }, [exerciseLookup]);
+
   React.useEffect(() => {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, blocks }));
@@ -151,7 +171,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
         .filter(id => !existingIds.has(id))
         .map(id => ({
           exerciseId: id,
-          exerciseName: EXERCISES[id]?.name ?? id,
+          exerciseName: exerciseLookup[id] ?? id,
           setType: 'normal' as SetType,
           restSeconds: 90,
           sets: Array.from({ length: 3 }, (_, i) => ({

@@ -6,6 +6,7 @@ import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -135,7 +136,17 @@ const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
   const isEditMode = !!editSession;
-
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseLookup = useMemo(() => {
+    const lookup: Record<string, string> = {};
+    for (const [id, ex] of Object.entries(EXERCISES)) {
+      lookup[id] = ex.name;
+    }
+    for (const ce of customExercises) {
+      lookup[ce.id] = ce.name;
+    }
+    return lookup;
+  }, [customExercises]);
   // Convert saved session exercises back to blocks for editing
   const editBlocks = useMemo<ExerciseBlock[] | null>(() => {
     if (!editSession) return null;
@@ -164,7 +175,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const restSec = tpl?.restSeconds ?? 90;
       return {
         exerciseId: id,
-        exerciseName: EXERCISES[id]?.name ?? id,
+        exerciseName: exerciseLookup[id] ?? id,
         restSeconds: restSec,
         dropSetsEnabled: defaultDropSetsEnabled,
         sets: Array.from({ length: numSets }, (_, i) => ({
@@ -455,7 +466,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         .filter(id => !existingIds.has(id))
         .map(id => ({
           exerciseId: id,
-          exerciseName: EXERCISES[id]?.name ?? id,
+          exerciseName: exerciseLookup[id] ?? id,
           restSeconds: 90,
           dropSetsEnabled: defaultDropSetsEnabled,
           sets: Array.from({ length: 3 }, (_, i) => ({
@@ -487,7 +498,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           added = true;
           return [...prev, {
             exerciseId,
-            exerciseName: EXERCISES[exerciseId]?.name ?? exerciseId,
+            exerciseName: exerciseLookup[exerciseId] ?? exerciseId,
             restSeconds: 90,
             dropSetsEnabled: defaultDropSetsEnabled,
             sets: Array.from({ length: sets }, (_, i) => ({
@@ -552,7 +563,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           return {
             ...block,
             exerciseId: newExerciseId,
-            exerciseName: EXERCISES[newExerciseId]?.name ?? newExerciseId,
+            exerciseName: exerciseLookup[newExerciseId] ?? newExerciseId,
           };
         }));
         return found;
