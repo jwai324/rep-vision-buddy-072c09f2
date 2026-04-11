@@ -175,6 +175,9 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-leg-swiss-ball-hamstring-curl', name: 'Single-Leg Swiss Ball Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Swiss Ball', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes', 'Core'] },
   { id: 'glute-ham-raise', name: 'Glute-Ham Raise', primaryBodyPart: 'Hamstrings', equipment: 'Machine', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Flexion', secondaryMuscles: ['Glutes'] },
   { id: 'kettlebell-sumo-deadlift', name: 'Kettlebell Sumo Deadlift', primaryBodyPart: 'Hamstrings', equipment: 'Kettlebell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Quads'] },
+  { id: 'kickstand-deadlift', name: 'Kickstand Deadlift', primaryBodyPart: 'Hamstrings', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Lower Back', 'Core', 'Adductors', 'Forearms'] },
+  { id: 'nordic-hamstring-curl', name: 'Nordic Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes'] },
+  { id: 'swiss-ball-hamstring-curl', name: 'Swiss Ball Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Swiss Ball', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes', 'Core'] },
 
   // Glutes
   { id: 'barbell-hip-thrust', name: 'Barbell Hip Thrust', primaryBodyPart: 'Glutes', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hip Extension', secondaryMuscles: ['Hamstrings'] },
