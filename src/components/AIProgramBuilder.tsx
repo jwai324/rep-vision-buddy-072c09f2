@@ -727,8 +727,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                 )}>
                   {additionalNotesText.length}/300
                 </span>
-              </div
-              />
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => confirmAdditionalNotes('')}
