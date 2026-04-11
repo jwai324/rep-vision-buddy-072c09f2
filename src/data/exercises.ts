@@ -113,6 +113,11 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-arm-dumbbell-shoulder-press', name: 'Single-Arm Dumbbell Shoulder Press', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-band-shoulder-press', name: 'Single-Arm Band Shoulder Press', primaryBodyPart: 'Shoulders', equipment: 'Band', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-dumbbell-front-raise', name: 'Single-Arm Dumbbell Front Raise', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Front Delts'] },
+  { id: 'dumbbell-push-press', name: 'Dumbbell Push Press', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Traps'] },
+  { id: 'dumbbell-y-raise', name: 'Dumbbell Y-Raise', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Pull', secondaryMuscles: ['Traps', 'Rotator Cuff'] },
+  { id: 'cable-overhead-press', name: 'Cable Overhead Press', primaryBodyPart: 'Shoulders', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps'] },
+  { id: 'handstand-push-up', name: 'Handstand Push-Up', primaryBodyPart: 'Shoulders', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
+  { id: 'pike-push-up', name: 'Pike Push-Up', primaryBodyPart: 'Shoulders', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
 
   // Quads / Legs
   { id: 'back-squat', name: 'Back Squat', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Glutes', 'Hamstrings', 'Core', 'Lower Back'] },
