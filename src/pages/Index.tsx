@@ -322,6 +322,20 @@ const Index = () => {
         />
       )}
 
+      {screen.type === 'aiProgramBuilder' && (
+        <AIProgramBuilder
+          onBack={() => setScreen({ type: 'dashboard' })}
+          onSaveProgram={async (program, templates) => {
+            for (const t of templates) {
+              await storage.saveTemplate(t);
+            }
+            await storage.saveProgram(program);
+            await storage.setActiveProgram(program.id);
+            setScreen({ type: 'programs' });
+          }}
+        />
+      )}
+
       {minimizedSession && screen.type !== 'activeSession' && (
         <MinimizedSessionBar
           workoutName={getSessionCache()?.workoutName ?? 'Workout'}
