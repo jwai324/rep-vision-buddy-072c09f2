@@ -82,7 +82,6 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ sessions, onSele
                     <span>
                       {s.recoveryActivities.map(a => {
                         return exerciseLookup[a.activityId] ?? a.activityId;
-                        return info?.name ?? a.activityId;
                       }).join(', ')}
                     </span>
                   ) : (
