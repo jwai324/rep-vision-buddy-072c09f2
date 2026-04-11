@@ -60,7 +60,7 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
                   {activeProgramId === p.id ? 'Deactivate' : 'Set Active'}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onEdit(p)}>Edit</Button>
-                <Button variant="ghost" size="sm" onClick={() => onDelete(p.id)} className="text-set-failure">Delete</Button>
+                <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ id: p.id, name: p.name })} className="text-set-failure">Delete</Button>
               </div>
             </div>
           ))}
