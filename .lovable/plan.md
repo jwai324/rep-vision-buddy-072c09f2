@@ -1,42 +1,44 @@
 
 
-## Plan: Drag-and-Drop Exercise Reordering
+## Plan: Include Custom Exercises in Analytics & Dashboard
 
-### Overview
-Replace the "Move Up / Move Down" menu buttons with press-and-hold drag-to-reorder for exercise blocks in both the Template Builder and Active Session.
+### Problem
+All analytics tabs (Volume, Strength, Frequency, Balance, Set Types, RPE) and the Dashboard's "Weekly Sets" widget build their exercise-to-body-part/pattern lookup maps using only `EXERCISE_DATABASE`. Custom exercises are ignored, causing their sets to be uncounted or categorized as "Other."
 
-### Approach
-Use `@dnd-kit/core` and `@dnd-kit/sortable` — the standard React drag-and-drop library that supports both mouse and touch (long-press) interactions.
+### Fix
+Each component that builds a static map from `EXERCISE_DATABASE` needs to also include custom exercises. Since these are loaded asynchronously via React context, the static module-level maps must be moved inside the component and combined with custom exercises via `useMemo`.
 
-### Changes
+### Files to Change
 
-**1. Install dependency**
-- `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
+**1. `src/components/Dashboard.tsx`**
+- Import `useCustomExercisesContext`
+- Move `exerciseBodyPartMap` (line 67-69) inside the component as a `useMemo` that merges `EXERCISE_DATABASE` + custom exercises
 
-**2. Create a reusable `DraggableExerciseBlock` wrapper** (`src/components/DraggableExerciseBlock.tsx`)
-- Uses `useSortable` from dnd-kit
-- Renders a drag handle (grip icon) on the left side of the exercise header
-- Long-press activates drag on touch devices via dnd-kit's `TouchSensor` with `activationConstraint: { delay: 250, tolerance: 5 }`
+**2. `src/components/analytics/VolumeTab.tsx`**
+- Import `useCustomExercisesContext`
+- Move `exerciseBodyPartMap` (line 8-10) inside the component as a `useMemo`
 
-**3. Update `src/components/TemplateBuilder.tsx`**
-- Wrap exercise list in `DndContext` + `SortableContext` (vertical list strategy)
-- Each exercise block becomes a `SortableItem`
-- On `onDragEnd`, call existing `moveExercise(oldIndex, newIndex)`
-- Remove "Move Up" / "Move Down" buttons from the popover menu
+**3. `src/components/analytics/FrequencyTab.tsx`**
+- Same pattern: move `exerciseBodyPartMap` inside component with custom exercises merged
 
-**4. Update `src/components/ActiveSession.tsx`**
-- Add a `moveExercise` callback (same pattern as TemplateBuilder)
-- Wrap exercise blocks in `DndContext` + `SortableContext`
-- Each block becomes sortable with a drag handle
-- Remove any move-related menu items if present
+**4. `src/components/analytics/BalanceTab.tsx`**
+- Move `exercisePatternMap` (line 7-9) inside component, merge custom exercises
 
-**5. Visual feedback**
-- Dragged item gets a subtle scale + shadow overlay via dnd-kit's `DragOverlay`
-- Drop placeholder shown between items
+**5. `src/components/analytics/StrengthTab.tsx`**
+- Update `exercisesInHistory` filter (line 28) and `getExerciseName` (line 60) to also search custom exercises
 
-### Technical Details
-- `MouseSensor` with `activationConstraint: { distance: 8 }` for desktop
-- `TouchSensor` with `activationConstraint: { delay: 200, tolerance: 5 }` for mobile long-press
-- `arrayMove` utility from `@dnd-kit/sortable` handles the reorder logic
-- `restrictToVerticalAxis` modifier keeps drag locked to Y-axis
+**6. `src/components/analytics/SetTypesTab.tsx`** and **`src/components/analytics/RpeTab.tsx`**
+- Check if they use exercise lookups; update if needed
+
+### Pattern (repeated in each file)
+```tsx
+const { exercises: customExercises } = useCustomExercisesContext();
+const exerciseBodyPartMap = useMemo(() => {
+  const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
+  for (const ce of customExercises) map.set(ce.id, ce.primaryBodyPart);
+  return map;
+}, [customExercises]);
+```
+
+No database or backend changes needed.
 
