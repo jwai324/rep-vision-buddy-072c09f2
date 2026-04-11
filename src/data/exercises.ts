@@ -154,6 +154,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'barbell-walking-lunge', name: 'Barbell Walking Lunge', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings', 'Core'] },
   { id: 'reverse-lunge-barbell', name: 'Reverse Lunge (Barbell)', primaryBodyPart: 'Quads', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings', 'Core'] },
   { id: 'lateral-lunge-dumbbell', name: 'Lateral Lunge (Dumbbell)', primaryBodyPart: 'Quads', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Adductors'] },
+  { id: 'reverse-lunge-dumbbell', name: 'Reverse Lunge (Dumbbell)', primaryBodyPart: 'Quads', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings'] },
+  { id: 'reverse-lunge-bodyweight', name: 'Reverse Lunge (Bodyweight)', primaryBodyPart: 'Quads', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Glutes', 'Hamstrings'] },
 
   // Hamstrings
   { id: 'barbell-romanian-deadlift', name: 'Barbell Romanian Deadlift', primaryBodyPart: 'Hamstrings', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Lower Back'] },
