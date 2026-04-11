@@ -315,6 +315,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   // Full Body / Olympic
   { id: 'barbell-snatch', name: 'Barbell Snatch', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Shoulders', 'Back', 'Quads', 'Glutes'] },
   { id: 'hang-clean', name: 'Hang Clean', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Quads', 'Back', 'Traps'] },
+  { id: 'hang-snatch', name: 'Hang Snatch', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Shoulders', 'Traps', 'Hamstrings'] },
   { id: 'barbell-thruster', name: 'Barbell Thruster', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Shoulders', 'Core'] },
   { id: 'dumbbell-thruster', name: 'Dumbbell Thruster', primaryBodyPart: 'Full Body', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Shoulders', 'Core'] },
   { id: 'dumbbell-clean-and-press', name: 'Dumbbell Clean and Press', primaryBodyPart: 'Full Body', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Shoulders', 'Core'] },
