@@ -136,7 +136,17 @@ const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
   const isEditMode = !!editSession;
-
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseLookup = useMemo(() => {
+    const lookup: Record<string, string> = {};
+    for (const [id, ex] of Object.entries(EXERCISES)) {
+      lookup[id] = ex.name;
+    }
+    for (const ce of customExercises) {
+      lookup[ce.id] = ce.name;
+    }
+    return lookup;
+  }, [customExercises]);
   // Convert saved session exercises back to blocks for editing
   const editBlocks = useMemo<ExerciseBlock[] | null>(() => {
     if (!editSession) return null;
