@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Plus, Trash2, Dumbbell, Heart } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Dumbbell, Heart, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -11,6 +11,7 @@ import type { Exercise } from '@/data/exercises';
 interface CustomExercisesScreenProps {
   exercises: (Exercise & { isCustom: true; isRecovery: boolean })[];
   onAdd: (input: CustomExerciseInput) => void;
+  onUpdate: (id: string, input: CustomExerciseInput) => void;
   onDelete: (id: string) => void;
   onBack: () => void;
 }
@@ -21,8 +22,9 @@ const BODY_PART_OPTIONS = BODY_PARTS.filter(b => b !== 'All');
 const EQUIPMENT_OPTIONS = EQUIPMENT_LIST.filter(e => e !== 'All');
 
 export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
-  exercises, onAdd, onDelete, onBack,
+  exercises, onAdd, onUpdate, onDelete, onBack,
 }) => {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [bodyPart, setBodyPart] = useState('Full Body');
@@ -35,12 +37,23 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
   const resetForm = () => {
     setName(''); setBodyPart('Full Body'); setEquipment('None');
     setDifficulty('Intermediate'); setExerciseType('Isolation');
-    setIsRecovery(false); setShowForm(false);
+    setIsRecovery(false); setShowForm(false); setEditingId(null);
+  };
+
+  const openEdit = (ex: Exercise & { isCustom: true; isRecovery: boolean }) => {
+    setEditingId(ex.id);
+    setName(ex.name);
+    setBodyPart(ex.primaryBodyPart);
+    setEquipment(ex.equipment);
+    setDifficulty(ex.difficulty as 'Beginner' | 'Intermediate' | 'Advanced');
+    setExerciseType(ex.exerciseType as 'Compound' | 'Isolation');
+    setIsRecovery(ex.isRecovery);
+    setShowForm(true);
   };
 
   const handleSave = () => {
     if (!name.trim()) return;
-    onAdd({
+    const input: CustomExerciseInput = {
       name: name.trim(),
       primaryBodyPart: bodyPart,
       equipment,
@@ -49,7 +62,12 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
       movementPattern: 'Other',
       secondaryMuscles: [],
       isRecovery,
-    });
+    };
+    if (editingId) {
+      onUpdate(editingId, input);
+    } else {
+      onAdd(input);
+    }
     resetForm();
   };
 
@@ -63,14 +81,14 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
       </div>
 
       {!showForm && (
-        <Button onClick={() => setShowForm(true)} variant="outline" className="w-full border-dashed">
+        <Button onClick={() => { resetForm(); setShowForm(true); }} variant="outline" className="w-full border-dashed">
           <Plus className="w-4 h-4 mr-2" /> Create Exercise
         </Button>
       )}
 
       {showForm && (
         <div className="bg-card rounded-xl border border-border p-4 space-y-4">
-          <p className="text-sm font-bold text-foreground">New Exercise</p>
+          <p className="text-sm font-bold text-foreground">{editingId ? 'Edit Exercise' : 'New Exercise'}</p>
 
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Name *</label>
@@ -138,7 +156,9 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
 
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={resetForm}>Cancel</Button>
-            <Button className="flex-1" onClick={handleSave} disabled={!name.trim()}>Save</Button>
+            <Button className="flex-1" onClick={handleSave} disabled={!name.trim()}>
+              {editingId ? 'Update' : 'Save'}
+            </Button>
           </div>
         </div>
       )}
@@ -153,7 +173,11 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
             </div>
           )}
           {exercises.map(ex => (
-            <div key={ex.id} className="bg-card rounded-xl border border-border p-3 flex items-center gap-3">
+            <button
+              key={ex.id}
+              onClick={() => openEdit(ex)}
+              className="w-full bg-card rounded-xl border border-border p-3 flex items-center gap-3 text-left hover:border-primary/30 transition-colors"
+            >
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                 <span className="text-sm">{getBodyPartIcon(ex.primaryBodyPart)}</span>
               </div>
@@ -165,7 +189,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
                 <p className="text-[10px] text-muted-foreground">{ex.equipment} · {ex.primaryBodyPart} · {ex.difficulty}</p>
               </div>
               {confirmDelete === ex.id ? (
-                <div className="flex gap-1 shrink-0">
+                <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                   <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => { onDelete(ex.id); setConfirmDelete(null); }}>
                     Delete
                   </Button>
@@ -174,11 +198,16 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
                   </Button>
                 </div>
               ) : (
-                <button onClick={() => setConfirmDelete(ex.id)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => openEdit(ex)} className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setConfirmDelete(ex.id)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               )}
-            </div>
+            </button>
           ))}
         </div>
       </ScrollArea>
