@@ -1,50 +1,32 @@
 
 
-## Plan: Show Superset Colors in Workout Detail View
+## Plan: Add Workout Note (3-Dot Menu in Active Session)
 
-### Problem
-When viewing a completed workout, exercises that were supersetted together during the session all appear with the same plain `bg-card` background. The superset grouping information is lost because `supersetGroup` is not saved to the `ExerciseLog` type or persisted when the workout finishes.
+### What it does
+Adds a three-dot menu to the active workout header with an "Add Note" option. The note persists with the saved session, is visible in the Workout Detail view, and can be edited when re-editing a session.
 
 ### Changes
 
-**1. `src/types/workout.ts`** — Add `supersetGroup?: number` to the `ExerciseLog` interface.
+**1. `src/types/workout.ts`** — Add `note?: string` to the `WorkoutSession` interface (around line 27).
 
-**2. `src/components/ActiveSession.tsx`** (~line 688) — Include `supersetGroup` when building `exerciseLogs` in `finishWorkout`:
-```ts
-.map(b => ({
-  exerciseId: b.exerciseId,
-  exerciseName: b.exerciseName,
-  supersetGroup: b.supersetGroup,
-  sets: b.sets.filter(s => s.completed).map(s => ({ ... })),
-}));
-```
+**2. `src/components/ActiveSession.tsx`**
+- Add state: `const [workoutNote, setWorkoutNote] = useState(editSession?.note ?? '')` and `const [showNoteDialog, setShowNoteDialog] = useState(false)`
+- Add the note to the session cache (`ActiveSessionCache` interface + cache write)
+- Restore note from cache: `cachedSession?.workoutNote ?? ''`
+- In `finishWorkout`, include `note: workoutNote || undefined` in the session object
+- In the header (between the back arrow and the Discard/Finish buttons), add a `DropdownMenu` with a `MoreVertical` trigger containing "Add/Edit Note"
+- Add a dialog/modal for editing the note text
 
-**3. `src/components/SessionSummary.tsx`** (~line 82) — Apply the same superset background colors used in `ActiveSession`:
-- Add a local `SUPERSET_COLORS` array (same as in ActiveSession)
-- Add a `getSupersetColorClass` helper
-- Apply the color class to each exercise card based on `ex.supersetGroup`
+**3. `src/components/SessionSummary.tsx`** — Display the note (if present) below the stats grid and above the exercise breakdown. When in view mode, show the note as read-only text. Include an "Edit Note" option if `onEdit` is available.
 
-```tsx
-const SUPERSET_COLORS = [
-  'bg-red-500/20', 'bg-blue-500/20', 'bg-green-500/20',
-  'bg-yellow-500/20', 'bg-pink-500/20', 'bg-orange-500/20',
-  'bg-amber-800/20', 'bg-purple-500/20', 'bg-white/20',
-];
+**4. `src/hooks/useStorage.ts`** — Include `note` in the `saveSession` upsert call and in the data mapping when loading sessions.
 
-const getSupersetColorClass = (group?: number) => {
-  if (group === undefined) return '';
-  return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
-};
-
-// In the exercise breakdown:
-<div key={i} className={`rounded-xl p-4 border border-border ${
-  ex.supersetGroup !== undefined
-    ? getSupersetColorClass(ex.supersetGroup)
-    : 'bg-card'
-}`}>
+**5. Database migration** — Add a `note` text column (nullable) to the `workout_sessions` table:
+```sql
+ALTER TABLE public.workout_sessions ADD COLUMN note text;
 ```
 
 ### What stays the same
-- All other components, the SupersetLinker, and ActiveSession coloring logic remain untouched
-- Existing saved workouts without `supersetGroup` will render normally (field is optional)
+- Exercise-level notes (session notes and sticky notes) are unchanged
+- All other session data, RLS policies, and components remain untouched
 
