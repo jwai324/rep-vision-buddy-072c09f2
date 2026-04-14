@@ -17,7 +17,7 @@ export const RpeTab: React.FC<RpeTabProps> = ({ history }) => {
         const allRpes: number[] = [];
         for (const ex of s.exercises) {
           for (const set of ex.sets) {
-            if (set.rpe != null && set.rpe > 0) allRpes.push(set.rpe);
+            if (set.rpe != null && set.rpe > 0 && set.type !== 'warmup') allRpes.push(set.rpe);
           }
         }
         const avgRpe = allRpes.length > 0 ? Math.round((allRpes.reduce((a, b) => a + b, 0) / allRpes.length) * 10) / 10 : null;
