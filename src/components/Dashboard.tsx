@@ -258,7 +258,10 @@ const WeeklyProgramCalendar: React.FC<{
           const dayStr = format(day.date, 'yyyy-MM-dd');
 
           // Check completed sessions for this day
-          const completedSessions = history.filter(s => s.date.startsWith(dayStr));
+          const completedSessions = history.filter(s => {
+            const sessionDate = format(new Date(s.date), 'yyyy-MM-dd');
+            return sessionDate === dayStr;
+          });
           const hasCompletedWorkout = completedSessions.some(s => !s.isRestDay);
           const hasCompletedRest = completedSessions.some(s => s.isRestDay);
 
