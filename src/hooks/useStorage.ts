@@ -83,6 +83,7 @@ function mapSession(row: any): WorkoutSession {
     totalSets: row.total_sets,
     totalReps: row.total_reps,
     averageRpe: row.average_rpe ? Number(row.average_rpe) : undefined,
+    note: row.note ?? undefined,
     isRestDay: row.is_rest_day ?? false,
     recoveryActivities: row.recovery_activities as any,
   };
@@ -213,6 +214,7 @@ export function useStorage() {
       total_sets: session.totalSets,
       total_reps: session.totalReps,
       average_rpe: session.averageRpe ?? null,
+      note: session.note ?? null,
       is_rest_day: session.isRestDay ?? false,
       recovery_activities: session.recoveryActivities as any ?? null,
     });

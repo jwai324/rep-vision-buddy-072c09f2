@@ -3,7 +3,7 @@ import type { WorkoutSession } from '@/types/workout';
 import { SET_TYPE_CONFIG } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,6 +85,17 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
         <div className="bg-card rounded-xl p-4 border border-border text-center">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Avg RPE</p>
           <p className="text-xl font-bold text-primary">{session.averageRpe.toFixed(1)}</p>
+        </div>
+      )}
+
+      {/* Workout note */}
+      {session.note && (
+        <div className="bg-card rounded-xl p-4 border border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="w-4 h-4 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Note</p>
+          </div>
+          <p className="text-sm text-foreground whitespace-pre-wrap">{session.note}</p>
         </div>
       )}
 

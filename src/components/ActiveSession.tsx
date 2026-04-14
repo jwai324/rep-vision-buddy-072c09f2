@@ -7,7 +7,7 @@ import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
-import { Check, Plus, MoreHorizontal, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
@@ -55,6 +55,7 @@ export interface ActiveSessionCache {
   startTimestamp: number;
   elapsedAtCache: number;
   location?: string;
+  workoutNote?: string;
 }
 
 export function clearSessionCache() {
@@ -195,6 +196,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   });
   const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
+  const [workoutNote, setWorkoutNote] = useState(cachedSession?.workoutNote ?? editSession?.note ?? '');
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [location, setLocation] = useState(cachedSession?.location ?? DEFAULT_LOCATION);
   const [locations, setLocations] = useState<string[]>(getSavedLocations);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
@@ -240,9 +243,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       startTimestamp: startTime.current,
       elapsedAtCache: elapsedSeconds,
       location,
+      workoutNote: workoutNote || undefined,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  }, [blocks, workoutName, elapsedSeconds, isEditMode, location]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote]);
 
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
@@ -731,8 +735,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalSets: allSets.length,
       totalReps,
       averageRpe,
+      note: workoutNote.trim() || undefined,
     });
-  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin]);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote]);
 
   if (showSupersetLinker) {
     return (
@@ -776,6 +781,23 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           </button>
         )}
         <div className="flex items-center gap-2">
+          {/* 3-dot menu */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-muted-foreground hover:text-foreground p-1">
+                <MoreVertical className="w-5 h-5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-48 p-1">
+              <button
+                onClick={() => setShowNoteDialog(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
+              >
+                <FileText className="w-4 h-4" />
+                {workoutNote ? 'Edit Note' : 'Add Note'}
+              </button>
+            </PopoverContent>
+          </Popover>
           {!isEditMode && (
             <Button variant="outline" size="sm" onClick={() => setShowDiscardConfirm(true)} className="text-destructive border-destructive/30 hover:bg-destructive/10">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
@@ -1002,6 +1024,30 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           Add Exercise
         </button>
       </div>
+
+      {/* Workout note dialog */}
+      <AlertDialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{workoutNote ? 'Edit Note' : 'Add Note'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Add a note to this workout session.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <textarea
+            value={workoutNote}
+            onChange={e => setWorkoutNote(e.target.value)}
+            placeholder="How did this workout feel? Any observations..."
+            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            maxLength={500}
+          />
+          <p className="text-xs text-muted-foreground text-right">{workoutNote.length}/500</p>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setShowNoteDialog(false)}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Discard confirmation dialog */}
       <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
