@@ -263,6 +263,7 @@ export type Database = {
           exercises: Json
           id: string
           is_rest_day: boolean | null
+          note: string | null
           recovery_activities: Json | null
           total_reps: number
           total_sets: number
@@ -278,6 +279,7 @@ export type Database = {
           exercises?: Json
           id?: string
           is_rest_day?: boolean | null
+          note?: string | null
           recovery_activities?: Json | null
           total_reps?: number
           total_sets?: number
@@ -293,6 +295,7 @@ export type Database = {
           exercises?: Json
           id?: string
           is_rest_day?: boolean | null
+          note?: string | null
           recovery_activities?: Json | null
           total_reps?: number
           total_sets?: number
