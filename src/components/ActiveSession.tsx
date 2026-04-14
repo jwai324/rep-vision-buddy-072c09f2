@@ -1276,7 +1276,10 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
 
       {/* Sticky Note display */}
       {stickyNote && (
-        <div className="mb-2 px-2 py-1.5 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-200 flex items-start gap-1.5">
+        <div
+          className="mb-2 px-2 py-1.5 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-200 flex items-start gap-1.5 cursor-pointer hover:bg-yellow-500/20 transition-colors"
+          onClick={() => onMenuAction('Add Sticky Note', blockIdx)}
+        >
           <StickyNote className="w-3 h-3 mt-0.5 shrink-0 text-yellow-400" />
           {stickyNote}
         </div>
@@ -1284,7 +1287,10 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
 
       {/* Session Note display */}
       {block.note && (
-        <div className="mb-2 px-2 py-1.5 rounded-md bg-primary/5 border border-primary/20 text-xs text-muted-foreground flex items-start gap-1.5">
+        <div
+          className="mb-2 px-2 py-1.5 rounded-md bg-primary/5 border border-primary/20 text-xs text-muted-foreground flex items-start gap-1.5 cursor-pointer hover:bg-primary/10 transition-colors"
+          onClick={() => onMenuAction('Add Note', blockIdx)}
+        >
           <FileText className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
           {block.note}
         </div>
