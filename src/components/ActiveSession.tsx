@@ -347,14 +347,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => {
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
-      const shouldCascade = (field === 'weight' || field === 'reps') && typeof value === 'string' && value !== '';
-      const oldValue = shouldCascade ? block.sets[setIdx][field] : null;
+      const currentSet = block.sets[setIdx];
+      const shouldCascade = (field === 'weight' || field === 'reps') && typeof value === 'string' && value !== '' && currentSet.type !== 'warmup';
+      const oldValue = shouldCascade ? currentSet[field] : null;
       return {
         ...block,
         sets: block.sets.map((set, si) => {
           if (si === setIdx) return { ...set, [field]: value };
           // Cascade: update fields below that are blank or still hold the previous cascaded value
-          if (shouldCascade && si > setIdx && (set[field] === '' || set[field] === oldValue)) {
+          if (shouldCascade && si > setIdx && set.type !== 'warmup' && (set[field] === '' || set[field] === oldValue)) {
             return { ...set, [field]: value };
           }
           return set;
