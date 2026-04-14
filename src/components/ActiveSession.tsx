@@ -1025,6 +1025,30 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         </button>
       </div>
 
+      {/* Workout note dialog */}
+      <AlertDialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{workoutNote ? 'Edit Note' : 'Add Note'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Add a note to this workout session.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <textarea
+            value={workoutNote}
+            onChange={e => setWorkoutNote(e.target.value)}
+            placeholder="How did this workout feel? Any observations..."
+            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            maxLength={500}
+          />
+          <p className="text-xs text-muted-foreground text-right">{workoutNote.length}/500</p>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setShowNoteDialog(false)}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Discard confirmation dialog */}
       <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
         <AlertDialogContent>
