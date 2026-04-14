@@ -20,6 +20,7 @@ export interface ExerciseLog {
   exerciseId: ExerciseId;
   exerciseName: string;
   sets: WorkoutSet[];
+  supersetGroup?: number;
 }
 
 export interface WorkoutSession {

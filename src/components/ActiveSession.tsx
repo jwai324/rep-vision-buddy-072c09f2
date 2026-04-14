@@ -688,6 +688,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       .map(b => ({
         exerciseId: b.exerciseId,
         exerciseName: b.exerciseName,
+        supersetGroup: b.supersetGroup,
         sets: b.sets
           .filter(s => s.completed)
           .map(s => ({

@@ -33,6 +33,17 @@ function formatDuration(s: number) {
   return `${m}m ${sec}s`;
 }
 
+const SUPERSET_COLORS = [
+  'bg-red-500/20', 'bg-blue-500/20', 'bg-green-500/20',
+  'bg-yellow-500/20', 'bg-pink-500/20', 'bg-orange-500/20',
+  'bg-amber-800/20', 'bg-purple-500/20', 'bg-white/20',
+];
+
+const getSupersetColorClass = (group?: number) => {
+  if (group === undefined) return '';
+  return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
+};
+
 export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, isViewMode }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   return (
@@ -80,7 +91,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
       {/* Exercise breakdown */}
       <div className="flex flex-col gap-3">
         {session.exercises.map((ex, i) => (
-          <div key={i} className="bg-card rounded-xl p-4 border border-border">
+          <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
             <h3 className="font-semibold text-foreground mb-2">{ex.exerciseName}</h3>
             <div className="flex flex-col gap-1">
               {ex.sets.map((set, j) => (
