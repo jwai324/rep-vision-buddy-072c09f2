@@ -708,7 +708,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
     const totalVolume = allSets.reduce((s, set) => s + set.reps * (set.weight ?? 0), 0);
-    const rpeSets = allSets.filter(s => s.rpe !== undefined);
+    const rpeSets = allSets.filter(s => s.rpe !== undefined && s.type !== 'warmup');
     const averageRpe = rpeSets.length > 0 ? rpeSets.reduce((s, set) => s + (set.rpe ?? 0), 0) / rpeSets.length : undefined;
 
     let sessionDate: string;
