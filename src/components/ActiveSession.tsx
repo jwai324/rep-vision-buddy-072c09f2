@@ -55,6 +55,7 @@ export interface ActiveSessionCache {
   startTimestamp: number;
   elapsedAtCache: number;
   location?: string;
+  workoutNote?: string;
 }
 
 export function clearSessionCache() {
@@ -195,6 +196,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   });
   const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
+  const [workoutNote, setWorkoutNote] = useState(cachedSession?.workoutNote ?? editSession?.note ?? '');
+  const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [location, setLocation] = useState(cachedSession?.location ?? DEFAULT_LOCATION);
   const [locations, setLocations] = useState<string[]>(getSavedLocations);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
@@ -240,9 +243,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       startTimestamp: startTime.current,
       elapsedAtCache: elapsedSeconds,
       location,
+      workoutNote: workoutNote || undefined,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  }, [blocks, workoutName, elapsedSeconds, isEditMode, location]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote]);
 
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
@@ -731,8 +735,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalSets: allSets.length,
       totalReps,
       averageRpe,
+      note: workoutNote.trim() || undefined,
     });
-  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin]);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote]);
 
   if (showSupersetLinker) {
     return (

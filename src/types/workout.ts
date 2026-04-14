@@ -32,6 +32,7 @@ export interface WorkoutSession {
   totalSets: number;
   totalReps: number;
   averageRpe?: number;
+  note?: string;
   isRestDay?: boolean;
   recoveryActivities?: RecoveryActivity[];
 }
