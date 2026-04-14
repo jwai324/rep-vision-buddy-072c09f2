@@ -203,6 +203,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [newLocationInput, setNewLocationInput] = useState('');
   const [deleteLocationConfirm, setDeleteLocationConfirm] = useState<string | null>(null);
+  const [pendingRemoveIdx, setPendingRemoveIdx] = useState<number | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
@@ -665,7 +666,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         addWarmupSet(blockIdx);
         break;
       case 'Remove Exercise':
-        removeExercise(blockIdx);
+        setPendingRemoveIdx(blockIdx);
         break;
     }
   }, [blocks, getStickyNote, removeExercise, toggleDropSets, addWarmupSet]);
@@ -1065,6 +1066,32 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove exercise confirmation */}
+      <AlertDialog open={pendingRemoveIdx !== null} onOpenChange={open => { if (!open) setPendingRemoveIdx(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Exercise</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove {pendingRemoveIdx !== null ? blocks[pendingRemoveIdx]?.exerciseName : ''} from this workout? All sets will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingRemoveIdx !== null) {
+                  removeExercise(pendingRemoveIdx);
+                  setPendingRemoveIdx(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
