@@ -1,29 +1,30 @@
 
 
-## Plan: Fix Calendar Off-By-One Date Bug
+## Plan: Fix Activity Screen Date Filtering Bug
 
 ### Problem
-Workout session dates are stored as UTC ISO strings (e.g., `2026-04-14T01:48:00.000Z`). The dashboard calendar compares them with `s.date.startsWith(dayStr)` where `dayStr` is a local date string. For users behind UTC (like US timezones), a workout logged in the evening appears on the next day in the calendar.
+Same UTC/local timezone mismatch as the calendar bug. In `src/components/ActivityScreen.tsx` line 31, history is filtered with `s.date.startsWith(filterDate)` where `filterDate` is a local date string (e.g., `2026-04-13`) but `s.date` can be a UTC ISO string (e.g., `2026-04-14T01:48:00.000Z`). This causes workouts to not appear on the correct day.
 
 ### Fix
-In `src/components/Dashboard.tsx`, line 261, change the comparison to convert the session's UTC date to a local date string before comparing:
+In `src/components/ActivityScreen.tsx`, line 31, apply the same local-date conversion used elsewhere:
 
 ```ts
-// Before (broken):
-const completedSessions = history.filter(s => s.date.startsWith(dayStr));
+// Before:
+if (filterDate) items = items.filter(s => s.date.startsWith(filterDate));
 
-// After (fixed):
-const completedSessions = history.filter(s => {
-  const sessionDate = format(new Date(s.date), 'yyyy-MM-dd');
-  return sessionDate === dayStr;
+// After:
+if (filterDate) items = items.filter(s => {
+  const sessionDate = s.date.length >= 10 ? format(new Date(s.date), 'yyyy-MM-dd') : s.date;
+  return sessionDate === filterDate;
 });
 ```
 
-The same pattern is already used correctly in the `getStreak` function and `WeeklySetsByBodyPart` component (lines 37 and 91), which handle both ISO and pre-formatted date strings. We should apply the same approach here.
+This requires importing `format` from `date-fns` (already imported in the file — needs to be verified and added if missing).
 
 ### What changes
-- **`src/components/Dashboard.tsx`** line 261 -- convert session UTC date to local date string before comparison
+- **`src/components/ActivityScreen.tsx`** line 31 — convert session date to local string before comparing with `filterDate`
 
 ### What stays the same
-- All other date handling, streak calculation, weekly sets logic
+- Future workouts filtering (line 37) — already uses `f.date === filterDate` which is correct since future workout dates are stored as plain date strings
+- All other components
 
