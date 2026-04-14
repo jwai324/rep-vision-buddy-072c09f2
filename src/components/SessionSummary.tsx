@@ -46,6 +46,24 @@ const getSupersetColorClass = (group?: number) => {
 
 export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, isViewMode }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Infer superset groups for legacy data that lacks supersetGroup but has superset-typed sets
+  const exercisesWithGroups = React.useMemo(() => {
+    const hasExplicitGroups = session.exercises.some(ex => ex.supersetGroup !== undefined);
+    if (hasExplicitGroups) return session.exercises;
+
+    let currentGroup = 0;
+    let inGroup = false;
+    return session.exercises.map(ex => {
+      const hasSuperset = ex.sets.some(s => s.type === 'superset');
+      if (hasSuperset) {
+        if (!inGroup) { currentGroup++; inGroup = true; }
+        return { ...ex, supersetGroup: currentGroup };
+      }
+      inGroup = false;
+      return ex;
+    });
+  }, [session.exercises]);
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
       {/* Header */}
