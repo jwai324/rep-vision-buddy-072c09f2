@@ -1,32 +1,33 @@
 
 
-## Plan: Add Workout Note (3-Dot Menu in Active Session)
+## Plan: Fix Superset Colors in Workout Detail View
 
-### What it does
-Adds a three-dot menu to the active workout header with an "Add Note" option. The note persists with the saved session, is visible in the Workout Detail view, and can be edited when re-editing a session.
+### Problem
+Existing saved workouts don't have `supersetGroup` in their exercise JSON because they were logged before the persistence fix. The `SessionSummary` component only colors exercises when `supersetGroup` is present, so all exercises show plain `bg-card`.
 
-### Changes
+However, exercises that were supersetted have `type: "superset"` on their sets. We can use this to infer grouping for older data.
 
-**1. `src/types/workout.ts`** — Add `note?: string` to the `WorkoutSession` interface (around line 27).
+### Fix
 
-**2. `src/components/ActiveSession.tsx`**
-- Add state: `const [workoutNote, setWorkoutNote] = useState(editSession?.note ?? '')` and `const [showNoteDialog, setShowNoteDialog] = useState(false)`
-- Add the note to the session cache (`ActiveSessionCache` interface + cache write)
-- Restore note from cache: `cachedSession?.workoutNote ?? ''`
-- In `finishWorkout`, include `note: workoutNote || undefined` in the session object
-- In the header (between the back arrow and the Discard/Finish buttons), add a `DropdownMenu` with a `MoreVertical` trigger containing "Add/Edit Note"
-- Add a dialog/modal for editing the note text
+**`src/components/SessionSummary.tsx`** — Add a fallback that infers superset groups from set types when `supersetGroup` is missing:
 
-**3. `src/components/SessionSummary.tsx`** — Display the note (if present) below the stats grid and above the exercise breakdown. When in view mode, show the note as read-only text. Include an "Edit Note" option if `onEdit` is available.
+Before rendering, scan the exercises array. If no exercise has `supersetGroup` but some have sets with `type === 'superset'`, assign consecutive superset-typed exercises the same group number:
 
-**4. `src/hooks/useStorage.ts`** — Include `note` in the `saveSession` upsert call and in the data mapping when loading sessions.
-
-**5. Database migration** — Add a `note` text column (nullable) to the `workout_sessions` table:
-```sql
-ALTER TABLE public.workout_sessions ADD COLUMN note text;
+```ts
+// Infer superset groups for legacy data
+const exercisesWithGroups = session.exercises.map(ex => {
+  if (ex.supersetGroup !== undefined) return ex;
+  const hasSuperset = ex.sets.some(s => s.type === 'superset');
+  return hasSuperset ? { ...ex, _inferredSuperset: true } : ex;
+});
 ```
 
+More precisely: if no exercises already have `supersetGroup`, group all exercises whose sets are typed `"superset"` into a single group (group 1). This matches the existing behavior where superset-typed exercises are visually linked.
+
+### What changes
+- **`src/components/SessionSummary.tsx`** — Add pre-processing logic to infer `supersetGroup` from set types for backward compatibility
+
 ### What stays the same
-- Exercise-level notes (session notes and sticky notes) are unchanged
-- All other session data, RLS policies, and components remain untouched
+- New workouts will continue to save `supersetGroup` correctly
+- All other components and data flow remain untouched
 
