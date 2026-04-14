@@ -119,7 +119,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
 
       {/* Exercise breakdown */}
       <div className="flex flex-col gap-3">
-        {session.exercises.map((ex, i) => (
+        {exercisesWithGroups.map((ex, i) => (
           <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
             <h3 className="font-semibold text-foreground mb-2">{ex.exerciseName}</h3>
             <div className="flex flex-col gap-1">
