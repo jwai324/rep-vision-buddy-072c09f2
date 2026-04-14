@@ -355,7 +355,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         sets: block.sets.map((set, si) => {
           if (si === setIdx) return { ...set, [field]: value };
           // Cascade: update fields below that are blank or still hold the previous cascaded value
-          if (shouldCascade && si > setIdx && (set[field] === '' || set[field] === oldValue)) {
+          if (shouldCascade && si > setIdx && set.type !== 'warmup' && (set[field] === '' || set[field] === oldValue)) {
             return { ...set, [field]: value };
           }
           return set;
