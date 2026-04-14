@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { format } from 'date-fns';
 import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
@@ -28,7 +29,10 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
 
   const filteredHistory = useMemo(() => {
     let items = showRestDays ? history : history.filter(s => !s.isRestDay);
-    if (filterDate) items = items.filter(s => s.date.startsWith(filterDate));
+    if (filterDate) items = items.filter(s => {
+      const sessionDate = s.date.length >= 10 ? format(new Date(s.date), 'yyyy-MM-dd') : s.date;
+      return sessionDate === filterDate;
+    });
     return items;
   }, [history, showRestDays, filterDate]);
 
