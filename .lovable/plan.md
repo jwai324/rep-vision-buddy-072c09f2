@@ -1,32 +1,25 @@
 
 
-## Plan: Fix Rest Day Showing as Previous Day
+## Plan: Fix Session Date Storage to Use Local Date
 
 ### Root Cause
-`new Date("2026-04-15")` is parsed as **UTC midnight**. For users in timezones behind UTC (all of the Americas), this renders as the previous day (April 14th). The date string `yyyy-MM-dd` is correct in storage, but every `new Date(s.date)` display call shifts it back a day.
+In `ActiveSession.tsx` line 748, workout sessions are saved with `new Date().toISOString()` which produces a **UTC** timestamp like `"2026-04-16T01:30:00.000Z"`. For users in timezones behind UTC (e.g., EDT at 9:30 PM on April 15th), the UTC date becomes April **16th**. The `parseLocalDate` utility correctly extracts the first 10 characters, but those 10 characters are the UTC date — not the local date.
+
+Rest days don't have this problem because they use `restFw.date` which is already a clean `yyyy-MM-dd` local date.
 
 ### Fix
-Replace all `new Date(s.date)` display calls with `new Date(s.date + 'T00:00:00')` to force **local time** parsing. This pattern is already used correctly in `FutureWorkoutDetail.tsx` line 33.
+Store session dates as `yyyy-MM-dd` local date strings using `format(new Date(), 'yyyy-MM-dd')` from `date-fns`, consistent with how rest days and future workouts already store dates.
 
-### Files to Change
+### Changes
 
-**1. `src/components/WorkoutHistory.tsx`** (line 67)
-- `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
-
-**2. `src/components/ActivityScreen.tsx`** (lines 34, 161)
-- Both `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
-
-**3. `src/components/Dashboard.tsx`** (lines 38, 263)
-- Both `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
-
-**4. `src/components/ExerciseDetailModal.tsx`** (line 25)
-- `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
-
-**5. `src/components/ProgramBuilder.tsx`** (line 221)
-- `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
+**`src/components/ActiveSession.tsx`**
+- Line 748: Change `new Date().toISOString()` → `format(new Date(), 'yyyy-MM-dd')`
+- Lines 742-744 (edit mode): Change `.toISOString()` calls → use `editDate` directly (it's already `yyyy-MM-dd`) or `format(...)` for consistency
+- Add `format` to the existing `date-fns` import
 
 ### What stays the same
-- All storage/save logic (dates are stored correctly as `yyyy-MM-dd`)
-- The `format()` calls that already receive correct Date objects
-- No database changes
+- `parseLocalDate` utility — no changes needed
+- All display components — already using `parseLocalDate` correctly
+- Database storage — the `date` column accepts text, so `yyyy-MM-dd` works fine
+- Rest day date handling — already correct
 
