@@ -1,30 +1,20 @@
 
 
-## Plan: Add Date Picker to Rest Day Creation and Editing
+## Fix: Align ConsistencyTab Streaks with Dashboard
 
-### Problem
-When adding a rest day, the date is hardcoded to today with no way to change it. When viewing a saved rest day in SessionSummary, there is no way to edit the date.
+### Root cause
+The dashboard's `getStreak()` includes all session types (workouts + rest days) and skips today if empty. The `ConsistencyTab` excludes rest days from its date map and breaks immediately if today has no session, producing different streak values.
 
 ### Changes
 
-**1. `src/components/FutureWorkoutDetail.tsx`**
-- Add local `date` state initialized from `futureWorkout.date`
-- Add a date picker (Popover + Calendar from shadcn) below the header, allowing the user to pick any date
-- Pass the updated date through to `onSaveRestDay` so the saved session uses the selected date
+**`src/components/analytics/ConsistencyTab.tsx`**
+- Change the `volumeMap` loop to also track rest days in a separate `workoutDates` set (matching dashboard logic: any session = active day)
+- Use `workoutDates` for streak calculations instead of `volumeMap`
+- Add the "skip today if empty" logic: if today has no session, start checking from yesterday (matching dashboard's `else if (i > 0) break; else continue;` pattern)
+- Keep `volumeMap` (non-rest-day volume) for the heatmap grid rendering — only streak math changes
 
-**2. `src/components/SessionSummary.tsx`**
-- In the rest-day view (`session.isRestDay && isViewMode`), add a date picker below the header
-- When date changes, call `onUpdateSession` with the updated date string (formatted as `yyyy-MM-dd`)
-- Use `parseLocalDate` for display consistency
-
-**3. No changes to `src/pages/Index.tsx`**
-- The `onSaveRestDay` callback already reads `restFw.date`, so it will automatically use whatever date the user picked
-- The `onUpdateSession` callback already persists the full session
-
-### Technical details
-- Uses existing `Calendar` and `Popover` components (shadcn)
-- Date stored as `yyyy-MM-dd` string — consistent with existing date conventions
-- `parseLocalDate` used for display to avoid UTC offset issues
-- Add `pointer-events-auto` class to Calendar per shadcn datepicker guidelines
-- Import `format` from `date-fns` (already a project dependency)
+### What stays the same
+- Dashboard `getStreak()` — untouched, it's the source of truth
+- Heatmap grid still shows volume intensity (rest days show as empty cells)
+- Longest streak calculation uses the same `workoutDates` set
 
