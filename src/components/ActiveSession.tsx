@@ -1477,7 +1477,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                       className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
                       title="Tap to copy to current set"
                     >
-                      {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                      {`${previousSets[setIdx].weight != null ? Math.round(fromKg(previousSets[setIdx].weight!, weightUnit)) : '—'} × ${previousSets[setIdx].reps}`}
                     </button>
                   ) : (
                     <span className="text-xs text-muted-foreground text-center">—</span>
