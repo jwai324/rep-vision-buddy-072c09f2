@@ -709,6 +709,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const finishWorkout = useCallback(() => {
+    // Guard: require at least one completed set
+    const hasCompletedSet = blocks.some(b => b.sets.some(s => s.completed));
+    if (!hasCompletedSet) {
+      toast.error('Complete at least one set or Discard this workout.');
+      return;
+    }
+
     const exerciseLogs: ExerciseLog[] = blocks
       .filter(b => b.sets.some(s => s.completed))
       .map(b => {
@@ -723,7 +730,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               setNumber: s.setNumber,
               type: s.type,
               reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
-              weight: mode === 'cardio' ? undefined : (s.weight ? parseFloat(s.weight) : undefined),
+              weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
               rpe: s.rpe ? parseFloat(s.rpe) : undefined,
               time: mode === 'cardio' ? (parseFloat(s.time || s.reps) || 0) : undefined,
             })),
@@ -740,12 +747,16 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     let duration: number;
 
     if (isEditMode && editSession) {
-      // Use edited date directly as yyyy-MM-dd (already in local format)
       sessionDate = editDate || editSession.date.substring(0, 10);
       duration = editDurationMin ? parseInt(editDurationMin) * 60 : editSession.duration;
     } else {
       sessionDate = format(new Date(), 'yyyy-MM-dd');
       duration = Math.floor((Date.now() - startTime.current) / 1000);
+    }
+
+    // Duration < 30s prompt
+    if (!isEditMode && duration < 30) {
+      if (!confirm('This workout was less than 30 seconds. Save anyway?')) return;
     }
 
     onFinish({
@@ -759,7 +770,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       averageRpe,
       note: workoutNote.trim() || undefined,
     });
-  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote]);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises]);
 
   if (showSupersetLinker) {
     return (
