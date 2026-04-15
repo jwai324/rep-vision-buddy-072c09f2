@@ -5,7 +5,10 @@
  */
 export function parseLocalDate(dateStr: string): Date {
   if (!dateStr) return new Date(NaN);
-  // If it's a plain yyyy-MM-dd (10 chars), append T00:00:00 for local parsing
-  const dayPart = dateStr.length === 10 ? dateStr : dateStr.substring(0, 10);
-  return new Date(dayPart + 'T00:00:00');
+  if (dateStr.length === 10) {
+    return new Date(dateStr + 'T00:00:00');
+  }
+  // Full ISO timestamp — parse natively to get local time, then extract local date
+  const d = new Date(dateStr);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
