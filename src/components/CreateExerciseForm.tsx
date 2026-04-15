@@ -61,7 +61,8 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
 
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">Name *</label>
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Bulgarian Split Squat" className="bg-secondary border-border" />
+        <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Bulgarian Split Squat" className={`bg-secondary border-border ${isDuplicate ? 'border-destructive' : ''}`} />
+        {isDuplicate && <p className="text-xs text-destructive mt-1">An exercise with this name already exists.</p>}
       </div>
 
       <div>
@@ -113,7 +114,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
 
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1" onClick={onCancel}>Cancel</Button>
-        <Button className="flex-1" onClick={handleSave} disabled={!name.trim()}>
+        <Button className="flex-1" onClick={handleSave} disabled={!name.trim() || isDuplicate}>
           {editingExercise ? 'Update' : 'Save'}
         </Button>
       </div>
