@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { format, addDays, addWeeks, startOfWeek, getDay, setDay } from 'date-fns';
+import { parseLocalDate } from '@/utils/dateUtils';
 import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, DayFrequency, ProgramDay } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -218,7 +219,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
               <optgroup label="Past Workouts">
                 {history.map(s => (
                   <option key={s.id} value={`session:${s.id}`}>
-                    {new Date(s.date + 'T00:00:00').toLocaleDateString()} — {s.exercises.map(e => e.exerciseName).join(', ')}
+                    {parseLocalDate(s.date).toLocaleDateString()} — {s.exercises.map(e => e.exerciseName).join(', ')}
                   </option>
                 ))}
               </optgroup>

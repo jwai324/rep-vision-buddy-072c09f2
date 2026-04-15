@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { getExerciseInputMode } from '@/utils/exerciseInputMode';
+import { parseLocalDate } from '@/utils/dateUtils';
 
 interface ActivityScreenProps {
   history: WorkoutSession[];
@@ -31,7 +32,7 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
   const filteredHistory = useMemo(() => {
     let items = showRestDays ? history : history.filter(s => !s.isRestDay);
     if (filterDate) items = items.filter(s => {
-      const sessionDate = s.date.length >= 10 ? format(new Date(s.date + 'T00:00:00'), 'yyyy-MM-dd') : s.date;
+      const sessionDate = format(parseLocalDate(s.date), 'yyyy-MM-dd');
       return sessionDate === filterDate;
     });
     return items;
@@ -158,7 +159,7 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                   <div className="flex items-center gap-2">
                     {s.isRestDay && <span className="text-base">😴</span>}
                     <span className="text-sm font-semibold text-foreground">
-                      {new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {parseLocalDate(s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                     </span>
                     {s.isRestDay && (
                       <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
