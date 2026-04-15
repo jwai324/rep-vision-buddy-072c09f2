@@ -1,23 +1,24 @@
 
 
-## Plan: Full-Width Progress Bar Rest Timer Between Sets
+## Plan: Add "Add Rest Day" Button to Dashboard
 
-### Problem
-The "between sets" rest timer currently renders as a small centered circular ring, leaving large blank horizontal spaces between set rows.
-
-### Solution
-Replace the circular ring with a **full-width horizontal progress bar** that fills left-to-right across the entire row. The timer text, Skip and +30s buttons sit centered on top of the bar.
+### What changes
+A smaller, subtler "Add Rest Day" button on the dashboard that creates a rest-day entry for today and navigates to the rest day detail screen where recovery activities can be toggled and saved.
 
 ### Changes
 
-**`src/components/ExerciseRestTimer.tsx`** — `variant === 'between'` active state only (~20 lines)
+**1. `src/components/Dashboard.tsx`**
+- Add a new prop `onAddRestDay: () => void`
+- Add a button below the "Start Workout" button, styled with `variant="outline"` and smaller size (`size="sm"`), showing a bed/moon emoji + "Add Rest Day" text
+- Visually subdued compared to the neon Start Workout button
 
-- Replace the SVG circle + centered layout (lines 74–104) with a full-width container:
-  - A background bar (`bg-secondary/30`, full width, rounded, ~8px tall)
-  - An inner fill bar (`bg-primary`) that grows from `width: 0%` to `width: 100%` based on `progress`, with a smooth CSS transition
-  - Timer text, "Rest" label, Skip and +30s buttons overlaid in a row on top
-- Inactive states (Start Rest button, recorded rest pill) stay the same — they're already compact
-- The recorded rest state could also become a subtle full-width bar showing the completed time, but keep it as-is for now
+**2. `src/pages/Index.tsx`**
+- Wire the new `onAddRestDay` prop on Dashboard
+- Handler creates a `FutureWorkout` with `templateId: 'rest'`, today's date, and navigates to `futureWorkoutDetail` screen with it
+- The existing `FutureWorkoutDetail` component already handles rest day activity selection and saving — no changes needed there
 
-**No other files change.**
+### What stays the same
+- `FutureWorkoutDetail` component (already supports rest day editing)
+- All other dashboard elements
+- Storage/save logic (reuses existing `onSaveRestDay` flow)
 
