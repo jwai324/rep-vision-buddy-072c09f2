@@ -708,20 +708,24 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const finishWorkout = useCallback(() => {
     const exerciseLogs: ExerciseLog[] = blocks
       .filter(b => b.sets.some(s => s.completed))
-      .map(b => ({
-        exerciseId: b.exerciseId,
-        exerciseName: b.exerciseName,
-        supersetGroup: b.supersetGroup,
-        sets: b.sets
-          .filter(s => s.completed)
-          .map(s => ({
-            setNumber: s.setNumber,
-            type: s.type,
-            reps: parseInt(s.reps) || 0,
-            weight: s.weight ? parseFloat(s.weight) : undefined,
-            rpe: s.rpe ? parseFloat(s.rpe) : undefined,
-          })),
-      }));
+      .map(b => {
+        const mode = getExerciseInputMode(b.exerciseId, customExercises);
+        return {
+          exerciseId: b.exerciseId,
+          exerciseName: b.exerciseName,
+          supersetGroup: b.supersetGroup,
+          sets: b.sets
+            .filter(s => s.completed)
+            .map(s => ({
+              setNumber: s.setNumber,
+              type: s.type,
+              reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
+              weight: mode === 'cardio' ? undefined : (s.weight ? parseFloat(s.weight) : undefined),
+              rpe: s.rpe ? parseFloat(s.rpe) : undefined,
+              time: mode === 'cardio' ? (parseFloat(s.time || s.reps) || 0) : undefined,
+            })),
+        };
+      });
 
     const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
