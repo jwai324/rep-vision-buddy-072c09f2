@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';

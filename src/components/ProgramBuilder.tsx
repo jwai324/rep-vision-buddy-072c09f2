@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { format, addDays, addWeeks, startOfWeek, getDay, setDay } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
 import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, DayFrequency, ProgramDay } from '@/types/workout';
