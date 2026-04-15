@@ -261,6 +261,19 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setShowLocationDropdown(false);
   }, [newLocationInput, locations, location]);
 
+  const recalcRestTimer = useCallback(() => {
+    setActiveTimer(prev => {
+      if (!prev || !prev.startedAt) return prev;
+      const elapsed = Math.floor((performance.now() - prev.startedAt) / 1000);
+      const newRemaining = Math.max(0, prev.duration - elapsed);
+      if (newRemaining <= 0) {
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.duration }));
+        return null;
+      }
+      return { ...prev, remaining: newRemaining };
+    });
+  }, []);
+
   const startTimer = useCallback((id: TimerId, duration: number) => {
     // Cancel any existing timer
     if (timerInterval.current) clearInterval(timerInterval.current);
@@ -272,7 +285,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       }
       return null;
     });
-    const timer = { id, remaining: duration, duration, startedAt: Date.now() };
+    const timer = { id, remaining: duration, duration, startedAt: performance.now() };
     setActiveTimer(timer);
   }, []);
 
@@ -291,36 +304,39 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setActiveTimer(prev => prev ? { ...prev, remaining: prev.remaining + 30, duration: prev.duration + 30 } : null);
   }, []);
 
-  // Timer tick effect
+  // Timer tick effect — timestamp-based
   useEffect(() => {
     if (timerInterval.current) clearInterval(timerInterval.current);
     if (activeTimer && activeTimer.remaining > 0) {
-      timerInterval.current = setInterval(() => {
-        setActiveTimer(prev => {
-          if (!prev) return null;
-          if (prev.remaining <= 1) {
-            // Timer finished - record it
-            setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.duration }));
-            return null;
-          }
-          return { ...prev, remaining: prev.remaining - 1 };
-        });
-      }, 1000);
+      timerInterval.current = setInterval(recalcRestTimer, 1000);
     }
     return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
-  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer !== null]);
+  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer !== null, recalcRestTimer]);
 
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
   const [noteText, setNoteText] = useState('');
 
+  // Elapsed timer — uses Date.now() anchor for absolute start, recalculates on tick
   useEffect(() => {
     if (timerPaused) return;
-    const interval = setInterval(() => {
+    const recalcElapsed = () => {
       setElapsedSeconds(Math.floor((Date.now() - startTime.current) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [timerPaused]);
+    };
+    const interval = setInterval(recalcElapsed, 1000);
+    // Instant catch-up when returning from background
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        recalcElapsed();
+        recalcRestTimer();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [timerPaused, recalcRestTimer]);
 
   const toggleTimerPause = useCallback(() => {
     setTimerPaused(prev => {
