@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { format, subDays, startOfWeek, addDays } from 'date-fns';
+import { parseLocalDate } from '@/utils/dateUtils';
 
 interface ConsistencyTabProps {
   history: WorkoutSession[];
@@ -12,7 +13,7 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
     const workoutDates = new Set<string>();
 
     for (const s of history) {
-      const key = s.date.substring(0, 10);
+      const key = format(parseLocalDate(s.date), 'yyyy-MM-dd');
       workoutDates.add(key);
       if (!s.isRestDay) {
         volumeMap.set(key, (volumeMap.get(key) || 0) + s.totalVolume);
