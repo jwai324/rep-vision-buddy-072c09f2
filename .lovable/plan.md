@@ -1,24 +1,32 @@
 
 
-## Plan: Add "Add Rest Day" Button to Dashboard
+## Plan: Fix Rest Day Showing as Previous Day
 
-### What changes
-A smaller, subtler "Add Rest Day" button on the dashboard that creates a rest-day entry for today and navigates to the rest day detail screen where recovery activities can be toggled and saved.
+### Root Cause
+`new Date("2026-04-15")` is parsed as **UTC midnight**. For users in timezones behind UTC (all of the Americas), this renders as the previous day (April 14th). The date string `yyyy-MM-dd` is correct in storage, but every `new Date(s.date)` display call shifts it back a day.
 
-### Changes
+### Fix
+Replace all `new Date(s.date)` display calls with `new Date(s.date + 'T00:00:00')` to force **local time** parsing. This pattern is already used correctly in `FutureWorkoutDetail.tsx` line 33.
 
-**1. `src/components/Dashboard.tsx`**
-- Add a new prop `onAddRestDay: () => void`
-- Add a button below the "Start Workout" button, styled with `variant="outline"` and smaller size (`size="sm"`), showing a bed/moon emoji + "Add Rest Day" text
-- Visually subdued compared to the neon Start Workout button
+### Files to Change
 
-**2. `src/pages/Index.tsx`**
-- Wire the new `onAddRestDay` prop on Dashboard
-- Handler creates a `FutureWorkout` with `templateId: 'rest'`, today's date, and navigates to `futureWorkoutDetail` screen with it
-- The existing `FutureWorkoutDetail` component already handles rest day activity selection and saving — no changes needed there
+**1. `src/components/WorkoutHistory.tsx`** (line 67)
+- `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
+
+**2. `src/components/ActivityScreen.tsx`** (lines 34, 161)
+- Both `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
+
+**3. `src/components/Dashboard.tsx`** (lines 38, 263)
+- Both `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
+
+**4. `src/components/ExerciseDetailModal.tsx`** (line 25)
+- `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
+
+**5. `src/components/ProgramBuilder.tsx`** (line 221)
+- `new Date(s.date)` → `new Date(s.date + 'T00:00:00')`
 
 ### What stays the same
-- `FutureWorkoutDetail` component (already supports rest day editing)
-- All other dashboard elements
-- Storage/save logic (reuses existing `onSaveRestDay` flow)
+- All storage/save logic (dates are stored correctly as `yyyy-MM-dd`)
+- The `format()` calls that already receive correct Date objects
+- No database changes
 
