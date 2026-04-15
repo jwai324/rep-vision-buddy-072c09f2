@@ -104,8 +104,14 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     });
   };
 
+  const handleDesktopNav = (key: string) => {
+    setScreen({ type: key } as Screen);
+  };
+
   return (
-    <div className="max-w-lg mx-auto min-h-screen">
+    <div className="flex min-h-screen w-full">
+      <DesktopSidebar activeScreen={screen.type} onNavigate={handleDesktopNav} />
+      <div className="flex-1 max-w-3xl mx-auto min-h-screen">
       {screen.type === 'dashboard' && (
         <ErrorBoundary fallbackTitle="Dashboard error" onReset={() => setScreen({ type: 'dashboard' })}>
           <Dashboard
