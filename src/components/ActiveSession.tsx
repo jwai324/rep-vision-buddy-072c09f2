@@ -1390,7 +1390,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
           <Check className="w-3 h-3 mx-auto" />
         </span>
       </div>
-      )
+      )}
 
       {/* Set Rows */}
       {block.sets.map((set, setIdx) => {
