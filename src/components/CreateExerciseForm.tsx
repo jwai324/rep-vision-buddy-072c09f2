@@ -23,10 +23,10 @@ interface CreateExerciseFormProps {
 export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, onCancel, editingExercise }) => {
   const { exercises: customExercises } = useCustomExercisesContext();
   const [name, setName] = useState(editingExercise?.name || '');
-  const [bodyPart, setBodyPart] = useState(editingExercise?.primaryBodyPart || 'Full Body');
-  const [equipment, setEquipment] = useState(editingExercise?.equipment || 'None');
-  const [difficulty, setDifficulty] = useState<'Beginner' | 'Intermediate' | 'Advanced'>(
-    (editingExercise?.difficulty as any) || 'Intermediate'
+  const [bodyPart, setBodyPart] = useState<string | null>(editingExercise?.primaryBodyPart || null);
+  const [equipment, setEquipment] = useState<string | null>(editingExercise?.equipment || null);
+  const [difficulty, setDifficulty] = useState<'Beginner' | 'Intermediate' | 'Advanced' | null>(
+    (editingExercise?.difficulty as any) || null
   );
   const [exerciseType, setExerciseType] = useState<'Compound' | 'Isolation'>(
     (editingExercise?.exerciseType as any) || 'Isolation'
@@ -38,13 +38,15 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
     return isDuplicateExerciseName(name, EXERCISE_DATABASE, customExercises, editingExercise?.id);
   }, [name, customExercises, editingExercise?.id]);
 
+  const isValid = name.trim() && !isDuplicate && bodyPart && equipment && difficulty;
+
   const handleSave = () => {
-    if (!name.trim() || isDuplicate) return;
+    if (!isValid) return;
     onSave({
       name: name.trim(),
-      primaryBodyPart: bodyPart,
-      equipment,
-      difficulty,
+      primaryBodyPart: bodyPart!,
+      equipment: equipment!,
+      difficulty: difficulty!,
       exerciseType,
       movementPattern: 'Other',
       secondaryMuscles: [],
@@ -66,7 +68,8 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
       </div>
 
       <div>
-        <label className="text-xs text-muted-foreground mb-1 block">Body Part</label>
+        <label className="text-xs text-muted-foreground mb-1 block">Body Part *</label>
+        {!bodyPart && <p className="text-[10px] text-muted-foreground/60 mb-1">Select a body part</p>}
         <div className="flex flex-wrap gap-1">
           {BODY_PART_OPTIONS.map(bp => (
             <button key={bp} onClick={() => setBodyPart(bp)} className={chipClass(bodyPart === bp)}>{bp}</button>
@@ -75,7 +78,8 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
       </div>
 
       <div>
-        <label className="text-xs text-muted-foreground mb-1 block">Equipment</label>
+        <label className="text-xs text-muted-foreground mb-1 block">Equipment *</label>
+        {!equipment && <p className="text-[10px] text-muted-foreground/60 mb-1">Select equipment</p>}
         <div className="flex flex-wrap gap-1">
           {EQUIPMENT_OPTIONS.map(eq => (
             <button key={eq} onClick={() => setEquipment(eq)} className={chipClass(equipment === eq)}>{eq}</button>
@@ -84,7 +88,8 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
       </div>
 
       <div>
-        <label className="text-xs text-muted-foreground mb-1 block">Difficulty</label>
+        <label className="text-xs text-muted-foreground mb-1 block">Difficulty *</label>
+        {!difficulty && <p className="text-[10px] text-muted-foreground/60 mb-1">Select difficulty</p>}
         <div className="flex gap-1 flex-wrap">
           {DIFFICULTIES.map(d => (
             <button key={d} onClick={() => setDifficulty(d)} className={chipClass(difficulty === d)}>{d}</button>
@@ -114,7 +119,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
 
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1" onClick={onCancel}>Cancel</Button>
-        <Button className="flex-1" onClick={handleSave} disabled={!name.trim() || isDuplicate}>
+        <Button className="flex-1" onClick={handleSave} disabled={!isValid}>
           {editingExercise ? 'Update' : 'Save'}
         </Button>
       </div>

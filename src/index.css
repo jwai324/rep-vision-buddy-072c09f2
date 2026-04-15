@@ -100,4 +100,12 @@
   .gradient-green {
     background: linear-gradient(135deg, hsl(120 100% 55%), hsl(150 100% 45%));
   }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
