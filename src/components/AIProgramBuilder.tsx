@@ -16,6 +16,7 @@ interface UserInputs {
   experience: string;
   daysPerWeek: number;
   sessionDuration: string;
+  programDuration: string;
   equipment: string[];
   injuries: string;
   splitPreference: string;
@@ -47,7 +48,7 @@ interface AIProgram {
   training_days: AITrainingDay[];
 }
 
-type ChatStep = 'goal' | 'experience' | 'daysPerWeek' | 'sessionDuration' | 'equipment' | 'injuries' | 'splitPreference' | 'additionalNotes' | 'summary';
+type ChatStep = 'goal' | 'experience' | 'daysPerWeek' | 'sessionDuration' | 'programDuration' | 'equipment' | 'injuries' | 'splitPreference' | 'additionalNotes' | 'summary';
 
 interface ChatMessage {
   role: 'ai' | 'user';
@@ -58,13 +59,14 @@ interface ChatMessage {
   freeText?: boolean;
 }
 
-const STEPS: ChatStep[] = ['goal', 'experience', 'daysPerWeek', 'sessionDuration', 'equipment', 'injuries', 'splitPreference', 'additionalNotes', 'summary'];
+const STEPS: ChatStep[] = ['goal', 'experience', 'daysPerWeek', 'sessionDuration', 'programDuration', 'equipment', 'injuries', 'splitPreference', 'additionalNotes', 'summary'];
 
 const STEP_QUESTIONS: Record<ChatStep, string> = {
   goal: "What's your primary training goal?",
   experience: "How long have you been training consistently?",
   daysPerWeek: "How many days per week can you train?",
   sessionDuration: "How long is a typical session?",
+  programDuration: "How many weeks should this program run?",
   equipment: "What equipment do you have access to?",
   injuries: "Any injuries or body parts to avoid?",
   splitPreference: "Any split preference?",
@@ -77,6 +79,7 @@ const STEP_CHIPS: Record<string, string[]> = {
   experience: ['Beginner (< 1 year)', 'Intermediate (1-3 years)', 'Advanced (3+ years)'],
   daysPerWeek: ['2', '3', '4', '5', '6'],
   sessionDuration: ['30 min', '45 min', '60 min', '75 min', '90 min'],
+  programDuration: ['4 weeks', '6 weeks', '8 weeks', '12 weeks'],
   equipment: ['Full Gym', 'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 'Band', 'Kettlebell', 'EZ Bar', 'Trap Bar', 'Smith Machine', 'Landmine'],
   splitPreference: ['Upper/Lower', 'Push/Pull/Legs', 'Full Body', 'Bro Split', 'No preference — you decide'],
 };
@@ -94,7 +97,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>('chat');
   const [currentStep, setCurrentStep] = useState(0);
   const [inputs, setInputs] = useState<UserInputs>({
-    goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', equipment: [], injuries: '', splitPreference: '', additionalNotes: '',
+    goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', programDuration: '4 weeks', equipment: [], injuries: '', splitPreference: '', additionalNotes: '',
   });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingVisible, setTypingVisible] = useState(false);
@@ -199,6 +202,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     else if (step === 'experience') updated.experience = value;
     else if (step === 'daysPerWeek') updated.daysPerWeek = parseInt(value);
     else if (step === 'sessionDuration') updated.sessionDuration = value;
+    else if (step === 'programDuration') updated.programDuration = value;
     else if (step === 'splitPreference') updated.splitPreference = value;
     advanceToNext(updated);
   };
@@ -217,6 +221,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     else if (step === 'experience') updated.experience = value;
     else if (step === 'daysPerWeek') updated.daysPerWeek = parseInt(value) || 4;
     else if (step === 'sessionDuration') updated.sessionDuration = value;
+    else if (step === 'programDuration') updated.programDuration = value;
     else if (step === 'splitPreference') updated.splitPreference = value;
     advanceToNext(updated);
   };
@@ -272,6 +277,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     { key: 'experience', label: 'Experience', value: inputs.experience },
     { key: 'daysPerWeek', label: 'Days/Week', value: String(inputs.daysPerWeek) },
     { key: 'sessionDuration', label: 'Session Duration', value: inputs.sessionDuration },
+    { key: 'programDuration', label: 'Program Duration', value: inputs.programDuration },
     { key: 'equipment', label: 'Equipment', value: inputs.equipment.join(', ') },
     { key: 'injuries', label: 'Injuries', value: inputs.injuries || 'None' },
     { key: 'splitPreference', label: 'Split', value: inputs.splitPreference },

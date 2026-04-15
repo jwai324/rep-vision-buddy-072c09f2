@@ -41,7 +41,7 @@ JSON SCHEMA:
   "program_name": "string",
   "goal": "string",
   "days_per_week": number,
-  "weeks": 4,
+  "weeks": <must match the user's requested program duration>,
   "training_days": [
     {
       "day_number": 1,
@@ -116,12 +116,14 @@ serve(async (req) => {
     const { userInputs, exercises } = await req.json();
 
     const customNotes = userInputs.custom_notes ? `\n- Additional notes from user: ${userInputs.custom_notes}` : '';
+    const programWeeks = parseInt(String(userInputs.programDuration)) || 4;
 
     const userPrompt = `Build a workout program with these specifications:
 - Goal: ${userInputs.goal}
 - Experience: ${userInputs.experience}
 - Days per week: ${userInputs.daysPerWeek}
 - Session duration: ${userInputs.sessionDuration}
+- Program duration: ${programWeeks} weeks (MUST set "weeks" to exactly ${programWeeks})
 - Available equipment: ${userInputs.equipment.join(', ')}
 - Injuries/constraints: ${userInputs.injuries || 'None'}
 - Split preference: ${userInputs.splitPreference || 'No preference'}${customNotes}
