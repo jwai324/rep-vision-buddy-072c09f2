@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
+import { parseLocalDate } from '@/utils/dateUtils';
 import {
   AlertDialog,
   AlertDialogAction,
