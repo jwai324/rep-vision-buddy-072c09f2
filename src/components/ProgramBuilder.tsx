@@ -218,7 +218,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
               <optgroup label="Past Workouts">
                 {history.map(s => (
                   <option key={s.id} value={`session:${s.id}`}>
-                    {new Date(s.date).toLocaleDateString()} — {s.exercises.map(e => e.exerciseName).join(', ')}
+                    {new Date(s.date + 'T00:00:00').toLocaleDateString()} — {s.exercises.map(e => e.exerciseName).join(', ')}
                   </option>
                 ))}
               </optgroup>

@@ -22,7 +22,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
     return history
       .filter(s => s.exercises.some(e => e.exerciseId === exerciseId))
       .map(s => ({
-        date: new Date(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        date: new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         rawDate: s.date,
         exerciseLog: s.exercises.find(e => e.exerciseId === exerciseId)!,
       }))
