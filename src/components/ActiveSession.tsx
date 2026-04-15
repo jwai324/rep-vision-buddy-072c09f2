@@ -1231,6 +1231,7 @@ interface ExerciseTableProps {
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
   restRecords: Record<string, number>;
   previousSets: { weight?: number; reps: number }[];
+  inputMode: ExerciseInputMode;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
