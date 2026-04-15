@@ -5,12 +5,16 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString } from '@/utils/weightConversion';
-import { ArrowLeft, FileText, Plus, X, Check, Search } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { format } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -134,6 +138,33 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           <h2 className="text-2xl font-bold text-foreground">Rest Day</h2>
           <p className="text-sm text-muted-foreground">Take it easy and recover.</p>
         </div>
+
+        {/* Date Picker */}
+        {onUpdateSession && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("w-full justify-start text-left font-normal")}>
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {format(parseLocalDate(session.date), 'PPP')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={parseLocalDate(session.date)}
+                onSelect={(d) => {
+                  if (!d) return;
+                  const yyyy = d.getFullYear();
+                  const mm = String(d.getMonth() + 1).padStart(2, '0');
+                  const dd = String(d.getDate()).padStart(2, '0');
+                  onUpdateSession({ ...session, date: `${yyyy}-${mm}-${dd}` });
+                }}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
+        )}
 
         {/* Recovery Activities */}
         {activities.length > 0 && (

@@ -2,12 +2,17 @@ import React, { useState, useMemo } from 'react';
 import type { FutureWorkout, WorkoutTemplate, RecoveryActivity, WorkoutSession } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import { ArrowLeft, Dumbbell, Plus, X, Check, Search } from 'lucide-react';
+import { ArrowLeft, Dumbbell, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { parseLocalDate } from '@/utils/dateUtils';
+import { format } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 
 // Rest-day eligible exercises (recovery/wellness type)
 const REST_DAY_EXERCISE_IDS = [
@@ -30,7 +35,8 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
   futureWorkout, template, onPerformWorkout, onUpdateFutureWorkout, onSaveRestDay, onBack,
 }) => {
   const isRest = futureWorkout.templateId === 'rest';
-  const dateStr = new Date(futureWorkout.date + 'T00:00:00').toLocaleDateString('en-US', {
+  const [localDate, setLocalDate] = useState(futureWorkout.date);
+  const dateStr = parseLocalDate(localDate).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   });
 
@@ -83,13 +89,21 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
   const allCompleted = activities.length > 0 && activities.every(a => a.completed);
 
   const currentFw: FutureWorkout = useLocalState
-    ? { ...futureWorkout, recoveryActivities: localActivities }
-    : futureWorkout;
+    ? { ...futureWorkout, date: localDate, recoveryActivities: localActivities }
+    : { ...futureWorkout, date: localDate };
 
   const handleSaveRestDay = () => {
     if (onSaveRestDay) {
       onSaveRestDay(currentFw);
     }
+  };
+
+  const handleDateSelect = (d: Date | undefined) => {
+    if (!d) return;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    setLocalDate(`${yyyy}-${mm}-${dd}`);
   };
 
   return (
@@ -112,6 +126,25 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
             <h2 className="text-2xl font-bold text-foreground">Rest Day</h2>
             <p className="text-sm text-muted-foreground">Take it easy and recover.</p>
           </div>
+
+          {/* Date Picker */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !localDate && "text-muted-foreground")}>
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {format(parseLocalDate(localDate), 'PPP')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={parseLocalDate(localDate)}
+                onSelect={handleDateSelect}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
 
           {/* Added Recovery Activities */}
           {activities.length > 0 && (
