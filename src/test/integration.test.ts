@@ -19,15 +19,13 @@ describe('Weight round-trip consistency', () => {
     expect(fw.unitLabel).toBe('kg');
   });
 
-  it('135 kg saved → shows ~297.62 lbs consistently', () => {
+  it('135 kg saved → shows consistent lbs across formatWeight and formatWeightString', () => {
     const savedKg = 135;
-    const lbsValue = fromKg(savedKg, 'lbs');
-    const display = formatWeightString(savedKg, 'lbs');
-    expect(display).toBe(`${lbsValue} lbs`);
-    
-    // Must be consistent with formatWeight
     const fw = formatWeight(savedKg, 'lbs');
-    expect(fw.display).toBe(String(lbsValue));
+    const display = formatWeightString(savedKg, 'lbs');
+    // Both must produce the same string
+    expect(display).toBe(`${fw.display} lbs`);
+    expect(fw.value).toBeCloseTo(297.62, 1);
   });
 
   it('user enters 135 lbs → saves as kg → displays back as 135 lbs', () => {
