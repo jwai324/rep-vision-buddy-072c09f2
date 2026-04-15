@@ -7,6 +7,8 @@ export interface Exercise {
   exerciseType: 'Compound' | 'Isolation';
   movementPattern: string;
   secondaryMuscles: string[];
+  /** Lowercase comma-separated alternate search terms pulled from Notion */
+  aliases?: string[];
 }
 
 export const EXERCISE_DATABASE: Exercise[] = [
