@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ExerciseLog } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
+import { getExerciseInputMode, formatSetDisplay } from '@/utils/exerciseInputMode';
 
 interface WorkoutLogProps {
   logs: ExerciseLog[];

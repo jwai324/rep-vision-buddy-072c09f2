@@ -4,6 +4,7 @@ import { SET_TYPE_CONFIG } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { ArrowLeft, FileText } from 'lucide-react';
+import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
 import {
   AlertDialog,
   AlertDialogAction,
