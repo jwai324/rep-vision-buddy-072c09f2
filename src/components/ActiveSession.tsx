@@ -402,11 +402,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
       const updated = prev.map((b, bi) => {
         if (bi !== blockIdx) return b;
+        const completedSet = b.sets[setIdx];
         return {
           ...b,
           sets: b.sets.map((s, si) => {
-            if (si !== setIdx) return s;
-            return { ...s, completed: !s.completed };
+            if (si === setIdx) return { ...s, completed: !s.completed };
+            // Auto-fill subsequent empty sets when completing (not uncompleting)
+            if (!wasCompleted && si > setIdx && !s.completed) {
+              return {
+                ...s,
+                weight: s.weight || completedSet.weight,
+                reps: s.reps || completedSet.reps,
+                rpe: s.rpe || completedSet.rpe,
+                time: s.time || completedSet.time,
+              };
+            }
+            return s;
           }),
         };
       });
