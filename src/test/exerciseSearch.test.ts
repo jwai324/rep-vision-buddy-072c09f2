@@ -2,10 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   normalizeSearch,
   fuzzyIncludes,
+  levenshtein,
   scoreExercise,
   searchExercises,
   parseAliases,
   validateAliases,
+  isDuplicateExerciseName,
 } from '@/utils/exerciseSearch';
 import type { Exercise } from '@/data/exercises';
 
@@ -29,8 +31,22 @@ describe('normalizeSearch', () => {
     expect(normalizeSearch('  lat   pull  down  ')).toBe('lat pull down');
   });
 
-  it('strips trailing s', () => {
+  it('strips trailing s from words > 3 chars', () => {
     expect(normalizeSearch('curls')).toBe('curl');
+  });
+});
+
+describe('levenshtein', () => {
+  it('returns 0 for identical strings', () => {
+    expect(levenshtein('dumbbell', 'dumbbell')).toBe(0);
+  });
+
+  it('returns correct distance for typo', () => {
+    expect(levenshtein('dumbell', 'dumbbell')).toBeLessThanOrEqual(2);
+  });
+
+  it('returns correct distance for unrelated strings', () => {
+    expect(levenshtein('abc', 'xyz')).toBe(3);
   });
 });
 
@@ -50,6 +66,10 @@ describe('searchExercises', () => {
     makeExercise({ name: 'Barbell Curl', equipment: 'Barbell' }),
     makeExercise({ name: 'Hammer Curl' }),
     makeExercise({ name: 'Pull-Ups', primaryBodyPart: 'Back', equipment: 'Bodyweight', exerciseType: 'Compound', aliases: ['pullup', 'chin up'] }),
+    makeExercise({ name: 'Dumbbell Skull Crusher', primaryBodyPart: 'Triceps', aliases: ['skull crusher'] }),
+    makeExercise({ name: 'EZ-Bar Curl', equipment: 'EZ-Bar', aliases: ['ez curl'] }),
+    makeExercise({ name: 'Cable Curl', equipment: 'Cable', aliases: ['cable bicep curl'] }),
+    makeExercise({ name: 'Machine Bicep Curl', equipment: 'Machine', aliases: ['machine curl'] }),
   ];
 
   it('"bicep curl" finds Dumbbell Bicep Curl via alias', () => {
@@ -57,9 +77,21 @@ describe('searchExercises', () => {
     expect(results.some(e => e.name === 'Dumbbell Bicep Curl')).toBe(true);
   });
 
+  it('"bicep curl" also finds EZ-Bar Curl, Cable Curl, Machine Bicep Curl', () => {
+    const results = searchExercises(exercises, 'bicep curl');
+    expect(results.some(e => e.name === 'EZ-Bar Curl')).toBe(true);
+    expect(results.some(e => e.name === 'Cable Curl')).toBe(true);
+    expect(results.some(e => e.name === 'Machine Bicep Curl')).toBe(true);
+  });
+
   it('"db curl" finds Dumbbell Bicep Curl via alias', () => {
     const results = searchExercises(exercises, 'db curl');
     expect(results.some(e => e.name === 'Dumbbell Bicep Curl')).toBe(true);
+  });
+
+  it('"db curl" does NOT return Dumbbell Skull Crusher', () => {
+    const results = searchExercises(exercises, 'db curl');
+    expect(results.some(e => e.name === 'Dumbbell Skull Crusher')).toBe(false);
   });
 
   it('"pull ups" finds Pull-Ups (punctuation tolerance)', () => {
@@ -81,6 +113,16 @@ describe('searchExercises', () => {
   it('returns all exercises when query is empty', () => {
     const results = searchExercises(exercises, '');
     expect(results.length).toBe(exercises.length);
+  });
+
+  it('"bicepcurl" (no space) finds results via fuzzy subsequence', () => {
+    const results = searchExercises(exercises, 'bicepcurl');
+    expect(results.some(e => e.name.includes('Curl'))).toBe(true);
+  });
+
+  it('"dumbell curl" (typo) finds Dumbbell Bicep Curl via Levenshtein', () => {
+    const results = searchExercises(exercises, 'dumbell curl');
+    expect(results.some(e => e.name === 'Dumbbell Bicep Curl')).toBe(true);
   });
 });
 
@@ -121,5 +163,26 @@ describe('validateAliases', () => {
       'Dumbbell Bicep Curl'
     );
     expect(result).toEqual(['arm curl', 'db curl']);
+  });
+});
+
+describe('isDuplicateExerciseName', () => {
+  const canonical = [makeExercise({ name: 'Dumbbell Curl' })];
+  const custom = [makeExercise({ name: 'My Custom Press' })];
+
+  it('detects duplicate canonical name (case-insensitive)', () => {
+    expect(isDuplicateExerciseName('dumbbell curl', canonical, custom)).toBe(true);
+  });
+
+  it('detects duplicate custom name', () => {
+    expect(isDuplicateExerciseName('MY CUSTOM PRESS', canonical, custom)).toBe(true);
+  });
+
+  it('allows unique name', () => {
+    expect(isDuplicateExerciseName('Brand New Exercise', canonical, custom)).toBe(false);
+  });
+
+  it('excludes self when editing', () => {
+    expect(isDuplicateExerciseName('Dumbbell Curl', canonical, custom, 'dumbbell-curl')).toBe(false);
   });
 });
