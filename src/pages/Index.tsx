@@ -11,6 +11,7 @@ import { ActivityScreen } from '@/components/ActivityScreen';
 import { FutureWorkoutDetail } from '@/components/FutureWorkoutDetail';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { AnalyticsScreen } from '@/components/AnalyticsScreen';
+import { DesktopSidebar } from '@/components/DesktopSidebar';
 
 import { SettingsScreen } from '@/components/SettingsScreen';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
