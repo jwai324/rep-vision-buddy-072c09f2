@@ -737,15 +737,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     let duration: number;
 
     if (isEditMode && editSession) {
-      // Use edited date/time
-      sessionDate = editDate && editTime
-        ? new Date(`${editDate}T${editTime}`).toISOString()
-        : editDate
-          ? new Date(`${editDate}T00:00:00`).toISOString()
-          : editSession.date;
+      // Use edited date directly as yyyy-MM-dd (already in local format)
+      sessionDate = editDate || editSession.date.substring(0, 10);
       duration = editDurationMin ? parseInt(editDurationMin) * 60 : editSession.duration;
     } else {
-      sessionDate = new Date().toISOString();
+      sessionDate = format(new Date(), 'yyyy-MM-dd');
       duration = Math.floor((Date.now() - startTime.current) / 1000);
     }
 
