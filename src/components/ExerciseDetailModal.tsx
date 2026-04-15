@@ -5,6 +5,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ExerciseAnimation } from '@/components/ExerciseAnimation';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
+import { formatWeightString } from '@/utils/weightConversion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { parseLocalDate } from '@/utils/dateUtils';
 
@@ -98,7 +99,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
                         <div key={si} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Set {set.setNumber}</span>
                           <span className="text-foreground font-medium">
-                            {set.weight ? `${set.weight} ${weightUnit} × ` : ''}{set.reps} reps
+                            {set.weight != null ? `${formatWeightString(set.weight, weightUnit)} × ` : ''}{set.reps} reps
                             {set.rpe ? ` @ RPE ${set.rpe}` : ''}
                           </span>
                         </div>
@@ -129,7 +130,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
                         borderRadius: '8px',
                         color: 'hsl(var(--popover-foreground))',
                       }}
-                      formatter={(value: number) => [`${value} ${weightUnit}`, 'Volume']}
+                      formatter={(value: number) => [formatWeightString(value, weightUnit), 'Volume']}
                     />
                     <Line
                       type="monotone"
