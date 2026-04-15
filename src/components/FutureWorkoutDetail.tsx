@@ -3,6 +3,7 @@ import type { FutureWorkout, WorkoutTemplate, RecoveryActivity, WorkoutSession }
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ArrowLeft, Dumbbell, Plus, X, Check, Search } from 'lucide-react';
+import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -253,6 +254,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
             <div className="flex flex-col gap-3">
               {template.exercises.map((ex, i) => {
                 const info = EXERCISES[ex.exerciseId];
+                const mode = getExerciseInputMode(ex.exerciseId);
                 return (
                   <div key={i} className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -261,7 +263,10 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{info?.name ?? ex.exerciseId}</p>
                       <p className="text-xs text-muted-foreground">
-                        {ex.sets} sets × {ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} reps`}
+                        {mode === 'cardio'
+                          ? `${ex.sets} × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} min`}`
+                          : `${ex.sets} sets × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} reps`}`
+                        }
                       </p>
                     </div>
                   </div>
