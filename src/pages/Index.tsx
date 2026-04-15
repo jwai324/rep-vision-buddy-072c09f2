@@ -283,6 +283,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             storage.deleteSession(id);
             setScreen({ type: 'activity', initialTab: 'history' });
           }}
+          onUpdateSession={(updated) => {
+            storage.saveSession(updated);
+            setScreen({ type: 'sessionDetail', session: updated, from: 'activity' });
+          }}
         />
       )}
 
