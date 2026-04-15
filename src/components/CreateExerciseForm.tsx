@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { BODY_PARTS, EQUIPMENT_LIST } from '@/data/exercises';
+import { BODY_PARTS, EQUIPMENT_LIST, EXERCISE_DATABASE } from '@/data/exercises';
 import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
 import type { Exercise } from '@/data/exercises';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { isDuplicateExerciseName } from '@/utils/exerciseSearch';
 
 const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['Compound', 'Isolation'] as const;
