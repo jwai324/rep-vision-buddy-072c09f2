@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
 import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
@@ -707,20 +708,24 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const finishWorkout = useCallback(() => {
     const exerciseLogs: ExerciseLog[] = blocks
       .filter(b => b.sets.some(s => s.completed))
-      .map(b => ({
-        exerciseId: b.exerciseId,
-        exerciseName: b.exerciseName,
-        supersetGroup: b.supersetGroup,
-        sets: b.sets
-          .filter(s => s.completed)
-          .map(s => ({
-            setNumber: s.setNumber,
-            type: s.type,
-            reps: parseInt(s.reps) || 0,
-            weight: s.weight ? parseFloat(s.weight) : undefined,
-            rpe: s.rpe ? parseFloat(s.rpe) : undefined,
-          })),
-      }));
+      .map(b => {
+        const mode = getExerciseInputMode(b.exerciseId, customExercises);
+        return {
+          exerciseId: b.exerciseId,
+          exerciseName: b.exerciseName,
+          supersetGroup: b.supersetGroup,
+          sets: b.sets
+            .filter(s => s.completed)
+            .map(s => ({
+              setNumber: s.setNumber,
+              type: s.type,
+              reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
+              weight: mode === 'cardio' ? undefined : (s.weight ? parseFloat(s.weight) : undefined),
+              rpe: s.rpe ? parseFloat(s.rpe) : undefined,
+              time: mode === 'cardio' ? (parseFloat(s.time || s.reps) || 0) : undefined,
+            })),
+        };
+      });
 
     const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
@@ -1013,6 +1018,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                       activeTimer={activeTimer}
                       restRecords={restRecords}
                       previousSets={getPreviousExerciseData(history, block.exerciseId)}
+                      inputMode={getExerciseInputMode(block.exerciseId, customExercises)}
                       onUpdateSet={updateSet}
                       onToggleComplete={toggleSetComplete}
                       onAddSet={addSet}
@@ -1225,6 +1231,7 @@ interface ExerciseTableProps {
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
   restRecords: Record<string, number>;
   previousSets: { weight?: number; reps: number }[];
+  inputMode: ExerciseInputMode;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
   onAddSet: (blockIdx: number) => void;
@@ -1250,7 +1257,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
   return (
     <div>
       {/* Exercise Header */}
@@ -1313,6 +1320,49 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
       )}
 
       {/* Table Header */}
+      {inputMode === 'cardio' ? (
+        <div className="grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+          <span>Set</span>
+          <span className="text-center">Time (min)</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
+              <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
+            </PopoverContent>
+          </Popover>
+          <span className="text-center">
+            <Timer className="w-3 h-3 mx-auto" />
+          </span>
+          <span className="text-center">
+            <Check className="w-3 h-3 mx-auto" />
+          </span>
+        </div>
+      ) : inputMode === 'band' ? (
+        <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">Band</span>
+          <span className="text-center">Reps</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
+              <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
+            </PopoverContent>
+          </Popover>
+          <span className="text-center">
+            <Timer className="w-3 h-3 mx-auto" />
+          </span>
+          <span className="text-center">
+            <Check className="w-3 h-3 mx-auto" />
+          </span>
+        </div>
+      ) : (
       <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
         <span>Set</span>
         <span className="text-center">Previous</span>
@@ -1340,6 +1390,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
           <Check className="w-3 h-3 mx-auto" />
         </span>
       </div>
+      )}
 
       {/* Set Rows */}
       {block.sets.map((set, setIdx) => {
@@ -1347,87 +1398,141 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
         return (
           <React.Fragment key={setIdx}>
             <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
-              <div
-                className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
-                  set.completed ? 'bg-primary/10' : ''
-                }`}
-              >
-                <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
-                  {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
-                </span>
-                {previousSets[setIdx] ? (
+              {inputMode === 'cardio' ? (
+                <div className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                    {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
+                  </span>
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'time')}
+                    type="number"
+                    inputMode="decimal"
+                    value={set.time}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="min"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'rpe')}
+                    type="number"
+                    inputMode="decimal"
+                    min="1"
+                    max="10"
+                    step="0.5"
+                    value={set.rpe}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <span />
                   <button
-                    type="button"
-                    onClick={() => {
-                      const prev = previousSets[setIdx];
-                      if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
-                      onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
-                    }}
-                    className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
-                    title="Tap to copy to current set"
+                    onClick={() => onToggleComplete(blockIdx, setIdx)}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                      set.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                    }`}
                   >
-                    {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                    <Check className="w-4 h-4" />
                   </button>
-                ) : (
-                  <span className="text-xs text-muted-foreground text-center">—</span>
-                )}
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'weight')}
-                  type="number"
-                  inputMode="decimal"
-                  value={set.weight}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'reps')}
-                  type="number"
-                  inputMode="numeric"
-                  value={set.reps}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
-                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'rpe')}
-                  type="number"
-                  inputMode="decimal"
-                  min="1"
-                  max="10"
-                  step="0.5"
-                  value={set.rpe}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
-                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe')}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'time')}
-                  type="text"
-                  inputMode="numeric"
-                  value={set.time}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-[10px] bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary font-mono"
-                />
-                <button
-                  onClick={() => onToggleComplete(blockIdx, setIdx)}
-                  className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                    set.completed
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                </div>
+              ) : (
+                <div
+                  className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+                    set.completed ? 'bg-primary/10' : ''
                   }`}
                 >
-                  <Check className="w-4 h-4" />
-                </button>
-              </div>
+                  <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                    {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
+                  </span>
+                  {previousSets[setIdx] ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const prev = previousSets[setIdx];
+                        if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
+                        onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
+                      }}
+                      className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
+                      title="Tap to copy to current set"
+                    >
+                      {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground text-center">—</span>
+                  )}
+                  {inputMode === 'band' ? (
+                    <select
+                      id={buildInputId(blockIdx, setIdx, 'weight')}
+                      value={set.weight}
+                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
+                    >
+                      <option value="">—</option>
+                      {BAND_LEVELS.map(b => (
+                        <option key={b.level} value={b.level.toString()}>{b.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id={buildInputId(blockIdx, setIdx, 'weight')}
+                      type="number"
+                      inputMode="decimal"
+                      value={set.weight}
+                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                      onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
+                      onFocus={e => e.target.value && e.target.select()}
+                      placeholder="—"
+                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    />
+                  )}
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'reps')}
+                    type="number"
+                    inputMode="numeric"
+                    value={set.reps}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'rpe')}
+                    type="number"
+                    inputMode="decimal"
+                    min="1"
+                    max="10"
+                    step="0.5"
+                    value={set.rpe}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe')}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'time')}
+                    type="text"
+                    inputMode="numeric"
+                    value={set.time}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-[10px] bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary font-mono"
+                  />
+                  <button
+                    onClick={() => onToggleComplete(blockIdx, setIdx)}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                      set.completed
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </SwipeToDelete>
 
             {/* Drop rows */}

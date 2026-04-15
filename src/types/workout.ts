@@ -13,6 +13,7 @@ export interface WorkoutSet {
   reps: number;
   weight?: number;
   rpe?: number;
+  time?: number; // minutes — used for cardio/sports exercises
   drops?: DropSegment[];
 }
 

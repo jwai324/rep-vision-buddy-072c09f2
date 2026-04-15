@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
+import { getExerciseInputMode } from '@/utils/exerciseInputMode';
 
 interface ActivityScreenProps {
   history: WorkoutSession[];
@@ -190,7 +191,14 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                 ) : (
                   <>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>{s.exercises.map(e => e.exerciseName).join(', ')}</span>
+                      <span>{s.exercises.map(e => {
+                        const mode = getExerciseInputMode(e.exerciseId);
+                        if (mode === 'cardio') {
+                          const totalTime = e.sets.reduce((acc, set) => acc + (set.time ?? 0), 0);
+                          return `${e.exerciseName} (${totalTime} min)`;
+                        }
+                        return e.exerciseName;
+                      }).join(', ')}</span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
                       <span>{s.totalSets} sets</span>
