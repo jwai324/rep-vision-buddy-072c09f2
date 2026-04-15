@@ -1,25 +1,35 @@
 
 
-## Plan: Fix Session Date Storage to Use Local Date
+## Plan: Fix Date Display Inconsistency Between Activity Screen and Session Details
 
 ### Root Cause
-In `ActiveSession.tsx` line 748, workout sessions are saved with `new Date().toISOString()` which produces a **UTC** timestamp like `"2026-04-16T01:30:00.000Z"`. For users in timezones behind UTC (e.g., EDT at 9:30 PM on April 15th), the UTC date becomes April **16th**. The `parseLocalDate` utility correctly extracts the first 10 characters, but those 10 characters are the UTC date — not the local date.
+The database contains dates stored as full UTC timestamps (e.g., `"2026-04-14T01:48:00.000Z"`). The `SessionSummary` component uses `new Date(session.date)` which correctly converts UTC to local time. But `ActivityScreen`, `WorkoutHistory`, and other list views use `parseLocalDate()` which extracts the first 10 characters of the UTC string — giving the UTC calendar date, not the local one.
 
-Rest days don't have this problem because they use `restFw.date` which is already a clean `yyyy-MM-dd` local date.
+For example, a workout done at 9:48 PM EDT on April 13th is stored as `2026-04-14T01:48:00.000Z`. `SessionSummary` shows April 13 (correct), but `parseLocalDate` extracts `2026-04-14` and shows April 14 (wrong).
 
 ### Fix
-Store session dates as `yyyy-MM-dd` local date strings using `format(new Date(), 'yyyy-MM-dd')` from `date-fns`, consistent with how rest days and future workouts already store dates.
+Update `parseLocalDate` to handle full ISO timestamps by converting them to a local Date first, then extracting the local date components. This fixes all consumers at once.
 
 ### Changes
 
-**`src/components/ActiveSession.tsx`**
-- Line 748: Change `new Date().toISOString()` → `format(new Date(), 'yyyy-MM-dd')`
-- Lines 742-744 (edit mode): Change `.toISOString()` calls → use `editDate` directly (it's already `yyyy-MM-dd`) or `format(...)` for consistency
-- Add `format` to the existing `date-fns` import
+**1. `src/utils/dateUtils.ts`**
+Update `parseLocalDate` logic:
+- If the string is exactly 10 characters (`yyyy-MM-dd`), keep current behavior (append `T00:00:00`)
+- If it's a full ISO timestamp, parse it with `new Date()` (which gives correct local time), then construct a midnight Date from the local year/month/day
 
-### What stays the same
-- `parseLocalDate` utility — no changes needed
-- All display components — already using `parseLocalDate` correctly
-- Database storage — the `date` column accepts text, so `yyyy-MM-dd` works fine
-- Rest day date handling — already correct
+**2. `src/components/SessionSummary.tsx`** (lines 78, 84)
+- Replace `new Date(session.date)` with `parseLocalDate(session.date)` for consistency
+
+### Technical detail
+```typescript
+export function parseLocalDate(dateStr: string): Date {
+  if (!dateStr) return new Date(NaN);
+  if (dateStr.length === 10) {
+    return new Date(dateStr + 'T00:00:00');
+  }
+  // Full ISO timestamp — parse natively to get local time, then extract local date
+  const d = new Date(dateStr);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+```
 
