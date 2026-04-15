@@ -120,7 +120,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
 
       {/* Exercise breakdown */}
       <div className="flex flex-col gap-3">
-        {exercisesWithGroups.map((ex, i) => (
+        {exercisesWithGroups.map((ex, i) => {
+          const mode = getExerciseInputMode(ex.exerciseId);
+          return (
           <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
             <h3 className="font-semibold text-foreground mb-2">{ex.exerciseName}</h3>
             <div className="flex flex-col gap-1">
@@ -133,15 +135,27 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                     <span className="text-muted-foreground">Set {set.setNumber}</span>
                   </div>
                   <div className="flex items-center gap-3 text-foreground">
-                    <span>{set.reps} reps</span>
-                    {set.weight && <span>{set.weight} {weightUnit}</span>}
+                    {mode === 'cardio' ? (
+                      <span>{set.time ?? 0} min</span>
+                    ) : mode === 'band' ? (
+                      <>
+                        <span>{getBandLevelShortLabel(set.weight ?? 0)}</span>
+                        <span>{set.reps} reps</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{set.reps} reps</span>
+                        {set.weight && <span>{set.weight} {weightUnit}</span>}
+                      </>
+                    )}
                     {set.rpe && <span className="text-primary text-xs">RPE {set.rpe}</span>}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Actions */}
