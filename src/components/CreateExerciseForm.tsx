@@ -21,6 +21,7 @@ interface CreateExerciseFormProps {
 }
 
 export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, onCancel, editingExercise }) => {
+  const { exercises: customExercises } = useCustomExercisesContext();
   const [name, setName] = useState(editingExercise?.name || '');
   const [bodyPart, setBodyPart] = useState(editingExercise?.primaryBodyPart || 'Full Body');
   const [equipment, setEquipment] = useState(editingExercise?.equipment || 'None');
@@ -32,8 +33,13 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
   );
   const [isRecovery, setIsRecovery] = useState(editingExercise?.isRecovery || false);
 
+  const isDuplicate = useMemo(() => {
+    if (!name.trim()) return false;
+    return isDuplicateExerciseName(name, EXERCISE_DATABASE, customExercises, editingExercise?.id);
+  }, [name, customExercises, editingExercise?.id]);
+
   const handleSave = () => {
-    if (!name.trim()) return;
+    if (!name.trim() || isDuplicate) return;
     onSave({
       name: name.trim(),
       primaryBodyPart: bodyPart,
