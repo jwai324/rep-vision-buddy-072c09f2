@@ -1,32 +1,68 @@
 
 
-## Plan: Background-Safe Timers with Timezone-Aware Timestamps
+## Plan: Exercise-Type-Aware Inputs + Negative Weight Support
 
-### Problem
-Rest countdown timers and the workout elapsed timer use `setInterval` to tick every second. Browsers throttle or pause intervals when the tab is hidden or the screen turns off, causing timers to freeze and display incorrect values on return.
+### Overview
+Replace the one-size-fits-all Weight/Reps/RPE columns with mode-specific inputs based on exercise type. Sports (basketball, soccer, etc.) are already categorized under `primaryBodyPart: 'Cardio'` in the database, so they'll automatically get the cardio treatment.
 
-Additionally, using `Date.now()` without care can introduce drift if the device clock changes (e.g., crossing a timezone boundary or DST transition mid-workout). We need monotonic-safe timestamps.
+### Exercise Input Modes
+
+| Mode | Trigger | Columns |
+|------|---------|---------|
+| `weighted` | Default | Weight, Reps, RPE |
+| `cardio` | `primaryBodyPart === 'Cardio'` (includes all sports) | Time (min), RPE |
+| `band` | `equipment === 'Band'` | Band Level (select), Reps, RPE |
+
+**Band Levels** (stored as numeric 1–6 in the `weight` field):
+1. Extra Light (~5 lb / ~2 kg)
+2. Light (~15 lb / ~7 kg)
+3. Medium (~25 lb / ~11 kg)
+4. Heavy (~40 lb / ~18 kg)
+5. Extra Heavy (~55 lb / ~25 kg)
+6. Monster (~80 lb / ~36 kg)
+
+### Negative Weight for Assisted Exercises
+Weight inputs will explicitly allow negative numbers (e.g., -20 kg for assisted pull-ups). No `min` attribute restriction. This applies to all weighted exercises.
 
 ### Changes
 
-**1. `src/hooks/useRestTimer.ts` — Timestamp-based rest countdown**
-- Store a `startedAt` ref (`Date.now()`) and `totalDuration` ref when `start()` is called.
-- On each interval tick, compute `remaining = Math.max(0, totalDuration - Math.floor((Date.now() - startedAt) / 1000))` instead of decrementing.
-- `extend()` adds to `totalDuration` without changing `startedAt`.
-- Add a `visibilitychange` listener that forces an immediate recalculation when the page returns to the foreground.
-- Use `performance.now()` for elapsed measurement where possible (monotonic, immune to clock/timezone changes), falling back to `Date.now()` delta for the timestamp anchor.
+**1. New file: `src/utils/exerciseInputMode.ts`**
+- `getExerciseInputMode(exerciseId)` returns `'weighted' | 'cardio' | 'band'`
+- `BAND_LEVELS` array with label + weight approximations per unit system
+- `formatBandLevel(level, unit)` helper for display
 
-**2. `src/components/ActiveSession.tsx` — Workout elapsed timer**
-- The elapsed timer already uses `Date.now() - startTime.current`, which is timestamp-based.
-- Add a `visibilitychange` listener to force an immediate `setElapsed` recalculation on tab focus so the display updates instantly.
-- For the inline rest timer (lines ~264–311), apply the same timestamp approach: store `restStartedAt` and `restDuration`, compute remaining on each tick from the timestamp delta.
+**2. `src/types/workout.ts`**
+- Add `time?: number` to `WorkoutSet` (for persisted cardio data)
+- Add `bandLevel?: number` as alias documentation (stored in `weight`)
 
-**3. Timezone / clock-change safety**
-- Use `performance.now()` deltas (monotonic clock) for all in-session elapsed calculations. This is immune to timezone changes, DST transitions, and manual clock adjustments.
-- Only use `Date.now()` for the session's absolute start timestamp (stored for history/logging), not for computing durations.
-- On `visibilitychange`, recalculate using the same `performance.now()` anchor so returning from background after a timezone shift doesn't break anything.
+**3. `src/components/ActiveSession.tsx`**
+- Import `getExerciseInputMode` and `BAND_LEVELS`
+- Per exercise block, determine mode from `block.exerciseId`
+- **Cardio**: replace Weight+Reps columns with single Time (min) input; hide weight cascade logic
+- **Band**: replace weight `<input>` with a `<select>` dropdown showing band level labels
+- **Weighted**: unchanged, but ensure no `min` attribute blocks negative values
+- Update `finishWorkout` to map cardio time and band level into `WorkoutSet`
+
+**4. `src/components/TemplateBuilder.tsx`**
+- Per block, detect mode and swap column headers/inputs accordingly
+- Cardio: show "Target Time (min)" instead of weight/reps
+- Band: show band level selector instead of weight
+
+**5. `src/components/SessionSummary.tsx`**
+- Format exercise summaries per mode (e.g., "30 min" for cardio, "Medium band" for bands)
+
+**6. `src/components/WorkoutLog.tsx`**
+- Mode-aware set display in history view
+
+**7. `src/components/ActivityScreen.tsx`**
+- Format history list items per mode
+
+**8. `src/components/FutureWorkoutDetail.tsx`**
+- Show appropriate column labels when previewing scheduled workouts
 
 ### What stays the same
-- All timer UI components (`ExerciseRestTimer`, `RestTimerRing`, `MinimizedSessionBar`) — they receive `remaining`/`progress` as props, no changes needed.
-- Session caching, pause/resume logic, and all other features.
+- Exercise database structure (sports already in Cardio category)
+- Database schema (band level reuses weight field, time field added to WorkoutSet)
+- RPE column shown for all modes
+- All existing weighted exercise behavior
 
