@@ -2,6 +2,9 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
+import { toKg, fromKg } from '@/utils/weightConversion';
+import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
