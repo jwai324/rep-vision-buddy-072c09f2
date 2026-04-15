@@ -145,7 +145,14 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
   }, [calendarEvents]);
 
   const save = () => {
-    if (!name.trim() || days.length === 0) return;
+    if (!name.trim()) {
+      toast.error('Enter a program name.');
+      return;
+    }
+    if (days.length === 0) {
+      toast.error('Add at least one day.');
+      return;
+    }
     clearDraft();
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
@@ -154,6 +161,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
       durationWeeks,
       startDate: format(startDate, 'yyyy-MM-dd'),
     });
+    toast.success(`Program "${name.trim()}" saved.`);
   };
 
   const handleCancel = () => {

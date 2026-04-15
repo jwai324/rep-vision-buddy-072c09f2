@@ -233,13 +233,21 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   }, []);
 
   const save = () => {
-    if (!name.trim() || blocks.length === 0) return;
+    if (!name.trim()) {
+      toast.error('Enter a template name.');
+      return;
+    }
+    if (blocks.length === 0) {
+      toast.error('Add at least one exercise.');
+      return;
+    }
     clearDraft();
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
       exercises: blocks.map(blockToExercise),
     });
+    toast.success(`Template "${name.trim()}" saved.`);
   };
 
   const handleCancel = () => {
