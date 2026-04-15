@@ -1018,6 +1018,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                       activeTimer={activeTimer}
                       restRecords={restRecords}
                       previousSets={getPreviousExerciseData(history, block.exerciseId)}
+                      inputMode={getExerciseInputMode(block.exerciseId, customExercises)}
                       onUpdateSet={updateSet}
                       onToggleComplete={toggleSetComplete}
                       onAddSet={addSet}
