@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { BODY_PARTS, EQUIPMENT_LIST } from '@/data/exercises';
+import { BODY_PARTS, EQUIPMENT_LIST, EXERCISE_DATABASE } from '@/data/exercises';
 import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
 import type { Exercise } from '@/data/exercises';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { isDuplicateExerciseName } from '@/utils/exerciseSearch';
 
 const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['Compound', 'Isolation'] as const;
@@ -19,6 +21,7 @@ interface CreateExerciseFormProps {
 }
 
 export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, onCancel, editingExercise }) => {
+  const { exercises: customExercises } = useCustomExercisesContext();
   const [name, setName] = useState(editingExercise?.name || '');
   const [bodyPart, setBodyPart] = useState(editingExercise?.primaryBodyPart || 'Full Body');
   const [equipment, setEquipment] = useState(editingExercise?.equipment || 'None');
@@ -30,8 +33,13 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
   );
   const [isRecovery, setIsRecovery] = useState(editingExercise?.isRecovery || false);
 
+  const isDuplicate = useMemo(() => {
+    if (!name.trim()) return false;
+    return isDuplicateExerciseName(name, EXERCISE_DATABASE, customExercises, editingExercise?.id);
+  }, [name, customExercises, editingExercise?.id]);
+
   const handleSave = () => {
-    if (!name.trim()) return;
+    if (!name.trim() || isDuplicate) return;
     onSave({
       name: name.trim(),
       primaryBodyPart: bodyPart,
@@ -53,7 +61,8 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
 
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">Name *</label>
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Bulgarian Split Squat" className="bg-secondary border-border" />
+        <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Bulgarian Split Squat" className={`bg-secondary border-border ${isDuplicate ? 'border-destructive' : ''}`} />
+        {isDuplicate && <p className="text-xs text-destructive mt-1">An exercise with this name already exists.</p>}
       </div>
 
       <div>
@@ -105,7 +114,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
 
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1" onClick={onCancel}>Cancel</Button>
-        <Button className="flex-1" onClick={handleSave} disabled={!name.trim()}>
+        <Button className="flex-1" onClick={handleSave} disabled={!name.trim() || isDuplicate}>
           {editingExercise ? 'Update' : 'Save'}
         </Button>
       </div>
