@@ -9,31 +9,7 @@ import type { Exercise } from '@/data/exercises';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { CreateExerciseForm } from '@/components/CreateExerciseForm';
-
-interface ExerciseSelectorProps {
-  onSelect: (id: ExerciseId) => void;
-  onSelectMultiple?: (ids: ExerciseId[]) => void;
-  onStartTemplate?: () => void;
-  multiSelect?: boolean;
-  browseMode?: boolean;
-  onExerciseTap?: (id: ExerciseId) => void;
-}
-
-const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
-
-const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '');
-
-/** Subsequence match: every char in query appears in order within target */
-const fuzzyIncludes = (target: string, query: string): boolean => {
-  let ti = 0;
-  for (let qi = 0; qi < query.length; qi++) {
-    const idx = target.indexOf(query[qi], ti);
-    if (idx === -1) return false;
-    ti = idx + 1;
-  }
-  return true;
-};
-const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
+import { searchExercises } from '@/utils/exerciseSearch';
 
 export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
   const { exercises: customExercises, addExercise } = useCustomExercisesContext();
