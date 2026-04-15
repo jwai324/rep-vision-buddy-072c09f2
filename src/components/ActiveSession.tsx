@@ -1471,7 +1471,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                       type="button"
                       onClick={() => {
                         const prev = previousSets[setIdx];
-                        if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
+                        if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prev.weight, weightUnit))));
                         onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
                       }}
                       className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
