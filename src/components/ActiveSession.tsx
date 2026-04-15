@@ -317,13 +317,26 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
   const [noteText, setNoteText] = useState('');
 
+  // Elapsed timer — uses Date.now() anchor for absolute start, recalculates on tick
   useEffect(() => {
     if (timerPaused) return;
-    const interval = setInterval(() => {
+    const recalcElapsed = () => {
       setElapsedSeconds(Math.floor((Date.now() - startTime.current) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [timerPaused]);
+    };
+    const interval = setInterval(recalcElapsed, 1000);
+    // Instant catch-up when returning from background
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        recalcElapsed();
+        recalcRestTimer();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [timerPaused, recalcRestTimer]);
 
   const toggleTimerPause = useCallback(() => {
     setTimerPaused(prev => {
