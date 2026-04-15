@@ -79,6 +79,7 @@ const STEP_CHIPS: Record<string, string[]> = {
   experience: ['Beginner (< 1 year)', 'Intermediate (1-3 years)', 'Advanced (3+ years)'],
   daysPerWeek: ['2', '3', '4', '5', '6'],
   sessionDuration: ['30 min', '45 min', '60 min', '75 min', '90 min'],
+  programDuration: ['4 weeks', '6 weeks', '8 weeks', '12 weeks'],
   equipment: ['Full Gym', 'Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 'Band', 'Kettlebell', 'EZ Bar', 'Trap Bar', 'Smith Machine', 'Landmine'],
   splitPreference: ['Upper/Lower', 'Push/Pull/Legs', 'Full Body', 'Bro Split', 'No preference — you decide'],
 };
