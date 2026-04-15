@@ -16,6 +16,7 @@ interface UserInputs {
   experience: string;
   daysPerWeek: number;
   sessionDuration: string;
+  programDuration: string;
   equipment: string[];
   injuries: string;
   splitPreference: string;
@@ -47,7 +48,7 @@ interface AIProgram {
   training_days: AITrainingDay[];
 }
 
-type ChatStep = 'goal' | 'experience' | 'daysPerWeek' | 'sessionDuration' | 'equipment' | 'injuries' | 'splitPreference' | 'additionalNotes' | 'summary';
+type ChatStep = 'goal' | 'experience' | 'daysPerWeek' | 'sessionDuration' | 'programDuration' | 'equipment' | 'injuries' | 'splitPreference' | 'additionalNotes' | 'summary';
 
 interface ChatMessage {
   role: 'ai' | 'user';
@@ -58,13 +59,14 @@ interface ChatMessage {
   freeText?: boolean;
 }
 
-const STEPS: ChatStep[] = ['goal', 'experience', 'daysPerWeek', 'sessionDuration', 'equipment', 'injuries', 'splitPreference', 'additionalNotes', 'summary'];
+const STEPS: ChatStep[] = ['goal', 'experience', 'daysPerWeek', 'sessionDuration', 'programDuration', 'equipment', 'injuries', 'splitPreference', 'additionalNotes', 'summary'];
 
 const STEP_QUESTIONS: Record<ChatStep, string> = {
   goal: "What's your primary training goal?",
   experience: "How long have you been training consistently?",
   daysPerWeek: "How many days per week can you train?",
   sessionDuration: "How long is a typical session?",
+  programDuration: "How many weeks should this program run?",
   equipment: "What equipment do you have access to?",
   injuries: "Any injuries or body parts to avoid?",
   splitPreference: "Any split preference?",
@@ -94,7 +96,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>('chat');
   const [currentStep, setCurrentStep] = useState(0);
   const [inputs, setInputs] = useState<UserInputs>({
-    goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', equipment: [], injuries: '', splitPreference: '', additionalNotes: '',
+    goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', programDuration: '4 weeks', equipment: [], injuries: '', splitPreference: '', additionalNotes: '',
   });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [typingVisible, setTypingVisible] = useState(false);
