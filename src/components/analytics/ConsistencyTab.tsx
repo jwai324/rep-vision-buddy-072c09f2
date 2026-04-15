@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { format, subDays, startOfWeek, addDays } from 'date-fns';
+import { parseLocalDate } from '@/utils/dateUtils';
 
 interface ConsistencyTabProps {
   history: WorkoutSession[];
