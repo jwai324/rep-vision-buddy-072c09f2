@@ -76,13 +76,13 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           </button>
           <div>
             <h1 className="text-xl font-extrabold text-foreground">Workout Details</h1>
-            <p className="text-xs text-muted-foreground">{new Date(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            <p className="text-xs text-muted-foreground">{parseLocalDate(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
           </div>
         </div>
       ) : (
         <div className="text-center">
           <h1 className="text-2xl font-bold text-foreground">Workout Complete 🎉</h1>
-          <p className="text-sm text-muted-foreground mt-1">{new Date(session.date).toLocaleDateString()}</p>
+          <p className="text-sm text-muted-foreground mt-1">{parseLocalDate(session.date).toLocaleDateString()}</p>
         </div>
       )}
 
