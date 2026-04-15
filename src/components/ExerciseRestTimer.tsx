@@ -72,33 +72,22 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
     const progress = totalDuration > 0 ? (totalDuration - remaining) / totalDuration : 0;
 
     return (
-      <div className="flex flex-col items-center gap-1.5 py-3">
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Rest</span>
-        <div className="relative w-20 h-20">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 80 80">
-            <circle cx="40" cy="40" r="34" fill="none" stroke="hsl(var(--secondary))" strokeWidth="4" />
-            <circle
-              cx="40" cy="40" r="34"
-              fill="none"
-              stroke="hsl(var(--primary))"
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 34}
-              strokeDashoffset={2 * Math.PI * 34 * (1 - progress)}
-              className="transition-all duration-1000 ease-linear"
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="font-mono text-lg font-bold text-foreground tabular-nums">{timeStr}</span>
+      <div className="relative w-full h-10 rounded-md overflow-hidden bg-secondary/30 my-1">
+        <div
+          className="absolute inset-y-0 left-0 bg-primary/20 transition-all duration-1000 ease-linear"
+          style={{ width: `${progress * 100}%` }}
+        />
+        <div className="relative flex items-center justify-between px-3 h-full">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Rest</span>
+          <span className="font-mono text-sm font-bold text-foreground tabular-nums">{timeStr}</span>
+          <div className="flex gap-2">
+            <button onClick={onSkip} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+              Skip
+            </button>
+            <button onClick={onExtend} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+              +30s
+            </button>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={onSkip} className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
-            Skip
-          </button>
-          <button onClick={onExtend} className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
-            +30s
-          </button>
         </div>
       </div>
     );
