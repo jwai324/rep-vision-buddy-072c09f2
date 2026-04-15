@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { toast } from 'sonner';
-import { format, addDays, addWeeks, startOfWeek, getDay, setDay } from 'date-fns';
+import { format, addDays, addWeeks, getDay } from 'date-fns';
+import { CalendarIcon } from 'lucide-react';
 import { parseLocalDate } from '@/utils/dateUtils';
 import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, DayFrequency, ProgramDay } from '@/types/workout';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 interface ProgramBuilderProps {
@@ -76,7 +78,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
   const updateFrequency = (index: number, freqType: string) => {
     let frequency: DayFrequency | undefined;
     if (freqType === 'weekly') frequency = { type: 'weekly', weekday: 1 };
-    else if (freqType === 'everyNDays') frequency = { type: 'everyNDays', interval: 2 };
+    else if (freqType === 'everyNDays') frequency = { type: 'everyNDays', interval: 2, startDate: format(new Date(), 'yyyy-MM-dd') };
     else if (freqType === 'monthly') frequency = { type: 'monthly', dayOfMonth: 1 };
     updateDay(index, { frequency });
   };
@@ -111,9 +113,12 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
           current = addDays(current, 7);
         }
       } else if (freq.type === 'everyNDays') {
-        let current = new Date(startDate);
+        const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(startDate);
+        let current = new Date(origin);
         while (current < endDate) {
-          events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
+          if (current >= startDate) {
+            events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
+          }
           current = addDays(current, freq.interval);
         }
       } else if (freq.type === 'monthly') {
@@ -268,18 +273,44 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
           )}
 
           {day.frequency?.type === 'everyNDays' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Every</span>
-              <select
-                value={day.frequency.interval}
-                onChange={e => updateFrequencyDetail(i, { type: 'everyNDays', interval: Number(e.target.value) })}
-                className="bg-secondary rounded-md px-2 py-1 text-xs text-foreground outline-none"
-              >
-                {[2, 3, 4, 5, 6, 7].map(n => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-              <span className="text-xs text-muted-foreground">days</span>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Every</span>
+                <select
+                  value={day.frequency.interval}
+                  onChange={e => updateFrequencyDetail(i, { type: 'everyNDays', interval: Number(e.target.value), startDate: day.frequency?.type === 'everyNDays' ? day.frequency.startDate : undefined })}
+                  className="bg-secondary rounded-md px-2 py-1 text-xs text-foreground outline-none"
+                >
+                  {[2, 3, 4, 5, 6, 7].map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">days</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Starting from</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5">
+                      <CalendarIcon className="h-3 w-3" />
+                      {day.frequency.startDate
+                        ? format(parseLocalDate(day.frequency.startDate), 'MMM d, yyyy')
+                        : 'Today'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={day.frequency.startDate ? parseLocalDate(day.frequency.startDate) : new Date()}
+                      onSelect={(d) => {
+                        if (d) updateFrequencyDetail(i, { type: 'everyNDays', interval: day.frequency?.type === 'everyNDays' ? day.frequency.interval : 2, startDate: format(d, 'yyyy-MM-dd') });
+                      }}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
           )}
 
