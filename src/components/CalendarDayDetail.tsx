@@ -118,7 +118,7 @@ export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
                       </span>
                       <span className="flex items-center gap-1">
                         <TrendingUp className="w-3 h-3" />
-                        {session.totalVolume.toLocaleString()} {weightUnit}
+                        {formatWeightString(session.totalVolume, weightUnit)}
                       </span>
                       <span>{session.totalSets} sets</span>
                     </div>
