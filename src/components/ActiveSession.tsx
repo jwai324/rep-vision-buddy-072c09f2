@@ -1398,87 +1398,141 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
         return (
           <React.Fragment key={setIdx}>
             <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
-              <div
-                className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
-                  set.completed ? 'bg-primary/10' : ''
-                }`}
-              >
-                <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
-                  {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
-                </span>
-                {previousSets[setIdx] ? (
+              {inputMode === 'cardio' ? (
+                <div className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                    {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
+                  </span>
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'time')}
+                    type="number"
+                    inputMode="decimal"
+                    value={set.time}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="min"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'rpe')}
+                    type="number"
+                    inputMode="decimal"
+                    min="1"
+                    max="10"
+                    step="0.5"
+                    value={set.rpe}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <span />
                   <button
-                    type="button"
-                    onClick={() => {
-                      const prev = previousSets[setIdx];
-                      if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
-                      onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
-                    }}
-                    className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
-                    title="Tap to copy to current set"
+                    onClick={() => onToggleComplete(blockIdx, setIdx)}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                      set.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                    }`}
                   >
-                    {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                    <Check className="w-4 h-4" />
                   </button>
-                ) : (
-                  <span className="text-xs text-muted-foreground text-center">—</span>
-                )}
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'weight')}
-                  type="number"
-                  inputMode="decimal"
-                  value={set.weight}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'reps')}
-                  type="number"
-                  inputMode="numeric"
-                  value={set.reps}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
-                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'rpe')}
-                  type="number"
-                  inputMode="decimal"
-                  min="1"
-                  max="10"
-                  step="0.5"
-                  value={set.rpe}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
-                  onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe')}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                />
-                <input
-                  id={buildInputId(blockIdx, setIdx, 'time')}
-                  type="text"
-                  inputMode="numeric"
-                  value={set.time}
-                  onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
-                  onFocus={e => e.target.value && e.target.select()}
-                  placeholder="—"
-                  className="w-full text-center text-[10px] bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary font-mono"
-                />
-                <button
-                  onClick={() => onToggleComplete(blockIdx, setIdx)}
-                  className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                    set.completed
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                </div>
+              ) : (
+                <div
+                  className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
+                    set.completed ? 'bg-primary/10' : ''
                   }`}
                 >
-                  <Check className="w-4 h-4" />
-                </button>
-              </div>
+                  <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
+                    {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
+                  </span>
+                  {previousSets[setIdx] ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const prev = previousSets[setIdx];
+                        if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
+                        onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
+                      }}
+                      className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
+                      title="Tap to copy to current set"
+                    >
+                      {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground text-center">—</span>
+                  )}
+                  {inputMode === 'band' ? (
+                    <select
+                      id={buildInputId(blockIdx, setIdx, 'weight')}
+                      value={set.weight}
+                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
+                    >
+                      <option value="">—</option>
+                      {BAND_LEVELS.map(b => (
+                        <option key={b.level} value={b.level.toString()}>{b.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id={buildInputId(blockIdx, setIdx, 'weight')}
+                      type="number"
+                      inputMode="decimal"
+                      value={set.weight}
+                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                      onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
+                      onFocus={e => e.target.value && e.target.select()}
+                      placeholder="—"
+                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    />
+                  )}
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'reps')}
+                    type="number"
+                    inputMode="numeric"
+                    value={set.reps}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'rpe')}
+                    type="number"
+                    inputMode="decimal"
+                    min="1"
+                    max="10"
+                    step="0.5"
+                    value={set.rpe}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe')}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'time')}
+                    type="text"
+                    inputMode="numeric"
+                    value={set.time}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-[10px] bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary font-mono"
+                  />
+                  <button
+                    onClick={() => onToggleComplete(blockIdx, setIdx)}
+                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                      set.completed
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </SwipeToDelete>
 
             {/* Drop rows */}
