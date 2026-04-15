@@ -1,33 +1,32 @@
 
 
-## Plan: Fix Superset Colors in Workout Detail View
+## Plan: Background-Safe Timers with Timezone-Aware Timestamps
 
 ### Problem
-Existing saved workouts don't have `supersetGroup` in their exercise JSON because they were logged before the persistence fix. The `SessionSummary` component only colors exercises when `supersetGroup` is present, so all exercises show plain `bg-card`.
+Rest countdown timers and the workout elapsed timer use `setInterval` to tick every second. Browsers throttle or pause intervals when the tab is hidden or the screen turns off, causing timers to freeze and display incorrect values on return.
 
-However, exercises that were supersetted have `type: "superset"` on their sets. We can use this to infer grouping for older data.
+Additionally, using `Date.now()` without care can introduce drift if the device clock changes (e.g., crossing a timezone boundary or DST transition mid-workout). We need monotonic-safe timestamps.
 
-### Fix
+### Changes
 
-**`src/components/SessionSummary.tsx`** — Add a fallback that infers superset groups from set types when `supersetGroup` is missing:
+**1. `src/hooks/useRestTimer.ts` — Timestamp-based rest countdown**
+- Store a `startedAt` ref (`Date.now()`) and `totalDuration` ref when `start()` is called.
+- On each interval tick, compute `remaining = Math.max(0, totalDuration - Math.floor((Date.now() - startedAt) / 1000))` instead of decrementing.
+- `extend()` adds to `totalDuration` without changing `startedAt`.
+- Add a `visibilitychange` listener that forces an immediate recalculation when the page returns to the foreground.
+- Use `performance.now()` for elapsed measurement where possible (monotonic, immune to clock/timezone changes), falling back to `Date.now()` delta for the timestamp anchor.
 
-Before rendering, scan the exercises array. If no exercise has `supersetGroup` but some have sets with `type === 'superset'`, assign consecutive superset-typed exercises the same group number:
+**2. `src/components/ActiveSession.tsx` — Workout elapsed timer**
+- The elapsed timer already uses `Date.now() - startTime.current`, which is timestamp-based.
+- Add a `visibilitychange` listener to force an immediate `setElapsed` recalculation on tab focus so the display updates instantly.
+- For the inline rest timer (lines ~264–311), apply the same timestamp approach: store `restStartedAt` and `restDuration`, compute remaining on each tick from the timestamp delta.
 
-```ts
-// Infer superset groups for legacy data
-const exercisesWithGroups = session.exercises.map(ex => {
-  if (ex.supersetGroup !== undefined) return ex;
-  const hasSuperset = ex.sets.some(s => s.type === 'superset');
-  return hasSuperset ? { ...ex, _inferredSuperset: true } : ex;
-});
-```
-
-More precisely: if no exercises already have `supersetGroup`, group all exercises whose sets are typed `"superset"` into a single group (group 1). This matches the existing behavior where superset-typed exercises are visually linked.
-
-### What changes
-- **`src/components/SessionSummary.tsx`** — Add pre-processing logic to infer `supersetGroup` from set types for backward compatibility
+**3. Timezone / clock-change safety**
+- Use `performance.now()` deltas (monotonic clock) for all in-session elapsed calculations. This is immune to timezone changes, DST transitions, and manual clock adjustments.
+- Only use `Date.now()` for the session's absolute start timestamp (stored for history/logging), not for computing durations.
+- On `visibilitychange`, recalculate using the same `performance.now()` anchor so returning from background after a timezone shift doesn't break anything.
 
 ### What stays the same
-- New workouts will continue to save `supersetGroup` correctly
-- All other components and data flow remain untouched
+- All timer UI components (`ExerciseRestTimer`, `RestTimerRing`, `MinimizedSessionBar`) — they receive `remaining`/`progress` as props, no changes needed.
+- Session caching, pause/resume logic, and all other features.
 
