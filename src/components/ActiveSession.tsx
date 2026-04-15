@@ -2,6 +2,9 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
+import { toKg, fromKg } from '@/utils/weightConversion';
+import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
@@ -162,7 +165,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       restSeconds: 90,
       sets: ex.sets.map(s => ({
         setNumber: s.setNumber,
-        weight: s.weight?.toString() ?? '',
+        weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
         reps: s.reps.toString(),
         completed: true,
         type: s.type,
@@ -170,7 +173,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         time: '',
       })),
     }));
-  }, [editSession]);
+  }, [editSession, weightUnit]);
 
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
     if (editBlocks) return editBlocks;
@@ -384,24 +387,35 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const toggleSetComplete = useCallback((blockIdx: number, setIdx: number) => {
     setBlocks(prev => {
       const block = prev[blockIdx];
-      const wasCompleted = block.sets[setIdx].completed;
+      const set = block.sets[setIdx];
+      const wasCompleted = set.completed;
+
+      // If trying to complete, validate first
+      if (!wasCompleted) {
+        const mode = getExerciseInputMode(block.exerciseId, customExercises);
+        const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
+        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, mode === 'cardio')) {
+          toast.error('Enter valid weight and reps before completing this set.');
+          return prev;
+        }
+      }
+
       const updated = prev.map((b, bi) => {
         if (bi !== blockIdx) return b;
         return {
           ...b,
-          sets: b.sets.map((set, si) => {
-            if (si !== setIdx) return set;
-            return { ...set, completed: !set.completed };
+          sets: b.sets.map((s, si) => {
+            if (si !== setIdx) return s;
+            return { ...s, completed: !s.completed };
           }),
         };
       });
-      // Auto-start rest timer when completing a set (not unchecking)
       if (!wasCompleted) {
         startTimer({ type: 'set', blockIdx, setIdx }, block.restSeconds);
       }
       return updated;
     });
-  }, [startTimer]);
+  }, [startTimer, weightUnit, customExercises]);
 
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
@@ -706,6 +720,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const finishWorkout = useCallback(() => {
+    // Guard: require at least one completed set
+    const hasCompletedSet = blocks.some(b => b.sets.some(s => s.completed));
+    if (!hasCompletedSet) {
+      toast.error('Complete at least one set or Discard this workout.');
+      return;
+    }
+
     const exerciseLogs: ExerciseLog[] = blocks
       .filter(b => b.sets.some(s => s.completed))
       .map(b => {
@@ -720,7 +741,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               setNumber: s.setNumber,
               type: s.type,
               reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
-              weight: mode === 'cardio' ? undefined : (s.weight ? parseFloat(s.weight) : undefined),
+              weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
               rpe: s.rpe ? parseFloat(s.rpe) : undefined,
               time: mode === 'cardio' ? (parseFloat(s.time || s.reps) || 0) : undefined,
             })),
@@ -737,12 +758,16 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     let duration: number;
 
     if (isEditMode && editSession) {
-      // Use edited date directly as yyyy-MM-dd (already in local format)
       sessionDate = editDate || editSession.date.substring(0, 10);
       duration = editDurationMin ? parseInt(editDurationMin) * 60 : editSession.duration;
     } else {
       sessionDate = format(new Date(), 'yyyy-MM-dd');
       duration = Math.floor((Date.now() - startTime.current) / 1000);
+    }
+
+    // Duration < 30s prompt
+    if (!isEditMode && duration < 30) {
+      if (!confirm('This workout was less than 30 seconds. Save anyway?')) return;
     }
 
     onFinish({
@@ -756,7 +781,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       averageRpe,
       note: workoutNote.trim() || undefined,
     });
-  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote]);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises]);
 
   if (showSupersetLinker) {
     return (
@@ -1221,7 +1246,7 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
 interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
-  weightUnit: string;
+  weightUnit: WeightUnit;
   blocks: ExerciseBlock[];
   stickyNote: string;
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
@@ -1446,13 +1471,13 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                       type="button"
                       onClick={() => {
                         const prev = previousSets[setIdx];
-                        if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(prev.weight));
+                        if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prev.weight, weightUnit))));
                         onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
                       }}
                       className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
                       title="Tap to copy to current set"
                     >
-                      {`${previousSets[setIdx].weight ?? '—'} × ${previousSets[setIdx].reps}`}
+                      {`${previousSets[setIdx].weight != null ? Math.round(fromKg(previousSets[setIdx].weight!, weightUnit)) : '—'} × ${previousSets[setIdx].reps}`}
                     </button>
                   ) : (
                     <span className="text-xs text-muted-foreground text-center">—</span>

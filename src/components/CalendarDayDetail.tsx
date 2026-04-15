@@ -1,6 +1,7 @@
 import React from 'react';
 import type { WorkoutSession, FutureWorkout, WorkoutTemplate } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
+import { formatWeightString } from '@/utils/weightConversion';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ArrowLeft, Dumbbell, Clock, TrendingUp, ChevronRight, Plus } from 'lucide-react';
@@ -118,7 +119,7 @@ export const CalendarDayDetail: React.FC<CalendarDayDetailProps> = ({
                       </span>
                       <span className="flex items-center gap-1">
                         <TrendingUp className="w-3 h-3" />
-                        {session.totalVolume.toLocaleString()} {weightUnit}
+                        {formatWeightString(session.totalVolume, weightUnit)}
                       </span>
                       <span>{session.totalSets} sets</span>
                     </div>
