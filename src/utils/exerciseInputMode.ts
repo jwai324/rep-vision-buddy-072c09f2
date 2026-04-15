@@ -44,7 +44,7 @@ export const BAND_LEVELS: BandLevel[] = [
 export function getBandLevelLabel(level: number, unit: WeightUnit = 'kg'): string {
   const band = BAND_LEVELS.find(b => b.level === level);
   if (!band) return `Level ${level}`;
-  const weight = unit === 'lb' ? band.weightLb : band.weightKg;
+  const weight = unit === 'lbs' ? band.weightLb : band.weightKg;
   return `${band.label} (~${weight} ${unit})`;
 }
 
