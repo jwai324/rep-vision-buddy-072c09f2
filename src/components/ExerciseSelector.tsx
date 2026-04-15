@@ -11,6 +11,18 @@ import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { CreateExerciseForm } from '@/components/CreateExerciseForm';
 import { searchExercises } from '@/utils/exerciseSearch';
 
+const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
+const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
+
+interface ExerciseSelectorProps {
+  onSelect: (id: ExerciseId) => void;
+  onSelectMultiple?: (ids: ExerciseId[]) => void;
+  onStartTemplate?: () => void;
+  multiSelect?: boolean;
+  browseMode?: boolean;
+  onExerciseTap?: (id: ExerciseId) => void;
+}
+
 export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
   const { exercises: customExercises, addExercise } = useCustomExercisesContext();
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -44,24 +56,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
     };
 
     const filteredByCategory = allExercises.filter(applyFilters);
-    if (debouncedSearch === '') return filteredByCategory;
-
-    const searchWords = normalize(debouncedSearch).split(/\s+/).filter(Boolean);
-
-    // Primary: normalized token matching
-    const primary = filteredByCategory.filter(ex => {
-      const target = normalize(`${ex.name} ${ex.primaryBodyPart} ${ex.equipment}`);
-      return searchWords.every(w => target.includes(w));
-    });
-
-    if (primary.length > 0) return primary;
-
-    // Fallback: fuzzy subsequence matching
-    const query = searchWords.join('');
-    return filteredByCategory.filter(ex => {
-      const target = normalize(`${ex.name} ${ex.primaryBodyPart} ${ex.equipment}`);
-      return fuzzyIncludes(target, query);
-    });
+    return searchExercises(filteredByCategory, debouncedSearch);
   }, [allExercises, debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
 
   const grouped = useMemo(() => {
