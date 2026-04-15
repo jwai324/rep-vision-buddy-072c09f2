@@ -1,33 +1,23 @@
 
 
-## Plan: Forgiving Exercise Search with Fuzzy Matching
+## Plan: Full-Width Progress Bar Rest Timer Between Sets
 
 ### Problem
-Searching "pull ups" fails to find "Pull-Ups" because the current filter uses exact `string.includes()` matching. Hyphens, special characters, and typos break discovery.
+The "between sets" rest timer currently renders as a small centered circular ring, leaving large blank horizontal spaces between set rows.
 
-### Solution: Normalized matching + lightweight fuzzy scoring
-
-Two layers applied in sequence:
-
-1. **Normalize & tokenize** — strip all non-alphanumeric characters from both query and exercise fields, split into words, require all words to appear in the combined target string. This handles "pull ups" → "Pull-Ups" and "t bar" → "T-Bar Row".
-
-2. **Fuzzy fallback** — if the normalized match returns zero results, fall back to fuzzy substring matching using a simple character-by-character containment check (no new dependencies). This catches minor typos like "pulups" or "benchpress".
+### Solution
+Replace the circular ring with a **full-width horizontal progress bar** that fills left-to-right across the entire row. The timer text, Skip and +30s buttons sit centered on top of the bar.
 
 ### Changes
 
-**`src/components/ExerciseSelector.tsx`** (~15 lines changed in the `filtered` useMemo)
+**`src/components/ExerciseRestTimer.tsx`** — `variant === 'between'` active state only (~20 lines)
 
-- Add a `normalize` helper: strips non-alphanumeric (except spaces), lowercases
-- Add a `fuzzyIncludes(target, query)` helper: checks if all characters of query appear in order within target (subsequence match)
-- Update `matchesSearch` logic:
-  - Primary: split normalized search into words, check all words appear in normalized `name + bodyPart + equipment`
-  - Fallback: if primary yields 0 results, re-filter using `fuzzyIncludes` against the same normalized target
-- No new dependencies required
+- Replace the SVG circle + centered layout (lines 74–104) with a full-width container:
+  - A background bar (`bg-secondary/30`, full width, rounded, ~8px tall)
+  - An inner fill bar (`bg-primary`) that grows from `width: 0%` to `width: 100%` based on `progress`, with a smooth CSS transition
+  - Timer text, "Rest" label, Skip and +30s buttons overlaid in a row on top
+- Inactive states (Start Rest button, recorded rest pill) stay the same — they're already compact
+- The recorded rest state could also become a subtle full-width bar showing the completed time, but keep it as-is for now
 
-**Examples that would work:**
-- "pull ups" → Pull-Ups ✓
-- "tbar" → T-Bar Row ✓  
-- "pulups" → Pull-Ups ✓ (fuzzy fallback)
-- "lat pull" → Lat Pull-Down ✓
-- "dmbell curl" → Dumbbell Curl ✓ (fuzzy fallback)
+**No other files change.**
 
