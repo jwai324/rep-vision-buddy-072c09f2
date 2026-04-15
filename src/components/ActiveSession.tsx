@@ -165,7 +165,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       restSeconds: 90,
       sets: ex.sets.map(s => ({
         setNumber: s.setNumber,
-        weight: s.weight?.toString() ?? '',
+        weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
         reps: s.reps.toString(),
         completed: true,
         type: s.type,
@@ -173,7 +173,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         time: '',
       })),
     }));
-  }, [editSession]);
+  }, [editSession, weightUnit]);
 
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
     if (editBlocks) return editBlocks;
