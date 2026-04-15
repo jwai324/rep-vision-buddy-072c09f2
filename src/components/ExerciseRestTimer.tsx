@@ -40,32 +40,30 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
   };
 
   if (variant === 'between') {
-    // Show recorded rest
+    // Show recorded rest — full-width subtle bar
     if (!isActive && recordedRest !== null) {
       return (
-        <div className="flex items-center justify-center py-2">
-          <button
-            onClick={() => onStart(timerId, defaultDuration)}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-xs text-primary font-mono tabular-nums"
-          >
-            <Timer className="w-3 h-3" />
+        <button
+          onClick={() => onStart(timerId, defaultDuration)}
+          className="relative w-full h-8 rounded-md overflow-hidden bg-primary/5 my-0.5 flex items-center justify-center gap-1.5 hover:bg-primary/10 transition-colors"
+        >
+          <Timer className="w-3 h-3 text-primary" />
+          <span className="text-xs text-primary font-mono font-bold tabular-nums">
             {formatRecorded(recordedRest)}
-          </button>
-        </div>
+          </span>
+        </button>
       );
     }
 
     if (!isActive) {
       return (
-        <div className="flex items-center justify-center py-2">
-          <button
-            onClick={() => onStart(timerId, defaultDuration)}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/40 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-          >
-            <Timer className="w-3 h-3" />
-            Start Rest
-          </button>
-        </div>
+        <button
+          onClick={() => onStart(timerId, defaultDuration)}
+          className="w-full h-8 rounded-md bg-secondary/20 my-0.5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors"
+        >
+          <Timer className="w-3 h-3" />
+          Start Rest
+        </button>
       );
     }
 
