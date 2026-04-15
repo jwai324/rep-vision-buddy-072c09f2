@@ -1,68 +1,33 @@
 
 
-## Plan: Exercise-Type-Aware Inputs + Negative Weight Support
+## Plan: Forgiving Exercise Search with Fuzzy Matching
 
-### Overview
-Replace the one-size-fits-all Weight/Reps/RPE columns with mode-specific inputs based on exercise type. Sports (basketball, soccer, etc.) are already categorized under `primaryBodyPart: 'Cardio'` in the database, so they'll automatically get the cardio treatment.
+### Problem
+Searching "pull ups" fails to find "Pull-Ups" because the current filter uses exact `string.includes()` matching. Hyphens, special characters, and typos break discovery.
 
-### Exercise Input Modes
+### Solution: Normalized matching + lightweight fuzzy scoring
 
-| Mode | Trigger | Columns |
-|------|---------|---------|
-| `weighted` | Default | Weight, Reps, RPE |
-| `cardio` | `primaryBodyPart === 'Cardio'` (includes all sports) | Time (min), RPE |
-| `band` | `equipment === 'Band'` | Band Level (select), Reps, RPE |
+Two layers applied in sequence:
 
-**Band Levels** (stored as numeric 1–6 in the `weight` field):
-1. Extra Light (~5 lb / ~2 kg)
-2. Light (~15 lb / ~7 kg)
-3. Medium (~25 lb / ~11 kg)
-4. Heavy (~40 lb / ~18 kg)
-5. Extra Heavy (~55 lb / ~25 kg)
-6. Monster (~80 lb / ~36 kg)
+1. **Normalize & tokenize** — strip all non-alphanumeric characters from both query and exercise fields, split into words, require all words to appear in the combined target string. This handles "pull ups" → "Pull-Ups" and "t bar" → "T-Bar Row".
 
-### Negative Weight for Assisted Exercises
-Weight inputs will explicitly allow negative numbers (e.g., -20 kg for assisted pull-ups). No `min` attribute restriction. This applies to all weighted exercises.
+2. **Fuzzy fallback** — if the normalized match returns zero results, fall back to fuzzy substring matching using a simple character-by-character containment check (no new dependencies). This catches minor typos like "pulups" or "benchpress".
 
 ### Changes
 
-**1. New file: `src/utils/exerciseInputMode.ts`**
-- `getExerciseInputMode(exerciseId)` returns `'weighted' | 'cardio' | 'band'`
-- `BAND_LEVELS` array with label + weight approximations per unit system
-- `formatBandLevel(level, unit)` helper for display
+**`src/components/ExerciseSelector.tsx`** (~15 lines changed in the `filtered` useMemo)
 
-**2. `src/types/workout.ts`**
-- Add `time?: number` to `WorkoutSet` (for persisted cardio data)
-- Add `bandLevel?: number` as alias documentation (stored in `weight`)
+- Add a `normalize` helper: strips non-alphanumeric (except spaces), lowercases
+- Add a `fuzzyIncludes(target, query)` helper: checks if all characters of query appear in order within target (subsequence match)
+- Update `matchesSearch` logic:
+  - Primary: split normalized search into words, check all words appear in normalized `name + bodyPart + equipment`
+  - Fallback: if primary yields 0 results, re-filter using `fuzzyIncludes` against the same normalized target
+- No new dependencies required
 
-**3. `src/components/ActiveSession.tsx`**
-- Import `getExerciseInputMode` and `BAND_LEVELS`
-- Per exercise block, determine mode from `block.exerciseId`
-- **Cardio**: replace Weight+Reps columns with single Time (min) input; hide weight cascade logic
-- **Band**: replace weight `<input>` with a `<select>` dropdown showing band level labels
-- **Weighted**: unchanged, but ensure no `min` attribute blocks negative values
-- Update `finishWorkout` to map cardio time and band level into `WorkoutSet`
-
-**4. `src/components/TemplateBuilder.tsx`**
-- Per block, detect mode and swap column headers/inputs accordingly
-- Cardio: show "Target Time (min)" instead of weight/reps
-- Band: show band level selector instead of weight
-
-**5. `src/components/SessionSummary.tsx`**
-- Format exercise summaries per mode (e.g., "30 min" for cardio, "Medium band" for bands)
-
-**6. `src/components/WorkoutLog.tsx`**
-- Mode-aware set display in history view
-
-**7. `src/components/ActivityScreen.tsx`**
-- Format history list items per mode
-
-**8. `src/components/FutureWorkoutDetail.tsx`**
-- Show appropriate column labels when previewing scheduled workouts
-
-### What stays the same
-- Exercise database structure (sports already in Cardio category)
-- Database schema (band level reuses weight field, time field added to WorkoutSet)
-- RPE column shown for all modes
-- All existing weighted exercise behavior
+**Examples that would work:**
+- "pull ups" → Pull-Ups ✓
+- "tbar" → T-Bar Row ✓  
+- "pulups" → Pull-Ups ✓ (fuzzy fallback)
+- "lat pull" → Lat Pull-Down ✓
+- "dmbell curl" → Dumbbell Curl ✓ (fuzzy fallback)
 
