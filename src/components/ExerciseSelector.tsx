@@ -20,6 +20,19 @@ interface ExerciseSelectorProps {
 }
 
 const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
+
+const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '');
+
+/** Subsequence match: every char in query appears in order within target */
+const fuzzyIncludes = (target: string, query: string): boolean => {
+  let ti = 0;
+  for (let qi = 0; qi < query.length; qi++) {
+    const idx = target.indexOf(query[qi], ti);
+    if (idx === -1) return false;
+    ti = idx + 1;
+  }
+  return true;
+};
 const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
 
 export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
@@ -46,16 +59,32 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
   const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
 
   const filtered = useMemo(() => {
-    return allExercises.filter(ex => {
-      const matchesSearch = debouncedSearch === '' ||
-        ex.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        ex.primaryBodyPart.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        ex.equipment.toLowerCase().includes(debouncedSearch.toLowerCase());
+    const applyFilters = (ex: Exercise) => {
       const matchesBodyPart = bodyPartFilter === 'All' || ex.primaryBodyPart === bodyPartFilter;
       const matchesEquipment = equipmentFilter === 'All' || ex.equipment === equipmentFilter;
       const matchesDifficulty = difficultyFilter === 'All' || ex.difficulty === difficultyFilter;
       const matchesType = typeFilter === 'All' || ex.exerciseType === typeFilter;
-      return matchesSearch && matchesBodyPart && matchesEquipment && matchesDifficulty && matchesType;
+      return matchesBodyPart && matchesEquipment && matchesDifficulty && matchesType;
+    };
+
+    const filteredByCategory = allExercises.filter(applyFilters);
+    if (debouncedSearch === '') return filteredByCategory;
+
+    const searchWords = normalize(debouncedSearch).split(/\s+/).filter(Boolean);
+
+    // Primary: normalized token matching
+    const primary = filteredByCategory.filter(ex => {
+      const target = normalize(`${ex.name} ${ex.primaryBodyPart} ${ex.equipment}`);
+      return searchWords.every(w => target.includes(w));
+    });
+
+    if (primary.length > 0) return primary;
+
+    // Fallback: fuzzy subsequence matching
+    const query = searchWords.join('');
+    return filteredByCategory.filter(ex => {
+      const target = normalize(`${ex.name} ${ex.primaryBodyPart} ${ex.equipment}`);
+      return fuzzyIncludes(target, query);
     });
   }, [allExercises, debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
 
