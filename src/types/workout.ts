@@ -56,7 +56,7 @@ export interface WorkoutTemplate {
 export type DayFrequency =
   | { type: 'weekly'; weekday: number }           // 0=Sun,...6=Sat
   | { type: 'monthly'; dayOfMonth: number }       // 1-31
-  | { type: 'everyNDays'; interval: number };     // 2,3,4...
+  | { type: 'everyNDays'; interval: number; startDate?: string };
 
 export interface ProgramDay {
   label: string;
