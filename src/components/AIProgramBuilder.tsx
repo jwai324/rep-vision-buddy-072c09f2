@@ -202,6 +202,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     else if (step === 'experience') updated.experience = value;
     else if (step === 'daysPerWeek') updated.daysPerWeek = parseInt(value);
     else if (step === 'sessionDuration') updated.sessionDuration = value;
+    else if (step === 'programDuration') updated.programDuration = value;
     else if (step === 'splitPreference') updated.splitPreference = value;
     advanceToNext(updated);
   };
@@ -220,6 +221,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     else if (step === 'experience') updated.experience = value;
     else if (step === 'daysPerWeek') updated.daysPerWeek = parseInt(value) || 4;
     else if (step === 'sessionDuration') updated.sessionDuration = value;
+    else if (step === 'programDuration') updated.programDuration = value;
     else if (step === 'splitPreference') updated.splitPreference = value;
     advanceToNext(updated);
   };
@@ -275,6 +277,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     { key: 'experience', label: 'Experience', value: inputs.experience },
     { key: 'daysPerWeek', label: 'Days/Week', value: String(inputs.daysPerWeek) },
     { key: 'sessionDuration', label: 'Session Duration', value: inputs.sessionDuration },
+    { key: 'programDuration', label: 'Program Duration', value: inputs.programDuration },
     { key: 'equipment', label: 'Equipment', value: inputs.equipment.join(', ') },
     { key: 'injuries', label: 'Injuries', value: inputs.injuries || 'None' },
     { key: 'splitPreference', label: 'Split', value: inputs.splitPreference },
