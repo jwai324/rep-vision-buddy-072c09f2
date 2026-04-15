@@ -387,24 +387,35 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const toggleSetComplete = useCallback((blockIdx: number, setIdx: number) => {
     setBlocks(prev => {
       const block = prev[blockIdx];
-      const wasCompleted = block.sets[setIdx].completed;
+      const set = block.sets[setIdx];
+      const wasCompleted = set.completed;
+
+      // If trying to complete, validate first
+      if (!wasCompleted) {
+        const mode = getExerciseInputMode(block.exerciseId, customExercises);
+        const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
+        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, mode === 'cardio')) {
+          toast.error('Enter valid weight and reps before completing this set.');
+          return prev;
+        }
+      }
+
       const updated = prev.map((b, bi) => {
         if (bi !== blockIdx) return b;
         return {
           ...b,
-          sets: b.sets.map((set, si) => {
-            if (si !== setIdx) return set;
-            return { ...set, completed: !set.completed };
+          sets: b.sets.map((s, si) => {
+            if (si !== setIdx) return s;
+            return { ...s, completed: !s.completed };
           }),
         };
       });
-      // Auto-start rest timer when completing a set (not unchecking)
       if (!wasCompleted) {
         startTimer({ type: 'set', blockIdx, setIdx }, block.restSeconds);
       }
       return updated;
     });
-  }, [startTimer]);
+  }, [startTimer, weightUnit, customExercises]);
 
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
