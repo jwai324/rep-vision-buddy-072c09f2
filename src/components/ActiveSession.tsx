@@ -1320,6 +1320,49 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
       )}
 
       {/* Table Header */}
+      {inputMode === 'cardio' ? (
+        <div className="grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+          <span>Set</span>
+          <span className="text-center">Time (min)</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
+              <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
+            </PopoverContent>
+          </Popover>
+          <span className="text-center">
+            <Timer className="w-3 h-3 mx-auto" />
+          </span>
+          <span className="text-center">
+            <Check className="w-3 h-3 mx-auto" />
+          </span>
+        </div>
+      ) : inputMode === 'band' ? (
+        <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">Band</span>
+          <span className="text-center">Reps</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
+              <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
+            </PopoverContent>
+          </Popover>
+          <span className="text-center">
+            <Timer className="w-3 h-3 mx-auto" />
+          </span>
+          <span className="text-center">
+            <Check className="w-3 h-3 mx-auto" />
+          </span>
+        </div>
+      ) : (
       <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
         <span>Set</span>
         <span className="text-center">Previous</span>
