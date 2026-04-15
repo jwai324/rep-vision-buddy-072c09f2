@@ -9,10 +9,14 @@ interface ConsistencyTabProps {
 export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
   const { grid, maxVolume, currentStreak, longestStreak } = useMemo(() => {
     const volumeMap = new Map<string, number>();
+    const workoutDates = new Set<string>();
+
     for (const s of history) {
-      if (s.isRestDay) continue;
       const key = s.date.substring(0, 10);
-      volumeMap.set(key, (volumeMap.get(key) || 0) + s.totalVolume);
+      workoutDates.add(key);
+      if (!s.isRestDay) {
+        volumeMap.set(key, (volumeMap.get(key) || 0) + s.totalVolume);
+      }
     }
 
     const maxVol = Math.max(...Array.from(volumeMap.values()), 1);
@@ -36,18 +40,16 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
     }
     if (week.length > 0) weeks.push(week);
 
-    // Calculate streaks
+    // Calculate current streak (matching dashboard logic: skip today if empty)
     let current = 0;
-    let longest = 0;
-    let tempStreak = 0;
-    const allDates = Array.from(volumeMap.keys()).sort();
-    // Check consecutive days from today backwards
-    const todayStr = format(today, 'yyyy-MM-dd');
     let checkDate = today;
-    current = 0;
+    const todayStr = format(today, 'yyyy-MM-dd');
+    if (!workoutDates.has(todayStr)) {
+      checkDate = subDays(today, 1);
+    }
     for (let i = 0; i < 365; i++) {
       const key = format(checkDate, 'yyyy-MM-dd');
-      if (volumeMap.has(key)) {
+      if (workoutDates.has(key)) {
         current++;
         checkDate = subDays(checkDate, 1);
       } else {
@@ -55,9 +57,11 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
       }
     }
 
-    // Longest streak
+    // Longest streak (using all session dates including rest days)
+    let longest = 0;
+    const allDates = Array.from(workoutDates).sort();
     if (allDates.length > 0) {
-      tempStreak = 1;
+      let tempStreak = 1;
       longest = 1;
       for (let i = 1; i < allDates.length; i++) {
         const prev = new Date(allDates[i - 1] + 'T00:00:00');
