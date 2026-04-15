@@ -6,6 +6,7 @@ import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import { addDays, addWeeks, format, getDay, isSameDay, startOfWeek } from 'date-fns';
+import { parseLocalDate } from '@/utils/dateUtils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
@@ -35,11 +36,7 @@ function getStreak(sessions: WorkoutSession[]): number {
 
   // Build a set of workout date strings for fast lookup
   const workoutDates = new Set(
-    sessions.map(s => {
-      try {
-        return s.date.length >= 10 ? s.date.substring(0, 10) : format(new Date(s.date + 'T00:00:00'), 'yyyy-MM-dd');
-      } catch { return s.date?.substring(0, 10) ?? ''; }
-    })
+    sessions.map(s => format(parseLocalDate(s.date), 'yyyy-MM-dd'))
   );
 
   for (let i = 0; i < 365; i++) {
@@ -264,11 +261,7 @@ const WeeklyProgramCalendar: React.FC<{
 
           // Check completed sessions for this day
           const completedSessions = history.filter(s => {
-            try {
-              const d = new Date(s.date + 'T00:00:00');
-              if (isNaN(d.getTime())) return s.date?.substring(0, 10) === dayStr;
-              return format(d, 'yyyy-MM-dd') === dayStr;
-            } catch { return false; }
+            return format(parseLocalDate(s.date), 'yyyy-MM-dd') === dayStr;
           });
           const hasCompletedWorkout = completedSessions.some(s => !s.isRestDay);
           const hasCompletedRest = completedSessions.some(s => s.isRestDay);

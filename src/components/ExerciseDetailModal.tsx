@@ -6,6 +6,7 @@ import { ExerciseAnimation } from '@/components/ExerciseAnimation';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { parseLocalDate } from '@/utils/dateUtils';
 
 interface ExerciseDetailModalProps {
   exerciseId: ExerciseId | null;
@@ -22,7 +23,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
     return history
       .filter(s => s.exercises.some(e => e.exerciseId === exerciseId))
       .map(s => ({
-        date: new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        date: parseLocalDate(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         rawDate: s.date,
         exerciseLog: s.exercises.find(e => e.exerciseId === exerciseId)!,
       }))
