@@ -52,43 +52,43 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
     return allRestDayExercises.filter(ex => ex.name.toLowerCase().includes(q));
   }, [search, allRestDayExercises]);
 
+  const updateActivities = (newActivities: RecoveryActivity[]) => {
+    if (useLocalState) {
+      setLocalActivities(newActivities);
+    } else {
+      onUpdateFutureWorkout({ ...futureWorkout, recoveryActivities: newActivities });
+    }
+  };
+
   const addActivity = (exerciseId: string) => {
     const activity: RecoveryActivity = {
       id: crypto.randomUUID(),
       activityId: exerciseId,
     };
-    const updated: FutureWorkout = {
-      ...futureWorkout,
-      recoveryActivities: [...activities, activity],
-    };
-    onUpdateFutureWorkout(updated);
+    updateActivities([...activities, activity]);
     setShowPicker(false);
     setSearch('');
   };
 
   const removeActivity = (activityInstanceId: string) => {
-    const updated: FutureWorkout = {
-      ...futureWorkout,
-      recoveryActivities: activities.filter(a => a.id !== activityInstanceId),
-    };
-    onUpdateFutureWorkout(updated);
+    updateActivities(activities.filter(a => a.id !== activityInstanceId));
   };
 
   const toggleActivityComplete = (activityInstanceId: string) => {
-    const updated: FutureWorkout = {
-      ...futureWorkout,
-      recoveryActivities: activities.map(a =>
-        a.id === activityInstanceId ? { ...a, completed: !a.completed } : a
-      ),
-    };
-    onUpdateFutureWorkout(updated);
+    updateActivities(activities.map(a =>
+      a.id === activityInstanceId ? { ...a, completed: !a.completed } : a
+    ));
   };
 
   const allCompleted = activities.length > 0 && activities.every(a => a.completed);
 
+  const currentFw: FutureWorkout = useLocalState
+    ? { ...futureWorkout, recoveryActivities: localActivities }
+    : futureWorkout;
+
   const handleSaveRestDay = () => {
     if (onSaveRestDay) {
-      onSaveRestDay(futureWorkout);
+      onSaveRestDay(currentFw);
     }
   };
 
