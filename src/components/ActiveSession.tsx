@@ -1246,7 +1246,7 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
 interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
-  weightUnit: string;
+  weightUnit: WeightUnit;
   blocks: ExerciseBlock[];
   stickyNote: string;
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
