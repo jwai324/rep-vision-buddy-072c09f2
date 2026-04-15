@@ -122,6 +122,17 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onGoToSettings={() => setScreen({ type: 'settings' })}
             onGoToAnalytics={() => setScreen({ type: 'analytics' })}
             onBuildAIProgram={() => setScreen({ type: 'aiProgramBuilder' })}
+            onAddRestDay={() => {
+              const today = format(new Date(), 'yyyy-MM-dd');
+              const restFw: FutureWorkout = {
+                id: crypto.randomUUID(),
+                programId: 'manual',
+                date: today,
+                templateId: 'rest',
+                label: 'Rest Day',
+              };
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw });
+            }}
             onDayClick={(date) => {
               const dateStr = format(date, 'yyyy-MM-dd');
               const isPast = dateStr < format(new Date(), 'yyyy-MM-dd');

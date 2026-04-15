@@ -24,6 +24,7 @@ interface DashboardProps {
   onGoToSettings: () => void;
   onGoToAnalytics: () => void;
   onBuildAIProgram: () => void;
+  onAddRestDay: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
 }
 
@@ -344,7 +345,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick
 }) => {
   const streak = getStreak(history);
   const lastSession = history[0];
@@ -435,6 +436,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Quick actions */}
       <Button variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">
         🎯 Start Workout
+      </Button>
+
+      <Button variant="outline" size="sm" onClick={onAddRestDay} className="w-full text-muted-foreground">
+        😴 Add Rest Day
       </Button>
 
       <div className="grid grid-cols-4 gap-3">
