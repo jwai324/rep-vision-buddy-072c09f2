@@ -35,7 +35,11 @@ function getStreak(sessions: WorkoutSession[]): number {
 
   // Build a set of workout date strings for fast lookup
   const workoutDates = new Set(
-    sessions.map(s => s.date.length >= 10 ? s.date.substring(0, 10) : format(new Date(s.date + 'T00:00:00'), 'yyyy-MM-dd'))
+    sessions.map(s => {
+      try {
+        return s.date.length >= 10 ? s.date.substring(0, 10) : format(new Date(s.date + 'T00:00:00'), 'yyyy-MM-dd');
+      } catch { return s.date?.substring(0, 10) ?? ''; }
+    })
   );
 
   for (let i = 0; i < 365; i++) {
