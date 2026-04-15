@@ -126,7 +126,7 @@ describe('Duplicate exercise name detection', () => {
   });
 
   it('"Dumbell Curl" (typo) is found by fuzzy search', () => {
-    const results = searchExercises('Dumbell Curl', EXERCISE_DATABASE);
+    const results = searchExercises(EXERCISE_DATABASE, 'Dumbell Curl');
     const hasCurl = results.some(e => e.name.toLowerCase().includes('dumbbell curl'));
     expect(hasCurl).toBe(true);
   });
@@ -136,20 +136,20 @@ describe('Duplicate exercise name detection', () => {
 
 describe('Search ranking consistency', () => {
   it('exact name match ranks higher than partial match', () => {
-    const results = searchExercises('Bench Press', EXERCISE_DATABASE);
+    const results = searchExercises(EXERCISE_DATABASE, 'Bench Press');
     expect(results.length).toBeGreaterThan(0);
     // First result should be the exact "Bench Press" or "Barbell Bench Press"
     expect(results[0].name.toLowerCase()).toContain('bench press');
   });
 
   it('"db curl" alias returns dumbbell exercises', () => {
-    const results = searchExercises('db curl', EXERCISE_DATABASE);
+    const results = searchExercises(EXERCISE_DATABASE, 'db curl');
     expect(results.length).toBeGreaterThan(0);
     expect(results.some(e => e.name.toLowerCase().includes('dumbbell'))).toBe(true);
   });
 
   it('"bicepcurl" (no space) finds bicep curl exercises', () => {
-    const results = searchExercises('bicepcurl', EXERCISE_DATABASE);
+    const results = searchExercises(EXERCISE_DATABASE, 'bicepcurl');
     expect(results.length).toBeGreaterThan(0);
   });
 });
