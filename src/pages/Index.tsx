@@ -243,7 +243,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             futureWorkout={fw}
             template={template}
             onPerformWorkout={startFromTemplate}
-            onUpdateFutureWorkout={storage.updateFutureWorkout}
+            onUpdateFutureWorkout={fw.programId !== 'manual' ? storage.updateFutureWorkout : undefined}
             onSaveRestDay={(restFw) => {
               const session: WorkoutSession = {
                 id: crypto.randomUUID(),
