@@ -105,7 +105,7 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
           Training Activity (52 weeks)
         </p>
-        <div className="flex gap-0.5 overflow-x-auto pb-2">
+        <div className="flex gap-0.5 overflow-x-auto scrollbar-hide pb-2">
           <div className="flex flex-col gap-0.5 mr-1 pt-0">
             {dayLabels.map((label, i) => (
               <div key={i} className="h-[11px] text-[8px] text-muted-foreground flex items-center justify-end pr-0.5 w-3">
