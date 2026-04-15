@@ -35,7 +35,7 @@ function getStreak(sessions: WorkoutSession[]): number {
 
   // Build a set of workout date strings for fast lookup
   const workoutDates = new Set(
-    sessions.map(s => s.date.length >= 10 ? s.date.substring(0, 10) : format(new Date(s.date), 'yyyy-MM-dd'))
+    sessions.map(s => s.date.length >= 10 ? s.date.substring(0, 10) : format(new Date(s.date + 'T00:00:00'), 'yyyy-MM-dd'))
   );
 
   for (let i = 0; i < 365; i++) {
@@ -260,7 +260,7 @@ const WeeklyProgramCalendar: React.FC<{
 
           // Check completed sessions for this day
           const completedSessions = history.filter(s => {
-            const sessionDate = format(new Date(s.date), 'yyyy-MM-dd');
+            const sessionDate = format(new Date(s.date + 'T00:00:00'), 'yyyy-MM-dd');
             return sessionDate === dayStr;
           });
           const hasCompletedWorkout = completedSessions.some(s => !s.isRestDay);

@@ -64,7 +64,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ sessions, onSele
                 <div className="flex items-center gap-2">
                   {s.isRestDay && <span className="text-base">😴</span>}
                   <span className="text-sm font-semibold text-foreground">
-                    {new Date(s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    {new Date(s.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                   </span>
                   {s.isRestDay && (
                     <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
