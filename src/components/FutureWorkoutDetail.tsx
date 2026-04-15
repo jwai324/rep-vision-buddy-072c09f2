@@ -21,7 +21,7 @@ interface FutureWorkoutDetailProps {
   futureWorkout: FutureWorkout;
   template: WorkoutTemplate | null;
   onPerformWorkout: (template: WorkoutTemplate) => void;
-  onUpdateFutureWorkout: (fw: FutureWorkout) => void;
+  onUpdateFutureWorkout?: (fw: FutureWorkout) => void;
   onSaveRestDay?: (fw: FutureWorkout) => void;
   onBack: () => void;
 }
@@ -37,7 +37,9 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
   const { exercises: customExercises } = useCustomExercisesContext();
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
-  const activities = futureWorkout.recoveryActivities ?? [];
+  const [localActivities, setLocalActivities] = useState<RecoveryActivity[]>(futureWorkout.recoveryActivities ?? []);
+  const useLocalState = !onUpdateFutureWorkout;
+  const activities = useLocalState ? localActivities : (futureWorkout.recoveryActivities ?? []);
 
   const allRestDayExercises = useMemo(() => {
     const customRecovery = customExercises.filter(ex => ex.isRecovery);
