@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
+import { parseLocalDate } from '@/utils/dateUtils';
 
 function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
   const workouts: Omit<FutureWorkout, 'id'>[] = [];
@@ -36,9 +37,12 @@ function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'i
         current = addDays(current, 7);
       }
     } else if (freq.type === 'everyNDays') {
-      let current = new Date(start);
+      const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(start);
+      let current = new Date(origin);
       while (current < endDate) {
-        addEvent(current);
+        if (current >= start) {
+          addEvent(current);
+        }
         current = addDays(current, freq.interval);
       }
     } else if (freq.type === 'monthly') {
