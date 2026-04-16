@@ -228,6 +228,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
   const [timerPaused, setTimerPaused] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const pausedElapsed = useRef<number | null>(null);
@@ -1077,6 +1078,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                       onStartTimer={startTimer}
                       onSkipTimer={skipTimer}
                       onExtendTimer={extendTimer}
+                      onTitleTap={() => setDetailExerciseId(block.exerciseId)}
                     />
                   </div>
                 </SortableExerciseItem>
@@ -1194,6 +1196,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ExerciseDetailModal
+        exerciseId={detailExerciseId}
+        onClose={() => setDetailExerciseId(null)}
+        history={history}
+        weightUnit={weightUnit}
+      />
     </div>
   );
 };
@@ -1290,6 +1299,7 @@ interface ExerciseTableProps {
   onStartTimer: (id: TimerId, duration: number) => void;
   onSkipTimer: () => void;
   onExtendTimer: (delta?: number) => void;
+  onTitleTap?: () => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -1304,12 +1314,18 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap }) => {
   return (
     <div>
       {/* Exercise Header */}
       <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onTitleTap?.(); }}
+          className="text-sm font-semibold text-primary text-left hover:underline focus:outline-none focus:underline"
+        >
+          {block.exerciseName}
+        </button>
         <Popover>
           <PopoverTrigger asChild>
             <button className="text-muted-foreground hover:text-foreground p-1">
