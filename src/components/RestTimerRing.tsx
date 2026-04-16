@@ -41,7 +41,10 @@ export const RestTimerRing: React.FC<RestTimerRingProps> = ({ remaining, progres
         <button onClick={onSkip} className="px-4 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
           Skip
         </button>
-        <button onClick={onExtend} className="px-4 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
+        <button onClick={() => onExtend(-30)} className="px-4 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
+          -30s
+        </button>
+        <button onClick={() => onExtend(30)} className="px-4 py-1.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
           +30s
         </button>
       </div>
