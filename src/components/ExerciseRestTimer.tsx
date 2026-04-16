@@ -21,7 +21,7 @@ interface ExerciseRestTimerProps {
   recordedRest: number | null;
   onStart: (id: TimerId, duration: number) => void;
   onSkip: () => void;
-  onExtend: () => void;
+  onExtend: (delta?: number) => void;
 }
 
 export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
