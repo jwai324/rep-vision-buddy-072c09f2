@@ -79,6 +79,7 @@ export function getSessionCache(): ActiveSessionCache | null {
 interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
+  templateName?: string;
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
   defaultDropSetsEnabled?: boolean;
@@ -143,7 +144,7 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
   const isEditMode = !!editSession;
   const { exercises: customExercises } = useCustomExercisesContext();
   const exerciseLookup = useMemo(() => {
@@ -199,7 +200,20 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       };
     });
   });
-  const [workoutName, setWorkoutName] = useState(cachedSession?.workoutName ?? 'Workout');
+  const [workoutName, setWorkoutName] = useState(() => {
+    if (cachedSession?.workoutName) return cachedSession.workoutName;
+    if (editSession) return 'Workout';
+    if (templateName && templateExercises && templateExercises.length > 0) {
+      const tplIds = templateExercises.map(e => e.exerciseId).join('|');
+      let count = 0;
+      for (const s of history) {
+        const ids = s.exercises.map(e => e.exerciseId).join('|');
+        if (ids === tplIds) count++;
+      }
+      return `${templateName} ${count + 1}`;
+    }
+    return 'Workout';
+  });
   const [workoutNote, setWorkoutNote] = useState(cachedSession?.workoutNote ?? editSession?.note ?? '');
   const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [location, setLocation] = useState(cachedSession?.location ?? DEFAULT_LOCATION);

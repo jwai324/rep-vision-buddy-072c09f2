@@ -31,7 +31,7 @@ type Screen =
   | { type: 'dashboard' }
   | { type: 'startWorkout' }
   | { type: 'browseExercises' }
-  | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises'] }
+  | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises']; templateName?: string }
   | { type: 'editSession'; session: WorkoutSession }
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession; from?: 'activity' }
@@ -101,6 +101,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       type: 'activeSession',
       exercises: template.exercises.map(e => e.exerciseId),
       templateExercises: template.exercises,
+      templateName: template.name,
     });
   };
 
@@ -170,6 +171,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           <ActiveSession
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
+            templateName={screen.templateName}
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
