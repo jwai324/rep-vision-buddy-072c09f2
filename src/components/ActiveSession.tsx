@@ -54,6 +54,17 @@ function saveLocations(locations: string[]) {
   localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locations));
 }
 
+export type TimerStatus = 'running' | 'paused' | 'completed';
+
+export interface PersistedTimer {
+  id: TimerId;
+  startedAtEpoch: number;       // Date.now() when (re)started; 0 when paused
+  duration: number;             // seconds remaining when this run started
+  originalDuration: number;     // for progress ring math / extend baseline
+  status: TimerStatus;
+  elapsedAtPause?: number;      // seconds elapsed before pause
+}
+
 export interface ActiveSessionCache {
   blocks: ExerciseBlock[];
   workoutName: string;
@@ -61,6 +72,17 @@ export interface ActiveSessionCache {
   elapsedAtCache: number;
   location?: string;
   workoutNote?: string;
+  activeTimer?: PersistedTimer | null;
+  restRecords?: Record<string, number>;
+}
+
+// Safe localStorage write — never throws
+function safeWriteCache(cache: ActiveSessionCache) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('[ActiveSession] Failed to write cache:', e);
+  }
 }
 
 export function clearSessionCache() {
@@ -250,24 +272,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return Math.floor(editSession.duration / 60).toString();
   });
 
-  // Centralized single-timer state
-  const [activeTimer, setActiveTimer] = useState<{ id: TimerId; remaining: number; duration: number; startedAt: number } | null>(null);
-  const [restRecords, setRestRecords] = useState<Record<string, number>>({});
-  const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-
   // Cache session state to localStorage on changes (skip in edit mode)
-  useEffect(() => {
-    if (isEditMode) return;
-    const cache: ActiveSessionCache = {
-      blocks,
-      workoutName,
-      startTimestamp: startTime.current,
-      elapsedAtCache: elapsedSeconds,
-      location,
-      workoutNote: workoutNote || undefined,
-    };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote]);
+  // NOTE: this effect is updated below to also persist activeTimer + restRecords
+  // (see the dedicated cache-write effect after the timer state declarations).
 
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
@@ -281,57 +288,281 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setShowLocationDropdown(false);
   }, [newLocationInput, locations, location]);
 
+  // ============= Persistent timestamp-based rest timer =============
+  // Source of truth = persisted record. setInterval below only triggers re-render.
+  const [activeTimer, setActiveTimer] = useState<PersistedTimer | null>(
+    cachedSession?.activeTimer ?? null
+  );
+  const [restRecords, setRestRecords] = useState<Record<string, number>>(
+    cachedSession?.restRecords ?? {}
+  );
+  const [, setTimerTick] = useState(0); // forces re-render every ~1s while running
+  const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notificationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completedFiredFor = useRef<Set<string>>(new Set());
+
+  // Cache full session state (including timer) to localStorage on changes (skip in edit mode)
+  useEffect(() => {
+    if (isEditMode) return;
+    safeWriteCache({
+      blocks,
+      workoutName,
+      startTimestamp: startTime.current,
+      elapsedAtCache: elapsedSeconds,
+      location,
+      workoutNote: workoutNote || undefined,
+      activeTimer,
+      restRecords,
+    });
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords]);
+
+  // Derive remaining seconds from the persisted record (clamped to originalDuration in case of clock changes)
+  const computeRemaining = useCallback((t: PersistedTimer | null): number => {
+    if (!t) return 0;
+    if (t.status === 'paused') {
+      return Math.max(0, t.originalDuration - (t.elapsedAtPause ?? 0));
+    }
+    if (t.status !== 'running' || !t.startedAtEpoch) return 0;
+    const target = t.startedAtEpoch + t.duration * 1000;
+    const remainingMs = target - Date.now();
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    return Math.max(0, Math.min(t.originalDuration, remainingSec));
+  }, []);
+
+  // ---- Web Notification helpers (graceful no-op when unavailable) ----
+  // For true app-killed delivery on native, @capacitor/local-notifications is required.
+  const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
+
+  const ensureNotificationPermission = useCallback(async () => {
+    if (!notificationsSupported) return false;
+    try {
+      if (Notification.permission === 'granted') return true;
+      if (Notification.permission === 'denied') return false;
+      const res = await Notification.requestPermission();
+      return res === 'granted';
+    } catch {
+      return false;
+    }
+  }, [notificationsSupported]);
+
+  const cancelNotification = useCallback(() => {
+    if (notificationTimeout.current) {
+      clearTimeout(notificationTimeout.current);
+      notificationTimeout.current = null;
+    }
+  }, []);
+
+  const fireRestCompleteNotification = useCallback((late: boolean = false) => {
+    try {
+      if (notificationsSupported && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+        new Notification('Rest complete', {
+          body: late ? 'Your rest finished while you were away.' : 'Time for your next set.',
+          tag: 'rest-timer',
+          silent: false,
+        });
+      }
+    } catch (e) {
+      console.warn('[ActiveSession] Notification failed:', e);
+    }
+    toast.success(late ? 'Rest finished' : 'Rest complete', {
+      description: late ? 'Your rest finished while you were away.' : 'Time for your next set.',
+    });
+  }, [notificationsSupported]);
+
+  const scheduleNotification = useCallback((msUntil: number) => {
+    cancelNotification();
+    if (msUntil <= 0) return;
+    notificationTimeout.current = setTimeout(() => {
+      fireRestCompleteNotification(false);
+    }, msUntil);
+  }, [cancelNotification, fireRestCompleteNotification]);
+
+  // ---- Reconcile / recalc on every relevant trigger ----
   const recalcRestTimer = useCallback(() => {
     setActiveTimer(prev => {
-      if (!prev || !prev.startedAt) return prev;
-      const elapsed = Math.floor((performance.now() - prev.startedAt) / 1000);
-      const newRemaining = Math.max(0, prev.duration - elapsed);
-      if (newRemaining <= 0) {
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.duration }));
+      if (!prev) return prev;
+      if (prev.status !== 'running') return prev;
+      const remaining = computeRemaining(prev);
+      if (remaining <= 0) {
+        const key = `${timerIdKey(prev.id)}@${prev.startedAtEpoch}`;
+        if (!completedFiredFor.current.has(key)) {
+          completedFiredFor.current.add(key);
+          // Mark complete: record full duration as the rest taken
+          setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.originalDuration }));
+          // If we missed firing the scheduled notification (app was killed), fire now as late
+          const target = prev.startedAtEpoch + prev.duration * 1000;
+          const wasLate = Date.now() - target > 1500;
+          if (wasLate) fireRestCompleteNotification(true);
+        }
+        cancelNotification();
         return null;
       }
-      return { ...prev, remaining: newRemaining };
+      // Force re-render so derived UI updates
+      setTimerTick(n => (n + 1) % 1000000);
+      return prev;
     });
-  }, []);
+  }, [computeRemaining, cancelNotification, fireRestCompleteNotification]);
 
+  // ---- Public timer controls ----
   const startTimer = useCallback((id: TimerId, duration: number) => {
-    // Cancel any existing timer
-    if (timerInterval.current) clearInterval(timerInterval.current);
-    // Record the old timer if it was running
+    cancelNotification();
+    // If a previous timer was running, record what was taken so far
     setActiveTimer(prev => {
-      if (prev) {
-        const elapsed = prev.duration - prev.remaining;
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: elapsed }));
+      if (prev && prev.status === 'running') {
+        const taken = prev.originalDuration - computeRemaining(prev);
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, taken) }));
       }
       return null;
     });
-    const timer = { id, remaining: duration, duration, startedAt: performance.now() };
-    setActiveTimer(timer);
-  }, []);
+    const now = Date.now();
+    const newTimer: PersistedTimer = {
+      id,
+      startedAtEpoch: now,
+      duration,
+      originalDuration: duration,
+      status: 'running',
+    };
+    setActiveTimer(newTimer);
+    // Schedule notification + ask permission lazily
+    ensureNotificationPermission().finally(() => {
+      scheduleNotification(duration * 1000);
+    });
+  }, [cancelNotification, computeRemaining, ensureNotificationPermission, scheduleNotification]);
 
   const skipTimer = useCallback(() => {
-    if (timerInterval.current) clearInterval(timerInterval.current);
+    cancelNotification();
     setActiveTimer(prev => {
       if (prev) {
-        const elapsed = prev.duration - prev.remaining;
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: elapsed }));
+        const taken = prev.status === 'paused'
+          ? (prev.elapsedAtPause ?? 0)
+          : prev.originalDuration - computeRemaining(prev);
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, taken) }));
       }
       return null;
     });
-  }, []);
+  }, [cancelNotification, computeRemaining]);
 
   const extendTimer = useCallback((delta: number = 30) => {
-    setActiveTimer(prev => prev ? { ...prev, remaining: Math.max(1, prev.remaining + delta), duration: Math.max(1, prev.duration + delta) } : null);
+    setActiveTimer(prev => {
+      if (!prev) return prev;
+      const newOriginal = Math.max(1, prev.originalDuration + delta);
+      let next: PersistedTimer;
+      if (prev.status === 'running') {
+        const remaining = computeRemaining(prev);
+        const newRemaining = Math.max(1, remaining + delta);
+        const now = Date.now();
+        next = {
+          ...prev,
+          originalDuration: newOriginal,
+          duration: newRemaining,
+          startedAtEpoch: now,
+          status: 'running',
+        };
+        cancelNotification();
+        scheduleNotification(newRemaining * 1000);
+      } else {
+        next = { ...prev, originalDuration: newOriginal };
+      }
+      return next;
+    });
+  }, [computeRemaining, cancelNotification, scheduleNotification]);
+
+  // Pause / resume — exposed for future UI; logic ready now.
+  const pauseTimer = useCallback(() => {
+    cancelNotification();
+    setActiveTimer(prev => {
+      if (!prev || prev.status !== 'running') return prev;
+      const remaining = computeRemaining(prev);
+      const elapsedAtPause = prev.originalDuration - remaining;
+      return {
+        ...prev,
+        status: 'paused',
+        startedAtEpoch: 0,
+        elapsedAtPause: Math.max(0, elapsedAtPause),
+      };
+    });
+  }, [cancelNotification, computeRemaining]);
+
+  const resumeTimer = useCallback(() => {
+    setActiveTimer(prev => {
+      if (!prev || prev.status !== 'paused') return prev;
+      const elapsed = prev.elapsedAtPause ?? 0;
+      const newDuration = Math.max(1, prev.originalDuration - elapsed);
+      const now = Date.now();
+      ensureNotificationPermission().finally(() => scheduleNotification(newDuration * 1000));
+      return {
+        ...prev,
+        status: 'running',
+        startedAtEpoch: now,
+        duration: newDuration,
+        elapsedAtPause: undefined,
+      };
+    });
+  }, [ensureNotificationPermission, scheduleNotification]);
+
+  // ---- Hydrate on mount: reconcile if running timer expired while away ----
+  useEffect(() => {
+    const t = cachedSession?.activeTimer;
+    if (!t || t.status !== 'running') return;
+    const remaining = computeRemaining(t);
+    if (remaining <= 0) {
+      // Completed while app was closed
+      const key = `${timerIdKey(t.id)}@${t.startedAtEpoch}`;
+      completedFiredFor.current.add(key);
+      setRestRecords(r => ({ ...r, [timerIdKey(t.id)]: t.originalDuration }));
+      setActiveTimer(null);
+      fireRestCompleteNotification(true);
+    } else {
+      // Resume: reschedule notification for remaining time
+      ensureNotificationPermission().finally(() => scheduleNotification(remaining * 1000));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Timer tick effect — timestamp-based
+  // ---- Tick interval — UI refresh only ----
   useEffect(() => {
     if (timerInterval.current) clearInterval(timerInterval.current);
-    if (activeTimer && activeTimer.remaining > 0) {
+    if (activeTimer && activeTimer.status === 'running') {
       timerInterval.current = setInterval(recalcRestTimer, 1000);
+      // Immediate recalc in case >1s passed since last update
+      recalcRestTimer();
     }
     return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
-  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer !== null, recalcRestTimer]);
+  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer?.status, activeTimer?.startedAtEpoch, recalcRestTimer]);
+
+  // ---- Visibility / focus / cross-tab listeners ----
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') recalcRestTimer();
+    };
+    const onFocus = () => recalcRestTimer();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== CACHE_KEY || !e.newValue) return;
+      try {
+        const parsed: ActiveSessionCache = JSON.parse(e.newValue);
+        if (parsed.activeTimer !== undefined) {
+          setActiveTimer(parsed.activeTimer ?? null);
+        }
+        if (parsed.restRecords) {
+          setRestRecords(parsed.restRecords);
+        }
+      } catch {
+        // ignore malformed
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [recalcRestTimer]);
+
+  // Cleanup notification timeout on unmount
+  useEffect(() => () => cancelNotification(), [cancelNotification]);
+
 
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
@@ -1047,8 +1278,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                     defaultDuration={blocks[blockIdx - 1].restSeconds}
                     variant="between"
                     isActive={isBetweenActive}
-                    remaining={isBetweenActive ? activeTimer!.remaining : 0}
-                    totalDuration={isBetweenActive ? activeTimer!.duration : 0}
+                    remaining={isBetweenActive ? Math.max(0, Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000)) : 0}
+                    totalDuration={isBetweenActive ? activeTimer!.originalDuration : 0}
                     recordedRest={restRecords[betweenKey] ?? null}
                     onStart={startTimer}
                     onSkip={skipTimer}
@@ -1284,7 +1515,7 @@ interface ExerciseTableProps {
   weightUnit: WeightUnit;
   blocks: ExerciseBlock[];
   stickyNote: string;
-  activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
+  activeTimer: PersistedTimer | null;
   restRecords: Record<string, number>;
   previousSets: { weight?: number; reps: number; rpe?: number; time?: number }[];
   inputMode: ExerciseInputMode;
@@ -1681,8 +1912,8 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   defaultDuration={block.restSeconds}
                   variant="between"
                   isActive={isBetweenSetActive}
-                  remaining={isBetweenSetActive ? activeTimer!.remaining : 0}
-                  totalDuration={isBetweenSetActive ? activeTimer!.duration : 0}
+                  remaining={isBetweenSetActive ? Math.max(0, Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000)) : 0}
+                  totalDuration={isBetweenSetActive ? activeTimer!.originalDuration : 0}
                   recordedRest={restRecords[betweenSetKey] ?? null}
                   onStart={onStartTimer}
                   onSkip={onSkipTimer}
