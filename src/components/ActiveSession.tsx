@@ -349,7 +349,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     } catch (e) {
       console.warn('[ActiveSession] Notification failed:', e);
     }
-    toast({ title: late ? 'Rest finished' : 'Rest complete', description: late ? 'Your rest finished while you were away.' : 'Time for your next set.' });
+    toast.success(late ? 'Rest finished' : 'Rest complete', {
+      description: late ? 'Your rest finished while you were away.' : 'Time for your next set.',
+    });
   }, [notificationsSupported]);
 
   const scheduleNotification = useCallback((msUntil: number) => {
@@ -1261,8 +1263,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                     defaultDuration={blocks[blockIdx - 1].restSeconds}
                     variant="between"
                     isActive={isBetweenActive}
-                    remaining={isBetweenActive ? activeTimer!.remaining : 0}
-                    totalDuration={isBetweenActive ? activeTimer!.duration : 0}
+                    remaining={isBetweenActive ? Math.max(0, Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000)) : 0}
+                    totalDuration={isBetweenActive ? activeTimer!.originalDuration : 0}
                     recordedRest={restRecords[betweenKey] ?? null}
                     onStart={startTimer}
                     onSkip={skipTimer}
@@ -1498,7 +1500,7 @@ interface ExerciseTableProps {
   weightUnit: WeightUnit;
   blocks: ExerciseBlock[];
   stickyNote: string;
-  activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
+  activeTimer: PersistedTimer | null;
   restRecords: Record<string, number>;
   previousSets: { weight?: number; reps: number; rpe?: number; time?: number }[];
   inputMode: ExerciseInputMode;
@@ -1895,8 +1897,8 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   defaultDuration={block.restSeconds}
                   variant="between"
                   isActive={isBetweenSetActive}
-                  remaining={isBetweenSetActive ? activeTimer!.remaining : 0}
-                  totalDuration={isBetweenSetActive ? activeTimer!.duration : 0}
+                  remaining={isBetweenSetActive ? Math.max(0, Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000)) : 0}
+                  totalDuration={isBetweenSetActive ? activeTimer!.originalDuration : 0}
                   recordedRest={restRecords[betweenSetKey] ?? null}
                   onStart={onStartTimer}
                   onSkip={onSkipTimer}
