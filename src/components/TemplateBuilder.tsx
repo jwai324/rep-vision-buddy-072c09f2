@@ -10,7 +10,7 @@ import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import { getExerciseInputMode, BAND_LEVELS } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel } from '@/utils/exerciseInputMode';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -438,7 +438,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                               >
                                 <option value="">—</option>
                                 {BAND_LEVELS.map(b => (
-                                  <option key={b.level} value={b.level.toString()}>{b.label}</option>
+                                  <option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>
                                 ))}
                               </select>
                             ) : (

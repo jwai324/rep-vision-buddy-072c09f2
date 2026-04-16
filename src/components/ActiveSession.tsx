@@ -1535,7 +1535,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     >
                       <option value="">—</option>
                       {BAND_LEVELS.map(b => (
-                        <option key={b.level} value={b.level.toString()}>{b.label}</option>
+                        <option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>
                       ))}
                     </select>
                   ) : (
