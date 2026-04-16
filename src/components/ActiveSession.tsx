@@ -272,6 +272,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return Math.floor(editSession.duration / 60).toString();
   });
 
+  // Cache session state to localStorage on changes (skip in edit mode)
+  // NOTE: this effect is updated below to also persist activeTimer + restRecords
+  // (see the dedicated cache-write effect after the timer state declarations).
+
+  const addCustomLocation = useCallback(() => {
+    const trimmed = newLocationInput.trim();
+    if (trimmed && !locations.includes(trimmed)) {
+      const updated = [...locations, trimmed];
+      setLocations(updated);
+      saveLocations(updated);
+    }
+    setLocation(trimmed || location);
+    setNewLocationInput('');
+    setShowLocationDropdown(false);
+  }, [newLocationInput, locations, location]);
+
   // ============= Persistent timestamp-based rest timer =============
   // Source of truth = persisted record. setInterval below only triggers re-render.
   const [activeTimer, setActiveTimer] = useState<PersistedTimer | null>(
