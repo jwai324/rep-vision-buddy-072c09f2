@@ -54,6 +54,17 @@ function saveLocations(locations: string[]) {
   localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locations));
 }
 
+export type TimerStatus = 'running' | 'paused' | 'completed';
+
+export interface PersistedTimer {
+  id: TimerId;
+  startedAtEpoch: number;       // Date.now() when (re)started; 0 when paused
+  duration: number;             // seconds remaining when this run started
+  originalDuration: number;     // for progress ring math / extend baseline
+  status: TimerStatus;
+  elapsedAtPause?: number;      // seconds elapsed before pause
+}
+
 export interface ActiveSessionCache {
   blocks: ExerciseBlock[];
   workoutName: string;
@@ -61,6 +72,17 @@ export interface ActiveSessionCache {
   elapsedAtCache: number;
   location?: string;
   workoutNote?: string;
+  activeTimer?: PersistedTimer | null;
+  restRecords?: Record<string, number>;
+}
+
+// Safe localStorage write — never throws
+function safeWriteCache(cache: ActiveSessionCache) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('[ActiveSession] Failed to write cache:', e);
+  }
 }
 
 export function clearSessionCache() {
