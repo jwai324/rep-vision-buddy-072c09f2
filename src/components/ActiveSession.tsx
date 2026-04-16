@@ -1288,7 +1288,7 @@ interface ExerciseTableProps {
   onMenuAction: (action: string, blockIdx: number) => void;
   onStartTimer: (id: TimerId, duration: number) => void;
   onSkipTimer: () => void;
-  onExtendTimer: () => void;
+  onExtendTimer: (delta?: number) => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
