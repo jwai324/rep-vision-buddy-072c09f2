@@ -318,8 +318,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, []);
 
-  const extendTimer = useCallback(() => {
-    setActiveTimer(prev => prev ? { ...prev, remaining: prev.remaining + 30, duration: prev.duration + 30 } : null);
+  const extendTimer = useCallback((delta: number = 30) => {
+    setActiveTimer(prev => prev ? { ...prev, remaining: Math.max(1, prev.remaining + delta), duration: Math.max(1, prev.duration + delta) } : null);
   }, []);
 
   // Timer tick effect — timestamp-based
@@ -1288,7 +1288,7 @@ interface ExerciseTableProps {
   onMenuAction: (action: string, blockIdx: number) => void;
   onStartTimer: (id: TimerId, duration: number) => void;
   onSkipTimer: () => void;
-  onExtendTimer: () => void;
+  onExtendTimer: (delta?: number) => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
