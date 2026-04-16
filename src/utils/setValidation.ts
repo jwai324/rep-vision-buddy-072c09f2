@@ -27,7 +27,6 @@ export function validateWeight(
   const num = parseFloat(value);
   if (isNaN(num)) return { valid: false, error: 'Must be a number' };
   if (num < 0) return { valid: false, error: 'Weight cannot be negative' };
-  if (num === 0 && !isBodyweight) return { valid: false, error: 'Weight must be > 0' };
 
   const max = unit === 'kg' ? MAX_WEIGHT_KG : MAX_WEIGHT_LBS;
   const warn = unit === 'kg' ? WARN_WEIGHT_KG : WARN_WEIGHT_LBS;
