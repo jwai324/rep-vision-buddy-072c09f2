@@ -4,7 +4,7 @@ interface RestTimerRingProps {
   remaining: number;
   progress: number;
   onSkip: () => void;
-  onExtend: () => void;
+  onExtend: (delta?: number) => void;
 }
 
 export const RestTimerRing: React.FC<RestTimerRingProps> = ({ remaining, progress, onSkip, onExtend }) => {
