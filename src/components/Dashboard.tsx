@@ -179,9 +179,12 @@ function buildProgramEvents(program: WorkoutProgram) {
         current = addDays(current, 7);
       }
     } else if (freq.type === 'everyNDays') {
-      let current = new Date(start);
+      const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(start);
+      let current = new Date(origin);
       while (current < endDate) {
-        events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
+        if (current >= start) {
+          events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
+        }
         current = addDays(current, freq.interval);
       }
     } else if (freq.type === 'monthly') {
