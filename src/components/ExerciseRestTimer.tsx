@@ -82,7 +82,10 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
             <button onClick={onSkip} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
               Skip
             </button>
-            <button onClick={onExtend} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+            <button onClick={() => onExtend(-30)} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+              -30s
+            </button>
+            <button onClick={() => onExtend(30)} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
               +30s
             </button>
           </div>
