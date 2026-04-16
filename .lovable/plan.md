@@ -1,28 +1,33 @@
 
 
-## Plan: Add Start Date Picker for "Every N Days" Frequency
+## Fix: "Every N Days" Start Date Not Used Outside Program Builder
 
-### Problem
-When a user selects "Every N days" frequency for a program day, the calendar preview assumes the first occurrence starts on the program's `startDate` (today). The user has no way to pick a different first date for that specific day entry.
+### Root cause
+The `startDate` field on the `everyNDays` frequency is only read in `ProgramBuilder.tsx` (calendar preview). Two other places that generate scheduled dates ignore it entirely:
+
+1. **`src/hooks/useStorage.ts`** (future workout generation) — line 39: `let current = new Date(start)` always uses program start date
+2. **`src/components/Dashboard.tsx`** (today's workout widget) — line 182: same issue
+
+This causes all "Every N Days" entries to start on the same day (the program start date), regardless of what the user picked.
 
 ### Changes
 
-**1. `src/types/workout.ts`**
-- Add an optional `startDate` field to the `everyNDays` variant of `DayFrequency`:
+**1. `src/hooks/useStorage.ts`** (~line 38-43)
+- Replace `let current = new Date(start)` with:
   ```
-  { type: 'everyNDays'; interval: number; startDate?: string }
+  const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(start);
+  let current = new Date(origin);
   ```
+- Add guard: only push events when `current >= start`
+- Import `parseLocalDate` from `@/utils/dateUtils`
 
-**2. `src/components/ProgramBuilder.tsx`**
-
-- **Default initialization**: When selecting `everyNDays`, initialize `startDate` to today's date (`format(new Date(), 'yyyy-MM-dd')`)
-- **UI**: Below the interval selector, add a date picker (Popover + Calendar) labeled "Starting from" that lets the user pick the first occurrence date. Uses `parseLocalDate` for display and manual `yyyy-mm-dd` formatting for storage — consistent with the rest of the app.
-- **Calendar preview**: Update the `everyNDays` branch in `calendarEvents` to use `freq.startDate ? parseLocalDate(freq.startDate) : startDate` as the loop origin instead of always using the program's `startDate`.
-- **Draft caching**: No changes needed — `days` array (including frequency objects) is already persisted to localStorage.
+**2. `src/components/Dashboard.tsx`** (~line 181-186)
+- Same fix: use `freq.startDate` as origin when available, fall back to program start
+- Add guard: only push events when `current >= start`
+- Import `parseLocalDate` from `@/utils/dateUtils`
 
 ### What stays the same
-- Weekly and monthly frequency types — unchanged
-- Program-level `startDate` — unchanged
-- All date formatting uses `yyyy-MM-dd` strings and `parseLocalDate` — no UTC issues
-- Future workout generation logic in `Index.tsx` (reads the same frequency data)
+- `ProgramBuilder.tsx` — already correct
+- Type definitions — `startDate` field already exists on the type
+- Draft caching and save logic — unchanged
 
