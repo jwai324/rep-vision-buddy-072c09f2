@@ -385,7 +385,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Today's Workout</p>
           <h3 className="font-semibold text-foreground mb-1">{todayTemplate.name}</h3>
           <p className="text-xs text-muted-foreground mb-3">
-            {todayTemplate.exercises.map(e => EXERCISES[e.exerciseId].name).join(' → ')}
+            {todayTemplate.exercises.map(e => EXERCISES[e.exerciseId]?.name ?? e.exerciseId).join(' → ')}
           </p>
           <Button variant="neon" size="sm" onClick={() => onStartTemplate(todayTemplate)}>
             Start Today's Workout
