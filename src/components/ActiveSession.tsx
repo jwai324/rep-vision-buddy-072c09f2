@@ -203,22 +203,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [workoutName, setWorkoutName] = useState(() => {
     if (cachedSession?.workoutName) return cachedSession.workoutName;
     if (editSession) return 'Workout';
-    if (templateName) {
-      const escaped = templateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(`^${escaped}(?:\\s+(\\d+))?$`);
-      let maxN = 0;
+    if (templateName && templateExercises && templateExercises.length > 0) {
+      const tplIds = templateExercises.map(e => e.exerciseId).join('|');
+      let count = 0;
       for (const s of history) {
-        const m = s.note ? null : null;
-        // match by session-stored workout name field; fallback if absent
-        const name = (s as unknown as { workoutName?: string }).workoutName;
-        if (!name) continue;
-        const match = name.match(re);
-        if (match) {
-          const n = match[1] ? parseInt(match[1], 10) : 1;
-          if (n > maxN) maxN = n;
-        }
+        const ids = s.exercises.map(e => e.exerciseId).join('|');
+        if (ids === tplIds) count++;
       }
-      return `${templateName} ${maxN + 1}`;
+      return `${templateName} ${count + 1}`;
     }
     return 'Workout';
   });
