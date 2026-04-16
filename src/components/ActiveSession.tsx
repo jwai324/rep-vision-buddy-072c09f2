@@ -31,6 +31,7 @@ import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSe
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
+import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
 
 import type { WeightUnit } from '@/hooks/useStorage';
 
