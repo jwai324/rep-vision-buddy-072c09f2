@@ -301,6 +301,21 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const notificationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedFiredFor = useRef<Set<string>>(new Set());
 
+  // Cache full session state (including timer) to localStorage on changes (skip in edit mode)
+  useEffect(() => {
+    if (isEditMode) return;
+    safeWriteCache({
+      blocks,
+      workoutName,
+      startTimestamp: startTime.current,
+      elapsedAtCache: elapsedSeconds,
+      location,
+      workoutNote: workoutNote || undefined,
+      activeTimer,
+      restRecords,
+    });
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords]);
+
   // Derive remaining seconds from the persisted record (clamped to originalDuration in case of clock changes)
   const computeRemaining = useCallback((t: PersistedTimer | null): number => {
     if (!t) return 0;
