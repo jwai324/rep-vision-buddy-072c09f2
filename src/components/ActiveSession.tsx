@@ -4,6 +4,7 @@ import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, type ExerciseInpu
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
+import { parseLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
