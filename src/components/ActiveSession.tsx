@@ -93,11 +93,11 @@ interface ActiveSessionProps {
 }
 
 /** Look up the most recent session data for a given exercise */
-function getPreviousExerciseData(history: WorkoutSession[], exerciseId: ExerciseId): { weight?: number; reps: number }[] {
+function getPreviousExerciseData(history: WorkoutSession[], exerciseId: ExerciseId): { weight?: number; reps: number; rpe?: number; time?: number }[] {
   for (const session of history) {
     const log = session.exercises.find(e => e.exerciseId === exerciseId);
     if (log && log.sets.length > 0) {
-      return log.sets.map(s => ({ weight: s.weight, reps: s.reps }));
+      return log.sets.map(s => ({ weight: s.weight, reps: s.reps, rpe: s.rpe, time: s.time }));
     }
   }
   return [];
@@ -1286,7 +1286,7 @@ interface ExerciseTableProps {
   stickyNote: string;
   activeTimer: { id: TimerId; remaining: number; duration: number; startedAt: number } | null;
   restRecords: Record<string, number>;
-  previousSets: { weight?: number; reps: number }[];
+  previousSets: { weight?: number; reps: number; rpe?: number; time?: number }[];
   inputMode: ExerciseInputMode;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
@@ -1514,7 +1514,9 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                       onClick={() => {
                         const prev = previousSets[setIdx];
                         if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prev.weight, weightUnit))));
-                        onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
+                        if (prev.reps !== undefined) onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
+                        if (prev.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prev.rpe));
+                        if (prev.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prev.time));
                       }}
                       className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
                       title="Tap to copy to current set"
