@@ -4,6 +4,7 @@ import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, type ExerciseInpu
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
+import { parseLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
@@ -259,12 +260,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // Edit mode: date/time state
   const [editDate, setEditDate] = useState(() => {
     if (!editSession) return '';
-    const d = new Date(editSession.date);
+    const d = parseLocalDate(editSession.date);
     return format(d, 'yyyy-MM-dd');
   });
   const [editTime, setEditTime] = useState(() => {
     if (!editSession) return '';
-    const d = new Date(editSession.date);
+    const d = parseLocalDate(editSession.date);
     return format(d, 'HH:mm');
   });
   const [editDurationMin, setEditDurationMin] = useState(() => {
