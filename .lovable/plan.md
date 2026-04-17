@@ -1,37 +1,21 @@
 
-## Rest timer: count into overtime, record actual elapsed
+## Stop rest timer after 5s countdown completes (not when button tapped)
 
 ### Behavior
-- Rest timer counts down to 0:00, then flips to **"Overtime 0:12"** (counting up positive) until the user starts the next set or skips.
-- When stopped (next set started or skip pressed), the **recorded rest = actual total elapsed time** (planned duration + overtime, or less if skipped early).
+- Tap **Start next set** → 5s countdown overlay appears, rest timer **keeps ticking** during the countdown.
+- Countdown completes → rest timer stops and records actual elapsed time (including any overtime).
+- Countdown **cancelled** → rest timer was never stopped, continues normally.
 
-### Changes
+### Change (single file: `src/components/ActiveSession.tsx`)
 
-**`src/hooks/useRestTimer.ts`**
-- Remove `Math.max(0, ...)` clamp on `remaining` — allow it to go negative internally.
-- Remove the auto-stop branch at `<= 0`. Timer keeps ticking.
-- `progress` capped at 1 for ring/bar visuals.
-- `skip()` returns the actual elapsed seconds: `totalDurationRef.current - remaining` (so callers can record it).
-- Expose `elapsed` derived value for display: `totalDuration - remaining` (always positive once overtime).
+The countdown overlay's `onComplete` handler already fires when the 5s reaches zero and transitions into starting the next set. We hook `skipTimer()` there — not in `handleStartNextSet`.
 
-**`src/components/ExerciseRestTimer.tsx`**
-- When `remaining >= 0` → existing `m:ss` countdown display.
-- When `remaining < 0` → render **"Overtime M:SS"** using `Math.abs(remaining)`, switch text/bar color to `text-destructive` / amber accent.
-- Inline variant: same overtime label, smaller. Keep `animate-pulse`.
-- "Recorded rest" pill (post-stop) shows the actual total elapsed time returned from skip.
-
-**`src/components/RestTimerRing.tsx`**
-- Same overtime treatment: ring stays full, color flips to destructive, label reads `Overtime M:SS`.
-
-**`src/components/ActiveSession.tsx`**
-- In `handleStartNextSet`: before launching the 5s countdown, if a rest timer is active call `skip()` and capture returned elapsed seconds → store as the recorded rest for the just-completed set.
-- Skip button path already calls `skip()` — same recording flow.
+- **`handleStartNextSet`**: unchanged — only opens the countdown overlay. Rest timer keeps running.
+- **Countdown `onComplete` handler**: call `skipTimer()` immediately before starting the new set. This stops the previous rest timer and records actual elapsed seconds (including overtime accrued during the 5s lag).
+- **Countdown `onCancel` handler**: do nothing to the rest timer — it continues uninterrupted.
 
 ### Files touched
-- `src/hooks/useRestTimer.ts`
-- `src/components/ExerciseRestTimer.tsx`
-- `src/components/RestTimerRing.tsx`
-- `src/components/ActiveSession.tsx`
+- `src/components/ActiveSession.tsx` (countdown completion handler only)
 
 ### Unchanged
-- Rest trigger points, default durations, persistence, layout.
+- `skipTimer` recording logic, overtime display, Stop Set behavior, countdown overlay component.
