@@ -171,8 +171,8 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 bg-background overflow-y-auto pb-24 transition-opacity duration-300',
-        isTransitioning && 'opacity-30 pointer-events-none'
+        'fixed inset-0 z-50 bg-background overflow-y-auto pb-24 transition-opacity duration-500',
+        isTransitioning && 'opacity-0 pointer-events-none'
       )}
     >
       {/* Top bar */}
