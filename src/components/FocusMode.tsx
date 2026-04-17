@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,6 +37,7 @@ interface FocusModeProps {
   onStartNextSet: (blockIdx: number) => void;
   onStopSet: () => void;
   onClose: () => void;
+  scrollToBlock: (idx: number | null) => void;
 }
 
 /** A set is "fully complete" only if its parent and ALL its drops are completed. */
@@ -101,9 +103,36 @@ export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
 }
 
 export const FocusMode: React.FC<FocusModeProps> = (props) => {
-  const { blocks, onClose } = props;
+  const { blocks, onClose, scrollToBlock } = props;
   const focusedIdx = useMemo(() => pickFocusedBlockIdx(blocks), [blocks]);
   const block = focusedIdx !== null ? blocks[focusedIdx] : null;
+
+  // Transition: when the focused block changes, briefly dim Focus Mode
+  // and reveal the underlying ActiveSession scrolled to the new block.
+  const previousFocusedIdx = useRef<number | null>(focusedIdx);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const transitionTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (previousFocusedIdx.current !== null && previousFocusedIdx.current !== focusedIdx) {
+      setIsTransitioning(true);
+      scrollToBlock(focusedIdx);
+      if (transitionTimeoutRef.current !== null) {
+        window.clearTimeout(transitionTimeoutRef.current);
+      }
+      transitionTimeoutRef.current = window.setTimeout(() => {
+        setIsTransitioning(false);
+        transitionTimeoutRef.current = null;
+      }, 900);
+    }
+    previousFocusedIdx.current = focusedIdx;
+    return () => {
+      if (transitionTimeoutRef.current !== null) {
+        window.clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+    };
+  }, [focusedIdx, scrollToBlock]);
 
   // Compute superset position label, if any.
   const supersetLabel = useMemo(() => {
@@ -120,7 +149,12 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   const setLabel = block && currentRound <= totalSets ? `Set ${currentRound} of ${totalSets}` : null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-background overflow-y-auto pb-24">
+    <div
+      className={cn(
+        'fixed inset-0 z-50 bg-background overflow-y-auto pb-24 transition-opacity duration-300',
+        isTransitioning && 'opacity-30 pointer-events-none'
+      )}
+    >
       {/* Top bar */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border px-4 py-3 flex items-center justify-between">
         <button
