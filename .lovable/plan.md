@@ -1,33 +1,23 @@
 
 
-## Loosely Match Active Workout Look in Workout Details
+## Fix Floating "Add N Exercises" Button + Horizontal Scroll
 
-### Goal
-Make completed workout details feel closer to the active session view without rebuilding the table. Add the missing visual cues: exercise icon in the header, a column-header row, and ActiveSession-style set-number badges (W1, 1D1, etc.) with proper dropset indentation.
+### Problem
+1. **Button scrolls away**: In `ActiveSession.tsx` line 1061, the exercise picker wrapper uses `min-h-screen flex flex-col`. `min-h-screen` lets the page grow taller than the viewport, so the entire page scrolls — and the "Add N Exercises" button (which uses `sticky bottom-0` inside `ExerciseSelector`) ends up pinned to the bottom of the long content, not the viewport.
+2. **Slight horizontal scroll**: The outer wrapper has no `overflow-x-hidden` / `min-w-0`, so wide content (long exercise names, filter chip rows) can push the page sideways on mobile.
 
-### Changes (single file: `src/components/SessionSummary.tsx`)
+### Fix (two small edits)
 
-In the exercise breakdown block (`exercisesWithGroups.map`):
+**`src/components/ActiveSession.tsx` (lines 1059-1067)** — make the picker viewport-locked:
+- Change wrapper to `h-screen flex flex-col overflow-hidden` (use `h-dvh` fallback via `h-[100dvh]` for mobile browser chrome).
+- Add `min-w-0` so children can't overflow horizontally.
 
-1. **Exercise card header** — prepend the exercise emoji (`EXERCISES[ex.exerciseId]?.icon ?? '🏋️'`) next to `ex.exerciseName`, matching ActiveSession's icon + name spacing.
+This makes `ExerciseSelector` (which already uses `h-full` + `flex flex-col` with `ScrollArea flex-1`) properly scroll only its inner list, leaving the bottom action bar fixed at the viewport bottom.
 
-2. **Column header row** — add a small uppercase muted row above the sets:
-   - Weighted: `SET · WEIGHT · REPS · RPE`
-   - Cardio: `SET · TIME · RPE`
-   - Band: `SET · BAND · REPS · RPE`
-
-3. **Set-number badges** — replace the current "Normal/Set N" pill with ActiveSession's compact badge:
-   - Warmup → `W1`, `W2`...
-   - Normal/Failure/Superset → `1`, `2`, `3`...
-   - Dropset → `1D1`, `1D2` (parent set number + `D` superscript), shown indented one level
-   - Color-tinted via `SET_TYPE_CONFIG[type].colorClass` (already used).
-
-4. **Dropset indentation** — render dropset rows with left padding/border so they visually nest under their parent normal set, matching ActiveSession.
-
-5. **Keep as-is**: stats grid, note card, superset color wrapper (already there), edit/delete buttons, rest-day view, all spacing/typography of the outer card. No inputs, no checkmarks, no "previous" column.
+**`src/components/ExerciseSelector.tsx` (bottom button block, ~line 333)** — promote the action bar from `sticky` to a real flex-bottom child (it's already a sibling of the ScrollArea, so removing `sticky bottom-0` and keeping `border-t p-4 bg-background` is enough). Also ensure the outer `<div>` already has `overflow-x-hidden` (it does) — no change needed there.
 
 ### What stays the same
-- `SessionSummary` props/interface.
-- All non-exercise-breakdown sections.
-- ActiveSession itself — untouched.
+- All filter UI, exercise list rendering, multi-select logic, create-custom-exercise flow.
+- `ExerciseSelector`'s public API.
+- Desktop behavior (already correct since the desktop layout has explicit height constraints).
 
