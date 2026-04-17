@@ -147,6 +147,9 @@ interface DropRow {
   reps: string;
   rpe: string;
   completed: boolean;
+  time?: string;
+  startedAt?: number;
+  endedAt?: number;
 }
 
 interface SetRow {
@@ -347,6 +350,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [runningSet, setRunningSet] = useState<RunningSetState | null>(
     cachedSession?.runningSet ?? null
   );
+  const blockRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   // Cache full session state (including timer) to localStorage on changes (skip in edit mode)
   useEffect(() => {
@@ -739,9 +743,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         sets: b.sets.map((s, si) => {
           if (si === setIdx) {
             if (dropIdx !== undefined) {
-              // Mark dropset complete
+              // Mark dropset complete with timing
               const newDrops = (s.drops ?? []).map((d, di) =>
-                di === dropIdx ? { ...d, completed: true } : d
+                di === dropIdx ? { ...d, completed: true, time: String(seconds), startedAt, endedAt } : d
               );
               return { ...s, drops: newDrops };
             }
@@ -799,6 +803,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const block = blocks[blockIdx];
     if (!block) return;
 
+    const scrollToBlock = (target: number) => {
+      if (target === blockIdx) return;
+      // Defer to after countdown overlay renders
+      setTimeout(() => {
+        blockRefs.current[target]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    };
+
     const group = block.supersetGroup;
 
     // No superset → walk this block in order
@@ -846,11 +858,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const s = sBlock.sets[N];
         if (!s.completed) {
           setCountdown({ blockIdx: sbi, setIdx: N });
+          scrollToBlock(sbi);
           return;
         }
         const di = findIncompleteDrop(s);
         if (di !== undefined) {
           setCountdown({ blockIdx: sbi, setIdx: N, dropIdx: di });
+          scrollToBlock(sbi);
           return;
         }
       }
@@ -865,11 +879,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const s = sBlock.sets[nextN];
       if (!s.completed) {
         setCountdown({ blockIdx: sbi, setIdx: nextN });
+        scrollToBlock(sbi);
         return;
       }
       const di = findIncompleteDrop(s);
       if (di !== undefined) {
         setCountdown({ blockIdx: sbi, setIdx: nextN, dropIdx: di });
+        scrollToBlock(sbi);
         return;
       }
     }
@@ -879,6 +895,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const next = nextInBlock(blocks[sbi], 0);
       if (next) {
         setCountdown({ blockIdx: sbi, setIdx: next.setIdx, dropIdx: next.dropIdx });
+        scrollToBlock(sbi);
         return;
       }
     }
@@ -1563,37 +1580,39 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                     onExtend={extendTimer}
                   />
                 )}
-                <SortableExerciseItem id={block.exerciseId}>
-                  <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
-                    <ExerciseTable
-                      block={block}
-                      blockIdx={blockIdx}
-                      weightUnit={weightUnit}
-                      blocks={blocks}
-                      stickyNote={getStickyNote(block.exerciseId)}
-                      activeTimer={activeTimer}
-                      restRecords={restRecords}
-                      previousSets={getPreviousExerciseData(history, block.exerciseId)}
-                      inputMode={getExerciseInputMode(block.exerciseId, customExercises)}
-                      onUpdateSet={updateSet}
-                      onToggleComplete={toggleSetComplete}
-                      onAddSet={addSet}
-                      onAddDrop={addDrop}
-                      onUpdateDrop={updateDrop}
-                      onRemoveSet={removeSet}
-                      onRemoveDrop={removeDrop}
-                      onMenuAction={handleMenuAction}
-                      onStartTimer={startTimer}
-                      onSkipTimer={skipTimer}
-                      onExtendTimer={extendTimer}
-                      onTitleTap={() => setDetailExerciseId(block.exerciseId)}
-                      isEditMode={isEditMode}
-                      runningSet={runningSet}
-                      onStartNextSet={handleStartNextSet}
-                      onStopSet={handleStopSetClick}
-                    />
-                  </div>
-                </SortableExerciseItem>
+                <div ref={el => { blockRefs.current[blockIdx] = el; }}>
+                  <SortableExerciseItem id={block.exerciseId}>
+                    <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
+                      <ExerciseTable
+                        block={block}
+                        blockIdx={blockIdx}
+                        weightUnit={weightUnit}
+                        blocks={blocks}
+                        stickyNote={getStickyNote(block.exerciseId)}
+                        activeTimer={activeTimer}
+                        restRecords={restRecords}
+                        previousSets={getPreviousExerciseData(history, block.exerciseId)}
+                        inputMode={getExerciseInputMode(block.exerciseId, customExercises)}
+                        onUpdateSet={updateSet}
+                        onToggleComplete={toggleSetComplete}
+                        onAddSet={addSet}
+                        onAddDrop={addDrop}
+                        onUpdateDrop={updateDrop}
+                        onRemoveSet={removeSet}
+                        onRemoveDrop={removeDrop}
+                        onMenuAction={handleMenuAction}
+                        onStartTimer={startTimer}
+                        onSkipTimer={skipTimer}
+                        onExtendTimer={extendTimer}
+                        onTitleTap={() => setDetailExerciseId(block.exerciseId)}
+                        isEditMode={isEditMode}
+                        runningSet={runningSet}
+                        onStartNextSet={handleStartNextSet}
+                        onStopSet={handleStopSetClick}
+                      />
+                    </div>
+                  </SortableExerciseItem>
+                </div>
               </React.Fragment>
               );
             })}
@@ -2085,9 +2104,17 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
               <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
             </PopoverContent>
           </Popover>
-          <span className="text-center">
-            <Timer className="w-3 h-3 mx-auto" />
-          </span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+                <Timer className="w-3 h-3 mx-auto" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Time elapsed</p>
+              <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+            </PopoverContent>
+          </Popover>
           <span className="text-center">
             <Check className="w-3 h-3 mx-auto" />
           </span>
@@ -2107,9 +2134,17 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
               <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
             </PopoverContent>
           </Popover>
-          <span className="text-center">
-            <Timer className="w-3 h-3 mx-auto" />
-          </span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+                <Timer className="w-3 h-3 mx-auto" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Time elapsed</p>
+              <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+            </PopoverContent>
+          </Popover>
           <span className="text-center">
             <Check className="w-3 h-3 mx-auto" />
           </span>
@@ -2135,9 +2170,17 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
             </ul>
           </PopoverContent>
         </Popover>
-        <span className="text-center">
-          <Timer className="w-3 h-3 mx-auto" />
-        </span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+              <Timer className="w-3 h-3 mx-auto" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+            <p className="font-semibold mb-1">Time elapsed</p>
+            <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+          </PopoverContent>
+        </Popover>
         <span className="text-center">
           <Check className="w-3 h-3 mx-auto" />
         </span>
@@ -2302,7 +2345,13 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     value={drop.rpe}
                     onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)}
                   />
-                  <span />
+                  <TimeInputButton
+                    id={buildInputId(blockIdx, setIdx, 'time', dropIdx)}
+                    value={drop.time ?? ''}
+                    onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)}
+                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx}
+                    small
+                  />
                   <button
                     onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
                     className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
