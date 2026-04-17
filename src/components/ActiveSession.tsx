@@ -152,7 +152,7 @@ export interface DropRow {
   endedAt?: number;
 }
 
-interface SetRow {
+export interface SetRow {
   setNumber: number;
   weight: string;
   reps: string;
