@@ -756,29 +756,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     startTimer({ type: 'set', blockIdx, setIdx }, restSec);
   }, [runningSet, startTimer]);
 
-  // Public: tap "Start next set" / "Stop set" on an exercise header.
+  // Public: tap "Start next set" on an exercise header. Only starts the
+  // countdown for the next uncompleted set; if any set is currently running,
+  // this is a no-op (the button reads "Stop set" in that state and routes to
+  // handleStopSetClick instead).
   const handleStartNextSet = useCallback((blockIdx: number) => {
     if (countdown) return; // overlay owns the screen
-    if (runningSet) {
-      const sameExercise = runningSet.blockIdx === blockIdx;
-      // Per spec: if pushed again, stop current with +5s and begin a new countdown.
-      stopRunningSet(sameExercise ? 5 : 0);
-      if (sameExercise) {
-        setTimeout(() => {
-          setBlocks(curr => {
-            const block = curr[blockIdx];
-            const nextIdx = block?.sets.findIndex(s => !s.completed) ?? -1;
-            if (nextIdx === -1) {
-              toast.success('All sets complete for this exercise');
-            } else {
-              setCountdown({ blockIdx, setIdx: nextIdx });
-            }
-            return curr;
-          });
-        }, 0);
-      }
-      return;
-    }
+    if (runningSet) return;
     const block = blocks[blockIdx];
     if (!block) return;
     const nextIdx = block.sets.findIndex(s => !s.completed);
@@ -787,7 +771,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       return;
     }
     setCountdown({ blockIdx, setIdx: nextIdx });
-  }, [blocks, countdown, runningSet, stopRunningSet]);
+  }, [blocks, countdown, runningSet]);
+
+  // Public: tap "Stop set" on an exercise header. Stops the running set
+  // without starting a new countdown or auto-advancing.
+  const handleStopSetClick = useCallback(() => {
+    if (!runningSet) return;
+    stopRunningSet(0);
+  }, [runningSet, stopRunningSet]);
 
   const handleCountdownComplete = useCallback(() => {
     if (!countdown) return;
@@ -1481,6 +1472,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                       isEditMode={isEditMode}
                       runningSet={runningSet}
                       onStartNextSet={handleStartNextSet}
+                      onStopSet={handleStopSetClick}
                     />
                   </div>
                 </SortableExerciseItem>
@@ -1863,6 +1855,7 @@ interface ExerciseTableProps {
   isEditMode?: boolean;
   runningSet?: RunningSetState | null;
   onStartNextSet?: (blockIdx: number) => void;
+  onStopSet?: () => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -1877,7 +1870,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
   return (
     <div>
@@ -1893,7 +1886,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
         <div className="flex items-center gap-1 shrink-0">
           {!isEditMode && onStartNextSet && (
             <button
-              onClick={() => onStartNextSet(blockIdx)}
+              onClick={() => (isRunningHere ? onStopSet?.() : onStartNextSet(blockIdx))}
               className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md transition-colors ${
                 isRunningHere
                   ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
