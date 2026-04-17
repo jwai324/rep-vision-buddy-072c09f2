@@ -2121,19 +2121,23 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet }) => {
+export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
   return (
     <div>
       {/* Exercise Header */}
       <div className="flex items-center justify-between mb-1 gap-2">
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onTitleTap?.(); }}
-          className="text-sm font-semibold text-primary text-left hover:underline focus:outline-none focus:underline truncate"
-        >
-          {block.exerciseName}
-        </button>
+        {hideHeaderName ? (
+          <div className="flex-1" />
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onTitleTap?.(); }}
+            className="text-sm font-semibold text-primary text-left hover:underline focus:outline-none focus:underline truncate"
+          >
+            {block.exerciseName}
+          </button>
+        )}
         <div className="flex items-center gap-1 shrink-0">
           {!isEditMode && onStartNextSet && (
             <button
