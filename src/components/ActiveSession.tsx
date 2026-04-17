@@ -1706,6 +1706,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         </button>
       </div>
 
+      {/* Focus Mode overlay */}
+      {showFocusMode && !isEditMode && (
+        <FocusMode
+          blocks={blocks}
+          weightUnit={weightUnit}
+          activeTimer={activeTimer}
+          restRecords={restRecords}
+          runningSet={runningSet}
+          getStickyNote={getStickyNote}
+          getPreviousSets={(exId) => getPreviousExerciseData(history, exId)}
+          getInputMode={(exId) => getExerciseInputMode(exId, customExercises)}
+          onUpdateSet={updateSet}
+          onToggleComplete={toggleSetComplete}
+          onAddSet={addSet}
+          onAddDrop={addDrop}
+          onUpdateDrop={updateDrop}
+          onRemoveSet={removeSet}
+          onRemoveDrop={removeDrop}
+          onMenuAction={handleMenuAction}
+          onStartTimer={startTimer}
+          onSkipTimer={skipTimer}
+          onExtendTimer={extendTimer}
+          onStartNextSet={handleStartNextSet}
+          onStopSet={handleStopSetClick}
+          onClose={() => setShowFocusMode(false)}
+        />
+      )}
+
       {/* Workout note dialog */}
       <AlertDialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
         <AlertDialogContent>
