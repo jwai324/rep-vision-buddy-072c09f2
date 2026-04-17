@@ -325,36 +325,75 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
       <div className="flex flex-col gap-3">
         {exercisesWithGroups.map((ex, i) => {
           const mode = getExerciseInputMode(ex.exerciseId);
+          const icon = EXERCISES[ex.exerciseId]?.icon ?? '🏋️';
+
+          // Build set-number labels matching ActiveSession (W1, 1, 2, 1D1, 1D2...)
+          let normalCount = 0;
+          let warmupCount = 0;
+          let lastNormalNumber = 0;
+          let dropsetIdx = 0;
+          const labels = ex.sets.map(set => {
+            if (set.type === 'warmup') {
+              warmupCount++;
+              return { label: `W${warmupCount}`, isDropset: false };
+            }
+            if (set.type === 'dropset') {
+              dropsetIdx++;
+              return {
+                label: lastNormalNumber > 0 ? `${lastNormalNumber}D${dropsetIdx}` : `D${dropsetIdx}`,
+                isDropset: true,
+              };
+            }
+            normalCount++;
+            lastNormalNumber = normalCount;
+            dropsetIdx = 0;
+            return { label: `${normalCount}`, isDropset: false };
+          });
+
+          const colHeader =
+            mode === 'cardio' ? 'SET · TIME · RPE'
+            : mode === 'band' ? 'SET · BAND · REPS · RPE'
+            : 'SET · WEIGHT · REPS · RPE';
+
           return (
           <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
-            <h3 className="font-semibold text-foreground mb-2">{ex.exerciseName}</h3>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">{icon}</span>
+              <h3 className="font-semibold text-foreground">{ex.exerciseName}</h3>
+            </div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">{colHeader}</p>
             <div className="flex flex-col gap-1">
-              {ex.sets.map((set, j) => (
-                <div key={j} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${SET_TYPE_CONFIG[set.type].colorClass} text-foreground`}>
-                      {SET_TYPE_CONFIG[set.type].label}
-                    </span>
-                    <span className="text-muted-foreground">Set {set.setNumber}</span>
+              {ex.sets.map((set, j) => {
+                const { label, isDropset } = labels[j];
+                return (
+                  <div
+                    key={j}
+                    className={`flex items-center justify-between text-sm ${isDropset ? 'pl-4 border-l-2 border-border ml-2' : ''}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`min-w-[2.25rem] px-2 py-0.5 rounded-full text-[10px] font-bold text-center ${SET_TYPE_CONFIG[set.type].colorClass} text-foreground`}>
+                        {label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-foreground">
+                      {mode === 'cardio' ? (
+                        <span>{set.time ?? 0} min</span>
+                      ) : mode === 'band' ? (
+                        <>
+                          <span>{getBandLevelShortLabel(set.weight ?? 0)}</span>
+                          <span>{set.reps} reps</span>
+                        </>
+                      ) : (
+                        <>
+                          {set.weight != null && <span>{formatWeightString(set.weight, weightUnit)}</span>}
+                          <span>{set.reps} reps</span>
+                        </>
+                      )}
+                      {set.rpe && <span className="text-primary text-xs">RPE {set.rpe}</span>}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-foreground">
-                    {mode === 'cardio' ? (
-                      <span>{set.time ?? 0} min</span>
-                    ) : mode === 'band' ? (
-                      <>
-                        <span>{getBandLevelShortLabel(set.weight ?? 0)}</span>
-                        <span>{set.reps} reps</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>{set.reps} reps</span>
-                        {set.weight != null && <span>{formatWeightString(set.weight, weightUnit)}</span>}
-                      </>
-                    )}
-                    {set.rpe && <span className="text-primary text-xs">RPE {set.rpe}</span>}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           );
