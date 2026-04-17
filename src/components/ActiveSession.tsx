@@ -1563,6 +1563,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   );
 };
 
+/* ---------- RPE Picker Button (Popover wrapper) ---------- */
+
+const RpePickerButton: React.FC<{ id: string; value: string; onChange: (v: string) => void }> = ({ id, value, onChange }) => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          id={id}
+          type="button"
+          className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary hover:bg-secondary/80 transition-colors"
+        >
+          {value || '—'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-32 p-0">
+        <RpeWheelPicker value={value} onChange={onChange} onClose={() => setOpen(false)} />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 /* ---------- Focus Navigation Helper ---------- */
 
 const FIELD_ORDER = ['weight', 'reps', 'rpe'] as const;
