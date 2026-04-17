@@ -452,11 +452,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // ---- Public timer controls ----
   const startTimer = useCallback((id: TimerId, duration: number) => {
     cancelNotification();
-    // If a previous timer was running, record what was taken so far
+    // If a previous timer was running, record actual elapsed (incl. overtime)
     setActiveTimer(prev => {
       if (prev && prev.status === 'running') {
         const taken = prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, taken) }));
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
       }
       return null;
     });
@@ -482,7 +482,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const taken = prev.status === 'paused'
           ? (prev.elapsedAtPause ?? 0)
           : prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, taken) }));
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
       }
       return null;
     });
