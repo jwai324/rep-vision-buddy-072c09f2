@@ -36,6 +36,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
+import { FocusMode } from '@/components/FocusMode';
 import {
   snapshotFromTemplateExercises,
   snapshotFromFinishedBlocks,
