@@ -1732,13 +1732,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           onStartNextSet={handleStartNextSet}
           onStopSet={handleStopSetClick}
           onClose={() => setShowFocusMode(false)}
-          scrollToBlock={(idx) => {
-            if (idx === null) {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            } else {
-              blockRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          }}
         />
       )}
 
