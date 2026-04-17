@@ -165,6 +165,7 @@ interface SetRow {
 export interface RunningSetState {
   blockIdx: number;
   setIdx: number;
+  dropIdx?: number;
   startedAt: number;
 }
 
@@ -190,7 +191,7 @@ const SUPERSET_COLORS = [
   'bg-white/20',
 ];
 
-const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
+const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate }) => {
   const isEditMode = !!editSession;
@@ -342,7 +343,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const completedFiredFor = useRef<Set<string>>(new Set());
 
   // Per-set live timing state (5s countdown -> running)
-  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number } | null>(null);
+  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
   const [runningSet, setRunningSet] = useState<RunningSetState | null>(
     cachedSession?.runningSet ?? null
   );
@@ -721,11 +722,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, [startTimer, weightUnit, customExercises]);
 
-  // Internal: stop a running set, write its duration into time, mark complete, start rest timer.
+  // Internal: stop a running set (or dropset), write its duration into time, mark complete, start rest timer.
   // bonusSeconds is added when the user starts a NEW set while one is still running (per spec: +5s).
   const stopRunningSet = useCallback((bonusSeconds: number = 0) => {
     if (!runningSet) return;
-    const { blockIdx, setIdx, startedAt } = runningSet;
+    const { blockIdx, setIdx, dropIdx, startedAt } = runningSet;
     const endedAt = Date.now() + bonusSeconds * 1000;
     const seconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
     let restSec = 90;
@@ -737,9 +738,16 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         ...b,
         sets: b.sets.map((s, si) => {
           if (si === setIdx) {
+            if (dropIdx !== undefined) {
+              // Mark dropset complete
+              const newDrops = (s.drops ?? []).map((d, di) =>
+                di === dropIdx ? { ...d, completed: true } : d
+              );
+              return { ...s, drops: newDrops };
+            }
             return { ...s, time: String(seconds), startedAt, endedAt, completed: true };
           }
-          if (si > setIdx && !s.completed) {
+          if (dropIdx === undefined && si > setIdx && !s.completed) {
             return {
               ...s,
               weight: s.weight || completedSet.weight,
@@ -752,24 +760,130 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       };
     }));
     setRunningSet(null);
-    startTimer({ type: 'set', blockIdx, setIdx }, restSec);
+    startTimer({ type: 'set', blockIdx, setIdx, dropIdx }, restSec);
   }, [runningSet, startTimer]);
 
-  // Public: tap "Start next set" on an exercise header. Only starts the
-  // countdown for the next uncompleted set; if any set is currently running,
-  // this is a no-op (the button reads "Stop set" in that state and routes to
-  // handleStopSetClick instead).
+  // Helper: find first incomplete drop in a set
+  const findIncompleteDrop = (set: SetRow): number | undefined => {
+    if (!set.drops || set.drops.length === 0) return undefined;
+    const idx = set.drops.findIndex(d => !d.completed);
+    return idx === -1 ? undefined : idx;
+  };
+
+  // Helper: scan a single block for the next incomplete item starting at fromSetIdx.
+  // For the just-completed set, only checks drops (the set itself is complete).
+  // Returns { setIdx, dropIdx? } or null.
+  const nextInBlock = (
+    block: ExerciseBlock,
+    fromSetIdx: number,
+    onlyDropsForFirst = false
+  ): { setIdx: number; dropIdx?: number } | null => {
+    for (let si = fromSetIdx; si < block.sets.length; si++) {
+      const s = block.sets[si];
+      if (si === fromSetIdx && onlyDropsForFirst) {
+        const di = findIncompleteDrop(s);
+        if (di !== undefined) return { setIdx: si, dropIdx: di };
+        continue;
+      }
+      if (!s.completed) return { setIdx: si };
+      const di = findIncompleteDrop(s);
+      if (di !== undefined) return { setIdx: si, dropIdx: di };
+    }
+    return null;
+  };
+
+  // Public: tap "Start next set" on an exercise header.
   const handleStartNextSet = useCallback((blockIdx: number) => {
-    if (countdown) return; // overlay owns the screen
+    if (countdown) return;
     if (runningSet) return;
     const block = blocks[blockIdx];
     if (!block) return;
-    const nextIdx = block.sets.findIndex(s => !s.completed);
-    if (nextIdx === -1) {
-      toast.success('All sets complete for this exercise');
+
+    const group = block.supersetGroup;
+
+    // No superset → walk this block in order
+    if (group === undefined) {
+      const next = nextInBlock(block, 0);
+      if (!next) {
+        toast.success('All sets complete for this exercise');
+        return;
+      }
+      setCountdown({ blockIdx, setIdx: next.setIdx, dropIdx: next.dropIdx });
       return;
     }
-    setCountdown({ blockIdx, setIdx: nextIdx });
+
+    // Superset group: ordered list of sibling block indices
+    const siblingIdxs = blocks
+      .map((b, i) => (b.supersetGroup === group ? i : -1))
+      .filter(i => i !== -1);
+    const myPos = siblingIdxs.indexOf(blockIdx);
+
+    // Determine current set-number N (last completed set on current block, falls back to first incomplete-1)
+    const lastCompletedSetIdx = (() => {
+      for (let i = block.sets.length - 1; i >= 0; i--) {
+        if (block.sets[i].completed) return i;
+      }
+      return -1;
+    })();
+
+    // Step 1: finish current set's dropsets on the just-completed block
+    if (lastCompletedSetIdx >= 0) {
+      const di = findIncompleteDrop(block.sets[lastCompletedSetIdx]);
+      if (di !== undefined) {
+        setCountdown({ blockIdx, setIdx: lastCompletedSetIdx, dropIdx: di });
+        return;
+      }
+    }
+
+    const N = lastCompletedSetIdx; // setIdx we just finished (incl. drops)
+
+    // Step 2: same set-number N on remaining siblings (after current, in order)
+    if (N >= 0) {
+      for (let p = myPos + 1; p < siblingIdxs.length; p++) {
+        const sbi = siblingIdxs[p];
+        const sBlock = blocks[sbi];
+        if (N >= sBlock.sets.length) continue;
+        const s = sBlock.sets[N];
+        if (!s.completed) {
+          setCountdown({ blockIdx: sbi, setIdx: N });
+          return;
+        }
+        const di = findIncompleteDrop(s);
+        if (di !== undefined) {
+          setCountdown({ blockIdx: sbi, setIdx: N, dropIdx: di });
+          return;
+        }
+      }
+    }
+
+    // Step 3: advance to set N+1 — loop back to first sibling with incomplete N+1
+    const nextN = N + 1;
+    for (let p = 0; p < siblingIdxs.length; p++) {
+      const sbi = siblingIdxs[p];
+      const sBlock = blocks[sbi];
+      if (nextN >= sBlock.sets.length) continue;
+      const s = sBlock.sets[nextN];
+      if (!s.completed) {
+        setCountdown({ blockIdx: sbi, setIdx: nextN });
+        return;
+      }
+      const di = findIncompleteDrop(s);
+      if (di !== undefined) {
+        setCountdown({ blockIdx: sbi, setIdx: nextN, dropIdx: di });
+        return;
+      }
+    }
+
+    // Step 4: no exact set-number progression match → final fallback: any incomplete in group
+    for (const sbi of siblingIdxs) {
+      const next = nextInBlock(blocks[sbi], 0);
+      if (next) {
+        setCountdown({ blockIdx: sbi, setIdx: next.setIdx, dropIdx: next.dropIdx });
+        return;
+      }
+    }
+
+    toast.success('All sets complete for this exercise');
   }, [blocks, countdown, runningSet]);
 
   // Public: tap "Stop set" on an exercise header. Stops the running set
@@ -781,17 +895,20 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   const handleCountdownComplete = useCallback(() => {
     if (!countdown) return;
-    const { blockIdx, setIdx } = countdown;
+    const { blockIdx, setIdx, dropIdx } = countdown;
     // Stop & record any active rest timer at the moment the new set begins.
     skipTimer();
     const startedAt = Date.now();
-    setBlocks(prev => prev.map((b, bi) =>
-      bi !== blockIdx ? b : {
-        ...b,
-        sets: b.sets.map((s, si) => si === setIdx ? { ...s, startedAt, endedAt: undefined } : s),
-      }
-    ));
-    setRunningSet({ blockIdx, setIdx, startedAt });
+    if (dropIdx === undefined) {
+      setBlocks(prev => prev.map((b, bi) =>
+        bi !== blockIdx ? b : {
+          ...b,
+          sets: b.sets.map((s, si) => si === setIdx ? { ...s, startedAt, endedAt: undefined } : s),
+        }
+      ));
+    }
+    // Note: dropsets don't track their own startedAt/endedAt on SetRow.drops shape — only `completed`.
+    setRunningSet({ blockIdx, setIdx, dropIdx, startedAt });
     setCountdown(null);
   }, [countdown, skipTimer]);
 

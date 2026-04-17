@@ -5,6 +5,7 @@ export interface TimerId {
   type: 'set' | 'between';
   blockIdx: number;
   setIdx?: number;
+  dropIdx?: number;
 }
 
 interface ExerciseRestTimerProps {
