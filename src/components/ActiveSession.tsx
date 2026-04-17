@@ -363,17 +363,19 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet]);
 
-  // Derive remaining seconds from the persisted record (clamped to originalDuration in case of clock changes)
+  // Derive remaining seconds from the persisted record. Allowed to go NEGATIVE
+  // once the timer passes 0 — the rest timer keeps counting into "overtime"
+  // until the user explicitly starts the next set or skips.
   const computeRemaining = useCallback((t: PersistedTimer | null): number => {
     if (!t) return 0;
     if (t.status === 'paused') {
-      return Math.max(0, t.originalDuration - (t.elapsedAtPause ?? 0));
+      return t.originalDuration - (t.elapsedAtPause ?? 0);
     }
     if (t.status !== 'running' || !t.startedAtEpoch) return 0;
     const target = t.startedAtEpoch + t.duration * 1000;
     const remainingMs = target - Date.now();
-    const remainingSec = Math.ceil(remainingMs / 1000);
-    return Math.max(0, Math.min(t.originalDuration, remainingSec));
+    // Negative values are intentional (overtime). Cap upper bound at originalDuration.
+    return Math.min(t.originalDuration, Math.ceil(remainingMs / 1000));
   }, []);
 
   // ---- Web Notification helpers (graceful no-op when unavailable) ----
@@ -425,26 +427,23 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, [cancelNotification, fireRestCompleteNotification]);
 
   // ---- Reconcile / recalc on every relevant trigger ----
+  // Timer NO LONGER auto-completes at 0 — it keeps ticking into negative
+  // (overtime) until the user starts the next set or taps Skip. We still fire
+  // the "rest complete" notification once when the threshold is first crossed.
   const recalcRestTimer = useCallback(() => {
     setActiveTimer(prev => {
       if (!prev) return prev;
       if (prev.status !== 'running') return prev;
       const remaining = computeRemaining(prev);
-      if (remaining <= 0) {
-        const key = `${timerIdKey(prev.id)}@${prev.startedAtEpoch}`;
-        if (!completedFiredFor.current.has(key)) {
-          completedFiredFor.current.add(key);
-          // Mark complete: record full duration as the rest taken
-          setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.originalDuration }));
-          // If we missed firing the scheduled notification (app was killed), fire now as late
-          const target = prev.startedAtEpoch + prev.duration * 1000;
-          const wasLate = Date.now() - target > 1500;
-          if (wasLate) fireRestCompleteNotification(true);
-        }
+      const key = `${timerIdKey(prev.id)}@${prev.startedAtEpoch}`;
+      if (remaining <= 0 && !completedFiredFor.current.has(key)) {
+        completedFiredFor.current.add(key);
+        const target = prev.startedAtEpoch + prev.duration * 1000;
+        const wasLate = Date.now() - target > 1500;
+        if (wasLate) fireRestCompleteNotification(true);
         cancelNotification();
-        return null;
       }
-      // Force re-render so derived UI updates
+      // Force re-render so derived UI updates (countdown + overtime)
       setTimerTick(n => (n + 1) % 1000000);
       return prev;
     });
@@ -453,11 +452,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // ---- Public timer controls ----
   const startTimer = useCallback((id: TimerId, duration: number) => {
     cancelNotification();
-    // If a previous timer was running, record what was taken so far
+    // If a previous timer was running, record actual elapsed (incl. overtime)
     setActiveTimer(prev => {
       if (prev && prev.status === 'running') {
         const taken = prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, taken) }));
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
       }
       return null;
     });
@@ -483,7 +482,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const taken = prev.status === 'paused'
           ? (prev.elapsedAtPause ?? 0)
           : prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, taken) }));
+        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
       }
       return null;
     });
@@ -1437,7 +1436,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                     defaultDuration={blocks[blockIdx - 1].restSeconds}
                     variant="between"
                     isActive={isBetweenActive}
-                    remaining={isBetweenActive ? Math.max(0, Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000)) : 0}
+                    remaining={isBetweenActive ? Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000) : 0}
                     totalDuration={isBetweenActive ? activeTimer!.originalDuration : 0}
                     recordedRest={restRecords[betweenKey] ?? null}
                     onStart={startTimer}
@@ -2220,7 +2219,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   defaultDuration={block.restSeconds}
                   variant="between"
                   isActive={isBetweenSetActive}
-                  remaining={isBetweenSetActive ? Math.max(0, Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000)) : 0}
+                  remaining={isBetweenSetActive ? Math.ceil((activeTimer!.startedAtEpoch + activeTimer!.duration * 1000 - Date.now()) / 1000) : 0}
                   totalDuration={isBetweenSetActive ? activeTimer!.originalDuration : 0}
                   recordedRest={restRecords[betweenSetKey] ?? null}
                   onStart={onStartTimer}
