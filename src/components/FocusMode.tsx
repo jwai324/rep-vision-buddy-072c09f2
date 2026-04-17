@@ -107,32 +107,52 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   const focusedIdx = useMemo(() => pickFocusedBlockIdx(blocks), [blocks]);
   const block = focusedIdx !== null ? blocks[focusedIdx] : null;
 
-  // Transition: when the focused block changes, briefly dim Focus Mode
-  // and reveal the underlying ActiveSession scrolled to the new block.
+  // Transition: when the focused block changes, briefly fade Focus Mode out
+  // to reveal the underlying ActiveSession scrolled to the new block, then fade back in.
   const previousFocusedIdx = useRef<number | null>(focusedIdx);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const transitionTimeoutRef = useRef<number | null>(null);
+  const fadeBackTimeoutRef = useRef<number | null>(null);
+
+  // Keep latest scrollToBlock in a ref so it isn't a dep of the transition effect.
+  const scrollToBlockRef = useRef(scrollToBlock);
+  useEffect(() => {
+    scrollToBlockRef.current = scrollToBlock;
+  }, [scrollToBlock]);
+
+  // Tunable: total peek hold before fading Focus Mode back in.
+  // CSS handles fade-out (500ms) and fade-in (500ms) via transition-opacity.
+  const PEEK_HOLD_MS = 900;
 
   useEffect(() => {
     if (previousFocusedIdx.current !== null && previousFocusedIdx.current !== focusedIdx) {
+      // 1. Start fade out to fully transparent.
       setIsTransitioning(true);
-      scrollToBlock(focusedIdx);
-      if (transitionTimeoutRef.current !== null) {
-        window.clearTimeout(transitionTimeoutRef.current);
+      // 2. Scroll the underlying ActiveSession to the new block.
+      scrollToBlockRef.current(focusedIdx);
+      // 3. After the peek hold, fade back in.
+      if (fadeBackTimeoutRef.current !== null) {
+        window.clearTimeout(fadeBackTimeoutRef.current);
       }
-      transitionTimeoutRef.current = window.setTimeout(() => {
+      fadeBackTimeoutRef.current = window.setTimeout(() => {
         setIsTransitioning(false);
-        transitionTimeoutRef.current = null;
-      }, 900);
+        fadeBackTimeoutRef.current = null;
+      }, PEEK_HOLD_MS);
     }
     previousFocusedIdx.current = focusedIdx;
+    // Intentionally only depend on focusedIdx so a changing scrollToBlock
+    // identity doesn't clobber the in-flight fade-back timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedIdx]);
+
+  // Clean up only on unmount.
+  useEffect(() => {
     return () => {
-      if (transitionTimeoutRef.current !== null) {
-        window.clearTimeout(transitionTimeoutRef.current);
-        transitionTimeoutRef.current = null;
+      if (fadeBackTimeoutRef.current !== null) {
+        window.clearTimeout(fadeBackTimeoutRef.current);
+        fadeBackTimeoutRef.current = null;
       }
     };
-  }, [focusedIdx, scrollToBlock]);
+  }, []);
 
   // Compute superset position label, if any.
   const supersetLabel = useMemo(() => {
@@ -151,8 +171,8 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 bg-background overflow-y-auto pb-24 transition-opacity duration-300',
-        isTransitioning && 'opacity-30 pointer-events-none'
+        'fixed inset-0 z-50 bg-background overflow-y-auto pb-24 transition-opacity duration-500',
+        isTransitioning && 'opacity-0 pointer-events-none'
       )}
     >
       {/* Top bar */}
