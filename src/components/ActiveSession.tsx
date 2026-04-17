@@ -1885,7 +1885,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
         <div className="flex items-center gap-1 shrink-0">
           {!isEditMode && onStartNextSet && (
             <button
-              onClick={() => onStartNextSet(blockIdx)}
+              onClick={() => (isRunningHere ? onStopSet?.() : onStartNextSet(blockIdx))}
               className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md transition-colors ${
                 isRunningHere
                   ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
