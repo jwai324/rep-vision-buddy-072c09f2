@@ -188,6 +188,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       exerciseId: ex.exerciseId,
       exerciseName: ex.exerciseName,
       restSeconds: 90,
+      supersetGroup: ex.supersetGroup,
       sets: ex.sets.map(s => ({
         setNumber: s.setNumber,
         weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
@@ -195,7 +196,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         completed: true,
         type: s.type,
         rpe: s.rpe?.toString() ?? '',
-        time: '',
+        time: s.time != null ? String(s.time) : '',
       })),
     }));
   }, [editSession, weightUnit]);
