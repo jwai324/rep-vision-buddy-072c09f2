@@ -69,17 +69,20 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
       );
     }
 
-    const progress = totalDuration > 0 ? (totalDuration - remaining) / totalDuration : 0;
+    const progress = totalDuration > 0 ? Math.min(1, (totalDuration - remaining) / totalDuration) : 0;
+    const barFill = isOvertime ? 'bg-destructive/25' : 'bg-primary/20';
+    const labelText = isOvertime ? 'Overtime' : 'Rest';
+    const timeColor = isOvertime ? 'text-destructive' : 'text-foreground';
 
     return (
       <div className="relative w-full h-10 rounded-md overflow-hidden bg-secondary/30 my-1">
         <div
-          className="absolute inset-y-0 left-0 bg-primary/20 transition-all duration-1000 ease-linear"
+          className={`absolute inset-y-0 left-0 ${barFill} transition-all duration-1000 ease-linear`}
           style={{ width: `${progress * 100}%` }}
         />
         <div className="relative flex items-center justify-between px-3 h-full">
-          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Rest</span>
-          <span className="font-mono text-sm font-bold text-foreground tabular-nums">{timeStr}</span>
+          <span className={`text-[10px] uppercase tracking-widest ${isOvertime ? 'text-destructive' : 'text-muted-foreground'}`}>{labelText}</span>
+          <span className={`font-mono text-sm font-bold tabular-nums ${timeColor}`}>{timeStr}</span>
           <div className="flex gap-2">
             <button onClick={onSkip} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
               Skip
@@ -125,10 +128,12 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
   return (
     <button
       onClick={onSkip}
-      className="w-full h-7 rounded-md flex items-center justify-center bg-primary/10 text-primary text-[10px] font-mono font-bold tabular-nums animate-pulse"
+      className={`w-full h-7 rounded-md flex items-center justify-center text-[10px] font-mono font-bold tabular-nums animate-pulse ${
+        isOvertime ? 'bg-destructive/15 text-destructive' : 'bg-primary/10 text-primary'
+      }`}
       title="Tap to skip"
     >
-      {timeStr}
+      {isOvertime ? `+${timeStr}` : timeStr}
     </button>
   );
 };
