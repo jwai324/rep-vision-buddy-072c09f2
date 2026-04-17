@@ -1952,7 +1952,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
       {inputMode === 'cardio' ? (
         <div className="grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
           <span>Set</span>
-          <span className="text-center">Time (min)</span>
+          <span className="text-center">Time</span>
           <Popover>
             <PopoverTrigger asChild>
               <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
