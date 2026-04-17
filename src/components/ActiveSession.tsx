@@ -2345,7 +2345,13 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     value={drop.rpe}
                     onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)}
                   />
-                  <span />
+                  <TimeInputButton
+                    id={buildInputId(blockIdx, setIdx, 'time', dropIdx)}
+                    value={drop.time ?? ''}
+                    onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)}
+                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx}
+                    small
+                  />
                   <button
                     onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
                     className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
