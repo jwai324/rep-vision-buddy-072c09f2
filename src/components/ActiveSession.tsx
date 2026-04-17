@@ -1478,6 +1478,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                       onSkipTimer={skipTimer}
                       onExtendTimer={extendTimer}
                       onTitleTap={() => setDetailExerciseId(block.exerciseId)}
+                      isEditMode={isEditMode}
+                      runningSet={runningSet}
+                      onStartNextSet={handleStartNextSet}
                     />
                   </div>
                 </SortableExerciseItem>
