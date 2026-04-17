@@ -1,21 +1,44 @@
 
-## Stop horizontal scroll on Consistency (Streaks) tab
+## RPE input → tap-to-open scroll wheel picker (1–10, 0.5 increments)
 
-### Cause
-The Consistency tab (`ConsistencyTab.tsx`) likely renders a wide element (calendar heatmap or weekly chart) that overflows the 384px mobile viewport. Even though `AnalyticsScreen` wraps `TabsContent` with `overflow-hidden`, the inner card or chart can still force layout width if it has a fixed min-width or wide grid.
+### What changes
+Replace the three RPE `<input type="number">` fields in `ActiveSession.tsx` (cardio row, weighted row, and dropset row) with a tappable button that opens a Popover containing a vertical scroll-wheel picker of values: `1, 1.5, 2, 2.5, … 9.5, 10` (19 options).
 
-Need to inspect the file to confirm the exact overflow source before fixing.
+### New component: `src/components/RpeWheelPicker.tsx`
+A self-contained wheel picker:
+- Vertical scroll list of 19 RPE values, snap-to-center (`scroll-snap-y mandatory`, each row `scroll-snap-align: center`).
+- Fixed height (~180px) with center highlight band (selected value gets `bg-primary text-primary-foreground` + larger font); off-center values fade and shrink for that "iOS picker" feel.
+- On scroll end (debounced) or on tap of a row → call `onChange(value)` and close the popover.
+- On open, auto-scrolls to the current value (or 7 as a sensible default if empty).
+- Includes a small "Clear" button to wipe RPE.
 
-### Plan
-1. Read `src/components/analytics/ConsistencyTab.tsx` to identify the wide element.
-2. Apply width constraints:
-   - Add `min-w-0 max-w-full overflow-hidden` to the outer card wrapper.
-   - If a grid/heatmap has a min cell size pushing total width past 384px, reduce cell size on mobile (e.g. shrink from `w-6` to `w-4`, or use `aspect-square` with `grid-cols-N` that fits the viewport).
-   - If a chart uses `ResponsiveContainer`, ensure its parent has `min-w-0` so it measures the constrained width.
-3. If the chart still feels cramped after constraint, reduce its height slightly on mobile (e.g. `h-48` → `h-40`) so the proportions still read well.
+Props:
+```ts
+{ value: string; onChange: (v: string) => void; onClose?: () => void }
+```
+
+### Integration in `ActiveSession.tsx`
+Replace each of the 3 RPE `<input>` blocks (lines ~1834, ~1920, ~1990) with:
+```tsx
+<Popover>
+  <PopoverTrigger asChild>
+    <button id={buildInputId(...)} className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 ...">
+      {set.rpe || '—'}
+    </button>
+  </PopoverTrigger>
+  <PopoverContent className="w-32 p-0" side="top" align="center">
+    <RpeWheelPicker value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
+  </PopoverContent>
+</Popover>
+```
+Same pattern for cardio and dropset variants (using `onUpdateDrop` for drops). Keep the `buildInputId` so focus navigation still works.
+
+### Validation
+`validateRpe` in `src/utils/setValidation.ts` already accepts 1–10 in 0.5 increments — no change needed. Picker only emits valid values, so manual validation errors disappear.
 
 ### Files touched
-- `src/components/analytics/ConsistencyTab.tsx` (only)
+- `src/components/RpeWheelPicker.tsx` (new)
+- `src/components/ActiveSession.tsx` (replace 3 RPE input blocks)
 
 ### What stays the same
-- All data calculations, streak logic, other tabs.
+- RPE storage format (string of a number), analytics, average RPE calc, focus navigation IDs, all other inputs.
