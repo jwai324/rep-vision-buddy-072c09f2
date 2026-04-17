@@ -113,6 +113,8 @@ interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
   templateName?: string;
+  templateId?: string;
+  template?: WorkoutTemplate | null;
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
   defaultDropSetsEnabled?: boolean;
@@ -122,6 +124,7 @@ interface ActiveSessionProps {
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
   onMinimize?: () => void;
+  onUpdateTemplate?: (template: WorkoutTemplate) => void;
 }
 
 /** Look up the most recent session data for a given exercise */
