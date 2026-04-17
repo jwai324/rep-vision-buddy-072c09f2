@@ -104,13 +104,18 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
     ));
   };
 
-  // Infer superset groups for legacy data
+  // Repair legacy/corrupted saved sets where parent rows were stored as 'dropset',
+  // then infer superset groups for legacy data without explicit groups.
   const exercisesWithGroups = React.useMemo(() => {
-    const hasExplicitGroups = session.exercises.some(ex => ex.supersetGroup !== undefined);
-    if (hasExplicitGroups) return session.exercises;
+    const repaired = session.exercises.map(ex => ({
+      ...ex,
+      sets: repairFlatSets(ex.sets),
+    }));
+    const hasExplicitGroups = repaired.some(ex => ex.supersetGroup !== undefined);
+    if (hasExplicitGroups) return repaired;
     let currentGroup = 0;
     let inGroup = false;
-    return session.exercises.map(ex => {
+    return repaired.map(ex => {
       const hasSuperset = ex.sets.some(s => s.type === 'superset');
       if (hasSuperset) {
         if (!inGroup) { currentGroup++; inGroup = true; }
