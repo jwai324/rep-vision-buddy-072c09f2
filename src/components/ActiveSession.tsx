@@ -1831,18 +1831,10 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     placeholder="min"
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
-                  <input
+                  <RpePickerButton
                     id={buildInputId(blockIdx, setIdx, 'rpe')}
-                    type="number"
-                    inputMode="decimal"
-                    min="1"
-                    max="10"
-                    step="0.5"
                     value={set.rpe}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
-                    onFocus={e => e.target.value && e.target.select()}
-                    placeholder="—"
-                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
                   />
                   <span />
                   <button
