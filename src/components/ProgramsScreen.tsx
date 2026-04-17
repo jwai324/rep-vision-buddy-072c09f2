@@ -23,7 +23,7 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   return (
-    <div className="p-4 flex flex-col gap-4">
+    <div className="p-4 flex flex-col gap-4 overflow-x-hidden min-w-0 max-w-full">
       <div className="flex items-center gap-3">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground">←</button>
         <h2 className="text-xl font-bold text-foreground">Programs</h2>
@@ -36,7 +36,7 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
       ) : (
         <div className="flex flex-col gap-3">
           {programs.map(p => (
-            <div key={p.id} className={`bg-card rounded-xl p-4 border ${activeProgramId === p.id ? 'border-primary glow-green' : 'border-border'}`}>
+            <div key={p.id} className={`bg-card rounded-xl p-4 border min-w-0 ${activeProgramId === p.id ? 'border-primary glow-green' : 'border-border'}`}>
               <div className="flex items-center justify-between mb-1">
                 <h3 className="font-semibold text-foreground">{p.name}</h3>
                 {activeProgramId === p.id && <span className="text-[10px] font-bold text-primary uppercase">Active</span>}
@@ -48,7 +48,7 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
                 {p.days.map((d, i) => {
                   const tpl = templates.find(t => t.id === d.templateId);
                   return (
-                    <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full ${d.templateId === 'rest' ? 'bg-secondary text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
+                    <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full break-all ${d.templateId === 'rest' ? 'bg-secondary text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
                       {d.label}: {d.templateId === 'rest' ? 'Rest' : tpl?.name ?? '?'}
                     </span>
                   );
