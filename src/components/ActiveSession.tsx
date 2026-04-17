@@ -15,6 +15,7 @@ import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
 import {
   AlertDialog,
