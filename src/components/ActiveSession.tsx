@@ -363,17 +363,19 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet]);
 
-  // Derive remaining seconds from the persisted record (clamped to originalDuration in case of clock changes)
+  // Derive remaining seconds from the persisted record. Allowed to go NEGATIVE
+  // once the timer passes 0 — the rest timer keeps counting into "overtime"
+  // until the user explicitly starts the next set or skips.
   const computeRemaining = useCallback((t: PersistedTimer | null): number => {
     if (!t) return 0;
     if (t.status === 'paused') {
-      return Math.max(0, t.originalDuration - (t.elapsedAtPause ?? 0));
+      return t.originalDuration - (t.elapsedAtPause ?? 0);
     }
     if (t.status !== 'running' || !t.startedAtEpoch) return 0;
     const target = t.startedAtEpoch + t.duration * 1000;
     const remainingMs = target - Date.now();
-    const remainingSec = Math.ceil(remainingMs / 1000);
-    return Math.max(0, Math.min(t.originalDuration, remainingSec));
+    // Negative values are intentional (overtime). Cap upper bound at originalDuration.
+    return Math.min(t.originalDuration, Math.ceil(remainingMs / 1000));
   }, []);
 
   // ---- Web Notification helpers (graceful no-op when unavailable) ----
