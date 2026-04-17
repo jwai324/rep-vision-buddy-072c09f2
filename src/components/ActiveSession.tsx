@@ -172,7 +172,7 @@ export interface RunningSetState {
   startedAt: number;
 }
 
-interface ExerciseBlock {
+export interface ExerciseBlock {
   exerciseId: ExerciseId;
   exerciseName: string;
   sets: SetRow[];
