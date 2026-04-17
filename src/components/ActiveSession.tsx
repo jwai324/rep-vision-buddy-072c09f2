@@ -15,6 +15,7 @@ import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
 import {
   AlertDialog,
@@ -1562,6 +1563,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   );
 };
 
+/* ---------- RPE Picker Button (Popover wrapper) ---------- */
+
+const RpePickerButton: React.FC<{ id: string; value: string; onChange: (v: string) => void }> = ({ id, value, onChange }) => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          id={id}
+          type="button"
+          className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary hover:bg-secondary/80 transition-colors"
+        >
+          {value || '—'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-32 p-0">
+        <RpeWheelPicker value={value} onChange={onChange} onClose={() => setOpen(false)} />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 /* ---------- Focus Navigation Helper ---------- */
 
 const FIELD_ORDER = ['weight', 'reps', 'rpe'] as const;
@@ -1831,18 +1854,10 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     placeholder="min"
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
-                  <input
+                  <RpePickerButton
                     id={buildInputId(blockIdx, setIdx, 'rpe')}
-                    type="number"
-                    inputMode="decimal"
-                    min="1"
-                    max="10"
-                    step="0.5"
                     value={set.rpe}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
-                    onFocus={e => e.target.value && e.target.select()}
-                    placeholder="—"
-                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
                   />
                   <span />
                   <button
@@ -1917,19 +1932,10 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     placeholder="—"
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
-                  <input
+                  <RpePickerButton
                     id={buildInputId(blockIdx, setIdx, 'rpe')}
-                    type="number"
-                    inputMode="decimal"
-                    min="1"
-                    max="10"
-                    step="0.5"
                     value={set.rpe}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'rpe', e.target.value)}
-                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe')}
-                    onFocus={e => e.target.value && e.target.select()}
-                    placeholder="—"
-                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
                   />
                   <input
                     id={buildInputId(blockIdx, setIdx, 'time')}
@@ -1987,18 +1993,10 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     placeholder="—"
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
-                  <input
+                  <RpePickerButton
                     id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)}
-                    type="number"
-                    inputMode="decimal"
-                    min="1"
-                    max="10"
-                    step="0.5"
                     value={drop.rpe}
-                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', e.target.value)}
-                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'rpe', dropIdx)}
-                    placeholder="—"
-                    className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)}
                   />
                   <span />
                   <button
