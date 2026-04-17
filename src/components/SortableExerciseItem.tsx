@@ -30,7 +30,7 @@ export const SortableExerciseItem: React.FC<SortableExerciseItemProps> = ({ id, 
     <div ref={setNodeRef} style={style}>
       <div className="flex items-start gap-1">
         <button
-          className="mt-1 p-1 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing"
+          className="mt-1 p-2 -m-1 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none"
           {...attributes}
           {...listeners}
         >
