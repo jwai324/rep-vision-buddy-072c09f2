@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -37,10 +37,8 @@ interface FocusModeProps {
   onStartNextSet: (blockIdx: number) => void;
   onStopSet: () => void;
   onClose: () => void;
-  scrollToBlock: (idx: number | null) => void;
 }
 
-/** A set is "fully complete" only if its parent and ALL its drops are completed. */
 function isSetFullyComplete(set: SetRow): boolean {
   if (!set.completed) return false;
   return (set.drops ?? []).every(d => d.completed);
@@ -59,14 +57,7 @@ function completedRounds(block: ExerciseBlock): number {
   return n;
 }
 
-/**
- * Pick the next exercise to focus on.
- * - If a superset group has any incomplete sets, cycle within it by picking
- *   the block with the fewest fully-completed leading rounds.
- * - Otherwise pick the first block with any incomplete set.
- */
 export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
-  // 1. Find lowest superset group with incomplete work.
   const groups = new Map<number, number[]>();
   blocks.forEach((b, i) => {
     if (b.supersetGroup === undefined) return;
@@ -89,112 +80,168 @@ export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
     }
     return best;
   }
-  // 2. No active superset → first block with any incomplete set.
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
-    if (b.supersetGroup !== undefined) continue; // handled above
+    if (b.supersetGroup !== undefined) continue;
     if (blockHasIncomplete(b)) return i;
   }
-  // 3. Fallback: any block at all with incomplete (covers edge cases).
   for (let i = 0; i < blocks.length; i++) {
     if (blockHasIncomplete(blocks[i])) return i;
   }
   return null;
 }
 
+function computeNextName(blocks: ExerciseBlock[], focusedIdx: number | null): string | null {
+  if (focusedIdx === null) return null;
+  const synthetic = blocks.map((b, i) =>
+    i === focusedIdx
+      ? {
+          ...b,
+          sets: b.sets.map(s => ({
+            ...s,
+            completed: true,
+            drops: (s.drops ?? []).map(d => ({ ...d, completed: true })),
+          })),
+        }
+      : b
+  );
+  const nextIdx = pickFocusedBlockIdx(synthetic);
+  if (nextIdx === null || nextIdx === focusedIdx) return null;
+  return blocks[nextIdx].exerciseName;
+}
+
+type Phase = 'idle' | 'promoting' | 'revealing';
+
+const PROMOTE_MS = 500;
+const REVEAL_MS = 300;
+
 export const FocusMode: React.FC<FocusModeProps> = (props) => {
-  const { blocks, onClose, scrollToBlock } = props;
-  const focusedIdx = useMemo(() => pickFocusedBlockIdx(blocks), [blocks]);
-  const block = focusedIdx !== null ? blocks[focusedIdx] : null;
+  const { blocks, onClose } = props;
+  const targetIdx = useMemo(() => pickFocusedBlockIdx(blocks), [blocks]);
 
-  // Transition: when the focused block changes, briefly fade Focus Mode out
-  // to reveal the underlying ActiveSession scrolled to the new block, then fade back in.
-  const previousFocusedIdx = useRef<number | null>(focusedIdx);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const fadeBackTimeoutRef = useRef<number | null>(null);
+  // The block currently rendered as the "displayed" focused one.
+  // Updated only after promotion finishes so the outgoing block stays put
+  // (faded) while the new name flies into place.
+  const [displayedIdx, setDisplayedIdx] = useState<number | null>(targetIdx);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [flyTransform, setFlyTransform] = useState<string>('');
+  const [flyAtTarget, setFlyAtTarget] = useState(false);
+  const [promotingName, setPromotingName] = useState<string | null>(null);
 
-  // Keep latest scrollToBlock in a ref so it isn't a dep of the transition effect.
-  const scrollToBlockRef = useRef(scrollToBlock);
-  useEffect(() => {
-    scrollToBlockRef.current = scrollToBlock;
-  }, [scrollToBlock]);
+  const titleSlotRef = useRef<HTMLHeadingElement | null>(null);
+  const upNextSlotRef = useRef<HTMLDivElement | null>(null);
+  const previousTargetRef = useRef<number | null>(targetIdx);
+  const timersRef = useRef<number[]>([]);
 
-  // Tunable: total peek hold before fading Focus Mode back in.
-  // CSS handles fade-out (500ms) and fade-in (500ms) via transition-opacity.
-  const PEEK_HOLD_MS = 900;
+  const clearTimers = () => {
+    timersRef.current.forEach(t => window.clearTimeout(t));
+    timersRef.current = [];
+  };
 
-  useEffect(() => {
-    if (previousFocusedIdx.current !== null && previousFocusedIdx.current !== focusedIdx) {
-      // 1. Start fade out to fully transparent.
-      setIsTransitioning(true);
-      // 2. Scroll the underlying ActiveSession to the new block.
-      scrollToBlockRef.current(focusedIdx);
-      // 3. After the peek hold, fade back in.
-      if (fadeBackTimeoutRef.current !== null) {
-        window.clearTimeout(fadeBackTimeoutRef.current);
-      }
-      fadeBackTimeoutRef.current = window.setTimeout(() => {
-        setIsTransitioning(false);
-        fadeBackTimeoutRef.current = null;
-      }, PEEK_HOLD_MS);
+  useEffect(() => () => clearTimers(), []);
+
+  // Trigger promotion when target changes.
+  useLayoutEffect(() => {
+    const prev = previousTargetRef.current;
+    previousTargetRef.current = targetIdx;
+    if (prev === null || prev === targetIdx) {
+      // First mount or no change — just sync displayed.
+      if (displayedIdx !== targetIdx) setDisplayedIdx(targetIdx);
+      return;
     }
-    previousFocusedIdx.current = focusedIdx;
-    // Intentionally only depend on focusedIdx so a changing scrollToBlock
-    // identity doesn't clobber the in-flight fade-back timer.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedIdx]);
 
-  // Clean up only on unmount.
-  useEffect(() => {
+    // No next exercise (workout complete): skip promotion.
+    if (targetIdx === null) {
+      clearTimers();
+      setPhase('idle');
+      setPromotingName(null);
+      setDisplayedIdx(null);
+      return;
+    }
+
+    const startEl = upNextSlotRef.current;
+    const endEl = titleSlotRef.current;
+    const newName = blocks[targetIdx]?.exerciseName ?? '';
+
+    if (!startEl || !endEl) {
+      // Can't measure — snap.
+      setDisplayedIdx(targetIdx);
+      setPhase('idle');
+      return;
+    }
+
+    const startRect = startEl.getBoundingClientRect();
+    const endRect = endEl.getBoundingClientRect();
+    // FLIP: floating clone is positioned at end (title) location with end styling.
+    // We start it transformed back to the start (upNext) location with start styling,
+    // then transition to identity transform + end styling.
+    const dx = startRect.left - endRect.left;
+    const dy = startRect.top - endRect.top;
+    // Scale so the clone visually matches the upNext font size on start.
+    // Start font ≈ text-base (~16px), end ≈ text-3xl/4xl (~30-36px). Use height ratio.
+    const scale = Math.max(0.1, startRect.height / Math.max(1, endRect.height));
+
+    clearTimers();
+    setPromotingName(newName);
+    setFlyTransform(`translate(${dx}px, ${dy}px) scale(${scale})`);
+    setFlyAtTarget(false);
+    setPhase('promoting');
+
+    // Next frame: animate to identity.
+    const raf = window.requestAnimationFrame(() => {
+      setFlyTransform('translate(0px, 0px) scale(1)');
+      setFlyAtTarget(true);
+    });
+
+    const t1 = window.setTimeout(() => {
+      // Promotion done: commit new displayed block, reveal phase.
+      setDisplayedIdx(targetIdx);
+      setPhase('revealing');
+      setPromotingName(null);
+    }, PROMOTE_MS);
+
+    const t2 = window.setTimeout(() => {
+      setPhase('idle');
+    }, PROMOTE_MS + REVEAL_MS);
+
+    timersRef.current = [t1, t2];
     return () => {
-      if (fadeBackTimeoutRef.current !== null) {
-        window.clearTimeout(fadeBackTimeoutRef.current);
-        fadeBackTimeoutRef.current = null;
-      }
+      window.cancelAnimationFrame(raf);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetIdx]);
 
-  // Compute superset position label, if any.
+  const block = displayedIdx !== null ? blocks[displayedIdx] : null;
+
   const supersetLabel = useMemo(() => {
-    if (!block || block.supersetGroup === undefined || focusedIdx === null) return null;
+    if (!block || block.supersetGroup === undefined || displayedIdx === null) return null;
     const groupIdxs = blocks
       .map((b, i) => (b.supersetGroup === block.supersetGroup ? i : -1))
       .filter(i => i >= 0);
-    const pos = groupIdxs.indexOf(focusedIdx) + 1;
+    const pos = groupIdxs.indexOf(displayedIdx) + 1;
     return `Superset ${String.fromCharCode(64 + pos)} of ${groupIdxs.length}`;
-  }, [blocks, block, focusedIdx]);
+  }, [blocks, block, displayedIdx]);
 
   const totalSets = block?.sets.length ?? 0;
   const currentRound = block ? completedRounds(block) + 1 : 0;
   const setLabel = block && currentRound <= totalSets ? `Set ${currentRound} of ${totalSets}` : null;
 
-  // Compute the next exercise name by simulating completion of the current focused block.
-  const nextExerciseName = useMemo(() => {
-    if (focusedIdx === null) return null;
-    const synthetic = blocks.map((b, i) =>
-      i === focusedIdx
-        ? {
-            ...b,
-            sets: b.sets.map(s => ({
-              ...s,
-              completed: true,
-              drops: (s.drops ?? []).map(d => ({ ...d, completed: true })),
-            })),
-          }
-        : b
-    );
-    const nextIdx = pickFocusedBlockIdx(synthetic);
-    if (nextIdx === null || nextIdx === focusedIdx) return null;
-    return blocks[nextIdx].exerciseName;
-  }, [blocks, focusedIdx]);
+  const nextExerciseName = useMemo(
+    () => computeNextName(blocks, displayedIdx),
+    [blocks, displayedIdx]
+  );
+
+  // Visual flags
+  const isPromoting = phase === 'promoting';
+  const isRevealing = phase === 'revealing';
+  // During promoting: outgoing block contents fade out; title hidden so clone is the only name on screen.
+  const contentOpacityClass = isPromoting ? 'opacity-0' : 'opacity-100';
+  // During promoting we still render the previous block (frozen), but blank the title slot
+  // so the floating clone is unambiguous.
+  const titleVisible = !isPromoting;
 
   return (
-    <div
-      className={cn(
-        'fixed inset-0 z-50 bg-background overflow-y-auto pb-24 transition-opacity duration-500',
-        isTransitioning && 'opacity-0 pointer-events-none'
-      )}
-    >
+    <div className="fixed inset-0 z-50 bg-background overflow-y-auto pb-24">
       {/* Top bar */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border px-4 py-3 flex items-center justify-between">
         <button
@@ -208,36 +255,49 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
         <div className="w-12" />
       </div>
 
-      {block && focusedIdx !== null ? (
-        <>
+      {block && displayedIdx !== null ? (
+        <div className={cn('transition-opacity', isRevealing && 'animate-fade-in')}>
           {/* Animation region */}
-          <div className="relative px-4 pt-4">
-            {/* TODO: replace with <ExerciseAnimation exerciseName={block.exerciseName} /> once wired */}
+          <div
+            className={cn('relative px-4 pt-4 transition-opacity duration-300', contentOpacityClass)}
+          >
             <div className="relative w-full rounded-2xl bg-secondary/40 flex items-center justify-center" style={{ height: '40vh' }}>
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Sparkles className="w-10 h-10 opacity-50" />
                 <span className="text-xs uppercase tracking-wider">Animation</span>
               </div>
-              {/* Soft fade into the page below */}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-background rounded-b-2xl" />
             </div>
           </div>
 
           {/* Exercise name + meta */}
           <div className="px-4 pt-4">
-            <h2 className="text-3xl sm:text-4xl font-bold text-foreground leading-tight">{block.exerciseName}</h2>
-            <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <h2
+              ref={titleSlotRef}
+              className={cn(
+                'text-3xl sm:text-4xl font-bold text-foreground leading-tight transition-opacity duration-200',
+                titleVisible ? 'opacity-100' : 'opacity-0'
+              )}
+            >
+              {block.exerciseName}
+            </h2>
+            <div
+              className={cn(
+                'mt-1 flex items-center gap-2 text-xs text-muted-foreground transition-opacity duration-300',
+                contentOpacityClass
+              )}
+            >
               {setLabel && <span>{setLabel}</span>}
               {setLabel && supersetLabel && <span>•</span>}
               {supersetLabel && <span className="text-primary font-medium">{supersetLabel}</span>}
             </div>
           </div>
 
-          {/* Reused ExerciseTable for the focused block */}
-          <div className="px-4 pt-4">
+          {/* Reused ExerciseTable */}
+          <div className={cn('px-4 pt-4 transition-opacity duration-300', contentOpacityClass)}>
             <ExerciseTable
               block={block}
-              blockIdx={focusedIdx}
+              blockIdx={displayedIdx}
               weightUnit={props.weightUnit}
               blocks={blocks}
               stickyNote={props.getStickyNote(block.exerciseId)}
@@ -265,15 +325,24 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
 
           {/* Up next footer */}
           {nextExerciseName && (
-            <div className="px-4 pt-8 pb-4">
+            <div
+              className={cn(
+                'px-4 pt-8 pb-4 transition-opacity duration-300',
+                contentOpacityClass
+              )}
+            >
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Up next</div>
-              <div className="mt-1 text-base font-medium text-muted-foreground">{nextExerciseName}</div>
+              <div
+                ref={upNextSlotRef}
+                className="mt-1 text-base font-medium text-muted-foreground inline-block"
+              >
+                {nextExerciseName}
+              </div>
             </div>
           )}
-        </>
+        </div>
       ) : (
-        // Workout complete state
-        <div className="flex flex-col items-center justify-center text-center px-6 py-24 gap-4">
+        <div className="flex flex-col items-center justify-center text-center px-6 py-24 gap-4 animate-fade-in">
           <CheckCircle2 className="w-16 h-16 text-primary" />
           <h2 className="text-2xl font-bold text-foreground">Workout complete</h2>
           <p className="text-sm text-muted-foreground max-w-xs">
@@ -284,6 +353,55 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
           </Button>
         </div>
       )}
+
+      {/* Floating promoted name clone — positioned over the title slot,
+          starts transformed back to the upNext slot and animates to identity. */}
+      {isPromoting && promotingName && titleSlotRef.current && (
+        <FloatingPromotedName
+          name={promotingName}
+          targetRect={titleSlotRef.current.getBoundingClientRect()}
+          transform={flyTransform}
+          atTarget={flyAtTarget}
+        />
+      )}
+    </div>
+  );
+};
+
+interface FloatingPromotedNameProps {
+  name: string;
+  targetRect: DOMRect;
+  transform: string;
+  atTarget: boolean;
+}
+
+const FloatingPromotedName: React.FC<FloatingPromotedNameProps> = ({
+  name,
+  targetRect,
+  transform,
+  atTarget,
+}) => {
+  return (
+    <div
+      className="fixed z-[60] pointer-events-none"
+      style={{
+        left: targetRect.left,
+        top: targetRect.top,
+        transform,
+        transformOrigin: 'top left',
+        transition: `transform ${PROMOTE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+        willChange: 'transform',
+      }}
+    >
+      <h2
+        className={cn(
+          'font-bold leading-tight whitespace-nowrap transition-colors duration-300',
+          'text-3xl sm:text-4xl',
+          atTarget ? 'text-foreground' : 'text-muted-foreground'
+        )}
+      >
+        {name}
+      </h2>
     </div>
   );
 };
