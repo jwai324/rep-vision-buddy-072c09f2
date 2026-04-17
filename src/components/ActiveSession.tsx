@@ -427,26 +427,23 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, [cancelNotification, fireRestCompleteNotification]);
 
   // ---- Reconcile / recalc on every relevant trigger ----
+  // Timer NO LONGER auto-completes at 0 — it keeps ticking into negative
+  // (overtime) until the user starts the next set or taps Skip. We still fire
+  // the "rest complete" notification once when the threshold is first crossed.
   const recalcRestTimer = useCallback(() => {
     setActiveTimer(prev => {
       if (!prev) return prev;
       if (prev.status !== 'running') return prev;
       const remaining = computeRemaining(prev);
-      if (remaining <= 0) {
-        const key = `${timerIdKey(prev.id)}@${prev.startedAtEpoch}`;
-        if (!completedFiredFor.current.has(key)) {
-          completedFiredFor.current.add(key);
-          // Mark complete: record full duration as the rest taken
-          setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: prev.originalDuration }));
-          // If we missed firing the scheduled notification (app was killed), fire now as late
-          const target = prev.startedAtEpoch + prev.duration * 1000;
-          const wasLate = Date.now() - target > 1500;
-          if (wasLate) fireRestCompleteNotification(true);
-        }
+      const key = `${timerIdKey(prev.id)}@${prev.startedAtEpoch}`;
+      if (remaining <= 0 && !completedFiredFor.current.has(key)) {
+        completedFiredFor.current.add(key);
+        const target = prev.startedAtEpoch + prev.duration * 1000;
+        const wasLate = Date.now() - target > 1500;
+        if (wasLate) fireRestCompleteNotification(true);
         cancelNotification();
-        return null;
       }
-      // Force re-render so derived UI updates
+      // Force re-render so derived UI updates (countdown + overtime)
       setTimerTick(n => (n + 1) % 1000000);
       return prev;
     });
