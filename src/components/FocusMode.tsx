@@ -168,6 +168,26 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   const currentRound = block ? completedRounds(block) + 1 : 0;
   const setLabel = block && currentRound <= totalSets ? `Set ${currentRound} of ${totalSets}` : null;
 
+  // Compute the next exercise name by simulating completion of the current focused block.
+  const nextExerciseName = useMemo(() => {
+    if (focusedIdx === null) return null;
+    const synthetic = blocks.map((b, i) =>
+      i === focusedIdx
+        ? {
+            ...b,
+            sets: b.sets.map(s => ({
+              ...s,
+              completed: true,
+              drops: (s.drops ?? []).map(d => ({ ...d, completed: true })),
+            })),
+          }
+        : b
+    );
+    const nextIdx = pickFocusedBlockIdx(synthetic);
+    if (nextIdx === null || nextIdx === focusedIdx) return null;
+    return blocks[nextIdx].exerciseName;
+  }, [blocks, focusedIdx]);
+
   return (
     <div
       className={cn(
