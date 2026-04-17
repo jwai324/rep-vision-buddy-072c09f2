@@ -41,6 +41,7 @@ interface SessionSummaryProps {
   onDelete?: (id: string) => void;
   onEdit?: (session: WorkoutSession) => void;
   onUpdateSession?: (session: WorkoutSession) => void;
+  onContinue?: () => void;
   isViewMode?: boolean;
 }
 
@@ -61,7 +62,7 @@ const getSupersetColorClass = (group?: number) => {
   return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
 };
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, isViewMode }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, isViewMode }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
@@ -411,6 +412,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           <>
             <Button variant="neon" onClick={onSave} className="w-full">Save Workout</Button>
             <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
+            {onContinue && (
+              <Button variant="ghost" onClick={onContinue} className="w-full">Continue Workout</Button>
+            )}
             <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
           </>
         )}

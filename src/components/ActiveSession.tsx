@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
+import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
@@ -1243,23 +1243,35 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       .filter(b => b.sets.some(s => s.completed))
       .map(b => {
         const mode = getExerciseInputMode(b.exerciseId, customExercises);
+        const sets: WorkoutSet[] = [];
+        b.sets.filter(s => s.completed).forEach(s => {
+          const seconds = timeToSeconds(s.time);
+          sets.push({
+            setNumber: s.setNumber,
+            type: s.type,
+            reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
+            weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
+            rpe: s.rpe ? parseFloat(s.rpe) : undefined,
+            time: seconds > 0 ? seconds : (mode === 'cardio' ? (parseInt(s.reps) || 0) : undefined),
+          });
+          // Append completed dropsets immediately after their parent set
+          (s.drops ?? []).filter(d => d.completed).forEach(d => {
+            const dSeconds = d.time ? timeToSeconds(d.time) : 0;
+            sets.push({
+              setNumber: s.setNumber,
+              type: 'dropset',
+              reps: mode === 'cardio' ? 1 : (parseInt(d.reps) || 0),
+              weight: mode === 'cardio' ? undefined : (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined),
+              rpe: d.rpe ? parseFloat(d.rpe) : undefined,
+              time: dSeconds > 0 ? dSeconds : undefined,
+            });
+          });
+        });
         return {
           exerciseId: b.exerciseId,
           exerciseName: b.exerciseName,
           supersetGroup: b.supersetGroup,
-          sets: b.sets
-            .filter(s => s.completed)
-            .map(s => {
-              const seconds = timeToSeconds(s.time);
-              return {
-                setNumber: s.setNumber,
-                type: s.type,
-                reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
-                weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
-                rpe: s.rpe ? parseFloat(s.rpe) : undefined,
-                time: seconds > 0 ? seconds : (mode === 'cardio' ? (parseInt(s.reps) || 0) : undefined),
-              };
-            }),
+          sets,
         };
       });
 
