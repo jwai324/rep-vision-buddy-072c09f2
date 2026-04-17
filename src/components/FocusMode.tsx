@@ -37,6 +37,7 @@ interface FocusModeProps {
   onStartNextSet: (blockIdx: number) => void;
   onStopSet: () => void;
   onClose: () => void;
+  scrollToBlock: (idx: number | null) => void;
 }
 
 /** A set is "fully complete" only if its parent and ALL its drops are completed. */
