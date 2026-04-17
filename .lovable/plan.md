@@ -1,30 +1,37 @@
 
-## Fix Start/Stop set button toggle behavior
+## Rest timer: count into overtime, record actual elapsed
 
-### Current bug
-Tapping "Stop set" likely triggers the 5-second countdown overlay because the same handler (`handleStartNextSet`) is wired to both states, and its "if running, stop first then start next" logic always proceeds to launch the countdown for the next set.
+### Behavior
+- Rest timer counts down to 0:00, then flips to **"Overtime 0:12"** (counting up positive) until the user starts the next set or skips.
+- When stopped (next set started or skip pressed), the **recorded rest = actual total elapsed time** (planned duration + overtime, or less if skipped early).
 
-### Fix
-In `ActiveSession.tsx`, split the click behavior based on whether a set is currently running in this exercise block:
+### Changes
 
-1. **If `runningSet` belongs to this block** → call `handleStopSet()` only. Record `endedAt`, write duration to `time`, auto-complete the set, start the rest timer. **Do NOT show countdown. Do NOT auto-advance.** Button reverts to "Start next set".
+**`src/hooks/useRestTimer.ts`**
+- Remove `Math.max(0, ...)` clamp on `remaining` — allow it to go negative internally.
+- Remove the auto-stop branch at `<= 0`. Timer keeps ticking.
+- `progress` capped at 1 for ring/bar visuals.
+- `skip()` returns the actual elapsed seconds: `totalDurationRef.current - remaining` (so callers can record it).
+- Expose `elapsed` derived value for display: `totalDuration - remaining` (always positive once overtime).
 
-2. **If no set is running in this block** → start the 5s countdown for the next uncompleted set as today.
+**`src/components/ExerciseRestTimer.tsx`**
+- When `remaining >= 0` → existing `m:ss` countdown display.
+- When `remaining < 0` → render **"Overtime M:SS"** using `Math.abs(remaining)`, switch text/bar color to `text-destructive` / amber accent.
+- Inline variant: same overtime label, smaller. Keep `animate-pulse`.
+- "Recorded rest" pill (post-stop) shows the actual total elapsed time returned from skip.
 
-3. Remove the "stop current + start next in one tap" auto-chain. The user explicitly taps Stop, then taps Start again for the next set. (This also removes the "+5s bonus" logic, which only existed to compensate for the implicit chain.)
+**`src/components/RestTimerRing.tsx`**
+- Same overtime treatment: ring stays full, color flips to destructive, label reads `Overtime M:SS`.
 
-### Code change (single file)
-- `src/components/ActiveSession.tsx`:
-  - In the header button's `onClick`, branch:
-    ```ts
-    if (runningSet?.blockIdx === blockIdx) handleStopSet();
-    else handleStartNextSet(blockIdx);
-    ```
-  - Inside `handleStartNextSet`, remove the "if running, stop first" branch — it should early-return (or no-op) if any set is currently running, since the button now reads "Stop set" in that state.
-  - Keep the countdown overlay tied strictly to `handleStartNextSet`.
+**`src/components/ActiveSession.tsx`**
+- In `handleStartNextSet`: before launching the 5s countdown, if a rest timer is active call `skip()` and capture returned elapsed seconds → store as the recorded rest for the just-completed set.
+- Skip button path already calls `skip()` — same recording flow.
 
 ### Files touched
-- `src/components/ActiveSession.tsx` (only)
+- `src/hooks/useRestTimer.ts`
+- `src/components/ExerciseRestTimer.tsx`
+- `src/components/RestTimerRing.tsx`
+- `src/components/ActiveSession.tsx`
 
-### What stays the same
-- Countdown overlay component, time formatting, persistence cache fields, rest timer behavior, auto-complete on stop.
+### Unchanged
+- Rest trigger points, default durations, persistence, layout.
