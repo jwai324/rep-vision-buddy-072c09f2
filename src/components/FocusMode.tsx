@@ -225,7 +225,7 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
 
           {/* Exercise name + meta */}
           <div className="px-4 pt-4">
-            <h2 className="text-2xl font-bold text-foreground leading-tight">{block.exerciseName}</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold text-foreground leading-tight">{block.exerciseName}</h2>
             <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
               {setLabel && <span>{setLabel}</span>}
               {setLabel && supersetLabel && <span>•</span>}
@@ -259,8 +259,17 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
               runningSet={props.runningSet}
               onStartNextSet={props.onStartNextSet}
               onStopSet={props.onStopSet}
+              hideHeaderName
             />
           </div>
+
+          {/* Up next footer */}
+          {nextExerciseName && (
+            <div className="px-4 pt-8 pb-4">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Up next</div>
+              <div className="mt-1 text-base font-medium text-muted-foreground">{nextExerciseName}</div>
+            </div>
+          )}
         </>
       ) : (
         // Workout complete state
