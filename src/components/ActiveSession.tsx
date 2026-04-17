@@ -2121,15 +2121,12 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     value={set.rpe}
                     onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
                   />
-                  <input
+                  <TimeInputButton
                     id={buildInputId(blockIdx, setIdx, 'time')}
-                    type="text"
-                    inputMode="numeric"
                     value={set.time}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
-                    onFocus={e => e.target.value && e.target.select()}
-                    placeholder="—"
-                    className="w-full text-center text-[10px] bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary font-mono"
+                    onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)}
+                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx}
+                    small
                   />
                   <button
                     onClick={() => onToggleComplete(blockIdx, setIdx)}
