@@ -37,10 +37,12 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (viewport) viewport.scrollTop = 0;
-    }
+    window.scrollTo(0, 0);
+    requestAnimationFrame(() => {
+      const viewport = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+        ?? document.querySelector('[data-radix-scroll-area-viewport]');
+      if (viewport) (viewport as HTMLElement).scrollTop = 0;
+    });
   }, []);
   const activeFilterCount = [equipmentFilter, difficultyFilter, typeFilter].filter(f => f !== 'All').length + (bodyPartFilter !== 'All' ? 1 : 0);
 
