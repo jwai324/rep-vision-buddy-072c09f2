@@ -65,6 +65,7 @@ const getSupersetColorClass = (group?: number) => {
 
 export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, isViewMode }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -421,7 +422,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             {onContinue && (
               <Button variant="ghost" onClick={onContinue} className="w-full">Continue Workout</Button>
             )}
-            <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
+            <button onClick={() => setShowDiscardConfirm(true)} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
           </>
         )}
         {isViewMode && (
@@ -461,6 +462,30 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Discard confirmation dialog */}
+      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Workout</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to discard this workout? All sets you logged will be lost and cannot be recovered.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Workout</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowDiscardConfirm(false);
+                onClose();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
