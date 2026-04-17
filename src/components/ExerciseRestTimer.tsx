@@ -29,8 +29,10 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
   isActive, remaining, totalDuration, recordedRest,
   onStart, onSkip, onExtend,
 }) => {
-  const minutes = Math.floor(remaining / 60);
-  const seconds = remaining % 60;
+  const isOvertime = remaining < 0;
+  const absRemaining = Math.abs(remaining);
+  const minutes = Math.floor(absRemaining / 60);
+  const seconds = absRemaining % 60;
   const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
   const formatRecorded = (s: number) => {
