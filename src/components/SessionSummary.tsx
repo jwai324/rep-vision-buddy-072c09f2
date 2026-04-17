@@ -350,10 +350,15 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             return { label: `${normalCount}`, isDropset: false };
           });
 
-          const colHeader =
-            mode === 'cardio' ? 'SET · TIME · RPE'
-            : mode === 'band' ? 'SET · BAND · REPS · RPE'
-            : 'SET · WEIGHT · REPS · RPE';
+          const gridCols = mode === 'cardio'
+            ? 'grid-cols-[2.5rem_1fr_3rem]'
+            : 'grid-cols-[2.5rem_1fr_1fr_3rem]';
+
+          const headers = mode === 'cardio'
+            ? ['SET', 'TIME', 'RPE']
+            : mode === 'band'
+              ? ['SET', 'BAND', 'REPS', 'RPE']
+              : ['SET', 'WEIGHT', 'REPS', 'RPE'];
 
           return (
           <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
@@ -361,36 +366,36 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
               <span className="text-xl">{icon}</span>
               <h3 className="font-semibold text-foreground">{ex.exerciseName}</h3>
             </div>
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">{colHeader}</p>
+            <div className={`grid ${gridCols} gap-2 mb-2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold`}>
+              {headers.map((h, idx) => (
+                <span key={h} className={idx === 0 ? 'text-left' : idx === headers.length - 1 ? 'text-right' : 'text-center'}>{h}</span>
+              ))}
+            </div>
             <div className="flex flex-col gap-1">
               {ex.sets.map((set, j) => {
                 const { label, isDropset } = labels[j];
                 return (
                   <div
                     key={j}
-                    className={`flex items-center justify-between text-sm ${isDropset ? 'pl-4 border-l-2 border-border ml-2' : ''}`}
+                    className={`grid ${gridCols} gap-2 items-center text-sm text-foreground ${isDropset ? 'pl-3 border-l-2 border-border ml-1' : ''}`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className={`min-w-[2.25rem] px-2 py-0.5 rounded-full text-[10px] font-bold text-center ${SET_TYPE_CONFIG[set.type].colorClass} text-foreground`}>
-                        {label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-foreground">
-                      {mode === 'cardio' ? (
-                        <span>{set.time ?? 0} min</span>
-                      ) : mode === 'band' ? (
-                        <>
-                          <span>{getBandLevelShortLabel(set.weight ?? 0)}</span>
-                          <span>{set.reps} reps</span>
-                        </>
-                      ) : (
-                        <>
-                          {set.weight != null && <span>{formatWeightString(set.weight, weightUnit)}</span>}
-                          <span>{set.reps} reps</span>
-                        </>
-                      )}
-                      {set.rpe && <span className="text-primary text-xs">RPE {set.rpe}</span>}
-                    </div>
+                    <span className={`justify-self-start min-w-[2.25rem] px-2 py-0.5 rounded-full text-[10px] font-bold text-center ${SET_TYPE_CONFIG[set.type].colorClass}`}>
+                      {label}
+                    </span>
+                    {mode === 'cardio' ? (
+                      <span className="text-center">{set.time ?? 0} min</span>
+                    ) : mode === 'band' ? (
+                      <>
+                        <span className="text-center">{getBandLevelShortLabel(set.weight ?? 0)}</span>
+                        <span className="text-center">{set.reps}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-center">{set.weight != null ? formatWeightString(set.weight, weightUnit) : '—'}</span>
+                        <span className="text-center">{set.reps}</span>
+                      </>
+                    )}
+                    <span className="text-right text-primary text-xs">{set.rpe ? set.rpe : '—'}</span>
                   </div>
                 );
               })}
