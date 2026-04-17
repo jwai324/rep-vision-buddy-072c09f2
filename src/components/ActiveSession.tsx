@@ -196,6 +196,28 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
 
+/**
+ * Normalize blocks restored from cache or built from saved sessions:
+ * - Parent rows in `block.sets` must never be `type: 'dropset'`.
+ *   If found (legacy buggy state), coerce to 'superset' (when block is in
+ *   a superset group) or 'normal'.
+ * - `drops` remains the only source of nested dropsets.
+ */
+function normalizeBlocks(blocks: ExerciseBlock[]): ExerciseBlock[] {
+  return blocks.map(b => {
+    const fallback: SetType = b.supersetGroup !== undefined ? 'superset' : 'normal';
+    let needsFix = false;
+    const sets = b.sets.map(s => {
+      if (s.type === 'dropset') {
+        needsFix = true;
+        return { ...s, type: fallback };
+      }
+      return s;
+    });
+    return needsFix ? { ...b, sets } : b;
+  });
+}
+
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate }) => {
   const isEditMode = !!editSession;
   const { exercises: customExercises } = useCustomExercisesContext();
