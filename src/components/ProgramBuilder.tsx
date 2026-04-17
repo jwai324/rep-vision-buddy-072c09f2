@@ -206,22 +206,22 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
 
       {/* Day entries */}
       {days.map((day, i) => (
-        <div key={i} className="bg-card rounded-xl p-4 border border-border flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+        <div key={i} className="bg-card rounded-xl p-4 border border-border flex flex-col gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             <input
               type="text"
               value={day.label}
               onChange={e => updateDay(i, { label: e.target.value })}
-              className="bg-secondary rounded-md px-2 py-1 text-sm text-foreground outline-none flex-1"
+              className="bg-secondary rounded-md px-2 py-1 text-sm text-foreground outline-none flex-1 w-full min-w-0"
             />
-            <button onClick={() => removeDay(i)} className="text-set-failure text-xs">✕</button>
+            <button onClick={() => removeDay(i)} className="text-set-failure text-xs shrink-0">✕</button>
           </div>
 
           {/* Workout selection */}
           <select
             value={day.templateId}
             onChange={e => updateDay(i, { templateId: e.target.value })}
-            className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+            className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none w-full min-w-0"
           >
             <option value="rest">🛏️ Rest Day</option>
             <optgroup label="Templates">
@@ -244,7 +244,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
           <select
             value={day.frequency?.type ?? 'none'}
             onChange={e => updateFrequency(i, e.target.value)}
-            className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none"
+            className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none w-full min-w-0"
           >
             {FREQUENCY_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
