@@ -1854,6 +1854,7 @@ interface ExerciseTableProps {
   isEditMode?: boolean;
   runningSet?: RunningSetState | null;
   onStartNextSet?: (blockIdx: number) => void;
+  onStopSet?: () => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
