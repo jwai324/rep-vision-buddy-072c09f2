@@ -1,25 +1,19 @@
 
-## Fix Wrong Date When Editing a Workout
+## Require Long-Press to Reorder Exercises (Mobile)
 
-### Root cause
-In `src/components/ActiveSession.tsx` (lines 260-269), edit mode initializes the date/time pickers via `new Date(editSession.date)`. Since `editSession.date` is a `"yyyy-MM-dd"` string, JS parses it as **UTC midnight**, which renders as the previous calendar day in any timezone west of UTC (e.g., all of the Americas).
-
-The codebase already has `parseLocalDate` in `src/utils/dateUtils.ts` for exactly this case — it's used everywhere else (SessionSummary, ExerciseDetailModal, CalendarDayDetail, etc.) but was missed here.
+### Problem
+Currently the TouchSensor uses `delay: 200ms, tolerance: 5px` — short enough that a normal vertical scroll/swipe can accidentally pick up an exercise and start reordering it instead of scrolling the page.
 
 ### Fix
-Use `parseLocalDate` instead of `new Date` when seeding `editDate` and `editTime`.
+Increase the touch activation threshold so the user must intentionally press-and-hold the drag handle before reordering kicks in.
 
-```ts
-// Before
-const d = new Date(editSession.date);
+**`src/components/ActiveSession.tsx` (line 791-794)** — adjust the `TouchSensor` activation constraint:
+- `delay: 200` → `delay: 500` (true long-press)
+- `tolerance: 5` → `tolerance: 8` (allow finger micro-movement during the hold without canceling)
 
-// After
-const d = parseLocalDate(editSession.date);
-```
-
-### Files
-- **`src/components/ActiveSession.tsx`** — replace the two `new Date(editSession.date)` calls in the `editDate`/`editTime` `useState` initializers with `parseLocalDate(editSession.date)`. Add `parseLocalDate` to the imports from `@/utils/dateUtils` if not already imported.
+This means: a quick swipe up/down scrolls the page as expected; only a deliberate ~half-second press on the grip handle starts a drag.
 
 ### What stays the same
-- All other edit logic, save flow, and the `sessionDate = editDate || editSession.date.substring(0, 10)` save path on line 1019 (which is already timezone-safe — it just slices the string).
-- No UI/visual changes.
+- `PointerSensor` (desktop mouse) keeps its 8px distance activation — desktop unchanged.
+- Drag handle, visuals, drop animation, `restrictToVerticalAxis` modifier — all unchanged.
+- `SortableExerciseItem` component untouched.
