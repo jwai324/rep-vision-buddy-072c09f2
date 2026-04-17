@@ -1297,7 +1297,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       return;
     }
 
-    const exerciseLogs: ExerciseLog[] = blocks
+    const exerciseLogs: ExerciseLog[] = normalizeBlocks(blocks)
       .filter(b => b.sets.some(s => s.completed))
       .map(b => {
         const mode = getExerciseInputMode(b.exerciseId, customExercises);
