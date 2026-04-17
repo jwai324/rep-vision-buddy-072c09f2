@@ -165,6 +165,7 @@ interface SetRow {
 export interface RunningSetState {
   blockIdx: number;
   setIdx: number;
+  dropIdx?: number;
   startedAt: number;
 }
 
@@ -190,7 +191,7 @@ const SUPERSET_COLORS = [
   'bg-white/20',
 ];
 
-const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
+const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate }) => {
   const isEditMode = !!editSession;
@@ -342,7 +343,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const completedFiredFor = useRef<Set<string>>(new Set());
 
   // Per-set live timing state (5s countdown -> running)
-  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number } | null>(null);
+  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
   const [runningSet, setRunningSet] = useState<RunningSetState | null>(
     cachedSession?.runningSet ?? null
   );
