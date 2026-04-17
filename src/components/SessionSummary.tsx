@@ -65,6 +65,7 @@ const getSupersetColorClass = (group?: number) => {
 
 export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, isViewMode }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
 
