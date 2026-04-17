@@ -106,32 +106,34 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
       </div>
 
       {/* Contribution grid */}
-      <div className="bg-card rounded-xl border border-border p-4">
+      <div className="bg-card rounded-xl border border-border p-4 min-w-0 max-w-full overflow-hidden">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
           Training Activity (52 weeks)
         </p>
-        <div className="flex gap-0.5 overflow-x-auto scrollbar-hide pb-2">
-          <div className="flex flex-col gap-0.5 mr-1 pt-0">
+        <div className="flex gap-[1px] sm:gap-0.5 pb-2 min-w-0 max-w-full">
+          <div className="flex flex-col gap-[1px] sm:gap-0.5 mr-1 pt-0 flex-shrink-0">
             {dayLabels.map((label, i) => (
-              <div key={i} className="h-[11px] text-[8px] text-muted-foreground flex items-center justify-end pr-0.5 w-3">
+              <div key={i} className="h-[6px] sm:h-[11px] text-[8px] text-muted-foreground flex items-center justify-end pr-0.5 w-3">
                 {i % 2 === 0 ? label : ''}
               </div>
             ))}
           </div>
-          {grid.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-0.5">
-              {Array.from({ length: 7 }).map((_, di) => {
-                const day = week.find(d => d.dayOfWeek === di);
-                return (
-                  <div
-                    key={di}
-                    className={`w-[11px] h-[11px] rounded-[2px] ${day ? getIntensity(day.volume) : 'bg-transparent'}`}
-                    title={day ? `${day.date}: ${day.volume.toLocaleString()}` : ''}
-                  />
-                );
-              })}
-            </div>
-          ))}
+          <div className="flex gap-[1px] sm:gap-0.5 flex-1 min-w-0">
+            {grid.map((week, wi) => (
+              <div key={wi} className="flex flex-col gap-[1px] sm:gap-0.5 flex-1 min-w-0">
+                {Array.from({ length: 7 }).map((_, di) => {
+                  const day = week.find(d => d.dayOfWeek === di);
+                  return (
+                    <div
+                      key={di}
+                      className={`w-full aspect-square sm:w-[11px] sm:h-[11px] rounded-[2px] ${day ? getIntensity(day.volume) : 'bg-transparent'}`}
+                      title={day ? `${day.date}: ${day.volume.toLocaleString()}` : ''}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-1 mt-2 justify-end">
           <span className="text-[9px] text-muted-foreground">Less</span>
