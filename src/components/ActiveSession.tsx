@@ -1780,6 +1780,9 @@ interface ExerciseTableProps {
   onSkipTimer: () => void;
   onExtendTimer: (delta?: number) => void;
   onTitleTap?: () => void;
+  isEditMode?: boolean;
+  runningSet?: RunningSetState | null;
+  onStartNextSet?: (blockIdx: number) => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -1794,19 +1797,33 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet }) => {
+  const isRunningHere = runningSet?.blockIdx === blockIdx;
   return (
     <div>
       {/* Exercise Header */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-1 gap-2">
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onTitleTap?.(); }}
-          className="text-sm font-semibold text-primary text-left hover:underline focus:outline-none focus:underline"
+          className="text-sm font-semibold text-primary text-left hover:underline focus:outline-none focus:underline truncate"
         >
           {block.exerciseName}
         </button>
-        <Popover>
+        <div className="flex items-center gap-1 shrink-0">
+          {!isEditMode && onStartNextSet && (
+            <button
+              onClick={() => onStartNextSet(blockIdx)}
+              className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md transition-colors ${
+                isRunningHere
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
+              }`}
+            >
+              {isRunningHere ? 'Stop set' : 'Start next set'}
+            </button>
+          )}
+          <Popover>
           <PopoverTrigger asChild>
             <button className="text-muted-foreground hover:text-foreground p-1">
               <MoreHorizontal className="w-4 h-4" />
