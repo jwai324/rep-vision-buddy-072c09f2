@@ -722,6 +722,87 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, [startTimer, weightUnit, customExercises]);
 
+  // Internal: stop a running set, write its duration into time, mark complete, start rest timer.
+  // bonusSeconds is added when the user starts a NEW set while one is still running (per spec: +5s).
+  const stopRunningSet = useCallback((bonusSeconds: number = 0) => {
+    if (!runningSet) return;
+    const { blockIdx, setIdx, startedAt } = runningSet;
+    const endedAt = Date.now() + bonusSeconds * 1000;
+    const seconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
+    let restSec = 90;
+    setBlocks(prev => prev.map((b, bi) => {
+      if (bi !== blockIdx) return b;
+      restSec = b.restSeconds;
+      const completedSet = b.sets[setIdx];
+      return {
+        ...b,
+        sets: b.sets.map((s, si) => {
+          if (si === setIdx) {
+            return { ...s, time: String(seconds), startedAt, endedAt, completed: true };
+          }
+          if (si > setIdx && !s.completed) {
+            return {
+              ...s,
+              weight: s.weight || completedSet.weight,
+              reps: s.reps || completedSet.reps,
+              rpe: s.rpe || completedSet.rpe,
+            };
+          }
+          return s;
+        }),
+      };
+    }));
+    setRunningSet(null);
+    startTimer({ type: 'set', blockIdx, setIdx }, restSec);
+  }, [runningSet, startTimer]);
+
+  // Public: tap "Start next set" / "Stop set" on an exercise header.
+  const handleStartNextSet = useCallback((blockIdx: number) => {
+    if (countdown) return; // overlay owns the screen
+    if (runningSet) {
+      const sameExercise = runningSet.blockIdx === blockIdx;
+      // Per spec: if pushed again, stop current with +5s and begin a new countdown.
+      stopRunningSet(sameExercise ? 5 : 0);
+      if (sameExercise) {
+        setTimeout(() => {
+          setBlocks(curr => {
+            const block = curr[blockIdx];
+            const nextIdx = block?.sets.findIndex(s => !s.completed) ?? -1;
+            if (nextIdx === -1) {
+              toast.success('All sets complete for this exercise');
+            } else {
+              setCountdown({ blockIdx, setIdx: nextIdx });
+            }
+            return curr;
+          });
+        }, 0);
+      }
+      return;
+    }
+    const block = blocks[blockIdx];
+    if (!block) return;
+    const nextIdx = block.sets.findIndex(s => !s.completed);
+    if (nextIdx === -1) {
+      toast.success('All sets complete for this exercise');
+      return;
+    }
+    setCountdown({ blockIdx, setIdx: nextIdx });
+  }, [blocks, countdown, runningSet, stopRunningSet]);
+
+  const handleCountdownComplete = useCallback(() => {
+    if (!countdown) return;
+    const { blockIdx, setIdx } = countdown;
+    const startedAt = Date.now();
+    setBlocks(prev => prev.map((b, bi) =>
+      bi !== blockIdx ? b : {
+        ...b,
+        sets: b.sets.map((s, si) => si === setIdx ? { ...s, startedAt, endedAt: undefined } : s),
+      }
+    ));
+    setRunningSet({ blockIdx, setIdx, startedAt });
+    setCountdown(null);
+  }, [countdown]);
+
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
