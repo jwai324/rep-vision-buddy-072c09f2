@@ -1,24 +1,28 @@
 
 
-## Fix Focus Mode transition fade
-
-### Problem
-Focus Mode dims to 30% but never restores to full opacity — the `setTimeout` fade-back isn't reliably firing (likely because `scrollToBlock` identity changes re-run the effect and the cleanup clears the timeout before it fires).
+## Refine Focus Mode header
 
 ### Changes
 
+**`src/components/ActiveSession.tsx`**
+- Add optional prop `hideHeaderName?: boolean` to `ExerciseTable`.
+- When `true`, hide the exercise-name button at line ~2132–2135 (keep the action icons row intact).
+
 **`src/components/FocusMode.tsx`**
-1. **Fade to fully transparent (0%)** instead of 30% during the transition, so the underlying ActiveSession is fully visible.
-2. **Smoother fade in/out** — use `transition-opacity duration-500` so both the fade-out and fade-in are visibly animated.
-3. **Fix the timeout never resolving**:
-   - Narrow the effect's dependency array to `[focusedIdx]` only (remove `scrollToBlock` so a new function identity doesn't re-trigger and clobber the timer).
-   - Read `scrollToBlock` via a ref so the latest version is always used without being a dependency.
-4. Keep `pointer-events-none` during transition so taps go through to the active session beneath.
-5. Total cycle: ~500ms fade out → hold ~400ms while scrolling → 500ms fade back in (≈1400ms total). Adjustable in one constant.
+1. **Enlarge the exercise name** in the FocusMode header (line ~177): bump from `text-2xl` to `text-3xl sm:text-4xl`, keep meta line below.
+2. **Pass `hideHeaderName`** to the embedded `<ExerciseTable />` so the duplicate name is removed.
+3. **Compute `nextExerciseName`**: build a synthetic `blocks` array where the currently focused block's sets and all drops are marked `completed: true`, run `pickFocusedBlockIdx` on it, and read that block's `exerciseName`. If `null` → "Last exercise" (or hide the footer).
+4. **Add a "Next" footer** at the bottom of the FocusMode scroll area (above `pb-24` padding), styled subtly:
+   ```
+   Up next
+   {nextExerciseName}
+   ```
+   Small uppercase label + medium-weight name in muted-foreground. Hidden when no next exercise.
 
 ### Files
-- Modify: `src/components/FocusMode.tsx`
+- Modify: `src/components/ActiveSession.tsx` (add `hideHeaderName` prop)
+- Modify: `src/components/FocusMode.tsx` (larger title, pass prop, render next-up footer)
 
 ### Unchanged
-- `ActiveSession.tsx`, scrollToBlock implementation, all set/timer/superset logic.
+- All set-logging, transition, scroll, timer, superset logic.
 
