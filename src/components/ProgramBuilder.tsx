@@ -176,10 +176,10 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
   };
 
   return (
-    <div className="p-4 flex flex-col gap-4 pb-24">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-foreground">{initial ? 'Edit' : 'New'} Program</h2>
-        <button onClick={handleCancel} className="text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+    <div className="p-4 flex flex-col gap-4 pb-24 overflow-x-hidden min-w-0 max-w-full">
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <h2 className="text-xl font-bold text-foreground truncate min-w-0">{initial ? 'Edit' : 'New'} Program</h2>
+        <button onClick={handleCancel} className="text-sm text-muted-foreground hover:text-foreground shrink-0">Cancel</button>
       </div>
 
       <input
@@ -187,16 +187,16 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
         placeholder="Program name (e.g., 3-Day Full Body)"
         value={name}
         onChange={e => setName(e.target.value)}
-        className="bg-secondary rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary font-medium"
+        className="bg-secondary rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary font-medium w-full min-w-0"
       />
 
       {/* Duration */}
-      <div className="bg-card rounded-xl p-4 border border-border flex items-center gap-3">
+      <div className="bg-card rounded-xl p-4 border border-border flex items-center gap-3 min-w-0">
         <label className="text-sm font-semibold text-foreground whitespace-nowrap">Duration</label>
         <select
           value={durationWeeks}
           onChange={e => setDurationWeeks(Number(e.target.value))}
-          className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none flex-1"
+          className="bg-secondary rounded-md px-2 py-1.5 text-sm text-foreground outline-none flex-1 w-full min-w-0"
         >
           {Array.from({ length: 48 }, (_, i) => i + 1).map(w => (
             <option key={w} value={w}>{w} week{w > 1 ? 's' : ''}</option>
