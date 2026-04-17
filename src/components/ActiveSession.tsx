@@ -2408,6 +2408,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     <Check className="w-4 h-4" />
                   </button>
                 </div>
+                )}
               </SwipeToDelete>
             ))}
 
