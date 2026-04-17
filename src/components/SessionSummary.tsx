@@ -41,6 +41,7 @@ interface SessionSummaryProps {
   onDelete?: (id: string) => void;
   onEdit?: (session: WorkoutSession) => void;
   onUpdateSession?: (session: WorkoutSession) => void;
+  onContinue?: () => void;
   isViewMode?: boolean;
 }
 
