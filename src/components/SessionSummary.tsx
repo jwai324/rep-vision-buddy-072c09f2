@@ -412,6 +412,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           <>
             <Button variant="neon" onClick={onSave} className="w-full">Save Workout</Button>
             <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
+            {onContinue && (
+              <Button variant="ghost" onClick={onContinue} className="w-full">Continue Workout</Button>
+            )}
             <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
           </>
         )}
