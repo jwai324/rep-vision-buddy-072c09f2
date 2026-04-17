@@ -1,25 +1,24 @@
 
 
-## Fix accidental drag when scrolling in active workout
+## Restore drag-to-reorder while keeping scroll safe
 
-### Cause
-`src/components/SortableExerciseItem.tsx` uses `useSortable` from `@dnd-kit/sortable` and spreads `listeners` only on the grip handle button — that part is correct. But the underlying DnD sensors in `ActiveSession.tsx` are almost certainly configured with default `PointerSensor` / `TouchSensor` with no activation constraint, so any touch on the grip (or any element if listeners leaked) starts a drag immediately. On mobile, when the user's thumb lands on or near the grip while starting a vertical scroll, the drag wins over the scroll.
+### How it's supposed to work
+On the active workout screen each exercise has a grip handle (`⋮⋮` icon) on its left. To reorder:
+- **Mobile:** press-and-hold the grip for ~500ms, then drag up/down. A short tap or swipe scrolls the page normally.
+- **Desktop:** click the grip and drag at least 8px.
 
-The fix is to require either a small delay or a movement threshold before activating drag, so a quick scroll gesture never triggers reordering.
+### Why it broke
+Last change removed `touch-none` from the grip to fix accidental drags while scrolling. That fixed scrolling, but it also means the browser now claims the touch for scrolling even after the 500ms long-press fires — so the drag never starts on mobile.
 
-### Fix (single file: `src/components/ActiveSession.tsx`)
-Locate the `useSensors(...)` call and configure activation constraints:
+The right fix is: let scroll work everywhere on the row EXCEPT once a long-press has been recognized on the grip itself. dnd-kit's `TouchSensor` with `delay` already gates activation; we just need the grip to opt out of native touch-scrolling so that after the delay the drag can take over. The previous attempt put `touch-none` on the button always — that's too aggressive on a small target where the thumb often lands while scrolling.
 
-- `PointerSensor` → `activationConstraint: { distance: 8 }` (mouse must move 8px before drag starts).
-- `TouchSensor` → `activationConstraint: { delay: 200, tolerance: 8 }` (finger must hold ~200ms with <8px movement; any earlier movement is treated as scroll).
+### Fix (1 file: `src/components/SortableExerciseItem.tsx`)
+1. Put `touch-action: none` back on the grip button — but enlarge the touch target slightly (`p-2` instead of `p-1`) and keep it visually the same, so users land on it intentionally.
+2. Verify (no change needed if already correct) that `ActiveSession.tsx` `TouchSensor` uses `{ delay: 500, tolerance: 8 }` — that's what prevents an accidental tap-on-grip from triggering a drag during a scroll. If a quick swipe starts on the grip, the 8px tolerance cancels activation and the page scrolls.
 
-If sensors aren't currently customized (using defaults via `DndContext`), add an explicit `useSensors` setup with `PointerSensor` and `TouchSensor` and pass it to `DndContext`.
-
-### Optional polish
-- Keep `touch-none` on the grip button so once drag activates, the browser doesn't also try to scroll.
-- No changes needed to `SortableExerciseItem.tsx`.
+Net effect: scrolling anywhere on the row (including a quick brush over the grip) still scrolls; a deliberate long-press on the grip starts the drag.
 
 ### What stays the same
-- Drag-and-drop reorder logic, set rendering, swipe-to-delete on sets.
-- Desktop behavior (8px distance is imperceptible for mouse users).
+- `ActiveSession.tsx` sensor config and reorder logic.
+- All other touch behavior (set rows, swipe-to-delete).
 
