@@ -28,6 +28,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
+import { CountdownOverlay } from '@/components/CountdownOverlay';
+import { formatMmSs, parseMmSs, timeToSeconds } from '@/utils/timeFormat';
 import { registerSession, unregisterSession } from '@/hooks/useSessionController';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -85,6 +87,7 @@ export interface ActiveSessionCache {
   workoutNote?: string;
   activeTimer?: PersistedTimer | null;
   restRecords?: Record<string, number>;
+  runningSet?: RunningSetState | null;
 }
 
 // Safe localStorage write — never throws
@@ -153,8 +156,16 @@ interface SetRow {
   completed: boolean;
   type: SetType;
   rpe: string;
-  time: string;
+  time: string;          // total seconds (string), formatted as mm:ss for display
+  startedAt?: number;    // epoch ms — when "Start next set" countdown completed
+  endedAt?: number;      // epoch ms — when "Stop set" was tapped
   drops?: DropRow[];
+}
+
+export interface RunningSetState {
+  blockIdx: number;
+  setIdx: number;
+  startedAt: number;
 }
 
 interface ExerciseBlock {
@@ -330,6 +341,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const notificationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedFiredFor = useRef<Set<string>>(new Set());
 
+  // Per-set live timing state (5s countdown -> running)
+  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number } | null>(null);
+  const [runningSet, setRunningSet] = useState<RunningSetState | null>(
+    cachedSession?.runningSet ?? null
+  );
+
   // Cache full session state (including timer) to localStorage on changes (skip in edit mode)
   useEffect(() => {
     if (isEditMode) return;
@@ -342,8 +359,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       workoutNote: workoutNote || undefined,
       activeTimer,
       restRecords,
+      runningSet,
     });
-  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet]);
 
   // Derive remaining seconds from the persisted record (clamped to originalDuration in case of clock changes)
   const computeRemaining = useCallback((t: PersistedTimer | null): number => {
@@ -704,6 +722,87 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, [startTimer, weightUnit, customExercises]);
 
+  // Internal: stop a running set, write its duration into time, mark complete, start rest timer.
+  // bonusSeconds is added when the user starts a NEW set while one is still running (per spec: +5s).
+  const stopRunningSet = useCallback((bonusSeconds: number = 0) => {
+    if (!runningSet) return;
+    const { blockIdx, setIdx, startedAt } = runningSet;
+    const endedAt = Date.now() + bonusSeconds * 1000;
+    const seconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
+    let restSec = 90;
+    setBlocks(prev => prev.map((b, bi) => {
+      if (bi !== blockIdx) return b;
+      restSec = b.restSeconds;
+      const completedSet = b.sets[setIdx];
+      return {
+        ...b,
+        sets: b.sets.map((s, si) => {
+          if (si === setIdx) {
+            return { ...s, time: String(seconds), startedAt, endedAt, completed: true };
+          }
+          if (si > setIdx && !s.completed) {
+            return {
+              ...s,
+              weight: s.weight || completedSet.weight,
+              reps: s.reps || completedSet.reps,
+              rpe: s.rpe || completedSet.rpe,
+            };
+          }
+          return s;
+        }),
+      };
+    }));
+    setRunningSet(null);
+    startTimer({ type: 'set', blockIdx, setIdx }, restSec);
+  }, [runningSet, startTimer]);
+
+  // Public: tap "Start next set" / "Stop set" on an exercise header.
+  const handleStartNextSet = useCallback((blockIdx: number) => {
+    if (countdown) return; // overlay owns the screen
+    if (runningSet) {
+      const sameExercise = runningSet.blockIdx === blockIdx;
+      // Per spec: if pushed again, stop current with +5s and begin a new countdown.
+      stopRunningSet(sameExercise ? 5 : 0);
+      if (sameExercise) {
+        setTimeout(() => {
+          setBlocks(curr => {
+            const block = curr[blockIdx];
+            const nextIdx = block?.sets.findIndex(s => !s.completed) ?? -1;
+            if (nextIdx === -1) {
+              toast.success('All sets complete for this exercise');
+            } else {
+              setCountdown({ blockIdx, setIdx: nextIdx });
+            }
+            return curr;
+          });
+        }, 0);
+      }
+      return;
+    }
+    const block = blocks[blockIdx];
+    if (!block) return;
+    const nextIdx = block.sets.findIndex(s => !s.completed);
+    if (nextIdx === -1) {
+      toast.success('All sets complete for this exercise');
+      return;
+    }
+    setCountdown({ blockIdx, setIdx: nextIdx });
+  }, [blocks, countdown, runningSet, stopRunningSet]);
+
+  const handleCountdownComplete = useCallback(() => {
+    if (!countdown) return;
+    const { blockIdx, setIdx } = countdown;
+    const startedAt = Date.now();
+    setBlocks(prev => prev.map((b, bi) =>
+      bi !== blockIdx ? b : {
+        ...b,
+        sets: b.sets.map((s, si) => si === setIdx ? { ...s, startedAt, endedAt: undefined } : s),
+      }
+    ));
+    setRunningSet({ blockIdx, setIdx, startedAt });
+    setCountdown(null);
+  }, [countdown]);
+
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
@@ -1024,14 +1123,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           supersetGroup: b.supersetGroup,
           sets: b.sets
             .filter(s => s.completed)
-            .map(s => ({
-              setNumber: s.setNumber,
-              type: s.type,
-              reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
-              weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
-              rpe: s.rpe ? parseFloat(s.rpe) : undefined,
-              time: mode === 'cardio' ? (parseFloat(s.time || s.reps) || 0) : undefined,
-            })),
+            .map(s => {
+              const seconds = timeToSeconds(s.time);
+              return {
+                setNumber: s.setNumber,
+                type: s.type,
+                reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
+                weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
+                rpe: s.rpe ? parseFloat(s.rpe) : undefined,
+                time: seconds > 0 ? seconds : (mode === 'cardio' ? (parseInt(s.reps) || 0) : undefined),
+              };
+            }),
         };
       });
 
@@ -1376,6 +1478,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                       onSkipTimer={skipTimer}
                       onExtendTimer={extendTimer}
                       onTitleTap={() => setDetailExerciseId(block.exerciseId)}
+                      isEditMode={isEditMode}
+                      runningSet={runningSet}
+                      onStartNextSet={handleStartNextSet}
                     />
                   </div>
                 </SortableExerciseItem>
@@ -1559,6 +1664,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 5-second countdown overlay before starting a timed set */}
+      {countdown && (
+        <CountdownOverlay
+          from={5}
+          onComplete={handleCountdownComplete}
+          onCancel={() => setCountdown(null)}
+        />
+      )}
     </div>
   );
 };
@@ -1585,7 +1699,75 @@ const RpePickerButton: React.FC<{ id: string; value: string; onChange: (v: strin
   );
 };
 
-/* ---------- Focus Navigation Helper ---------- */
+/* ---------- Time Input Button (mm:ss popover) ---------- */
+
+const TimeInputButton: React.FC<{ id: string; value: string; onChange: (v: string) => void; running?: boolean; small?: boolean }> = ({ id, value, onChange, running, small }) => {
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const seconds = timeToSeconds(value);
+  const display = seconds > 0 ? formatMmSs(seconds) : '—';
+
+  React.useEffect(() => {
+    if (open) setDraft(seconds > 0 ? formatMmSs(seconds) : '');
+  }, [open, seconds]);
+
+  const commit = () => {
+    const parsed = parseMmSs(draft);
+    if (parsed === null) {
+      onChange('');
+    } else {
+      onChange(String(parsed));
+    }
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          id={id}
+          type="button"
+          className={`w-full text-center bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary hover:bg-secondary/80 transition-colors font-mono ${
+            small ? 'text-[10px]' : 'text-sm'
+          } ${running ? 'ring-1 ring-primary animate-pulse' : ''}`}
+        >
+          {display}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-48 p-3">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground text-center mb-2">Time (m:ss)</div>
+        <input
+          autoFocus
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          }}
+          placeholder="1:30"
+          className="w-full text-center text-lg font-mono bg-secondary rounded-md py-2 text-foreground outline-none focus:ring-1 focus:ring-primary"
+        />
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={() => { onChange(''); setOpen(false); }}
+            className="flex-1 text-xs py-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          >
+            Clear
+          </button>
+          <button
+            onClick={commit}
+            className="flex-1 text-xs py-1.5 rounded-md bg-primary text-primary-foreground font-semibold hover:opacity-90"
+          >
+            Done
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+
 
 const FIELD_ORDER = ['weight', 'reps', 'rpe'] as const;
 
@@ -1678,6 +1860,9 @@ interface ExerciseTableProps {
   onSkipTimer: () => void;
   onExtendTimer: (delta?: number) => void;
   onTitleTap?: () => void;
+  isEditMode?: boolean;
+  runningSet?: RunningSetState | null;
+  onStartNextSet?: (blockIdx: number) => void;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -1692,19 +1877,33 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap }) => {
+const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet }) => {
+  const isRunningHere = runningSet?.blockIdx === blockIdx;
   return (
     <div>
       {/* Exercise Header */}
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-1 gap-2">
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onTitleTap?.(); }}
-          className="text-sm font-semibold text-primary text-left hover:underline focus:outline-none focus:underline"
+          className="text-sm font-semibold text-primary text-left hover:underline focus:outline-none focus:underline truncate"
         >
           {block.exerciseName}
         </button>
-        <Popover>
+        <div className="flex items-center gap-1 shrink-0">
+          {!isEditMode && onStartNextSet && (
+            <button
+              onClick={() => onStartNextSet(blockIdx)}
+              className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md transition-colors ${
+                isRunningHere
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
+              }`}
+            >
+              {isRunningHere ? 'Stop set' : 'Start next set'}
+            </button>
+          )}
+          <Popover>
           <PopoverTrigger asChild>
             <button className="text-muted-foreground hover:text-foreground p-1">
               <MoreHorizontal className="w-4 h-4" />
@@ -1736,6 +1935,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
             ))}
           </PopoverContent>
         </Popover>
+        </div>
       </div>
 
       {/* Sticky Note display */}
@@ -1764,7 +1964,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
       {inputMode === 'cardio' ? (
         <div className="grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
           <span>Set</span>
-          <span className="text-center">Time (min)</span>
+          <span className="text-center">Time</span>
           <Popover>
             <PopoverTrigger asChild>
               <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
@@ -1844,15 +2044,11 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
                     {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
                   </span>
-                  <input
+                  <TimeInputButton
                     id={buildInputId(blockIdx, setIdx, 'time')}
-                    type="number"
-                    inputMode="decimal"
                     value={set.time}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
-                    onFocus={e => e.target.value && e.target.select()}
-                    placeholder="min"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)}
+                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx}
                   />
                   <RpePickerButton
                     id={buildInputId(blockIdx, setIdx, 'rpe')}
@@ -1937,15 +2133,12 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     value={set.rpe}
                     onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
                   />
-                  <input
+                  <TimeInputButton
                     id={buildInputId(blockIdx, setIdx, 'time')}
-                    type="text"
-                    inputMode="numeric"
                     value={set.time}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
-                    onFocus={e => e.target.value && e.target.select()}
-                    placeholder="—"
-                    className="w-full text-center text-[10px] bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary font-mono"
+                    onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)}
+                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx}
+                    small
                   />
                   <button
                     onClick={() => onToggleComplete(blockIdx, setIdx)}

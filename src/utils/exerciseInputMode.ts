@@ -1,5 +1,6 @@
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import type { WeightUnit } from '@/hooks/useStorage';
+import { formatMmSs } from '@/utils/timeFormat';
 
 export type ExerciseInputMode = 'weighted' | 'cardio' | 'band';
 
@@ -63,7 +64,7 @@ export function formatSetDisplay(
 ): string {
   switch (mode) {
     case 'cardio':
-      return set.time ? `${set.time} min` : `${set.reps} min`;
+      return formatMmSs(set.time ?? set.reps ?? 0);
     case 'band':
       return `${getBandLevelShortLabel(set.weight ?? 0)} × ${set.reps}`;
     default:
