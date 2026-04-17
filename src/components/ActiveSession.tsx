@@ -1209,7 +1209,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         return {
           ...b,
           dropSetsEnabled: false,
-          sets: b.sets.map(s => ({ ...s, drops: undefined, type: s.type === 'dropset' ? 'normal' as SetType : s.type })),
+          sets: b.sets.map(s => ({ ...s, drops: undefined })),
         };
       }
       return { ...b, dropSetsEnabled: true };
