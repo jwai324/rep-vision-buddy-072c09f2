@@ -31,7 +31,7 @@ type Screen =
   | { type: 'dashboard' }
   | { type: 'startWorkout' }
   | { type: 'browseExercises' }
-  | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises']; templateName?: string }
+  | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises']; templateName?: string; templateId?: string }
   | { type: 'editSession'; session: WorkoutSession }
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession; from?: 'activity' }
@@ -102,6 +102,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       exercises: template.exercises.map(e => e.exerciseId),
       templateExercises: template.exercises,
       templateName: template.name,
+      templateId: template.id,
     });
   };
 
@@ -172,6 +173,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
             templateName={screen.templateName}
+            templateId={screen.templateId}
+            template={screen.templateId ? storage.templates.find(t => t.id === screen.templateId) ?? null : null}
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
@@ -179,6 +182,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onFinish={(session) => { setMinimizedSession(null); setScreen({ type: 'summary', session }); }}
             onCancel={() => { clearSessionCache(); setMinimizedSession(null); setScreen({ type: 'dashboard' }); }}
             onMinimize={handleMinimize}
+            onUpdateTemplate={(t) => storage.saveTemplate(t)}
           />
         </ErrorBoundary>
       )}

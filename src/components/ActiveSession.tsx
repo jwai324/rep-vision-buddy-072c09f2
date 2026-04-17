@@ -33,6 +33,15 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
+import {
+  snapshotFromTemplateExercises,
+  snapshotFromFinishedBlocks,
+  diffTemplateSnapshots,
+  buildUpdatedTemplate,
+  type TemplateSnapshot,
+  type FinishedBlockLite,
+} from '@/utils/templateDiff';
+import type { WorkoutTemplate } from '@/types/workout';
 
 import type { WeightUnit } from '@/hooks/useStorage';
 
@@ -104,6 +113,8 @@ interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
   templateName?: string;
+  templateId?: string;
+  template?: WorkoutTemplate | null;
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
   defaultDropSetsEnabled?: boolean;
@@ -113,6 +124,7 @@ interface ActiveSessionProps {
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
   onMinimize?: () => void;
+  onUpdateTemplate?: (template: WorkoutTemplate) => void;
 }
 
 /** Look up the most recent session data for a given exercise */
@@ -168,7 +180,7 @@ const SUPERSET_COLORS = [
 
 const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}`;
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate }) => {
   const isEditMode = !!editSession;
   const { exercises: customExercises } = useCustomExercisesContext();
   const exerciseLookup = useMemo(() => {
@@ -257,6 +269,20 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const pausedElapsed = useRef<number | null>(null);
   const { getStickyNote, setStickyNote } = useStickyNotes();
+
+  // Snapshot the original template structure (only when launched from a template, not edit mode, not resumed-from-cache)
+  const originalTemplateSnapshot = useRef<TemplateSnapshot | null>(
+    !isEditMode && !cachedSession && templateExercises && templateId
+      ? snapshotFromTemplateExercises(templateExercises)
+      : null
+  );
+
+  // Pending finished session — held while we ask the user about updating the template
+  const [pendingFinishedSession, setPendingFinishedSession] = useState<WorkoutSession | null>(null);
+  const [pendingTemplateUpdate, setPendingTemplateUpdate] = useState<{
+    template: WorkoutTemplate;
+    summary: string;
+  } | null>(null);
 
   // Edit mode: date/time state
   const [editDate, setEditDate] = useState(() => {
@@ -1030,7 +1056,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       if (!confirm('This workout was less than 30 seconds. Save anyway?')) return;
     }
 
-    onFinish({
+    const finalSession: WorkoutSession = {
       id: isEditMode && editSession ? editSession.id : crypto.randomUUID(),
       date: sessionDate,
       exercises: exerciseLogs,
@@ -1040,8 +1066,43 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalReps,
       averageRpe,
       note: workoutNote.trim() || undefined,
-    });
-  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises]);
+    };
+
+    // Check whether to prompt user about updating the source template
+    const shouldCheckTemplate =
+      !isEditMode &&
+      template &&
+      onUpdateTemplate &&
+      originalTemplateSnapshot.current;
+
+    if (shouldCheckTemplate) {
+      const completedBlocks: FinishedBlockLite[] = blocks
+        .filter(b => b.sets.some(s => s.completed))
+        .map(b => {
+          const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
+          const lastReps = completed.length > 0 ? parseInt(completed[completed.length - 1].reps) || null : null;
+          const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
+          return {
+            exerciseId: b.exerciseId,
+            completedSetCount: completed.length,
+            lastReps,
+            setType,
+            supersetGroup: b.supersetGroup,
+            restSeconds: b.restSeconds,
+          };
+        });
+      const afterSnapshot = snapshotFromFinishedBlocks(completedBlocks);
+      const diff = diffTemplateSnapshots(originalTemplateSnapshot.current!, afterSnapshot);
+      if (diff.hasChanges) {
+        const updated = buildUpdatedTemplate(template!, completedBlocks);
+        setPendingFinishedSession(finalSession);
+        setPendingTemplateUpdate({ template: updated, summary: diff.summary });
+        return;
+      }
+    }
+
+    onFinish(finalSession);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, template, onUpdateTemplate]);
 
   if (showSupersetLinker) {
     return (
@@ -1438,6 +1499,65 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         history={history}
         weightUnit={weightUnit}
       />
+
+      {/* Update template prompt */}
+      <AlertDialog
+        open={!!pendingTemplateUpdate}
+        onOpenChange={(open) => {
+          if (!open && pendingFinishedSession) {
+            // Treat dismiss (overlay click / escape) as "Keep template"
+            const session = pendingFinishedSession;
+            setPendingTemplateUpdate(null);
+            setPendingFinishedSession(null);
+            onFinish(session);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your workout differs from <span className="font-semibold text-foreground">{template?.name}</span>.
+              {pendingTemplateUpdate?.summary && (
+                <span className="block mt-2 text-xs">{pendingTemplateUpdate.summary}</span>
+              )}
+              <span className="block mt-2">Update the template to match what you just did?</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                const session = pendingFinishedSession;
+                setPendingTemplateUpdate(null);
+                setPendingFinishedSession(null);
+                if (session) onFinish(session);
+              }}
+            >
+              Keep template
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const session = pendingFinishedSession;
+                const tplUpdate = pendingTemplateUpdate;
+                setPendingTemplateUpdate(null);
+                setPendingFinishedSession(null);
+                if (tplUpdate && onUpdateTemplate) {
+                  try {
+                    onUpdateTemplate(tplUpdate.template);
+                    toast.success('Template updated');
+                  } catch (e) {
+                    console.error('[ActiveSession] update template failed:', e);
+                    toast.error('Failed to update template');
+                  }
+                }
+                if (session) onFinish(session);
+              }}
+            >
+              Update template
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
