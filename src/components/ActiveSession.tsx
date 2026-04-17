@@ -1687,7 +1687,75 @@ const RpePickerButton: React.FC<{ id: string; value: string; onChange: (v: strin
   );
 };
 
-/* ---------- Focus Navigation Helper ---------- */
+/* ---------- Time Input Button (mm:ss popover) ---------- */
+
+const TimeInputButton: React.FC<{ id: string; value: string; onChange: (v: string) => void; running?: boolean; small?: boolean }> = ({ id, value, onChange, running, small }) => {
+  const [open, setOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const seconds = timeToSeconds(value);
+  const display = seconds > 0 ? formatMmSs(seconds) : '—';
+
+  React.useEffect(() => {
+    if (open) setDraft(seconds > 0 ? formatMmSs(seconds) : '');
+  }, [open, seconds]);
+
+  const commit = () => {
+    const parsed = parseMmSs(draft);
+    if (parsed === null) {
+      onChange('');
+    } else {
+      onChange(String(parsed));
+    }
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          id={id}
+          type="button"
+          className={`w-full text-center bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary hover:bg-secondary/80 transition-colors font-mono ${
+            small ? 'text-[10px]' : 'text-sm'
+          } ${running ? 'ring-1 ring-primary animate-pulse' : ''}`}
+        >
+          {display}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-48 p-3">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground text-center mb-2">Time (m:ss)</div>
+        <input
+          autoFocus
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          }}
+          placeholder="1:30"
+          className="w-full text-center text-lg font-mono bg-secondary rounded-md py-2 text-foreground outline-none focus:ring-1 focus:ring-primary"
+        />
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={() => { onChange(''); setOpen(false); }}
+            className="flex-1 text-xs py-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80"
+          >
+            Clear
+          </button>
+          <button
+            onClick={commit}
+            className="flex-1 text-xs py-1.5 rounded-md bg-primary text-primary-foreground font-semibold hover:opacity-90"
+          >
+            Done
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+
 
 const FIELD_ORDER = ['weight', 'reps', 'rpe'] as const;
 
