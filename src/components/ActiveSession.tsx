@@ -1058,11 +1058,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   if (showExercisePicker) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
-        <div className="p-4 pb-0">
+      <div className="h-[100dvh] bg-background flex flex-col overflow-hidden min-w-0">
+        <div className="p-4 pb-0 shrink-0">
           <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
         </div>
-        <ExerciseSelector onSelect={addExercise} onSelectMultiple={addMultipleExercises} />
+        <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+          <ExerciseSelector onSelect={addExercise} onSelectMultiple={addMultipleExercises} />
+        </div>
       </div>
     );
   }
