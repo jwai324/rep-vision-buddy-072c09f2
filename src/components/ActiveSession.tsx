@@ -288,8 +288,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, [editSession, weightUnit]);
 
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
-    if (editBlocks) return editBlocks;
-    if (cachedSession) return cachedSession.blocks;
+    if (editBlocks) return normalizeBlocks(editBlocks);
+    if (cachedSession) return normalizeBlocks(cachedSession.blocks);
     return initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
