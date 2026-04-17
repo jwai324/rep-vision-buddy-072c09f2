@@ -1499,6 +1499,65 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         history={history}
         weightUnit={weightUnit}
       />
+
+      {/* Update template prompt */}
+      <AlertDialog
+        open={!!pendingTemplateUpdate}
+        onOpenChange={(open) => {
+          if (!open && pendingFinishedSession) {
+            // Treat dismiss (overlay click / escape) as "Keep template"
+            const session = pendingFinishedSession;
+            setPendingTemplateUpdate(null);
+            setPendingFinishedSession(null);
+            onFinish(session);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your workout differs from <span className="font-semibold text-foreground">{template?.name}</span>.
+              {pendingTemplateUpdate?.summary && (
+                <span className="block mt-2 text-xs">{pendingTemplateUpdate.summary}</span>
+              )}
+              <span className="block mt-2">Update the template to match what you just did?</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                const session = pendingFinishedSession;
+                setPendingTemplateUpdate(null);
+                setPendingFinishedSession(null);
+                if (session) onFinish(session);
+              }}
+            >
+              Keep template
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const session = pendingFinishedSession;
+                const tplUpdate = pendingTemplateUpdate;
+                setPendingTemplateUpdate(null);
+                setPendingFinishedSession(null);
+                if (tplUpdate && onUpdateTemplate) {
+                  try {
+                    onUpdateTemplate(tplUpdate.template);
+                    toast.success('Template updated');
+                  } catch (e) {
+                    console.error('[ActiveSession] update template failed:', e);
+                    toast.error('Failed to update template');
+                  }
+                }
+                if (session) onFinish(session);
+              }}
+            >
+              Update template
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
