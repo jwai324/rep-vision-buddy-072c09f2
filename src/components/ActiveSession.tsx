@@ -350,6 +350,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [runningSet, setRunningSet] = useState<RunningSetState | null>(
     cachedSession?.runningSet ?? null
   );
+  const blockRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   // Cache full session state (including timer) to localStorage on changes (skip in edit mode)
   useEffect(() => {
