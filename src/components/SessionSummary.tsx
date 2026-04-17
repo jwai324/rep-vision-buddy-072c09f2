@@ -8,6 +8,7 @@ import { formatWeight, formatWeightString } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
