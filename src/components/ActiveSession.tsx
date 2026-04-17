@@ -231,24 +231,60 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
     return lookup;
   }, [customExercises]);
-  // Convert saved session exercises back to blocks for editing
+  // Convert saved session exercises back to blocks for editing.
+  // Rebuilds nested `drops` from flat saved WorkoutSet[] (consecutive 'dropset'
+  // rows attach to the most recent non-dropset parent of the same setNumber).
   const editBlocks = useMemo<ExerciseBlock[] | null>(() => {
     if (!editSession) return null;
-    return editSession.exercises.map(ex => ({
-      exerciseId: ex.exerciseId,
-      exerciseName: ex.exerciseName,
-      restSeconds: 90,
-      supersetGroup: ex.supersetGroup,
-      sets: ex.sets.map(s => ({
-        setNumber: s.setNumber,
-        weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
-        reps: s.reps.toString(),
-        completed: true,
-        type: s.type,
-        rpe: s.rpe?.toString() ?? '',
-        time: s.time != null ? String(s.time) : '',
-      })),
-    }));
+    return editSession.exercises.map(ex => {
+      // Repair flat sets: if the first row of a setNumber is 'dropset' (legacy
+      // bug), coerce it to a real parent so we have something to nest under.
+      const seenParent = new Set<number>();
+      for (const s of ex.sets) {
+        if (s.type !== 'dropset') seenParent.add(s.setNumber);
+      }
+      const claimed = new Set<number>();
+      const repaired = ex.sets.map(s => {
+        if (s.type === 'dropset' && !seenParent.has(s.setNumber) && !claimed.has(s.setNumber)) {
+          claimed.add(s.setNumber);
+          return { ...s, type: (ex.supersetGroup !== undefined ? 'superset' : 'normal') as SetType };
+        }
+        return s;
+      });
+
+      const rows: SetRow[] = [];
+      for (const s of repaired) {
+        if (s.type === 'dropset' && rows.length > 0) {
+          const parent = rows[rows.length - 1];
+          parent.drops = parent.drops ?? [];
+          parent.drops.push({
+            weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
+            reps: s.reps.toString(),
+            rpe: s.rpe?.toString() ?? '',
+            completed: true,
+            time: s.time != null ? String(s.time) : '',
+          });
+        } else {
+          rows.push({
+            setNumber: s.setNumber,
+            weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
+            reps: s.reps.toString(),
+            completed: true,
+            type: s.type,
+            rpe: s.rpe?.toString() ?? '',
+            time: s.time != null ? String(s.time) : '',
+          });
+        }
+      }
+      return {
+        exerciseId: ex.exerciseId,
+        exerciseName: ex.exerciseName,
+        restSeconds: 90,
+        supersetGroup: ex.supersetGroup,
+        sets: rows,
+        dropSetsEnabled: rows.some(r => (r.drops?.length ?? 0) > 0),
+      };
+    });
   }, [editSession, weightUnit]);
 
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
