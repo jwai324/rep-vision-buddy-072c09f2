@@ -336,7 +336,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
 
       {/* Sticky add button for multi-select */}
       {multiSelect && selected.size > 0 && (
-        <div className="sticky bottom-0 p-4 bg-background border-t border-border">
+        <div className="shrink-0 p-4 bg-background border-t border-border">
           <Button onClick={handleAddSelected} className="w-full" variant="default" size="lg">
             Add {selected.size} Exercise{selected.size > 1 ? 's' : ''}
           </Button>
