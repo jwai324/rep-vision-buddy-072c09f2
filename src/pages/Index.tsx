@@ -50,6 +50,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const { registerScreen } = useChatContext();
   const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise, updateExercise: updateCustomExercise } = useCustomExercisesContext();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
+  const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
     const cached = getSessionCache();
     if (cached) return { type: 'activeSession', exercises: [] };
