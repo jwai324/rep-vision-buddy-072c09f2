@@ -1466,6 +1466,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             </PopoverContent>
           </Popover>
           {!isEditMode && (
+            <Button variant="outline" size="sm" onClick={() => setShowFocusMode(true)} className="border-primary/30 text-primary hover:bg-primary/10">
+              <Focus className="w-3.5 h-3.5 mr-1" />
+              Focus
+            </Button>
+          )}
+          {!isEditMode && (
             <Button variant="outline" size="sm" onClick={() => setShowDiscardConfirm(true)} className="text-destructive border-destructive/30 hover:bg-destructive/10">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Discard
