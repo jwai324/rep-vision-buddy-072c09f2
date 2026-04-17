@@ -782,6 +782,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const handleCountdownComplete = useCallback(() => {
     if (!countdown) return;
     const { blockIdx, setIdx } = countdown;
+    // Stop & record any active rest timer at the moment the new set begins.
+    skipTimer();
     const startedAt = Date.now();
     setBlocks(prev => prev.map((b, bi) =>
       bi !== blockIdx ? b : {
@@ -791,7 +793,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     ));
     setRunningSet({ blockIdx, setIdx, startedAt });
     setCountdown(null);
-  }, [countdown]);
+  }, [countdown, skipTimer]);
 
   const addSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
