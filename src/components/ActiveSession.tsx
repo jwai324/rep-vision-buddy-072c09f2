@@ -1056,7 +1056,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       if (!confirm('This workout was less than 30 seconds. Save anyway?')) return;
     }
 
-    onFinish({
+    const finalSession: WorkoutSession = {
       id: isEditMode && editSession ? editSession.id : crypto.randomUUID(),
       date: sessionDate,
       exercises: exerciseLogs,
@@ -1066,8 +1066,43 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalReps,
       averageRpe,
       note: workoutNote.trim() || undefined,
-    });
-  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises]);
+    };
+
+    // Check whether to prompt user about updating the source template
+    const shouldCheckTemplate =
+      !isEditMode &&
+      template &&
+      onUpdateTemplate &&
+      originalTemplateSnapshot.current;
+
+    if (shouldCheckTemplate) {
+      const completedBlocks: FinishedBlockLite[] = blocks
+        .filter(b => b.sets.some(s => s.completed))
+        .map(b => {
+          const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
+          const lastReps = completed.length > 0 ? parseInt(completed[completed.length - 1].reps) || null : null;
+          const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
+          return {
+            exerciseId: b.exerciseId,
+            completedSetCount: completed.length,
+            lastReps,
+            setType,
+            supersetGroup: b.supersetGroup,
+            restSeconds: b.restSeconds,
+          };
+        });
+      const afterSnapshot = snapshotFromFinishedBlocks(completedBlocks);
+      const diff = diffTemplateSnapshots(originalTemplateSnapshot.current!, afterSnapshot);
+      if (diff.hasChanges) {
+        const updated = buildUpdatedTemplate(template!, completedBlocks);
+        setPendingFinishedSession(finalSession);
+        setPendingTemplateUpdate({ template: updated, summary: diff.summary });
+        return;
+      }
+    }
+
+    onFinish(finalSession);
+  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, template, onUpdateTemplate]);
 
   if (showSupersetLinker) {
     return (
