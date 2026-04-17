@@ -957,7 +957,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         sets: block.sets.map((set, si) => {
           if (si !== setIdx) return set;
           const drops = set.drops ?? [];
-          return { ...set, type: 'dropset' as SetType, drops: [...drops, { weight: '', reps: '', rpe: '', completed: false }] };
+          return { ...set, drops: [...drops, { weight: '', reps: '', rpe: '', completed: false }] };
         }),
       };
     }));
@@ -1002,7 +1002,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         sets: block.sets.map((set, si) => {
           if (si !== setIdx || !set.drops) return set;
           const newDrops = set.drops.filter((_, di) => di !== dropIdx);
-          return { ...set, drops: newDrops.length > 0 ? newDrops : undefined, type: newDrops.length > 0 ? 'dropset' : 'normal' as SetType };
+          return { ...set, drops: newDrops.length > 0 ? newDrops : undefined };
         }),
       };
     }));
