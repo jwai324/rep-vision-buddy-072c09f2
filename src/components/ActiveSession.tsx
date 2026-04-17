@@ -1472,6 +1472,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                       isEditMode={isEditMode}
                       runningSet={runningSet}
                       onStartNextSet={handleStartNextSet}
+                      onStopSet={handleStopSetClick}
                     />
                   </div>
                 </SortableExerciseItem>
