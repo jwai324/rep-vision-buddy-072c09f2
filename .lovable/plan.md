@@ -1,41 +1,52 @@
 
-## Fix dropset & superset progression for "Start next set"
+## Three small additions
 
-### Behavior
-After tapping **Start next set**, advance in this order:
+### 1. Auto-scroll when Start next set hops to a different exercise
 
-**Without superset** (single block):
-- Set 1 → 1D1 → 1D2 → … → Set 2 → 2D1 → … → Set 3 …
+**File:** `src/components/ActiveSession.tsx`
 
-**With superset group** (e.g. Ex A linked to Ex B and Ex C), interleave by set number:
-- A.Set1 → A.1D1 → A.1D2 → B.Set1 → B.1D1 → C.Set1 → C.1D1 → A.Set2 → A.2D1 → B.Set2 → C.Set2 → A.Set3 → B.Set3 → C.Set3 …
+- Add a `blockRefs = useRef<Record<number, HTMLDivElement | null>>({})` map and pass a ref-setter into each rendered exercise block wrapper (the SortableExerciseItem container) so we can look up its DOM node by `blockIdx`.
+- In `handleStartNextSet`, whenever the chosen `setCountdown({ blockIdx: target, ... })` uses a `target !== blockIdx` (i.e. we hopped to a sibling in the superset group), call `blockRefs.current[target]?.scrollIntoView({ behavior: 'smooth', block: 'center' })` right after `setCountdown`.
+- Same-block advances do **not** scroll (keeps current scroll position stable for normal set-to-set progression).
 
-**Rule**: complete current set + all its dropsets on the current exercise, then hop to the same set-number on the next exercise in the group, then hop to the same set-number on the next exercise in the group until all linked exercises' same set-number are completed, then return to the next set-number on the first exercise.
+### 2. Add a "time elapsed" field to dropset rows
 
-### Change (single file: `src/components/ActiveSession.tsx`)
+**File:** `src/components/ActiveSession.tsx` (dropset row JSX around lines 2272–2316)
 
-1. **Extend state shape** to carry an optional `dropIdx`:
-   - `countdown: { blockIdx, setIdx, dropIdx? }`
-   - `runningSet: { blockIdx, setIdx, dropIdx?, startedAt }`
+- Replace the empty `<span />` placeholder in the Timer column with a `<TimeInputButton>` bound to `drop.time`, mirroring how the parent set row uses it:
+  ```tsx
+  <TimeInputButton
+    id={buildInputId(blockIdx, setIdx, 'time', dropIdx)}
+    value={drop.time ?? ''}
+    onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)}
+    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx}
+    small
+  />
+  ```
+- Confirm `onUpdateDrop` accepts a `'time'` field (extend the union if needed) and that the `DropSegment` type / drop row state already carries `time` (used by `stopRunningSet` for drops). If not present, add `time?: string` to the drop row state shape.
 
-2. **Rewrite `handleStartNextSet(blockIdx)`** to find the next item:
-   - Helper `findIncompleteDrop(set)`: returns first drop index where `!drop.completed`, or undefined.
-   - **No superset group** → walk this block's sets in order; for each set, if drops have any incomplete go there, else if set itself incomplete go there. First match wins.
-   - **Has superset group**:
-     a. Build ordered list of sibling block indices in the group (by array order, including current).
-     b. **Step 1 — finish current set's dropsets**: on the just-completed block, if the current set N has any incomplete drop, run that drop next.
-     c. **Step 2 — same set-number on remaining siblings**: walk siblings after current (in group order). For each, if its set N exists and is incomplete (or has incomplete drops), run that set + its drops. Continue until set N is done across all siblings.
-     d. **Step 3 — advance to set N+1**: loop back to the first sibling in the group whose set N+1 is incomplete; run set + drops; continue across siblings as in step 2.
-     e. If no further incomplete set anywhere in the group → "All sets complete" toast.
+### 3. Clickable "Time" column header with a small definition popover
 
-3. **`handleCountdownComplete`**: if `dropIdx` is defined, set `startedAt` on `set.drops[dropIdx]` (not the parent set). Pass `dropIdx` into `runningSet`.
+**File:** `src/components/ActiveSession.tsx` (table headers at lines 2076, 2096, 2118)
 
-4. **`stopRunningSet`**: if `dropIdx` is defined, write `endedAt`/`completed`/`time` to `set.drops[dropIdx]` instead of the parent set. Use a composite rest-timer id (include `dropIdx` in the key) so each drop's rest is recorded independently.
-
-5. **`skipTimer` / countdown stop logic**: unchanged behavior, just keyed by the new id when a drop is active.
+- Replace the three `<Timer />` icon spans (and the cardio "Time" text label at 2078) with a `Popover` trigger button — same pattern as the existing RPE header:
+  ```tsx
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className="text-center w-full text-muted-foreground hover:text-primary transition-colors">
+        <Timer className="w-3 h-3 mx-auto" />
+      </button>
+    </PopoverTrigger>
+    <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed">
+      <p className="font-semibold mb-1">Time elapsed</p>
+      <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+    </PopoverContent>
+  </Popover>
+  ```
+- Apply to all three header variants (cardio, band, weighted). Cardio's "Time" text header stays as-is (that column is the user-entered duration, not elapsed).
 
 ### Files touched
 - `src/components/ActiveSession.tsx` only.
 
 ### Unchanged
-- Set/drop UI rendering, dropset toggle, rest timer overtime, SupersetLinker, persistence schema (drops already store `startedAt/endedAt/completed`).
+- Progression logic itself, rest timer, countdown overlay, persistence schema.
