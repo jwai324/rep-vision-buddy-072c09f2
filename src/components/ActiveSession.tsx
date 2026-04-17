@@ -270,6 +270,20 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const pausedElapsed = useRef<number | null>(null);
   const { getStickyNote, setStickyNote } = useStickyNotes();
 
+  // Snapshot the original template structure (only when launched from a template, not edit mode, not resumed-from-cache)
+  const originalTemplateSnapshot = useRef<TemplateSnapshot | null>(
+    !isEditMode && !cachedSession && templateExercises && templateId
+      ? snapshotFromTemplateExercises(templateExercises)
+      : null
+  );
+
+  // Pending finished session — held while we ask the user about updating the template
+  const [pendingFinishedSession, setPendingFinishedSession] = useState<WorkoutSession | null>(null);
+  const [pendingTemplateUpdate, setPendingTemplateUpdate] = useState<{
+    template: WorkoutTemplate;
+    summary: string;
+  } | null>(null);
+
   // Edit mode: date/time state
   const [editDate, setEditDate] = useState(() => {
     if (!editSession) return '';
