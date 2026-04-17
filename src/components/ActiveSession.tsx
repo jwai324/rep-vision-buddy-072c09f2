@@ -2311,6 +2311,37 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
             {/* Drop rows */}
             {set.drops?.map((drop, dropIdx) => (
               <SwipeToDelete key={`drop-${setIdx}-${dropIdx}`} onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}>
+                {inputMode === 'cardio' ? (
+                  <div
+                    className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
+                      drop.completed ? 'bg-primary/10' : ''
+                    }`}
+                  >
+                    <span className="text-xs font-bold text-set-dropset text-center">
+                      {set.setNumber}D{superscripts[dropIdx] ?? `${dropIdx + 1}`}
+                    </span>
+                    <TimeInputButton
+                      id={buildInputId(blockIdx, setIdx, 'time', dropIdx)}
+                      value={drop.time ?? ''}
+                      onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)}
+                      running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx}
+                    />
+                    <RpePickerButton
+                      id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)}
+                      value={drop.rpe}
+                      onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)}
+                    />
+                    <span />
+                    <button
+                      onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
+                      className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                        drop.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
                 <div
                   className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
                     drop.completed ? 'bg-primary/10' : ''
@@ -2320,16 +2351,30 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                     {set.setNumber}D{superscripts[dropIdx] ?? `${dropIdx + 1}`}
                   </span>
                   <span className="text-xs text-muted-foreground text-center">—</span>
-                  <input
-                    id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)}
-                    type="number"
-                    inputMode="decimal"
-                    value={drop.weight}
-                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
-                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)}
-                    placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                  />
+                  {inputMode === 'band' ? (
+                    <select
+                      id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)}
+                      value={drop.weight}
+                      onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
+                    >
+                      <option value="">—</option>
+                      {BAND_LEVELS.map(b => (
+                        <option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)}
+                      type="number"
+                      inputMode="decimal"
+                      value={drop.weight}
+                      onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                      onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)}
+                      placeholder="—"
+                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    />
+                  )}
                   <input
                     id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)}
                     type="number"
