@@ -344,7 +344,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
       </Button>
 
       {showCalendar && (
-        <div className="bg-card rounded-xl p-3 border border-border">
+        <div className="bg-card rounded-xl border border-border min-w-0 overflow-hidden">
           <Calendar
             mode="multiple"
             selected={[]}
