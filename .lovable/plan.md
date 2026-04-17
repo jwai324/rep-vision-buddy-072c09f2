@@ -1,89 +1,54 @@
 
 
-## Add Focus Mode to Active Session
+## Focus Mode → Next Exercise/Superset Transition
 
-### 1. Entry point on ActiveSession header
-**File:** `src/components/ActiveSession.tsx`
-- Add a compact "Focus Mode" button in the header row (line ~1449, next to Discard / Finish, hidden in `isEditMode`). Icon: `Crosshair` or `Focus` from lucide-react. Wired to `setShowFocusMode(true)`.
-- Add local state `const [showFocusMode, setShowFocusMode] = useState(false)`.
-- Render `<FocusMode .../>` as a full-screen overlay (z-50 fixed inset-0) when `showFocusMode` is true. Pass through everything it needs (see §5). Existing screen stays mounted underneath, preserving timers / cache / state.
+When the focused block changes in Focus Mode (next exercise OR next exercise within a superset cycle), briefly reveal the underlying active session scrolled to the new block, then return to Focus Mode showing it.
 
-No other changes to the existing screen.
+### Trigger
+Any time `pickFocusedBlockIdx(blocks)` returns a different index than before, including:
+- Completing the last set of an exercise → next exercise
+- **Completing a set + drops in a superset → cycling to the next exercise in the same superset group**
+- Completing the final round of a superset → next exercise/group
+- Workout complete (`null`) → scroll to top
 
-### 2. New component: `src/components/FocusMode.tsx`
-Full-screen modal layout (top → bottom):
+### Behavior
+1. User completes a set (parent + all drops) in Focus Mode.
+2. `FocusMode` detects `focusedIdx` changed.
+3. Focus Mode root fades to ~30% opacity, `pointer-events-none`.
+4. ActiveSession underneath smooth-scrolls to the new focused block (centered).
+5. After ~900ms, Focus Mode fades back to full opacity now rendering the new block.
 
-```text
-┌──────────────────────────────┐
-│ ← Close                      │  ← top bar
-├──────────────────────────────┤
-│                              │
-│    [Animation placeholder]   │  ← neutral box, fades into next region
-│         (TODO marker)        │
-│                              │
-│  ░░░ gradient mask to bg ░░░ │
-├──────────────────────────────┤
-│ Exercise Name                │
-│ (Set N of M • optional       │
-│  superset position)          │
-├──────────────────────────────┤
-│ <ExerciseTable .../>         │  ← reused as-is
-│  (sets, dropsets, edit,      │
-│   complete, start/stop set)  │
-└──────────────────────────────┘
-```
+### Implementation
 
-Details:
-- **Animation region**: ~40% of viewport height, rounded card, subtle bg (`bg-secondary/40`). Centered "Animation" label + icon. Bottom edge: a `pointer-events-none` div with `bg-gradient-to-b from-transparent to-background` for ~64px to soft-fade into the page.
-  - `// TODO: replace with <ExerciseAnimation exerciseName={...} movementPattern={...} /> once wired`
-- **Exercise name**: large title under the animation region.
-- **Sets list**: render the existing `ExerciseTable` with the focused block. All edit / complete / start / stop / dropset / rest-timer behavior comes for free because we pass the same handlers.
+**`src/components/ActiveSession.tsx`**
+- Add `blockRefs = useRef<(HTMLDivElement | null)[]>([])`, attach to each block wrapper.
+- Add `scrollToBlock(idx: number | null)`:
+  - If `idx === null` → scroll window to top.
+  - Else → `blockRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' })`.
+- Pass `scrollToBlock` as a prop to `<FocusMode />`.
 
-### 3. Focused exercise selection logic (inside FocusMode)
-Pure derivation from `blocks` — no duplicated state.
+**`src/components/FocusMode.tsx`**
+- New prop: `scrollToBlock: (idx: number | null) => void`.
+- `previousFocusedIdx = useRef<number | null>(focusedIdx)`.
+- `isTransitioning` state.
+- `useEffect` on `focusedIdx`:
+  - If `previousFocusedIdx.current !== null && previousFocusedIdx.current !== focusedIdx`:
+    1. `setIsTransitioning(true)`.
+    2. `props.scrollToBlock(focusedIdx)`.
+    3. Timeout 900ms → `setIsTransitioning(false)`.
+  - Update `previousFocusedIdx.current = focusedIdx`.
+  - Cleanup timeout on re-trigger (handles rapid superset cycling).
+- Root div: `className={cn(..., isTransitioning && 'opacity-30 pointer-events-none')}` with `transition-opacity duration-300`.
 
-A helper `pickFocusedBlockIdx(blocks): number | null`:
-1. **Find the next pending superset group** (lowest `supersetGroup` that still has any incomplete set across all its blocks). Among blocks in that group:
-   - Compute, per block, `completedRounds` = number of leading sets where the parent is `completed` AND every drop in `drops` is `completed`.
-   - The focused block in the group is the one with the **minimum `completedRounds`** (ties → earliest blockIdx). This implements the cycle:
-     - All blocks start at round 0 → focus first block.
-     - User completes its set 1 + any drops → its `completedRounds` becomes 1 → next block (still 0) gets focus.
-     - …continues until last block hits 1 → first block becomes the min again for set 2.
-   - If a chosen block has no further incomplete sets but the group still has incomplete sets in other blocks, skip it (filter to blocks with at least one incomplete set inside the group before picking min).
-2. **Otherwise** (no superset group active): pick the first block (lowest blockIdx) that still has any incomplete set (parent or drop).
-3. If none found → workout complete state.
-
-A set is considered "fully complete for cycling" only when:
-- parent `set.completed === true`, AND
-- every entry in `set.drops ?? []` has `completed === true`.
-
-This satisfies "do not cycle if dropsets remain incomplete on the current set."
-
-### 4. Workout complete state
-If `pickFocusedBlockIdx` returns `null`: show centered "Workout complete" card with a button to either close Focus Mode (returns to active session where user finishes/saves) or call the existing finish flow (close Focus Mode and let user tap Finish on the main screen — keeps responsibility in one place).
-
-### 5. Props passed from ActiveSession to FocusMode
-Pass exactly the props `ExerciseTable` already needs, scoped to the focused block:
-- `blocks`, `weightUnit`, `customExercises`-derived `inputMode`, `activeTimer`, `restRecords`, `previousSets` (via existing `getPreviousExerciseData`), `runningSet`
-- Handlers: `updateSet`, `toggleSetComplete`, `addSet`, `addDrop`, `updateDrop`, `removeSet`, `removeDrop`, `handleMenuAction`, `startTimer`, `skipTimer`, `extendTimer`, `handleStartNextSet`, `handleStopSetClick`
-- `getStickyNote(block.exerciseId)`
-- `onClose: () => setShowFocusMode(false)`
-
-Because state lives in `ActiveSession`, edits in Focus Mode reflect instantly when closing back, and vice versa.
-
-### 6. Reuse, not reimplementation
-- `ExerciseTable` is already a self-contained, props-driven component. Render the same `<ExerciseTable …/>` JSX block currently used inside the blocks loop, with `blockIdx` set to the focused index. No extraction needed.
-- All timer / superset / dropset / persistence behavior comes through unchanged because we route through the existing handlers and existing `runningSet` / `activeTimer` state.
-
-### 7. Edge cases
-- Workout has zero exercises → "Workout complete" state (or "Add an exercise on the main screen").
-- Focused block changes mid-stream (e.g., user completes set inside Focus Mode) → component re-renders with new `pickFocusedBlockIdx`, automatically advancing to the next exercise in the superset or the next exercise in the workout.
-- Adding/removing exercises is intentionally not exposed in Focus Mode (kept minimal). The `MoreHorizontal` per-exercise menu inside `ExerciseTable` still works (notes, drop sets toggle, rest timer, etc.).
+### Edge cases
+- Rapid superset cycling (A→B→C within seconds): clear pending timeout, restart with latest `focusedIdx`. Each cycle still gets its own peek.
+- First mount: no previous → no transition.
+- Workout complete: scroll to top, fade back to "Workout complete" card.
 
 ### Files
-- **Modify**: `src/components/ActiveSession.tsx` (add button + state + render overlay)
-- **Create**: `src/components/FocusMode.tsx`
+- Modify: `src/components/ActiveSession.tsx`
+- Modify: `src/components/FocusMode.tsx`
 
 ### Unchanged
-- All existing active session UI, timers, persistence, superset coloring, dropset logic, set serialization, summary screen.
+- All set-logging, timer, superset cycling, dropset, and progression logic.
 
