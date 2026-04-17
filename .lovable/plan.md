@@ -1,20 +1,25 @@
 
 
-## Fix horizontal scroll on New Program page
+## Fix accidental drag when scrolling in active workout
 
 ### Cause
-`src/components/ProgramBuilder.tsx` outer wrapper (`p-4 flex flex-col gap-4 pb-24`) has no horizontal overflow guard. Inside, several children can push width on a 390px viewport:
-- Day cards (no `min-w-0`) — long template names in `<select>` options and the `<input>` label can force width.
-- Weekday button row (`flex flex-wrap gap-1.5`) — already wraps, fine.
-- Calendar preview (`numberOfMonths={1}` with `w-full`) — generally fine but its parent card has `p-3` and inner Calendar adds its own `p-3`, occasionally overflowing on narrow screens.
-- The `<select>` elements have no `max-w-full` / `w-full`, so very long option labels (e.g. past workout entries listing every exercise name) can stretch them.
+`src/components/SortableExerciseItem.tsx` uses `useSortable` from `@dnd-kit/sortable` and spreads `listeners` only on the grip handle button — that part is correct. But the underlying DnD sensors in `ActiveSession.tsx` are almost certainly configured with default `PointerSensor` / `TouchSensor` with no activation constraint, so any touch on the grip (or any element if listeners leaked) starts a drag immediately. On mobile, when the user's thumb lands on or near the grip while starting a vertical scroll, the drag wins over the scroll.
 
-### Fix (single file: `src/components/ProgramBuilder.tsx`)
-1. Outer wrapper: add `overflow-x-hidden min-w-0 max-w-full`.
-2. Each day card (`bg-card rounded-xl p-4 ...`): add `min-w-0`.
-3. All `<select>` and `<input>` inside day cards and the duration row: add `w-full min-w-0` so they shrink to container width instead of growing.
-4. Calendar preview card: add `min-w-0 overflow-hidden`; on the inner `<Calendar>` keep `w-full` but drop the redundant outer `p-3` (Calendar already has its own padding) to avoid horizontal pressure.
-5. Header row (title + Cancel): add `min-w-0` and `truncate` on the title so a long edit-title can't push width.
+The fix is to require either a small delay or a movement threshold before activating drag, so a quick scroll gesture never triggers reordering.
 
-No logic changes, no API changes, no other files touched.
+### Fix (single file: `src/components/ActiveSession.tsx`)
+Locate the `useSensors(...)` call and configure activation constraints:
+
+- `PointerSensor` → `activationConstraint: { distance: 8 }` (mouse must move 8px before drag starts).
+- `TouchSensor` → `activationConstraint: { delay: 200, tolerance: 8 }` (finger must hold ~200ms with <8px movement; any earlier movement is treated as scroll).
+
+If sensors aren't currently customized (using defaults via `DndContext`), add an explicit `useSensors` setup with `PointerSensor` and `TouchSensor` and pass it to `DndContext`.
+
+### Optional polish
+- Keep `touch-none` on the grip button so once drag activates, the browser doesn't also try to scroll.
+- No changes needed to `SortableExerciseItem.tsx`.
+
+### What stays the same
+- Drag-and-drop reorder logic, set rendering, swipe-to-delete on sets.
+- Desktop behavior (8px distance is imperceptible for mouse users).
 
