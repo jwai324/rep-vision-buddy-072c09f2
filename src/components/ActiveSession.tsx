@@ -2106,6 +2106,7 @@ interface ExerciseTableProps {
   runningSet?: RunningSetState | null;
   onStartNextSet?: (blockIdx: number) => void;
   onStopSet?: () => void;
+  hideHeaderName?: boolean;
 }
 
 const EXERCISE_MENU_ITEMS = [
