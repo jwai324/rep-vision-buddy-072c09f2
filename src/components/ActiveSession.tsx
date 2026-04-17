@@ -33,6 +33,15 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
+import {
+  snapshotFromTemplateExercises,
+  snapshotFromFinishedBlocks,
+  diffTemplateSnapshots,
+  buildUpdatedTemplate,
+  type TemplateSnapshot,
+  type FinishedBlockLite,
+} from '@/utils/templateDiff';
+import type { WorkoutTemplate } from '@/types/workout';
 
 import type { WeightUnit } from '@/hooks/useStorage';
 
