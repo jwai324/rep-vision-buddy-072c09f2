@@ -142,7 +142,7 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
   return [];
 }
 
-interface DropRow {
+export interface DropRow {
   weight: string;
   reps: string;
   rpe: string;
