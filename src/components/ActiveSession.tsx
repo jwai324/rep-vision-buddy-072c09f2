@@ -147,6 +147,9 @@ interface DropRow {
   reps: string;
   rpe: string;
   completed: boolean;
+  time?: string;
+  startedAt?: number;
+  endedAt?: number;
 }
 
 interface SetRow {
