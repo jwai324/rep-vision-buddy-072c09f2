@@ -1,52 +1,37 @@
 
-## Three small additions
+## Fix dropset serialization & summary rendering
 
-### 1. Auto-scroll when Start next set hops to a different exercise
+### Root cause
+In `ActiveSession.tsx` line 960, `addDrop` mutates the **parent set's** `type` to `'dropset'`. So when the workout finishes:
+- `s.type` is written to the serialized parent set (line 1251) → parent becomes `'dropset'` in the saved session.
+- The completion screen sees a flat run of `'dropset'` rows with no `'normal'` parent (label algorithm shows `1, D1, D2, D3, D4, D5` instead of `1, 1D1, 2, 2D1, 3, 3D1`).
+- That also explains "1 normal + 5 dropsets" — only the very first set (no drops yet) was counted normal; everything else became `'dropset'`.
 
-**File:** `src/components/ActiveSession.tsx`
+The workout details screen looks correct because it shows older sessions saved before the parent-type bug was introduced (or sessions where drops were later removed, reverting type via line 1005).
 
-- Add a `blockRefs = useRef<Record<number, HTMLDivElement | null>>({})` map and pass a ref-setter into each rendered exercise block wrapper (the SortableExerciseItem container) so we can look up its DOM node by `blockIdx`.
-- In `handleStartNextSet`, whenever the chosen `setCountdown({ blockIdx: target, ... })` uses a `target !== blockIdx` (i.e. we hopped to a sibling in the superset group), call `blockRefs.current[target]?.scrollIntoView({ behavior: 'smooth', block: 'center' })` right after `setCountdown`.
-- Same-block advances do **not** scroll (keeps current scroll position stable for normal set-to-set progression).
+### Fix (single file: `src/components/ActiveSession.tsx`)
 
-### 2. Add a "time elapsed" field to dropset rows
+1. **`addDrop` (line 960)**: do **not** change the parent set's `type`. Just append to `drops`. Parent keeps its original type (`normal` / `failure` / `warmup`).
+   ```ts
+   return { ...set, drops: [...drops, { weight: '', reps: '', rpe: '', completed: false }] };
+   ```
 
-**File:** `src/components/ActiveSession.tsx` (dropset row JSX around lines 2272–2316)
+2. **`removeDrop` (line 1005)**: stop forcing type to `'dropset'` / `'normal'`. Just update `drops`; leave `type` alone.
+   ```ts
+   return { ...set, drops: newDrops.length > 0 ? newDrops : undefined };
+   ```
 
-- Replace the empty `<span />` placeholder in the Timer column with a `<TimeInputButton>` bound to `drop.time`, mirroring how the parent set row uses it:
-  ```tsx
-  <TimeInputButton
-    id={buildInputId(blockIdx, setIdx, 'time', dropIdx)}
-    value={drop.time ?? ''}
-    onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)}
-    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx}
-    small
-  />
-  ```
-- Confirm `onUpdateDrop` accepts a `'time'` field (extend the union if needed) and that the `DropSegment` type / drop row state already carries `time` (used by `stopRunningSet` for drops). If not present, add `time?: string` to the drop row state shape.
+3. **Audit any other place that branches on `set.type === 'dropset'` for the parent row** (e.g. badges/colors in the active session row) and switch them to check `(set.drops?.length ?? 0) > 0` instead, so the orange dropset visual treatment still appears on parent sets that have drops. Read lines around the set-row badge / color logic and adjust.
 
-### 3. Clickable "Time" column header with a small definition popover
+4. **`finishWorkout` serialization (lines 1247-1268)**: already correct — writes parent with `s.type` then appends each drop with `type: 'dropset'`. Once #1 is fixed, parents serialize as `'normal'` and the SessionSummary label algorithm produces `1, 1D1, 2, 2D1, 3, 3D1` automatically.
 
-**File:** `src/components/ActiveSession.tsx` (table headers at lines 2076, 2096, 2118)
-
-- Replace the three `<Timer />` icon spans (and the cardio "Time" text label at 2078) with a `Popover` trigger button — same pattern as the existing RPE header:
-  ```tsx
-  <Popover>
-    <PopoverTrigger asChild>
-      <button className="text-center w-full text-muted-foreground hover:text-primary transition-colors">
-        <Timer className="w-3 h-3 mx-auto" />
-      </button>
-    </PopoverTrigger>
-    <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed">
-      <p className="font-semibold mb-1">Time elapsed</p>
-      <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
-    </PopoverContent>
-  </Popover>
-  ```
-- Apply to all three header variants (cardio, band, weighted). Cardio's "Time" text header stays as-is (that column is the user-entered duration, not elapsed).
+### Behavior after fix
+- Completion summary and Workout Details screen render identically (they already share `SessionSummary.tsx`).
+- Dropsets appear nested (indented with the existing `pl-3 border-l-2` styling) directly under their parent set number.
+- Stats show correct counts: `Total Sets` still includes drops (matches existing behavior), but the per-set labels finally read `1, 1D1, 2, 2D1, 3, 3D1`.
 
 ### Files touched
 - `src/components/ActiveSession.tsx` only.
 
 ### Unchanged
-- Progression logic itself, rest timer, countdown overlay, persistence schema.
+- `SessionSummary.tsx`, `Index.tsx`, persistence schema, progression/scroll/timer logic.
