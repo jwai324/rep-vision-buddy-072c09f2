@@ -2032,15 +2032,11 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
                   <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
                     {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
                   </span>
-                  <input
+                  <TimeInputButton
                     id={buildInputId(blockIdx, setIdx, 'time')}
-                    type="number"
-                    inputMode="decimal"
                     value={set.time}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'time', e.target.value)}
-                    onFocus={e => e.target.value && e.target.select()}
-                    placeholder="min"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)}
+                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx}
                   />
                   <RpePickerButton
                     id={buildInputId(blockIdx, setIdx, 'rpe')}
