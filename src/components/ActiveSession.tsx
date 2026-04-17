@@ -1580,37 +1580,39 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                     onExtend={extendTimer}
                   />
                 )}
-                <SortableExerciseItem id={block.exerciseId}>
-                  <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
-                    <ExerciseTable
-                      block={block}
-                      blockIdx={blockIdx}
-                      weightUnit={weightUnit}
-                      blocks={blocks}
-                      stickyNote={getStickyNote(block.exerciseId)}
-                      activeTimer={activeTimer}
-                      restRecords={restRecords}
-                      previousSets={getPreviousExerciseData(history, block.exerciseId)}
-                      inputMode={getExerciseInputMode(block.exerciseId, customExercises)}
-                      onUpdateSet={updateSet}
-                      onToggleComplete={toggleSetComplete}
-                      onAddSet={addSet}
-                      onAddDrop={addDrop}
-                      onUpdateDrop={updateDrop}
-                      onRemoveSet={removeSet}
-                      onRemoveDrop={removeDrop}
-                      onMenuAction={handleMenuAction}
-                      onStartTimer={startTimer}
-                      onSkipTimer={skipTimer}
-                      onExtendTimer={extendTimer}
-                      onTitleTap={() => setDetailExerciseId(block.exerciseId)}
-                      isEditMode={isEditMode}
-                      runningSet={runningSet}
-                      onStartNextSet={handleStartNextSet}
-                      onStopSet={handleStopSetClick}
-                    />
-                  </div>
-                </SortableExerciseItem>
+                <div ref={el => { blockRefs.current[blockIdx] = el; }}>
+                  <SortableExerciseItem id={block.exerciseId}>
+                    <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
+                      <ExerciseTable
+                        block={block}
+                        blockIdx={blockIdx}
+                        weightUnit={weightUnit}
+                        blocks={blocks}
+                        stickyNote={getStickyNote(block.exerciseId)}
+                        activeTimer={activeTimer}
+                        restRecords={restRecords}
+                        previousSets={getPreviousExerciseData(history, block.exerciseId)}
+                        inputMode={getExerciseInputMode(block.exerciseId, customExercises)}
+                        onUpdateSet={updateSet}
+                        onToggleComplete={toggleSetComplete}
+                        onAddSet={addSet}
+                        onAddDrop={addDrop}
+                        onUpdateDrop={updateDrop}
+                        onRemoveSet={removeSet}
+                        onRemoveDrop={removeDrop}
+                        onMenuAction={handleMenuAction}
+                        onStartTimer={startTimer}
+                        onSkipTimer={skipTimer}
+                        onExtendTimer={extendTimer}
+                        onTitleTap={() => setDetailExerciseId(block.exerciseId)}
+                        isEditMode={isEditMode}
+                        runningSet={runningSet}
+                        onStartNextSet={handleStartNextSet}
+                        onStopSet={handleStopSetClick}
+                      />
+                    </div>
+                  </SortableExerciseItem>
+                </div>
               </React.Fragment>
               );
             })}
