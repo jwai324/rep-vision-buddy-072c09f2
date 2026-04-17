@@ -1855,6 +1855,7 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
             ))}
           </PopoverContent>
         </Popover>
+        </div>
       </div>
 
       {/* Sticky Note display */}
