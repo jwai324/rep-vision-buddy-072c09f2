@@ -1,23 +1,21 @@
 
 
-## Fix Floating "Add N Exercises" Button + Horizontal Scroll
+## Fix: Superset (and cardio time) data lost when editing a saved workout
 
-### Problem
-1. **Button scrolls away**: In `ActiveSession.tsx` line 1061, the exercise picker wrapper uses `min-h-screen flex flex-col`. `min-h-screen` lets the page grow taller than the viewport, so the entire page scrolls — and the "Add N Exercises" button (which uses `sticky bottom-0` inside `ExerciseSelector`) ends up pinned to the bottom of the long content, not the viewport.
-2. **Slight horizontal scroll**: The outer wrapper has no `overflow-x-hidden` / `min-w-0`, so wide content (long exercise names, filter chip rows) can push the page sideways on mobile.
+### Root cause
+`src/components/ActiveSession.tsx` lines 185–201 — `editBlocks` rebuilds blocks from `editSession.exercises` but does NOT copy `supersetGroup`. So when the user opens a completed workout → Edit → Save, every exercise is saved back without its superset link.
 
-### Fix (two small edits)
+The same block also hardcodes `time: ''`, which drops cardio set times on edit.
 
-**`src/components/ActiveSession.tsx` (lines 1059-1067)** — make the picker viewport-locked:
-- Change wrapper to `h-screen flex flex-col overflow-hidden` (use `h-dvh` fallback via `h-[100dvh]` for mobile browser chrome).
-- Add `min-w-0` so children can't overflow horizontally.
+### Fix (one file)
+**`src/components/ActiveSession.tsx`** — in `editBlocks`:
+1. Add `supersetGroup: ex.supersetGroup` to the block object.
+2. Preserve cardio time: `time: s.time != null ? String(s.time) : ''`.
 
-This makes `ExerciseSelector` (which already uses `h-full` + `flex flex-col` with `ScrollArea flex-1`) properly scroll only its inner list, leaving the bottom action bar fixed at the viewport bottom.
-
-**`src/components/ExerciseSelector.tsx` (bottom button block, ~line 333)** — promote the action bar from `sticky` to a real flex-bottom child (it's already a sibling of the ScrollArea, so removing `sticky bottom-0` and keeping `border-t p-4 bg-background` is enough). Also ensure the outer `<div>` already has `overflow-x-hidden` (it does) — no change needed there.
+That's it — no other code paths need changes (save path already serializes `block.supersetGroup`, and `SessionSummary` already reads + color-codes by it).
 
 ### What stays the same
-- All filter UI, exercise list rendering, multi-select logic, create-custom-exercise flow.
-- `ExerciseSelector`'s public API.
-- Desktop behavior (already correct since the desktop layout has explicit height constraints).
+- `WorkoutSession` / `ExerciseLog` types (already have `supersetGroup`).
+- Save/load layer (already round-trips the field via JSON).
+- `SessionSummary` rendering (legacy inference fallback stays as a safety net).
 
