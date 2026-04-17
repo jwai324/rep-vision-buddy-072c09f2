@@ -803,6 +803,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const block = blocks[blockIdx];
     if (!block) return;
 
+    const scrollToBlock = (target: number) => {
+      if (target === blockIdx) return;
+      // Defer to after countdown overlay renders
+      setTimeout(() => {
+        blockRefs.current[target]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    };
+
     const group = block.supersetGroup;
 
     // No superset → walk this block in order
@@ -850,11 +858,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const s = sBlock.sets[N];
         if (!s.completed) {
           setCountdown({ blockIdx: sbi, setIdx: N });
+          scrollToBlock(sbi);
           return;
         }
         const di = findIncompleteDrop(s);
         if (di !== undefined) {
           setCountdown({ blockIdx: sbi, setIdx: N, dropIdx: di });
+          scrollToBlock(sbi);
           return;
         }
       }
@@ -869,11 +879,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const s = sBlock.sets[nextN];
       if (!s.completed) {
         setCountdown({ blockIdx: sbi, setIdx: nextN });
+        scrollToBlock(sbi);
         return;
       }
       const di = findIncompleteDrop(s);
       if (di !== undefined) {
         setCountdown({ blockIdx: sbi, setIdx: nextN, dropIdx: di });
+        scrollToBlock(sbi);
         return;
       }
     }
@@ -883,6 +895,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const next = nextInBlock(blocks[sbi], 0);
       if (next) {
         setCountdown({ blockIdx: sbi, setIdx: next.setIdx, dropIdx: next.dropIdx });
+        scrollToBlock(sbi);
         return;
       }
     }
