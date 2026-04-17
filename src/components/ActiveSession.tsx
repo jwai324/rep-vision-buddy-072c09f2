@@ -2104,9 +2104,17 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
               <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
             </PopoverContent>
           </Popover>
-          <span className="text-center">
-            <Timer className="w-3 h-3 mx-auto" />
-          </span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+                <Timer className="w-3 h-3 mx-auto" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Time elapsed</p>
+              <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+            </PopoverContent>
+          </Popover>
           <span className="text-center">
             <Check className="w-3 h-3 mx-auto" />
           </span>
@@ -2126,9 +2134,17 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
               <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
             </PopoverContent>
           </Popover>
-          <span className="text-center">
-            <Timer className="w-3 h-3 mx-auto" />
-          </span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+                <Timer className="w-3 h-3 mx-auto" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+              <p className="font-semibold mb-1">Time elapsed</p>
+              <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+            </PopoverContent>
+          </Popover>
           <span className="text-center">
             <Check className="w-3 h-3 mx-auto" />
           </span>
@@ -2154,9 +2170,17 @@ const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUn
             </ul>
           </PopoverContent>
         </Popover>
-        <span className="text-center">
-          <Timer className="w-3 h-3 mx-auto" />
-        </span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+              <Timer className="w-3 h-3 mx-auto" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+            <p className="font-semibold mb-1">Time elapsed</p>
+            <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+          </PopoverContent>
+        </Popover>
         <span className="text-center">
           <Check className="w-3 h-3 mx-auto" />
         </span>
