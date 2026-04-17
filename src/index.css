@@ -109,3 +109,14 @@
     display: none;
   }
 }
+
+/* Mobile landscape: expand analytics chart heights to use the wider viewport */
+@media (max-width: 900px) and (orientation: landscape) {
+  .analytics-root [class*="h-48"],
+  .analytics-root [class*="h-56"],
+  .analytics-root [class*="h-64"],
+  .analytics-root [class*="h-72"] {
+    height: 80vh !important;
+    min-height: 260px;
+  }
+}

@@ -55,7 +55,7 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weigh
   const showHint = isMobile && isPortrait && !hintSeen;
 
   return (
-    <div className="min-h-screen bg-background p-4 flex flex-col gap-4 overflow-x-hidden w-full max-w-full">
+    <div className="analytics-root min-h-screen bg-background p-4 flex flex-col gap-4 overflow-x-hidden w-full max-w-full">
       <div className="flex items-center gap-3 pt-2">
         <button onClick={onBack} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
           <ArrowLeft className="w-5 h-5" />
@@ -79,7 +79,7 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weigh
         </div>
       )}
 
-      <Tabs defaultValue="volume" className="w-full min-w-0 max-w-full">
+      <Tabs key={isPortrait ? 'p' : 'l'} defaultValue="volume" className="w-full min-w-0 max-w-full">
         <TabsList className="w-full overflow-x-auto scrollbar-hide flex justify-start gap-0 bg-muted rounded-lg p-1 h-auto flex-nowrap">
           {TABS.map(tab => (
             <TabsTrigger key={tab.value} value={tab.value} className="text-[11px] px-2.5 py-1.5 whitespace-nowrap flex-shrink-0">
