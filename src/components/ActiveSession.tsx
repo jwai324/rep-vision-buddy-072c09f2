@@ -1664,6 +1664,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 5-second countdown overlay before starting a timed set */}
+      {countdown && (
+        <CountdownOverlay
+          from={5}
+          onComplete={handleCountdownComplete}
+          onCancel={() => setCountdown(null)}
+        />
+      )}
     </div>
   );
 };
