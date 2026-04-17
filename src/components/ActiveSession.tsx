@@ -12,7 +12,7 @@ import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
-import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin, Focus } from 'lucide-react';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
@@ -36,6 +36,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
+import { FocusMode } from '@/components/FocusMode';
 import {
   snapshotFromTemplateExercises,
   snapshotFromFinishedBlocks,
@@ -142,7 +143,7 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
   return [];
 }
 
-interface DropRow {
+export interface DropRow {
   weight: string;
   reps: string;
   rpe: string;
@@ -152,7 +153,7 @@ interface DropRow {
   endedAt?: number;
 }
 
-interface SetRow {
+export interface SetRow {
   setNumber: number;
   weight: string;
   reps: string;
@@ -172,7 +173,7 @@ export interface RunningSetState {
   startedAt: number;
 }
 
-interface ExerciseBlock {
+export interface ExerciseBlock {
   exerciseId: ExerciseId;
   exerciseName: string;
   sets: SetRow[];
@@ -338,6 +339,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showFocusMode, setShowFocusMode] = useState(false);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
   const [timerPaused, setTimerPaused] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
@@ -1465,6 +1467,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             </PopoverContent>
           </Popover>
           {!isEditMode && (
+            <Button variant="outline" size="sm" onClick={() => setShowFocusMode(true)} className="border-primary/30 text-primary hover:bg-primary/10">
+              <Focus className="w-3.5 h-3.5 mr-1" />
+              Focus
+            </Button>
+          )}
+          {!isEditMode && (
             <Button variant="outline" size="sm" onClick={() => setShowDiscardConfirm(true)} className="text-destructive border-destructive/30 hover:bg-destructive/10">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Discard
@@ -1698,6 +1706,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           Add Exercise
         </button>
       </div>
+
+      {/* Focus Mode overlay */}
+      {showFocusMode && !isEditMode && (
+        <FocusMode
+          blocks={blocks}
+          weightUnit={weightUnit}
+          activeTimer={activeTimer}
+          restRecords={restRecords}
+          runningSet={runningSet}
+          getStickyNote={getStickyNote}
+          getPreviousSets={(exId) => getPreviousExerciseData(history, exId)}
+          getInputMode={(exId) => getExerciseInputMode(exId, customExercises)}
+          onUpdateSet={updateSet}
+          onToggleComplete={toggleSetComplete}
+          onAddSet={addSet}
+          onAddDrop={addDrop}
+          onUpdateDrop={updateDrop}
+          onRemoveSet={removeSet}
+          onRemoveDrop={removeDrop}
+          onMenuAction={handleMenuAction}
+          onStartTimer={startTimer}
+          onSkipTimer={skipTimer}
+          onExtendTimer={extendTimer}
+          onStartNextSet={handleStartNextSet}
+          onStopSet={handleStopSetClick}
+          onClose={() => setShowFocusMode(false)}
+        />
+      )}
 
       {/* Workout note dialog */}
       <AlertDialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
@@ -2077,7 +2113,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet }) => {
+export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
   return (
     <div>
