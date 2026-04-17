@@ -1123,14 +1123,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           supersetGroup: b.supersetGroup,
           sets: b.sets
             .filter(s => s.completed)
-            .map(s => ({
-              setNumber: s.setNumber,
-              type: s.type,
-              reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
-              weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
-              rpe: s.rpe ? parseFloat(s.rpe) : undefined,
-              time: mode === 'cardio' ? (parseFloat(s.time || s.reps) || 0) : undefined,
-            })),
+            .map(s => {
+              const seconds = timeToSeconds(s.time);
+              return {
+                setNumber: s.setNumber,
+                type: s.type,
+                reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
+                weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
+                rpe: s.rpe ? parseFloat(s.rpe) : undefined,
+                time: seconds > 0 ? seconds : (mode === 'cardio' ? (parseInt(s.reps) || 0) : undefined),
+              };
+            }),
         };
       });
 
