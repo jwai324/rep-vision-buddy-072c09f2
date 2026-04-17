@@ -28,6 +28,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
+import { CountdownOverlay } from '@/components/CountdownOverlay';
+import { formatMmSs, parseMmSs, timeToSeconds } from '@/utils/timeFormat';
 import { registerSession, unregisterSession } from '@/hooks/useSessionController';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -85,6 +87,7 @@ export interface ActiveSessionCache {
   workoutNote?: string;
   activeTimer?: PersistedTimer | null;
   restRecords?: Record<string, number>;
+  runningSet?: RunningSetState | null;
 }
 
 // Safe localStorage write — never throws
@@ -153,8 +156,16 @@ interface SetRow {
   completed: boolean;
   type: SetType;
   rpe: string;
-  time: string;
+  time: string;          // total seconds (string), formatted as mm:ss for display
+  startedAt?: number;    // epoch ms — when "Start next set" countdown completed
+  endedAt?: number;      // epoch ms — when "Stop set" was tapped
   drops?: DropRow[];
+}
+
+export interface RunningSetState {
+  blockIdx: number;
+  setIdx: number;
+  startedAt: number;
 }
 
 interface ExerciseBlock {
