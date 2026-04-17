@@ -742,9 +742,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         sets: b.sets.map((s, si) => {
           if (si === setIdx) {
             if (dropIdx !== undefined) {
-              // Mark dropset complete
+              // Mark dropset complete with timing
               const newDrops = (s.drops ?? []).map((d, di) =>
-                di === dropIdx ? { ...d, completed: true } : d
+                di === dropIdx ? { ...d, completed: true, time: String(seconds), startedAt, endedAt } : d
               );
               return { ...s, drops: newDrops };
             }
