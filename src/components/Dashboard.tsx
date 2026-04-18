@@ -32,6 +32,7 @@ interface DashboardProps {
   onAddRestDay: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
   onGoToMonthlyCalendar: () => void;
+  onOpenTodayWorkout: (template: WorkoutTemplate, dateStr: string) => void;
 }
 
 function formatDuration(s: number) {
@@ -342,7 +343,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, preferences, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar
+  history, activeProgram, templates, futureWorkouts, preferences, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar, onOpenTodayWorkout
 }) => {
   const streak = getCurrentStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
   const streakLabel = preferences.streakMode === 'weekly'
@@ -385,16 +386,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Active program today */}
       {todayTemplate && (
-        <div className="bg-card rounded-xl p-4 border border-primary/30 glow-green">
+        <button
+          type="button"
+          onClick={() => onOpenTodayWorkout(todayTemplate, format(new Date(), 'yyyy-MM-dd'))}
+          className="bg-card rounded-xl p-4 border border-primary/30 glow-green text-left w-full hover:border-primary/50 transition-colors"
+        >
           <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Today's Workout</p>
           <h3 className="font-semibold text-foreground mb-1">{todayTemplate.name}</h3>
           <p className="text-xs text-muted-foreground mb-3">
             {todayTemplate.exercises.map(e => exerciseLookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
           </p>
-          <Button variant="neon" size="sm" onClick={() => onStartTemplate(todayTemplate)}>
+          <Button variant="neon" size="sm" onClick={(e) => { e.stopPropagation(); onStartTemplate(todayTemplate); }}>
             Start Today's Workout
           </Button>
-        </div>
+        </button>
       )}
 
       {todayDay?.templateId === 'rest' && activeProgram && (

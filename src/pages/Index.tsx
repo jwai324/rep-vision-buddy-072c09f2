@@ -137,6 +137,21 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onGoToAnalytics={() => setScreen({ type: 'analytics' })}
             onBuildAIProgram={() => setScreen({ type: 'aiProgramBuilder' })}
             onGoToMonthlyCalendar={() => setScreen({ type: 'monthlyCalendar' })}
+            onOpenTodayWorkout={(template, dateStr) => {
+              const stored = storage.futureWorkouts.find(f => f.date === dateStr && f.templateId === template.id);
+              if (stored) {
+                setScreen({ type: 'futureWorkoutDetail', futureWorkout: stored });
+                return;
+              }
+              const synthetic: FutureWorkout = {
+                id: `synthetic-${dateStr}`,
+                programId: storage.activeProgramId ?? 'manual',
+                date: dateStr,
+                templateId: template.id,
+                label: template.name,
+              };
+              setScreen({ type: 'futureWorkoutDetail', futureWorkout: synthetic });
+            }}
             onAddRestDay={() => {
               const today = format(new Date(), 'yyyy-MM-dd');
               const restFw: FutureWorkout = {
