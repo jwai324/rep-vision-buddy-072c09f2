@@ -20,6 +20,7 @@ import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import { AIProgramBuilder } from '@/components/AIProgramBuilder';
 import { CustomExercisesScreen } from '@/components/CustomExercisesScreen';
+import { MonthlyCalendarScreen } from '@/components/MonthlyCalendarScreen';
 import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
 import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { AIChatBubble } from '@/components/AIChatBubble';
@@ -45,7 +46,8 @@ type Screen =
   | { type: 'settings' }
   | { type: 'analytics' }
   | { type: 'aiProgramBuilder' }
-  | { type: 'customExercises' };
+  | { type: 'customExercises' }
+  | { type: 'monthlyCalendar' };
 
 const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
   const { registerScreen } = useChatContext();
@@ -133,6 +135,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onGoToSettings={() => setScreen({ type: 'settings' })}
             onGoToAnalytics={() => setScreen({ type: 'analytics' })}
             onBuildAIProgram={() => setScreen({ type: 'aiProgramBuilder' })}
+            onGoToMonthlyCalendar={() => setScreen({ type: 'monthlyCalendar' })}
             onAddRestDay={() => {
               const today = format(new Date(), 'yyyy-MM-dd');
               const restFw: FutureWorkout = {
@@ -525,6 +528,29 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onUpdate={updateCustomExercise}
           onDelete={deleteCustomExercise}
           onBack={() => setScreen({ type: 'settings' })}
+        />
+      )}
+
+      {screen.type === 'monthlyCalendar' && (
+        <MonthlyCalendarScreen
+          history={storage.history}
+          templates={storage.templates}
+          futureWorkouts={storage.futureWorkouts}
+          activeProgram={activeProgram}
+          onBack={() => setScreen({ type: 'dashboard' })}
+          onStartTemplate={startFromTemplate}
+          onOpenFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw })}
+          onOpenSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'activity' })}
+          onAddRestDay={(dateStr) => {
+            const restFw: FutureWorkout = {
+              id: crypto.randomUUID(),
+              programId: 'manual',
+              date: dateStr,
+              templateId: 'rest',
+              label: 'Rest Day',
+            };
+            setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw });
+          }}
         />
       )}
 
