@@ -1,33 +1,44 @@
 
-## Split the "Today's Workout" card interactions
+## Fix cardio set completion
 
-On the Dashboard's "Today's Workout" card:
-- **Tapping the card body** (background, name, exercise list) → opens the same `FutureWorkoutDetail` page used for upcoming workouts.
-- **Tapping the "Start Today's Workout" button** → starts the session immediately (current behavior).
+### Bug
+Cardio exercises store time in `set.time`, but `canCompleteSet` is called with `set.reps` as the time source (`ActiveSession.tsx:755`). Since cardio rows have no reps input, the check always fails and the user can't tick the set complete.
 
-### Implementation
+### Fix
 
-1. **`Dashboard.tsx`**
-   - Add prop `onOpenTodayWorkout: (template: WorkoutTemplate, dateStr: string) => void`.
-   - Convert the "Today's Workout" card `<div>` into a `<button>` (or a clickable wrapper) that calls `onOpenTodayWorkout(todayTemplate, todayDateStr)`.
-   - Keep the existing `Button` ("Start Today's Workout") inside; add `onClick` with `e.stopPropagation()` so it still calls `onStartTemplate(todayTemplate)` without also triggering the card open.
+**1. `src/utils/setValidation.ts`**
+Add an explicit `time` parameter to `canCompleteSet` for cardio mode:
+```ts
+export function canCompleteSet(
+  weight: string, reps: string, unit: WeightUnit,
+  isBodyweight = false, isCardio = false, time = '',
+): boolean {
+  if (isCardio) {
+    const t = parseFloat(time);
+    return !isNaN(t) && t > 0;
+  }
+  // ...existing weighted/band logic
+}
+```
 
-2. **`Index.tsx`**
-   - Add `handleOpenTodayWorkout(template, dateStr)`:
-     - Look for an existing `FutureWorkout` matching `date === dateStr && templateId === template.id`.
-     - If found → navigate to `{ type: 'futureWorkoutDetail', futureWorkout: existing }`.
-     - Else → synthesize one (`id: 'synthetic-' + dateStr`, `programId: activeProgramId ?? 'manual'`, `templateId: template.id`, `date: dateStr`, `label: template.name`) and navigate.
-   - Reuses the existing synthetic→real id-rewrite adapter, so persistence on the detail page already works.
-   - Pass the new handler as `onOpenTodayWorkout` to `<Dashboard />`.
+**2. `src/components/ActiveSession.tsx` (line 755)**
+Pass `set.time` as the new arg:
+```ts
+canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, mode === 'cardio', set.time)
+```
+Update the toast message for cardio: `"Enter a time before completing this set."` vs the existing weight/reps message.
+
+**3. Tests**
+- Update `src/test/setValidation.test.ts` cardio case to use the new `time` argument.
+- Update `src/test/integration.test.ts` similarly.
 
 ### Files
-- Modify: `src/components/Dashboard.tsx`
-- Modify: `src/pages/Index.tsx`
+- Modify: `src/utils/setValidation.ts`, `src/components/ActiveSession.tsx`, `src/test/setValidation.test.ts`, `src/test/integration.test.ts`
 
 ### Unchanged
-- `FutureWorkoutDetail`, `FutureWorkoutsScreen`, `useStorage`, DB schema, RLS.
+- DB schema, RLS, band/weighted flows, save logic (already reads `set.time` correctly at line 1315).
 
 ### Validation
-- Tap the card body → `FutureWorkoutDetail` opens for today.
-- Tap "Start Today's Workout" → session launches immediately (card does not also open detail).
-- Upcoming workouts in `FutureWorkoutsScreen` behave the same as before.
+- Start a cardio exercise (e.g. Running), enter only a time, tap ✓ → set completes and rest timer starts.
+- Try to complete with empty time → shows "Enter a time…" toast.
+- Weighted and band exercises still require weight + reps as before.
