@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
@@ -41,6 +42,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
   });
 
   const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseLookup = useExerciseLookup();
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [localActivities, setLocalActivities] = useState<RecoveryActivity[]>(futureWorkout.recoveryActivities ?? []);
@@ -296,7 +298,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                       <span className="text-sm">{info?.icon ?? '🏋️'}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{info?.name ?? ex.exerciseId}</p>
+                      <p className="text-sm font-semibold text-foreground truncate">{info?.name ?? exerciseLookup[ex.exerciseId] ?? ex.exerciseId}</p>
                       <p className="text-xs text-muted-foreground">
                         {mode === 'cardio'
                           ? `${ex.sets} × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} min`}`
