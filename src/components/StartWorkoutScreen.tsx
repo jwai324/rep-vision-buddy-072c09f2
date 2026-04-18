@@ -1,6 +1,7 @@
 import React from 'react';
 import type { WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { Dumbbell, ClipboardList, Calendar, ChevronRight } from 'lucide-react';
 
 interface StartWorkoutScreenProps {
@@ -16,6 +17,7 @@ interface StartWorkoutScreenProps {
 export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
   templates, activeProgram, futureWorkouts, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
 }) => {
+  const lookup = useExerciseLookup();
   const dayOfWeek = new Date().getDay();
   const todayDay = activeProgram?.days[(dayOfWeek + 6) % 7];
   const todayTemplate = todayDay && todayDay.templateId !== 'rest'
@@ -62,7 +64,7 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
               <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Today's Workout</p>
               <h3 className="font-semibold text-foreground">{todayTemplate.name}</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                {todayTemplate.exercises.map(e => EXERCISES[e.exerciseId]?.name).join(' → ')}
+                {todayTemplate.exercises.map(e => lookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
               </p>
             </button>
           ) : isRestDay ? (
@@ -98,7 +100,7 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
                       <h3 className="text-sm font-semibold text-foreground">{fw.label}</h3>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                        {template ? ` · ${template.exercises.map(e => EXERCISES[e.exerciseId]?.name).join(', ')}` : ''}
+                        {template ? ` · ${template.exercises.map(e => lookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(', ')}` : ''}
                       </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -126,7 +128,7 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-foreground">{t.name}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {t.exercises.length} exercises · {t.exercises.map(e => EXERCISES[e.exerciseId]?.name).join(', ')}
+                    {t.exercises.length} exercises · {t.exercises.map(e => lookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(', ')}
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
