@@ -125,6 +125,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             activeProgram={activeProgram}
             templates={storage.templates}
             futureWorkouts={storage.futureWorkouts}
+            preferences={storage.preferences}
             onStartWorkout={() => setScreen({ type: 'startWorkout' })}
             onGoToFutureWorkouts={() => setScreen({ type: 'activity', initialTab: 'future' })}
             onStartTemplate={startFromTemplate}
@@ -503,6 +504,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <AnalyticsScreen
           history={storage.history}
           weightUnit={storage.preferences.weightUnit}
+          preferences={storage.preferences}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
       )}

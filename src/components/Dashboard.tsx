@@ -10,12 +10,15 @@ import { parseLocalDate } from '@/utils/dateUtils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
+import type { UserPreferences } from '@/hooks/useStorage';
+import { getCurrentStreak } from '@/utils/streak';
 
 interface DashboardProps {
   history: WorkoutSession[];
   activeProgram: WorkoutProgram | null;
   templates: WorkoutTemplate[];
   futureWorkouts: FutureWorkout[];
+  preferences: UserPreferences;
   onStartWorkout: () => void;
   onGoToFutureWorkouts: () => void;
   onStartTemplate: (template: WorkoutTemplate) => void;
@@ -29,26 +32,6 @@ interface DashboardProps {
   onAddRestDay: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
   onGoToMonthlyCalendar: () => void;
-}
-
-function getStreak(sessions: WorkoutSession[]): number {
-  if (sessions.length === 0) return 0;
-  let streak = 0;
-  const today = format(new Date(), 'yyyy-MM-dd');
-
-  // Build a set of workout date strings for fast lookup
-  const workoutDates = new Set(
-    sessions.map(s => format(parseLocalDate(s.date), 'yyyy-MM-dd'))
-  );
-
-  for (let i = 0; i < 365; i++) {
-    const d = addDays(new Date(today + 'T00:00:00'), -i);
-    const dayStr = format(d, 'yyyy-MM-dd');
-    if (workoutDates.has(dayStr)) streak++;
-    else if (i > 0) break;
-    else continue;
-  }
-  return streak;
 }
 
 function formatDuration(s: number) {
@@ -359,9 +342,12 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar
+  history, activeProgram, templates, futureWorkouts, preferences, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar
 }) => {
-  const streak = getStreak(history);
+  const streak = getCurrentStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
+  const streakLabel = preferences.streakMode === 'weekly'
+    ? `wk streak (${preferences.streakWeeklyTarget}/wk)`
+    : 'day streak';
   const exerciseLookup = useExerciseLookup();
   const lastSession = history[0];
 
@@ -381,9 +367,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-sm text-muted-foreground">AI-Powered Workout Tracker</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <span className="text-2xl">🔥</span>
-            <span className="font-mono text-xl font-bold text-primary">{streak}</span>
+          <div className="flex flex-col items-end leading-tight" title={streakLabel}>
+            <div className="flex items-center gap-1">
+              <span className="text-2xl">🔥</span>
+              <span className="font-mono text-xl font-bold text-primary">{streak}</span>
+            </div>
+            <span className="text-[9px] uppercase tracking-wider text-muted-foreground -mt-0.5">{streakLabel}</span>
           </div>
           <button
             onClick={onGoToSettings}

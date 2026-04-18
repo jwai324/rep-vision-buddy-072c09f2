@@ -2,12 +2,15 @@ import React, { useMemo } from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { format, subDays, startOfWeek, addDays } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
+import type { UserPreferences } from '@/hooks/useStorage';
+import { getCurrentStreak, getLongestStreak } from '@/utils/streak';
 
 interface ConsistencyTabProps {
   history: WorkoutSession[];
+  preferences: UserPreferences;
 }
 
-export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
+export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, preferences }) => {
   const { grid, maxVolume, currentStreak, longestStreak } = useMemo(() => {
     const volumeMap = new Map<string, number>();
     const workoutDates = new Set<string>();
@@ -41,44 +44,11 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
     }
     if (week.length > 0) weeks.push(week);
 
-    // Calculate current streak (matching dashboard logic: skip today if empty)
-    let current = 0;
-    let checkDate = today;
-    const todayStr = format(today, 'yyyy-MM-dd');
-    if (!workoutDates.has(todayStr)) {
-      checkDate = subDays(today, 1);
-    }
-    for (let i = 0; i < 365; i++) {
-      const key = format(checkDate, 'yyyy-MM-dd');
-      if (workoutDates.has(key)) {
-        current++;
-        checkDate = subDays(checkDate, 1);
-      } else {
-        break;
-      }
-    }
-
-    // Longest streak (using all session dates including rest days)
-    let longest = 0;
-    const allDates = Array.from(workoutDates).sort();
-    if (allDates.length > 0) {
-      let tempStreak = 1;
-      longest = 1;
-      for (let i = 1; i < allDates.length; i++) {
-        const prev = new Date(allDates[i - 1] + 'T00:00:00');
-        const curr = new Date(allDates[i] + 'T00:00:00');
-        const diff = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
-        if (diff === 1) {
-          tempStreak++;
-          longest = Math.max(longest, tempStreak);
-        } else {
-          tempStreak = 1;
-        }
-      }
-    }
+    const current = getCurrentStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
+    const longest = getLongestStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
 
     return { grid: weeks, maxVolume: maxVol, currentStreak: current, longestStreak: longest };
-  }, [history]);
+  }, [history, preferences.streakMode, preferences.streakWeeklyTarget]);
 
   const getIntensity = (volume: number) => {
     if (volume === 0) return 'bg-secondary';
@@ -97,11 +67,15 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history }) => {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card rounded-xl border border-border p-4 text-center">
           <p className="text-3xl font-extrabold text-foreground">{currentStreak}</p>
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">Current Streak</p>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">
+            Current {preferences.streakMode === 'weekly' ? `Wk Streak (${preferences.streakWeeklyTarget}/wk)` : 'Streak'}
+          </p>
         </div>
         <div className="bg-card rounded-xl border border-border p-4 text-center">
           <p className="text-3xl font-extrabold text-foreground">{longestStreak}</p>
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">Longest Streak</p>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-1">
+            Longest {preferences.streakMode === 'weekly' ? 'Wk Streak' : 'Streak'}
+          </p>
         </div>
       </div>
 

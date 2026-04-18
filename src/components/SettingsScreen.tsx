@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -156,6 +156,69 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             checked={preferences.defaultDropSetsEnabled}
             onCheckedChange={(checked) => onUpdatePreferences({ defaultDropSetsEnabled: checked })}
           />
+        </div>
+      </div>
+
+      {/* Streak Mode */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <Flame className="w-4 h-4 text-primary" />
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Streak</p>
+        </div>
+        <div className="px-4 py-3 flex flex-col gap-3">
+          <div className="flex gap-2">
+            {([
+              { value: 'daily', label: 'Daily' },
+              { value: 'weekly', label: 'Weekly target' },
+            ] as const).map(opt => {
+              const isActive = preferences.streakMode === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => onUpdatePreferences({ streakMode: opt.value })}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-secondary text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          {preferences.streakMode === 'daily' ? (
+            <p className="text-xs text-muted-foreground">
+              Counts every consecutive day with a logged workout or rest day.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Counts consecutive weeks (Mon–Sun) with at least the target number of workouts. Rest days don't count.
+              </p>
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">Workouts per week</p>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {[1, 2, 3, 4, 5, 6, 7].map(n => {
+                    const isActive = preferences.streakWeeklyTarget === n;
+                    return (
+                      <button
+                        key={n}
+                        onClick={() => onUpdatePreferences({ streakWeeklyTarget: n })}
+                        className={`py-2 rounded-lg text-sm font-bold transition-colors ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
