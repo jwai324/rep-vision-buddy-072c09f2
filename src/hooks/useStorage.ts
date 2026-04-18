@@ -126,17 +126,21 @@ function mapFutureWorkout(row: any): FutureWorkout {
 
 export type WeightUnit = 'kg' | 'lbs';
 
+export type StreakMode = 'daily' | 'weekly';
+
 export interface UserPreferences {
   weightUnit: WeightUnit;
   defaultRestSeconds: number;
   defaultDropSetsEnabled: boolean;
+  streakMode: StreakMode;
+  streakWeeklyTarget: number;
 }
 
 export interface UserProfile {
   displayName: string | null;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3 };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 export function useStorage() {
@@ -184,6 +188,8 @@ export function useStorage() {
             weightUnit: (settingsRes.data as any).weight_unit ?? 'lbs',
             defaultRestSeconds: (settingsRes.data as any).default_rest_seconds ?? 90,
             defaultDropSetsEnabled: (settingsRes.data as any).default_drop_sets_enabled ?? false,
+            streakMode: ((settingsRes.data as any).streak_mode ?? 'daily') as StreakMode,
+            streakWeeklyTarget: (settingsRes.data as any).streak_weekly_target ?? 3,
           });
         }
         if (profileRes.data) {
@@ -397,6 +403,8 @@ export function useStorage() {
       weight_unit: updated.weightUnit,
       default_rest_seconds: updated.defaultRestSeconds,
       default_drop_sets_enabled: updated.defaultDropSetsEnabled,
+      streak_mode: updated.streakMode,
+      streak_weekly_target: updated.streakWeeklyTarget,
     } as any, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);
