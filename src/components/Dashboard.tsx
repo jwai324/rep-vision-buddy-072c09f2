@@ -9,6 +9,7 @@ import { addDays, addWeeks, format, getDay, isSameDay, startOfWeek } from 'date-
 import { parseLocalDate } from '@/utils/dateUtils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 
 interface DashboardProps {
   history: WorkoutSession[];
