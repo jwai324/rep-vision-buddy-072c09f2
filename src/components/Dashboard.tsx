@@ -353,6 +353,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick
 }) => {
   const streak = getStreak(history);
+  const exerciseLookup = useExerciseLookup();
   const lastSession = history[0];
 
   // Determine today's template from active program
@@ -390,7 +391,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Today's Workout</p>
           <h3 className="font-semibold text-foreground mb-1">{todayTemplate.name}</h3>
           <p className="text-xs text-muted-foreground mb-3">
-            {todayTemplate.exercises.map(e => EXERCISES[e.exerciseId]?.name ?? e.exerciseId).join(' → ')}
+            {todayTemplate.exercises.map(e => exerciseLookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
           </p>
           <Button variant="neon" size="sm" onClick={() => onStartTemplate(todayTemplate)}>
             Start Today's Workout
