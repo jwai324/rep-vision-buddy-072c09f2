@@ -32,6 +32,7 @@ interface DashboardProps {
   onAddRestDay: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
   onGoToMonthlyCalendar: () => void;
+  onOpenTodayWorkout: (template: WorkoutTemplate, dateStr: string) => void;
 }
 
 function formatDuration(s: number) {
