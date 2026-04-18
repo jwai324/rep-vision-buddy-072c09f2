@@ -28,6 +28,7 @@ interface DashboardProps {
   onBuildAIProgram: () => void;
   onAddRestDay: () => void;
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
+  onGoToMonthlyCalendar: () => void;
 }
 
 function getStreak(sessions: WorkoutSession[]): number {
