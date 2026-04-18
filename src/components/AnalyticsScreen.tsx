@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import type { WorkoutSession } from '@/types/workout';
-import type { WeightUnit } from '@/hooks/useStorage';
+import type { WeightUnit, UserPreferences } from '@/hooks/useStorage';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { VolumeTab } from './analytics/VolumeTab';
 import { StrengthTab } from './analytics/StrengthTab';
@@ -15,6 +15,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 interface AnalyticsScreenProps {
   history: WorkoutSession[];
   weightUnit: WeightUnit;
+  preferences: UserPreferences;
   onBack: () => void;
 }
 
@@ -30,7 +31,7 @@ const TABS = [
 
 const HINT_KEY = 'analytics-rotate-hint-seen';
 
-export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weightUnit, onBack }) => {
+export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weightUnit, preferences, onBack }) => {
   const isMobile = useIsMobile();
   const [isPortrait, setIsPortrait] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.matchMedia('(orientation: portrait)').matches : true
@@ -91,7 +92,7 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weigh
         <TabsContent value="volume" className="min-w-0 max-w-full overflow-hidden"><VolumeTab history={history} weightUnit={weightUnit} /></TabsContent>
         <TabsContent value="strength" className="min-w-0 max-w-full overflow-hidden"><StrengthTab history={history} weightUnit={weightUnit} /></TabsContent>
         <TabsContent value="frequency" className="min-w-0 max-w-full overflow-hidden"><FrequencyTab history={history} /></TabsContent>
-        <TabsContent value="consistency" className="min-w-0 max-w-full overflow-hidden"><ConsistencyTab history={history} /></TabsContent>
+        <TabsContent value="consistency" className="min-w-0 max-w-full overflow-hidden"><ConsistencyTab history={history} preferences={preferences} /></TabsContent>
         <TabsContent value="balance" className="min-w-0 max-w-full overflow-hidden"><BalanceTab history={history} /></TabsContent>
         <TabsContent value="sets" className="min-w-0 max-w-full overflow-hidden"><SetTypesTab history={history} /></TabsContent>
         <TabsContent value="rpe" className="min-w-0 max-w-full overflow-hidden"><RpeTab history={history} /></TabsContent>
