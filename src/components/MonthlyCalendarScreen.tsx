@@ -11,6 +11,7 @@ import type {
   WorkoutProgram,
   FutureWorkout,
 } from '@/types/workout';
+import { RECOVERY_ACTIVITIES } from '@/types/workout';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -226,7 +227,9 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
                 )}
                 {s.isRestDay && s.recoveryActivities && s.recoveryActivities.length > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    {s.recoveryActivities.map(r => r.name).join(', ')}
+                    {s.recoveryActivities
+                      .map(r => RECOVERY_ACTIVITIES.find(a => a.id === r.activityId)?.name ?? 'Recovery')
+                      .join(', ')}
                   </p>
                 )}
               </button>

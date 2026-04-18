@@ -212,7 +212,8 @@ const WeeklyProgramCalendar: React.FC<{
   history: WorkoutSession[];
   futureWorkouts: FutureWorkout[];
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
-}> = ({ program, templates, history, futureWorkouts, onDayClick }) => {
+  onTitleClick?: () => void;
+}> = ({ program, templates, history, futureWorkouts, onDayClick, onTitleClick }) => {
   const today = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -243,7 +244,14 @@ const WeeklyProgramCalendar: React.FC<{
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">📅 {program?.name ?? 'Calendar'}</p>
+        <button
+          onClick={onTitleClick}
+          disabled={!onTitleClick}
+          className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground font-bold hover:text-primary transition-colors disabled:cursor-default disabled:hover:text-muted-foreground"
+        >
+          📅 {program?.name ?? 'Calendar'}
+          {onTitleClick && <ChevronRight className="w-3 h-3" />}
+        </button>
       </div>
       <div className="flex items-center justify-between mb-2">
         <button
@@ -351,7 +359,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick
+  history, activeProgram, templates, futureWorkouts, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar
 }) => {
   const streak = getStreak(history);
   const exerciseLookup = useExerciseLookup();
@@ -414,6 +422,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         history={history}
         futureWorkouts={futureWorkouts}
         onDayClick={onDayClick}
+        onTitleClick={onGoToMonthlyCalendar}
       />
 
 
