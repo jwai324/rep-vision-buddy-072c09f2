@@ -361,12 +361,31 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         const fwId = screen.futureWorkout.id;
         const fw = storage.futureWorkouts.find(f => f.id === fwId) ?? screen.futureWorkout;
         const template = storage.templates.find(t => t.id === fw.templateId) ?? null;
+        const isSynthetic = fw.id.startsWith('synthetic-');
+        const isManual = fw.programId === 'manual';
+        const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const hasValidProgramId = uuidRe.test(fw.programId);
+        const canPersist = hasValidProgramId && !isManual;
+
+        const handleUpdate = canPersist
+          ? (incoming: FutureWorkout) => {
+              let next = incoming;
+              if (incoming.id.startsWith('synthetic-')) {
+                next = { ...incoming, id: crypto.randomUUID() };
+                setScreen(prev => prev.type === 'futureWorkoutDetail'
+                  ? { ...prev, futureWorkout: next }
+                  : prev);
+              }
+              storage.updateFutureWorkout(next);
+            }
+          : undefined;
+
         return (
           <FutureWorkoutDetail
             futureWorkout={fw}
             template={template}
             onPerformWorkout={startFromTemplate}
-            onUpdateFutureWorkout={fw.programId !== 'manual' ? storage.updateFutureWorkout : undefined}
+            onUpdateFutureWorkout={handleUpdate}
             onSaveRestDay={(restFw) => {
               const session: WorkoutSession = {
                 id: crypto.randomUUID(),
