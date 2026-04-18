@@ -7,6 +7,7 @@ import { EXERCISE_DATABASE, EQUIPMENT_LIST, type Exercise } from '@/data/exercis
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import type { WorkoutTemplate, WorkoutProgram, TemplateExercise, SetType } from '@/types/workout';
+import { formatLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -435,7 +436,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       name: generatedProgram.program_name,
       days: programDays,
       durationWeeks: generatedProgram.weeks || 4,
-      startDate: new Date().toISOString().split('T')[0],
+      startDate: formatLocalDate(),
     };
 
     onSaveProgram(program, templates);

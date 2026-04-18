@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
+import { formatLocalDate } from '@/utils/dateUtils';
 
 export interface ChatMessage {
   id: string;
@@ -187,7 +188,7 @@ export const ChatProvider: React.FC<{
     const fetchUsage = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatLocalDate();
       const { data } = await supabase
         .from('user_ai_usage')
         .select('message_count')
@@ -311,7 +312,7 @@ export const ChatProvider: React.FC<{
       }
       case 'create_program': {
         const programId = crypto.randomUUID();
-        const program = { id: programId, name: args.name, days: args.days, durationWeeks: args.durationWeeks || 8, startDate: args.startDate || new Date().toISOString().split('T')[0] };
+        const program = { id: programId, name: args.name, days: args.days, durationWeeks: args.durationWeeks || 8, startDate: args.startDate || formatLocalDate() };
         await storage.saveProgram(program);
         return { success: true, programId, message: `Created program "${args.name}".` };
       }
@@ -363,7 +364,7 @@ export const ChatProvider: React.FC<{
         const days = args.days || 14;
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
-        const cutoffStr = cutoff.toISOString().split('T')[0];
+        const cutoffStr = formatLocalDate(cutoff);
         const recent = storage.history.filter((s: any) => s.date >= cutoffStr && !s.isRestDay);
 
         if (args.analysisType === 'summary') {
