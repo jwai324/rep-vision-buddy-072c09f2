@@ -192,6 +192,8 @@ export type Database = {
           default_drop_sets_enabled: boolean
           default_rest_seconds: number
           id: string
+          streak_mode: string
+          streak_weekly_target: number
           updated_at: string
           user_id: string
           weight_unit: string
@@ -202,6 +204,8 @@ export type Database = {
           default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
           id?: string
+          streak_mode?: string
+          streak_weekly_target?: number
           updated_at?: string
           user_id: string
           weight_unit?: string
@@ -212,6 +216,8 @@ export type Database = {
           default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
           id?: string
+          streak_mode?: string
+          streak_weekly_target?: number
           updated_at?: string
           user_id?: string
           weight_unit?: string
