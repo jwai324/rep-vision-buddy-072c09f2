@@ -752,8 +752,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       if (!wasCompleted) {
         const mode = getExerciseInputMode(block.exerciseId, customExercises);
         const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
-        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, mode === 'cardio')) {
-          toast.error('Enter valid weight and reps before completing this set.');
+        const isCardio = mode === 'cardio';
+        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, isCardio, set.time)) {
+          toast.error(isCardio ? 'Enter a time before completing this set.' : 'Enter valid weight and reps before completing this set.');
           return prev;
         }
       }

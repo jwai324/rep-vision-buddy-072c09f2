@@ -122,6 +122,10 @@ describe('canCompleteSet', () => {
   });
 
   it('allows cardio with time only', () => {
-    expect(canCompleteSet('', '30', 'kg', false, true)).toBe(true);
+    expect(canCompleteSet('', '', 'kg', false, true, '30')).toBe(true);
+  });
+
+  it('blocks cardio with empty time', () => {
+    expect(canCompleteSet('', '', 'kg', false, true, '')).toBe(false);
   });
 });

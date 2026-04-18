@@ -77,10 +77,11 @@ export function canCompleteSet(
   unit: WeightUnit,
   isBodyweight = false,
   isCardio = false,
+  time = '',
 ): boolean {
   if (isCardio) {
-    // Cardio only needs time (stored in reps field)
-    const timeVal = parseFloat(reps);
+    // Cardio only needs time
+    const timeVal = parseFloat(time);
     return !isNaN(timeVal) && timeVal > 0;
   }
   
