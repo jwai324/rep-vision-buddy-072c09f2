@@ -118,16 +118,27 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
     setLocalDate(`${yyyy}-${mm}-${dd}`);
   };
 
-  return (
-    <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
-      <div className="flex items-center gap-3 pt-2">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div>
-          <h1 className="text-xl font-extrabold text-foreground">{futureWorkout.label}</h1>
-          <p className="text-xs text-muted-foreground">{dateStr}</p>
-        </div>
+  const dateChanged = localDate !== futureWorkout.date;
+
+  const handleReschedule = () => {
+    if (!onUpdateFutureWorkout || !dateChanged) return;
+    onUpdateFutureWorkout({ ...futureWorkout, date: localDate });
+    toast.success('Workout rescheduled');
+    onBack();
+  };
+
+  const handleSkip = () => {
+    if (!onDeleteFutureWorkout) return;
+    onDeleteFutureWorkout(futureWorkout.id);
+    toast.success('Workout skipped');
+    onBack();
+  };
+
+  const handlePushBack = () => {
+    if (!onPushProgramBack || pushDays <= 0) return;
+    onPushProgramBack(futureWorkout.programId, futureWorkout.date, pushDays);
+    onBack();
+  };
       </div>
 
       {isRest ? (
