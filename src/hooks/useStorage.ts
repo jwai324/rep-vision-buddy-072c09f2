@@ -467,7 +467,8 @@ export function useStorage() {
   return {
     history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, loading,
     saveSession, saveTemplate, deleteTemplate,
-    saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout, updatePreferences,
+    saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
+    deleteFutureWorkout, pushProgramBack, updatePreferences,
     updateProfile,
   };
 }
