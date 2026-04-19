@@ -1,13 +1,7 @@
 
-## Change cardio "Time" header to "Minutes"
+This is a research question, not an implementation request. Let me investigate how missed workouts are handled in programs.
 
-The cardio table header column currently labeled `Time` should read `Minutes` to make the unit explicit at the top of the column.
-
-### Change
-- `src/components/ActiveSession.tsx` line 2209: `<span className="text-center">Time</span>` → `<span className="text-center">Minutes</span>`
-
-That's the only edit. The input still accepts `m:ss` format via `parseMmSs`; only the header label changes.
-
-### Validation
-- Open a cardio exercise in an active session → top column header reads "Minutes" instead of "Time".
-- Weighted/band tables unchanged.
+Key files to check:
+- `src/components/FutureWorkoutDetail.tsx` — what options exist when opening a scheduled workout
+- `src/pages/Index.tsx` — future workout generation/pruning logic
+- Memory: `mem://features/future-workouts-system` — auto-fill and pruning rules
