@@ -139,7 +139,125 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
     onPushProgramBack(futureWorkout.programId, futureWorkout.date, pushDays);
     onBack();
   };
+
+  return (
+    <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
+      <div className="flex items-center gap-3 pt-2">
+        <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-extrabold text-foreground truncate">{futureWorkout.label}</h1>
+            {isMissed && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-destructive/15 text-destructive text-[10px] font-bold uppercase tracking-wide shrink-0">
+                <AlertTriangle className="w-3 h-3" />
+                Missed
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">{dateStr}</p>
+        </div>
       </div>
+
+      {isMissed && (onUpdateFutureWorkout || onDeleteFutureWorkout || onPushProgramBack) && (
+        <div className="bg-destructive/5 border border-destructive/30 rounded-xl p-4 flex flex-col gap-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-foreground">This workout was missed</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Reschedule, skip it, or push the rest of your program back.</p>
+            </div>
+          </div>
+
+          {onUpdateFutureWorkout && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Reschedule</p>
+              <div className="flex gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="flex-1 justify-start text-left font-normal">
+                      <CalendarClock className="mr-2 h-4 w-4" />
+                      {format(parseLocalDate(localDate), 'PPP')}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={parseLocalDate(localDate)}
+                      onSelect={handleDateSelect}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Button size="sm" onClick={handleReschedule} disabled={!dateChanged}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            {onDeleteFutureWorkout && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-1">
+                    <SkipForward className="w-4 h-4 mr-2" />
+                    Skip workout
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Skip this workout?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will remove "{futureWorkout.label}" from your schedule. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleSkip}>Skip</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+
+            {onPushProgramBack && isProgramWorkout && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-1">
+                    <FastForward className="w-4 h-4 mr-2" />
+                    Push program back
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Push program back</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Shift this workout and every later workout in the same program forward by the chosen number of days.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="flex items-center gap-2 py-2">
+                    <label className="text-sm font-medium text-foreground">Days:</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={pushDays}
+                      onChange={e => setPushDays(Math.max(1, parseInt(e.target.value || '1', 10)))}
+                      className="w-24"
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handlePushBack}>Push back {pushDays} day{pushDays === 1 ? '' : 's'}</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
+        </div>
+      )}
 
       {isRest ? (
         <div className="flex flex-col gap-4 flex-1">
