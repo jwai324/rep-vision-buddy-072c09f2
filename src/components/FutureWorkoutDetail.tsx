@@ -31,14 +31,22 @@ interface FutureWorkoutDetailProps {
   onPerformWorkout: (template: WorkoutTemplate) => void;
   onUpdateFutureWorkout?: (fw: FutureWorkout) => void;
   onSaveRestDay?: (fw: FutureWorkout) => void;
+  onDeleteFutureWorkout?: (id: string) => void;
+  onPushProgramBack?: (programId: string, fromDate: string, days: number) => void;
   onBack: () => void;
 }
 
 export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
-  futureWorkout, template, onPerformWorkout, onUpdateFutureWorkout, onSaveRestDay, onBack,
+  futureWorkout, template, onPerformWorkout, onUpdateFutureWorkout, onSaveRestDay,
+  onDeleteFutureWorkout, onPushProgramBack, onBack,
 }) => {
   const isRest = futureWorkout.templateId === 'rest';
   const [localDate, setLocalDate] = useState(futureWorkout.date);
+  const today = formatLocalDate(new Date());
+  const isMissed = futureWorkout.date < today && !futureWorkout.completed;
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isProgramWorkout = uuidRe.test(futureWorkout.programId) && futureWorkout.programId !== 'manual';
+  const [pushDays, setPushDays] = useState(1);
   const dateStr = parseLocalDate(localDate).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric',
   });
