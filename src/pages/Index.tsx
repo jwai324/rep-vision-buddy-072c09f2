@@ -405,6 +405,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             template={template}
             onPerformWorkout={startFromTemplate}
             onUpdateFutureWorkout={handleUpdate}
+            onDeleteFutureWorkout={canPersist && !isSynthetic ? storage.deleteFutureWorkout : undefined}
+            onPushProgramBack={canPersist && !isSynthetic ? storage.pushProgramBack : undefined}
             onSaveRestDay={(restFw) => {
               const session: WorkoutSession = {
                 id: crypto.randomUUID(),

@@ -393,6 +393,44 @@ export function useStorage() {
     });
   }, [user]);
 
+  const deleteFutureWorkout = useCallback(async (id: string) => {
+    if (!user) return;
+    const { error } = await supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id);
+    if (error) {
+      console.error('[useStorage] deleteFutureWorkout error:', error);
+      toast.error('Failed to delete scheduled workout');
+      return;
+    }
+    setFutureWorkouts(prev => prev.filter(fw => fw.id !== id));
+  }, [user]);
+
+  const pushProgramBack = useCallback(async (programId: string, fromDate: string, days: number) => {
+    if (!user || days <= 0) return;
+    const targets = futureWorkouts.filter(fw => fw.programId === programId && fw.date >= fromDate);
+    if (targets.length === 0) return;
+    const updates = targets.map(fw => {
+      const d = parseLocalDate(fw.date);
+      d.setDate(d.getDate() + days);
+      const newDate = format(d, 'yyyy-MM-dd');
+      return { ...fw, date: newDate };
+    });
+    const results = await Promise.all(updates.map(u =>
+      supabase.from('future_workouts').update({ date: u.date }).eq('id', u.id).eq('user_id', user.id)
+    ));
+    const failed = results.find(r => r.error);
+    if (failed?.error) {
+      console.error('[useStorage] pushProgramBack error:', failed.error);
+      toast.error('Failed to shift program dates');
+      return;
+    }
+    setFutureWorkouts(prev => {
+      const map = new Map(updates.map(u => [u.id, u.date]));
+      return prev.map(fw => map.has(fw.id) ? { ...fw, date: map.get(fw.id)! } : fw)
+        .sort((a, b) => a.date.localeCompare(b.date));
+    });
+    toast.success(`Shifted ${updates.length} workout${updates.length === 1 ? '' : 's'} forward by ${days} day${days === 1 ? '' : 's'}`);
+  }, [user, futureWorkouts]);
+
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
     if (!user) return;
     const updated = { ...preferences, ...prefs };
@@ -429,7 +467,8 @@ export function useStorage() {
   return {
     history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, loading,
     saveSession, saveTemplate, deleteTemplate,
-    saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout, updatePreferences,
+    saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
+    deleteFutureWorkout, pushProgramBack, updatePreferences,
     updateProfile,
   };
 }
