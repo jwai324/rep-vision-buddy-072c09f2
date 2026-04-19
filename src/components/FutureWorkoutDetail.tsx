@@ -2,18 +2,20 @@ import React, { useState, useMemo } from 'react';
 import type { FutureWorkout, WorkoutTemplate, RecoveryActivity, WorkoutSession } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import { ArrowLeft, Dumbbell, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Dumbbell, Plus, X, Check, Search, CalendarIcon, AlertTriangle, SkipForward, CalendarClock, FastForward } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
-import { parseLocalDate } from '@/utils/dateUtils';
+import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // Rest-day eligible exercises (recovery/wellness type)
 const REST_DAY_EXERCISE_IDS = [
