@@ -1,27 +1,23 @@
 
 
-## Fix tutorial: header overflow on mobile + Back navigates screens
+The Finish/Discard tutorial steps target buttons in the session header (`tutorial-finish-workout`, `tutorial-discard-workout`), but those buttons live at the **bottom** of `SessionSummary` after tapping Finish — not the top header. Looking at SessionSummary.tsx, the actual save/discard buttons are at the bottom action area (lines ~395-425) and don't carry tutorial IDs at all. The header "Finish" button only opens the summary; the real "Save Workout" / "Discard" actions are on the summary screen.
 
-### Issue 1: Finish/Discard highlight wrong area
-At 384px viewport, the session header (back + 3-dot + Focus + Discard + Finish) overflows horizontally. The Discard/Finish buttons sit off-screen, so `getBoundingClientRect()` returns coordinates outside the viewport — the spotlight ring + dim panels render at those off-screen coords, looking like a random/wrong highlight.
+### Fix
 
-**Fix:** Before measuring, scroll the target's nearest scrollable ancestor (or `scrollIntoView({ inline: 'nearest' })`) so the button enters the viewport. Already calling `scrollIntoView` but with `inline: 'center'` — on a horizontally overflowing flex row this doesn't reliably work because the parent isn't scrollable. Real fix is to wrap the header right-side actions in an `overflow-x-auto` container so the spotlight scroll works, OR make the header wrap on mobile.
+**`src/components/SessionSummary.tsx`** — add tutorial IDs to the actual Save/Discard buttons
+- Add `id="tutorial-save-workout"` to the "Save Workout" `<Button variant="neon" onClick={onSave}>`.
+- Add `id="tutorial-discard-workout"` to the "Discard" `<button onClick={() => setShowDiscardConfirm(true)}>`.
 
-Cleanest: in `ActiveSession.tsx` line 1452, change `<div className="flex items-center gap-2">` to `<div className="flex items-center gap-2 flex-wrap justify-end">` so buttons wrap to a second row on narrow screens and remain on-screen. Also reduce header padding to `px-3` on mobile if needed.
+**`src/contexts/TutorialContext.tsx`** — update SESSION_STEPS
+- Rename/retarget the "Finish" step → target `tutorial-finish-workout` (header button, opens summary), title "Finish Workout", description "Tap Finish to review your workout."
+- Add a new step after Finish → target `tutorial-save-workout`, title "Save Your Workout", description "Save your completed session here.", screen `activeSession`, `skipIfMissing: true`.
+- Update "Discard" step → target `tutorial-discard-workout` (now on summary screen), description updated to point at the bottom discard link, `skipIfMissing: true`.
 
-### Issue 2: Back button doesn't navigate screens
-`prev()` in `TutorialContext` only decrements step index. When stepping back across a `screen` boundary (e.g., from `activeSession` step back into `startWorkout` or `dashboard`), the user remains on the active session screen while the overlay points at a non-existent target → looks broken/stuck.
-
-**Fix:** In `TutorialContext.tsx`, expose an `onScreenBack` callback (similar to existing `onComplete`). When `prev()` would cross a screen boundary (new step's `screen` differs from current step's `screen`), invoke `onScreenBack(targetScreen)` so `Index.tsx` can `setScreen(...)` back to the appropriate page.
-
-Wire in `Index.tsx`:
-- Pass `onScreenBack={(screen) => { if (screen === 'dashboard') setScreen({type:'dashboard'}); else if (screen === 'startWorkout') setScreen({type:'startWorkout'}); }}` to `TutorialProvider`.
-- Note: going back from `activeSession` to `startWorkout` shouldn't actually discard the workout — instead, minimize it (call existing minimize handler) so the session is preserved.
+The MutationObserver already handles re-measure when the summary mounts, so the spotlight will smoothly transition from the header Finish button to the summary's Save/Discard buttons.
 
 ### Files
-- Modify: `src/components/ActiveSession.tsx` (header wrap), `src/contexts/TutorialContext.tsx` (prev with screen-back callback), `src/pages/Index.tsx` (wire callback).
+- Modify: `src/components/SessionSummary.tsx`, `src/contexts/TutorialContext.tsx`
 
 ### Validation
-- 384px viewport → reach Finish/Discard steps → spotlight aligns precisely on the buttons (now wrapped to second row).
-- During session steps, tap Back repeatedly → tour walks back AND the page navigates back through StartWorkout → Dashboard, with the active session minimized rather than discarded.
+At 384px: tutorial reaches Finish → spotlight on header Finish button → tap → summary opens → spotlight lands on bottom "Save Workout" button → next → spotlight lands on bottom "Discard" link → tour completes.
 
