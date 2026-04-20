@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface TutorialStep {
   /** DOM id of the element to spotlight. If omitted or not found, shows centered modal. */
@@ -183,6 +183,30 @@ export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete
     if (!active || !screen) return;
     const targetIdx = steps.findIndex(s => s.screen === screen);
     if (targetIdx >= 0 && targetIdx > index) setIndex(targetIdx);
+  }, [active, index, steps]);
+
+  // Auto-advance based on exercise picker open/close
+  const pickerOpenRef = useRef(false);
+  useEffect(() => {
+    if (!active) return;
+    const check = () => {
+      const open = !!document.getElementById('tutorial-exercise-picker-root');
+      if (open === pickerOpenRef.current) return;
+      pickerOpenRef.current = open;
+      const current = steps[index];
+      if (!current) return;
+      if (open && current.targetId === 'tutorial-add-exercise') {
+        // Picker opened — advance to "Pick an Exercise"
+        setIndex(i => Math.min(steps.length - 1, i + 1));
+      } else if (!open && current.screen === 'activeSession' && !current.targetId && current.title.startsWith('Pick')) {
+        // Picker closed while on "Pick an Exercise" — advance to set row
+        setIndex(i => Math.min(steps.length - 1, i + 1));
+      }
+    };
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, [active, index, steps]);
 
   return (
