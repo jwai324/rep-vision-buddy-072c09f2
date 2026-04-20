@@ -6,7 +6,7 @@ export interface TutorialStep {
   title: string;
   body: string;
   /** Which screen this step belongs to, used to advance the flow when the user navigates. */
-  screen?: 'dashboard' | 'activeSession';
+  screen?: 'dashboard' | 'startWorkout' | 'activeSession';
   /** If true, skip this step automatically when no target exists. */
   skipIfMissing?: boolean;
 }
@@ -41,8 +41,18 @@ export const DASHBOARD_STEPS: TutorialStep[] = [
   {
     targetId: 'tutorial-start-btn',
     title: 'Start a Workout',
-    body: 'Tap here to begin. We\'ll continue the tour inside your session.',
+    body: 'Tap here to begin. We\'ll continue the tour on the next screen.',
     screen: 'dashboard',
+  },
+];
+
+export const START_WORKOUT_STEPS: TutorialStep[] = [
+  {
+    targetId: 'tutorial-blank-workout',
+    title: 'Pick Blank Workout',
+    body: 'Tap here to start an empty session — we\'ll add exercises next.',
+    screen: 'startWorkout',
+    skipIfMissing: true,
   },
 ];
 
@@ -60,9 +70,30 @@ export const SESSION_STEPS: TutorialStep[] = [
     skipIfMissing: true,
   },
   {
+    targetId: 'tutorial-set-row',
+    title: 'Log a Set',
+    body: 'Each row is a set. Enter your weight and reps to track your work.',
+    screen: 'activeSession',
+    skipIfMissing: true,
+  },
+  {
+    targetId: 'tutorial-rpe',
+    title: 'Rate Your Effort',
+    body: 'RPE rates effort 1–10. Tap the ? in the header to see the scale.',
+    screen: 'activeSession',
+    skipIfMissing: true,
+  },
+  {
+    targetId: 'tutorial-complete-set',
+    title: 'Complete the Set',
+    body: 'Tap ✓ to log the set and start your rest timer automatically.',
+    screen: 'activeSession',
+    skipIfMissing: true,
+  },
+  {
     targetId: 'tutorial-finish-btn',
     title: 'Finish Workout',
-    body: 'When you\'re done, tap Finish to review and save your session. That\'s it — happy lifting!',
+    body: 'When you\'re done, tap Finish to review and save your session. Happy lifting!',
     screen: 'activeSession',
     skipIfMissing: true,
   },
