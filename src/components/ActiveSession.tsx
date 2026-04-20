@@ -2334,6 +2334,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                 </div>
               ) : (
                 <div
+                  id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
                   className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
                     set.completed ? 'bg-primary/10' : ''
                   }`}
