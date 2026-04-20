@@ -2397,10 +2397,9 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
                   <RpePickerButton
-                    id={buildInputId(blockIdx, setIdx, 'rpe')}
+                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : buildInputId(blockIdx, setIdx, 'rpe')}
                     value={set.rpe}
                     onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
-                    wrapperId={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : undefined}
                   />
                   <TimeInputButton
                     id={buildInputId(blockIdx, setIdx, 'time')}
