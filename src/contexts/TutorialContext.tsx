@@ -142,9 +142,10 @@ const TutorialContext = createContext<TutorialContextValue | null>(null);
 interface ProviderProps {
   children: React.ReactNode;
   onComplete?: () => void;
+  onScreenBack?: (screen: TutorialStep['screen']) => void;
 }
 
-export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete }) => {
+export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete, onScreenBack }) => {
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
 
@@ -173,8 +174,18 @@ export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete
   }, [steps.length, finish]);
 
   const prev = useCallback(() => {
-    setIndex(i => Math.max(0, i - 1));
-  }, []);
+    setIndex(i => {
+      const target = Math.max(0, i - 1);
+      if (target !== i) {
+        const currentScreen = steps[i]?.screen;
+        const targetScreen = steps[target]?.screen;
+        if (targetScreen && targetScreen !== currentScreen) {
+          onScreenBack?.(targetScreen);
+        }
+      }
+      return target;
+    });
+  }, [steps, onScreenBack]);
 
   const skip = useCallback(() => finish(), [finish]);
   const complete = useCallback(() => finish(), [finish]);
