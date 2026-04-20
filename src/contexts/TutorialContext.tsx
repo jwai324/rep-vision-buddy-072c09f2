@@ -224,6 +224,9 @@ export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete
       } else if (!open && current.screen === 'activeSession' && !current.targetId && current.title.startsWith('Pick')) {
         // Picker closed while on "Pick an Exercise" — advance to set row
         setIndex(i => Math.min(steps.length - 1, i + 1));
+      } else if (current.targetId === 'tutorial-finish-btn' && document.getElementById('tutorial-save-workout')) {
+        // Summary opened — advance to "Save Your Workout"
+        setIndex(i => Math.min(steps.length - 1, i + 1));
       }
     };
     check();
