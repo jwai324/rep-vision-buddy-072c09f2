@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface TutorialStep {
   /** DOM id of the element to spotlight. If omitted or not found, shows centered modal. */
