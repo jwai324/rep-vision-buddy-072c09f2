@@ -91,9 +91,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
   // When entering active session during tutorial, jump to session steps
   useEffect(() => {
-    if (tutorial.active && screen.type === 'activeSession') {
+    if (!tutorial.active) return;
+    if (screen.type === 'activeSession') {
       tutorial.goToScreenSteps('activeSession');
-    } else if (tutorial.active && screen.type === 'dashboard') {
+    } else if (screen.type === 'startWorkout') {
+      tutorial.goToScreenSteps('startWorkout');
+    } else if (screen.type === 'dashboard') {
       tutorial.goToScreenSteps('dashboard');
     }
   }, [screen.type, tutorial]);

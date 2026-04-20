@@ -2334,6 +2334,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                 </div>
               ) : (
                 <div
+                  id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
                   className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
                     set.completed ? 'bg-primary/10' : ''
                   }`}
@@ -2396,7 +2397,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
                   <RpePickerButton
-                    id={buildInputId(blockIdx, setIdx, 'rpe')}
+                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : buildInputId(blockIdx, setIdx, 'rpe')}
                     value={set.rpe}
                     onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
                   />
@@ -2408,6 +2409,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     small
                   />
                   <button
+                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
                     onClick={() => onToggleComplete(blockIdx, setIdx)}
                     className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
                       set.completed

@@ -35,6 +35,7 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
 
       {/* Blank Workout */}
       <button
+        id="tutorial-blank-workout"
         onClick={onBlankWorkout}
         className="bg-card rounded-xl p-5 border border-border hover:border-primary/40 transition-colors flex items-center gap-4 text-left"
       >

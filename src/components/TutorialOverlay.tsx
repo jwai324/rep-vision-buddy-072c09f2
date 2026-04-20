@@ -108,20 +108,62 @@ export const TutorialOverlay: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[100] pointer-events-none animate-fade-in">
-      {/* Backdrop with spotlight */}
+      {/* Backdrop with spotlight — 4 dim panels around the target so the target stays clickable */}
       {spotlight ? (
-        <div
-          className="fixed pointer-events-auto rounded-lg ring-2 ring-primary transition-all duration-300"
-          style={{
-            top: spotlight.top,
-            left: spotlight.left,
-            width: spotlight.width,
-            height: spotlight.height,
-            boxShadow: '0 0 0 9999px hsl(var(--background) / 0.85)',
-          }}
-        />
+        <>
+          {/* Top */}
+          <div
+            className="fixed pointer-events-none"
+            style={{
+              top: 0, left: 0, right: 0,
+              height: spotlight.top,
+              background: 'hsl(var(--background) / 0.85)',
+            }}
+          />
+          {/* Bottom */}
+          <div
+            className="fixed pointer-events-none"
+            style={{
+              top: spotlight.top + spotlight.height,
+              left: 0, right: 0, bottom: 0,
+              background: 'hsl(var(--background) / 0.85)',
+            }}
+          />
+          {/* Left */}
+          <div
+            className="fixed pointer-events-none"
+            style={{
+              top: spotlight.top,
+              height: spotlight.height,
+              left: 0,
+              width: spotlight.left,
+              background: 'hsl(var(--background) / 0.85)',
+            }}
+          />
+          {/* Right */}
+          <div
+            className="fixed pointer-events-none"
+            style={{
+              top: spotlight.top,
+              height: spotlight.height,
+              left: spotlight.left + spotlight.width,
+              right: 0,
+              background: 'hsl(var(--background) / 0.85)',
+            }}
+          />
+          {/* Highlight ring (click-through) */}
+          <div
+            className="fixed pointer-events-none rounded-lg ring-2 ring-primary transition-all duration-300"
+            style={{
+              top: spotlight.top,
+              left: spotlight.left,
+              width: spotlight.width,
+              height: spotlight.height,
+            }}
+          />
+        </>
       ) : (
-        <div className="fixed inset-0 pointer-events-auto" style={{ background: 'hsl(var(--background) / 0.85)' }} />
+        <div className="fixed inset-0 pointer-events-none" style={{ background: 'hsl(var(--background) / 0.85)' }} />
       )}
 
       {/* Tooltip card */}
