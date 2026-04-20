@@ -135,6 +135,7 @@ interface TutorialContextValue {
   skip: () => void;
   complete: () => void;
   goToScreenSteps: (screen: TutorialStep['screen']) => void;
+  setScreenBackHandler: (handler: ((screen: TutorialStep['screen']) => void) | null) => void;
 }
 
 const TutorialContext = createContext<TutorialContextValue | null>(null);
@@ -142,12 +143,12 @@ const TutorialContext = createContext<TutorialContextValue | null>(null);
 interface ProviderProps {
   children: React.ReactNode;
   onComplete?: () => void;
-  onScreenBack?: (screen: TutorialStep['screen']) => void;
 }
 
-export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete, onScreenBack }) => {
+export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete }) => {
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
+  const screenBackHandlerRef = useRef<((screen: TutorialStep['screen']) => void) | null>(null);
 
   const steps = useMemo(() => [...DASHBOARD_STEPS, ...START_WORKOUT_STEPS, ...SESSION_STEPS], []);
 
@@ -180,12 +181,16 @@ export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete
         const currentScreen = steps[i]?.screen;
         const targetScreen = steps[target]?.screen;
         if (targetScreen && targetScreen !== currentScreen) {
-          onScreenBack?.(targetScreen);
+          screenBackHandlerRef.current?.(targetScreen);
         }
       }
       return target;
     });
-  }, [steps, onScreenBack]);
+  }, [steps]);
+
+  const setScreenBackHandler = useCallback((handler: ((screen: TutorialStep['screen']) => void) | null) => {
+    screenBackHandlerRef.current = handler;
+  }, []);
 
   const skip = useCallback(() => finish(), [finish]);
   const complete = useCallback(() => finish(), [finish]);
