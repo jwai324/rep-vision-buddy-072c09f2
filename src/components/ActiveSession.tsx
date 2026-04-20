@@ -2400,6 +2400,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     id={buildInputId(blockIdx, setIdx, 'rpe')}
                     value={set.rpe}
                     onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
+                    wrapperId={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : undefined}
                   />
                   <TimeInputButton
                     id={buildInputId(blockIdx, setIdx, 'time')}
@@ -2409,6 +2410,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     small
                   />
                   <button
+                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
                     onClick={() => onToggleComplete(blockIdx, setIdx)}
                     className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
                       set.completed
