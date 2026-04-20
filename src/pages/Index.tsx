@@ -23,6 +23,8 @@ import { CustomExercisesScreen } from '@/components/CustomExercisesScreen';
 import { MonthlyCalendarScreen } from '@/components/MonthlyCalendarScreen';
 import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
 import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { TutorialProvider, useTutorial } from '@/contexts/TutorialContext';
+import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { AIChatBubble } from '@/components/AIChatBubble';
 
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
