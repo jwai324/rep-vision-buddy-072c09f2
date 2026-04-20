@@ -417,12 +417,12 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
       <div className="flex flex-col gap-2 mt-auto">
         {!isViewMode && (
           <>
-            <Button variant="neon" onClick={onSave} className="w-full">Save Workout</Button>
+            <Button id="tutorial-save-workout" variant="neon" onClick={onSave} className="w-full">Save Workout</Button>
             <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
             {onContinue && (
               <Button variant="ghost" onClick={onContinue} className="w-full">Continue Workout</Button>
             )}
-            <button onClick={() => setShowDiscardConfirm(true)} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
+            <button id="tutorial-discard-workout" onClick={() => setShowDiscardConfirm(true)} className="text-xs text-muted-foreground hover:text-foreground py-2">Discard</button>
           </>
         )}
         {isViewMode && (
