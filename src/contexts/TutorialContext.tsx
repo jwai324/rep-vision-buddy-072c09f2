@@ -122,7 +122,7 @@ export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
 
-  const steps = useMemo(() => [...DASHBOARD_STEPS, ...SESSION_STEPS], []);
+  const steps = useMemo(() => [...DASHBOARD_STEPS, ...START_WORKOUT_STEPS, ...SESSION_STEPS], []);
 
   const start = useCallback(() => {
     setIndex(0);
