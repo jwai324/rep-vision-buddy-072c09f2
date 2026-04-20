@@ -20,38 +20,79 @@ export const TutorialOverlay: React.FC = () => {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // Track whether a blocking (non-tutorial) modal is open
+  const [modalBlocking, setModalBlocking] = useState(false);
+
   useLayoutEffect(() => {
-    if (!step) { setRect(null); return; }
-    if (!step.targetId) { setRect(null); return; }
+    if (!step) { setRect(null); setModalBlocking(false); return; }
+    if (!step.targetId) { setRect(null); setModalBlocking(false); return; }
 
     let raf = 0;
+    let pollTimer: number | undefined;
+    let skipTimer: number | undefined;
+    let observer: MutationObserver | null = null;
+    const startedAt = Date.now();
+
+    const checkModalBlocking = (el: Element | null) => {
+      const openDialogs = Array.from(document.querySelectorAll('[role="dialog"][data-state="open"]'));
+      if (openDialogs.length === 0) return false;
+      // If target lives inside an open dialog, that dialog is fine
+      if (el && openDialogs.some(d => d.contains(el))) return false;
+      return true;
+    };
+
     const measure = () => {
       const el = document.getElementById(step.targetId!);
+      const blocked = checkModalBlocking(el);
+      setModalBlocking(blocked);
+
       if (!el) {
-        // If marked skipIfMissing, advance automatically
-        if (step.skipIfMissing) {
-          next();
-          return;
-        }
         setRect(null);
-        return;
+        return false;
       }
-      // Scroll target into view
+      if (blocked) {
+        // Don't show misaligned spotlight while another modal covers screen
+        setRect(null);
+        return true; // element exists; just waiting on modal
+      }
       el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
       raf = requestAnimationFrame(() => {
         setRect(el.getBoundingClientRect());
       });
+      return true;
     };
 
-    measure();
+    // Initial attempt
+    if (!measure()) {
+      // Element missing — observe + poll until it appears
+      observer = new MutationObserver(() => { measure(); });
+      observer.observe(document.body, { childList: true, subtree: true });
+      pollTimer = window.setInterval(() => { measure(); }, 300);
+
+      // If marked skipIfMissing and still missing after grace period, advance
+      if (step.skipIfMissing) {
+        skipTimer = window.setTimeout(() => {
+          if (!document.getElementById(step.targetId!)) next();
+        }, 4000);
+      }
+    }
+
     const onScroll = () => {
       const el = document.getElementById(step.targetId!);
-      if (el) setRect(el.getBoundingClientRect());
+      if (el && !checkModalBlocking(el)) setRect(el.getBoundingClientRect());
     };
+    // Re-evaluate on any DOM mutation (e.g., modal closes)
+    const docObserver = new MutationObserver(() => { measure(); });
+    docObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state'] });
+
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
     return () => {
       cancelAnimationFrame(raf);
+      if (pollTimer) clearInterval(pollTimer);
+      if (skipTimer) clearTimeout(skipTimer);
+      observer?.disconnect();
+      docObserver.disconnect();
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', onScroll);
     };
