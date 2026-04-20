@@ -1422,7 +1422,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   if (showExercisePicker) {
     return (
-      <div className="h-[100dvh] bg-background flex flex-col overflow-hidden min-w-0">
+      <div id="tutorial-exercise-picker-root" className="h-[100dvh] bg-background flex flex-col overflow-hidden min-w-0">
         <div className="p-4 pb-0 shrink-0">
           <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
         </div>

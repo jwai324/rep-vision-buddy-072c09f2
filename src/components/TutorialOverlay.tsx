@@ -34,9 +34,12 @@ export const TutorialOverlay: React.FC = () => {
     const startedAt = Date.now();
 
     const checkModalBlocking = (el: Element | null) => {
+      // Exercise picker (full-screen, not a Radix dialog) — stand down completely
+      const picker = document.getElementById('tutorial-exercise-picker-root');
+      if (picker && (!el || !picker.contains(el))) return true;
+
       const openDialogs = Array.from(document.querySelectorAll('[role="dialog"][data-state="open"]'));
       if (openDialogs.length === 0) return false;
-      // If target lives inside an open dialog, that dialog is fine
       if (el && openDialogs.some(d => d.contains(el))) return false;
       return true;
     };
@@ -111,6 +114,9 @@ export const TutorialOverlay: React.FC = () => {
   }, [active, skip, next, prev]);
 
   if (!step) return null;
+
+  // If picker (or other blocking modal not containing target) is open, render nothing — let user interact freely
+  if (modalBlocking) return null;
 
   const isLast = index === steps.length - 1;
   const isFirst = index === 0;
