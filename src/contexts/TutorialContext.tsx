@@ -226,7 +226,7 @@ export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete
   }, [active, index, steps]);
 
   return (
-    <TutorialContext.Provider value={{ active, steps, index, start, next, prev, skip, complete, goToScreenSteps }}>
+    <TutorialContext.Provider value={{ active, steps, index, start, next, prev, skip, complete, goToScreenSteps, setScreenBackHandler }}>
       {children}
     </TutorialContext.Provider>
   );
