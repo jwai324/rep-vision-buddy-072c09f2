@@ -2374,7 +2374,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     </select>
                   ) : (
                     <input
-                      id={buildInputId(blockIdx, setIdx, 'weight')}
+                      id={blockIdx === 0 && setIdx === 0 ? 'tutorial-weight-input' : buildInputId(blockIdx, setIdx, 'weight')}
                       type="number"
                       inputMode="decimal"
                       value={set.weight}
@@ -2386,7 +2386,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     />
                   )}
                   <input
-                    id={buildInputId(blockIdx, setIdx, 'reps')}
+                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-reps-input' : buildInputId(blockIdx, setIdx, 'reps')}
                     type="number"
                     inputMode="numeric"
                     value={set.reps}
