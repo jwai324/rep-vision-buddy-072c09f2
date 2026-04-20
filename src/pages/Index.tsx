@@ -101,6 +101,25 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     }
   }, [screen.type, tutorial]);
 
+  // Wire tutorial Back button to navigate the page back across screen boundaries
+  useEffect(() => {
+    tutorial.setScreenBackHandler((targetScreen) => {
+      if (targetScreen === 'dashboard') {
+        if (screen.type === 'activeSession') {
+          // Preserve the workout — minimize instead of discard
+          setMinimizedSession(screen);
+        }
+        setScreen({ type: 'dashboard' });
+      } else if (targetScreen === 'startWorkout') {
+        if (screen.type === 'activeSession') {
+          setMinimizedSession(screen);
+        }
+        setScreen({ type: 'startWorkout' });
+      }
+    });
+    return () => tutorial.setScreenBackHandler(null);
+  }, [tutorial, screen]);
+
   const handleMinimize = () => {
     setMinimizedSession(screen);
     setScreen({ type: 'dashboard' });
