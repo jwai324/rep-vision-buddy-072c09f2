@@ -208,23 +208,29 @@ export const TutorialProvider: React.FC<ProviderProps> = ({ children, onComplete
     if (targetIdx >= 0 && targetIdx > index) setIndex(targetIdx);
   }, [active, index, steps]);
 
-  // Auto-advance based on exercise picker open/close
+  // Auto-advance based on picker / summary open/close
   const pickerOpenRef = useRef(false);
+  const summaryOpenRef = useRef(false);
   useEffect(() => {
     if (!active) return;
     const check = () => {
-      const open = !!document.getElementById('tutorial-exercise-picker-root');
-      if (open === pickerOpenRef.current) return;
-      pickerOpenRef.current = open;
+      const pickerOpen = !!document.getElementById('tutorial-exercise-picker-root');
+      const summaryOpen = !!document.getElementById('tutorial-save-workout');
+      const pickerChanged = pickerOpen !== pickerOpenRef.current;
+      const summaryChanged = summaryOpen !== summaryOpenRef.current;
+      if (!pickerChanged && !summaryChanged) return;
+      pickerOpenRef.current = pickerOpen;
+      summaryOpenRef.current = summaryOpen;
+
       const current = steps[index];
       if (!current) return;
-      if (open && current.targetId === 'tutorial-add-exercise') {
+      if (pickerChanged && pickerOpen && current.targetId === 'tutorial-add-exercise') {
         // Picker opened — advance to "Pick an Exercise"
         setIndex(i => Math.min(steps.length - 1, i + 1));
-      } else if (!open && current.screen === 'activeSession' && !current.targetId && current.title.startsWith('Pick')) {
+      } else if (pickerChanged && !pickerOpen && current.screen === 'activeSession' && !current.targetId && current.title.startsWith('Pick')) {
         // Picker closed while on "Pick an Exercise" — advance to set row
         setIndex(i => Math.min(steps.length - 1, i + 1));
-      } else if (current.targetId === 'tutorial-finish-btn' && document.getElementById('tutorial-save-workout')) {
+      } else if (summaryChanged && summaryOpen && current.targetId === 'tutorial-finish-btn') {
         // Summary opened — advance to "Save Your Workout"
         setIndex(i => Math.min(steps.length - 1, i + 1));
       }
