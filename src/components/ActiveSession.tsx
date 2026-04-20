@@ -1449,7 +1449,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {/* 3-dot menu */}
           <Popover>
             <PopoverTrigger asChild>
