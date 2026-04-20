@@ -1,45 +1,80 @@
 
 
-## Missed workout management
+Let me explore the codebase to understand the dashboard, session flow, and settings before planning.
+<lov-tool-use id="toolu_vrtx_0122ErR2ihLDivjbQWzj8FqA" name="code--view" integration-id="code" data="{\"file_path\": \"src/pages/Index.tsx\", \"lines\": \"1-80\"}">
+</lov-tool-use>
 
-Add "Missed" badge + cleanup actions for past-due scheduled workouts.
+<lov-tool-use id="toolu_vrtx_01QXKpeUhUpru9jkNCPk59c4" name="code--view" integration-id="code" data="{\"file_path\": \"src/components/Dashboard.tsx\", \"lines\": \"1-60\"}">
+</lov-tool-use>
 
-### Detection
-A future workout is "missed" when `parseLocalDate(fw.date) < today` AND it still exists (not completed/saved). Compute via `formatLocalDate(new Date())` comparison.
+<lov-tool-use id="toolu_vrtx_01896NYwU15SiMQweti5tKFE" name="code--view" integration-id="code" data="{\"file_path\": \"src/pages/Index.tsx\", \"lines\": \"1-100\"}">
+</lov-tool-use>
 
-### UI changes
+<lov-tool-use id="toolu_vrtx_01FHpAsMLDChkNC242vzyY4H" name="code--view" integration-id="code" data="{\"file_path\": \"src/components/Dashboard.tsx\", \"lines\": \"1-80\"}">
+</lov-tool-use>
+I have enough context to draft a plan.
 
-**1. `FutureWorkoutsScreen.tsx`** — list item
-- Show red "Missed" badge next to label when past-due.
-- Sort missed items to the top in their own "Missed" section header.
+<lov-plan>
 
-**2. `FutureWorkoutDetail.tsx`** — when opened on a missed workout, show an action panel above the existing Perform/Save buttons with three buttons:
-- **Reschedule** → opens existing date picker (already present); user picks new date, taps Save (new "Save Changes" button persists the date change for non-rest workouts too).
-- **Skip workout** → confirms, then deletes this single `future_workout` row.
-- **Push program back by X days** → numeric input (default 1) + confirm. Shifts the date of THIS workout and every later `future_workout` belonging to the same `program_id` forward by X days.
+## Onboarding Tutorial Overlay
 
-### Data layer
+Add a guided overlay tour covering the Dashboard and a New Workout Session. Auto-launches on first login; replayable from Settings.
 
-**`src/hooks/useStorage.ts`** — add three handlers exposed via the storage hook:
-- `updateFutureWorkoutDate(id, newDate)` — UPDATE single row's `date`.
-- `deleteFutureWorkout(id)` — DELETE single row (already partially exists via save flow; expose explicit version).
-- `pushProgramBack(programId, fromDate, days)` — SELECT all `future_workouts` where `program_id = programId AND date >= fromDate`, then UPDATE each row's date forward by `days` (computed client-side with `parseLocalDate` + `formatLocalDate` to stay timezone-safe).
+### Approach
+Use a lightweight custom overlay (no extra deps) — a fixed dark backdrop with a "spotlight" cutout via `box-shadow` over the targeted element, plus a tooltip card with step text, progress dots, and Back/Next/Skip controls.
 
-### Wiring
-- `Index.tsx` passes the three handlers down to `FutureWorkoutDetail`.
-- `FutureWorkoutDetail` receives `isMissed` flag (computed in parent or inline) and renders the action panel only when true.
-- Existing rest-day date picker logic is reused; for non-rest workouts the date picker becomes available too when missed.
+### Components
+
+**`src/components/TutorialOverlay.tsx`** (new)
+- Props: `steps: TutorialStep[]`, `onClose: () => void`.
+- Each `TutorialStep`: `{ targetId: string; title: string; body: string; placement?: 'top'|'bottom'|'auto' }`.
+- Reads target via `document.getElementById(targetId).getBoundingClientRect()`, recalculates on resize/scroll.
+- Renders: full-screen `fixed inset-0 z-[100]` backdrop, a transparent rectangle with `box-shadow: 0 0 0 9999px rgba(0,0,0,0.75)` for the spotlight, and a tooltip card positioned beside the target.
+- If target missing, falls back to centered modal step.
+
+**`src/contexts/TutorialContext.tsx`** (new)
+- Exposes `startTutorial(flow: 'main')`, `tutorialActive`, `currentFlow`.
+- Defines two flows in one main flow (chained):
+  1. **Dashboard steps** — target Dashboard elements (welcome, streak, weekly sets, calendar, Start Workout button, sidebar/nav).
+  2. **New Session steps** — once user reaches `activeSession`, overlay continues automatically: exercise add, weight/reps inputs, RPE, complete set ✓, rest timer, finish button.
+- Listens to route/screen changes; advances when the user lands on `activeSession` for the steps that require it.
+
+### Trigger logic
+
+**`src/hooks/useStorage.ts`** — extend `UserPreferences` with `tutorialCompleted: boolean` (default `false`). Persisted via existing prefs flow (Supabase `user_preferences`).
+
+**`src/pages/Index.tsx`**
+- After `storage.loading` resolves, if `!preferences.tutorialCompleted`, call `startTutorial('main')` once.
+- On tutorial completion/skip → `onUpdatePreferences({ tutorialCompleted: true })`.
+
+**`src/components/SettingsScreen.tsx`** — add a new row "Replay Tutorial" (icon: `GraduationCap` from lucide). Tap → calls `startTutorial('main')`.
+
+### Element targeting
+Add `id="tutorial-*"` attributes to existing elements (no visual change):
+- Dashboard: `tutorial-streak`, `tutorial-weekly-sets`, `tutorial-calendar`, `tutorial-start-btn`
+- ActiveSession: `tutorial-add-exercise`, `tutorial-weight-input` (first set), `tutorial-complete-set`, `tutorial-finish-btn`
+
+### DB migration
+```sql
+ALTER TABLE user_preferences
+ADD COLUMN IF NOT EXISTS tutorial_completed boolean NOT NULL DEFAULT false;
+```
+Update preferences load/save in `useStorage.ts` to include the new field.
 
 ### Files
-- Modify: `src/components/FutureWorkoutsScreen.tsx`, `src/components/FutureWorkoutDetail.tsx`, `src/hooks/useStorage.ts`, `src/pages/Index.tsx`
+- New: `src/components/TutorialOverlay.tsx`, `src/contexts/TutorialContext.tsx`
+- Modify: `src/pages/Index.tsx`, `src/hooks/useStorage.ts`, `src/components/SettingsScreen.tsx`, `src/components/Dashboard.tsx`, `src/components/ActiveSession.tsx`
+- Migration: add `tutorial_completed` column
 
-### Unchanged
-- DB schema (uses existing `future_workouts.date` column), RLS, types, save/perform flows.
+### UX details
+- Backdrop click does nothing (prevents accidental dismiss); explicit Skip/Close button in tooltip.
+- Mobile-friendly: tooltip auto-flips above/below target, max-width clamped to viewport.
+- Smooth fade-in via existing `animate-fade-in` utility.
+- ESC key skips tutorial.
 
 ### Validation
-- Schedule a workout for yesterday → Future Workouts list shows red "Missed" badge under a "Missed" section.
-- Open it → see Reschedule / Skip / Push back actions.
-- Reschedule to tomorrow → row updates, badge disappears.
-- Skip → row deletes, returns to list.
-- Push back by 2 days on a program workout → this and all later same-program workouts shift +2 days.
+- Fresh login → overlay auto-starts on Dashboard, walks through steps, transitions into a new session walkthrough, then marks completed.
+- Reload → does not re-trigger.
+- Settings → "Replay Tutorial" → restarts the full flow.
+- Resize/scroll → spotlight tracks target correctly.
 
