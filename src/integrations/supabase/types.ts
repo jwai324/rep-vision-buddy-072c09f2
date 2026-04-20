@@ -194,6 +194,7 @@ export type Database = {
           id: string
           streak_mode: string
           streak_weekly_target: number
+          tutorial_completed: boolean
           updated_at: string
           user_id: string
           weight_unit: string
@@ -206,6 +207,7 @@ export type Database = {
           id?: string
           streak_mode?: string
           streak_weekly_target?: number
+          tutorial_completed?: boolean
           updated_at?: string
           user_id: string
           weight_unit?: string
@@ -218,6 +220,7 @@ export type Database = {
           id?: string
           streak_mode?: string
           streak_weekly_target?: number
+          tutorial_completed?: boolean
           updated_at?: string
           user_id?: string
           weight_unit?: string

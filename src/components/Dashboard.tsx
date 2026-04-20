@@ -368,7 +368,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-sm text-muted-foreground">AI-Powered Workout Tracker</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end leading-tight" title={streakLabel}>
+          <div id="tutorial-streak" className="flex flex-col items-end leading-tight" title={streakLabel}>
             <div className="flex items-center gap-1">
               <span className="text-2xl">🔥</span>
               <span className="font-mono text-xl font-bold text-primary">{streak}</span>
@@ -410,18 +410,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* Weekly Program Calendar */}
-      <WeeklyProgramCalendar
-        program={activeProgram}
-        templates={templates}
-        history={history}
-        futureWorkouts={futureWorkouts}
-        onDayClick={onDayClick}
-        onTitleClick={onGoToMonthlyCalendar}
-      />
+      <div id="tutorial-calendar">
+        <WeeklyProgramCalendar
+          program={activeProgram}
+          templates={templates}
+          history={history}
+          futureWorkouts={futureWorkouts}
+          onDayClick={onDayClick}
+          onTitleClick={onGoToMonthlyCalendar}
+        />
+      </div>
 
 
       {/* Weekly Sets by Body Part */}
-      <WeeklySetsByBodyPart history={history} />
+      <div id="tutorial-weekly-sets">
+        <WeeklySetsByBodyPart history={history} />
+      </div>
 
       {/* Analytics Button */}
       <button
@@ -444,7 +448,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </Button>
 
       {/* Quick actions */}
-      <Button variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">
+      <Button id="tutorial-start-btn" variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">
         🎯 Start Workout
       </Button>
 

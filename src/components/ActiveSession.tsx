@@ -1479,7 +1479,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               Discard
             </Button>
           )}
-          <Button variant="neon" size="sm" onClick={finishWorkout}>
+          <Button id="tutorial-finish-btn" variant="neon" size="sm" onClick={finishWorkout}>
             {isEditMode ? 'Save Changes' : 'Finish'}
           </Button>
         </div>
@@ -1700,6 +1700,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
         {/* Add Exercise */}
         <button
+          id="tutorial-add-exercise"
           onClick={() => setShowExercisePicker(true)}
           className="w-full py-3 rounded-lg border border-dashed border-muted-foreground/30 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center gap-2"
         >
