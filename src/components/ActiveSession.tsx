@@ -1474,7 +1474,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             </Button>
           )}
           {!isEditMode && (
-            <Button variant="outline" size="sm" onClick={() => setShowDiscardConfirm(true)} className="text-destructive border-destructive/30 hover:bg-destructive/10">
+            <Button id="tutorial-discard-btn" variant="outline" size="sm" onClick={() => setShowDiscardConfirm(true)} className="text-destructive border-destructive/30 hover:bg-destructive/10">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Discard
             </Button>
