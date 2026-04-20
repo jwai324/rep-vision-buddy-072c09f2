@@ -610,6 +610,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
+      <TutorialOverlay />
+
       {/* <AIChatBubble /> — disabled for rework */}
       </div>
     </div>
@@ -618,10 +620,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
 const Index = () => {
   const storage = useStorage();
+  const handleTutorialComplete = React.useCallback(() => {
+    storage.updatePreferences({ tutorialCompleted: true });
+  }, [storage]);
   return (
     <CustomExercisesProvider>
       <ChatProvider storage={storage}>
-        <IndexInner storage={storage} />
+        <TutorialProvider onComplete={handleTutorialComplete}>
+          <IndexInner storage={storage} />
+        </TutorialProvider>
       </ChatProvider>
     </CustomExercisesProvider>
   );
