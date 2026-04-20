@@ -54,6 +54,7 @@ type Screen =
 const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
   const { registerScreen } = useChatContext();
   const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise, updateExercise: updateCustomExercise } = useCustomExercisesContext();
+  const tutorial = useTutorial();
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
   const [screen, setScreen] = useState<Screen>(() => {
@@ -74,6 +75,28 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     };
     registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
   }, [screen.type, registerScreen]);
+
+  // Auto-start tutorial for first-time users
+  const autoStartedRef = React.useRef(false);
+  useEffect(() => {
+    if (storage.loading) return;
+    if (autoStartedRef.current) return;
+    if (!storage.preferences.tutorialCompleted) {
+      autoStartedRef.current = true;
+      // Ensure we start on dashboard
+      setScreen({ type: 'dashboard' });
+      tutorial.start();
+    }
+  }, [storage.loading, storage.preferences.tutorialCompleted, tutorial]);
+
+  // When entering active session during tutorial, jump to session steps
+  useEffect(() => {
+    if (tutorial.active && screen.type === 'activeSession') {
+      tutorial.goToScreenSteps('activeSession');
+    } else if (tutorial.active && screen.type === 'dashboard') {
+      tutorial.goToScreenSteps('dashboard');
+    }
+  }, [screen.type, tutorial]);
 
   const handleMinimize = () => {
     setMinimizedSession(screen);
