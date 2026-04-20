@@ -1,24 +1,27 @@
 
 
-## Hide tutorial overlay during exercise picking
+The current SESSION_STEPS order after "Add Exercises" is: Pick an Exercise → Log a Set (set-row) → Weight → Reps → RPE → Complete → Finish → Discard. That looks correct, but the issue is likely that after picking an exercise and the picker closes, the next step targets `tutorial-set-row` — but if that step was already advanced past (e.g., auto-skipped via `skipIfMissing` while picker was open), the tour lands on a later step or stalls on Add Exercise again.
 
-### Problem
-`ExerciseSelector` is rendered as a full-screen view (not a Radix dialog), so the modal-blocking detection misses it. The overlay either misaligns or shows a centered tooltip with a full-screen dim that covers the exercise list, making it hard to see/select an exercise.
+Looking at the flow:
+- Step "Add Exercises" targets `tutorial-add-exercise` (the + button) with `skipIfMissing`.
+- User taps it → picker opens → overlay stands down (picker root detected).
+- "Pick an Exercise" step (no target, centered) is next — but the overlay is hidden by picker detection, so user never sees it advance.
+- Tour is stuck on "Add Exercises" step the whole time the picker is open.
+- User picks exercise → picker closes → overlay re-engages → still on "Add Exercises" step → spotlights the + button again, prompting user to add another.
 
 ### Fix
 
-**1. `TutorialOverlay.tsx`** — detect the exercise picker and stand down completely
-- Add a check for `document.getElementById('tutorial-blank-workout')`-style picker root, or simpler: look for the ExerciseSelector's stable container.
-- Cleanest signal: add `id="tutorial-exercise-picker-root"` to the wrapper div in `ActiveSession.tsx` line 1425.
-- In the overlay's `measure()`, if that element exists AND the current step's `targetId` is not inside it, render **nothing** (no backdrop, no tooltip) — fully step aside.
-- Existing MutationObserver already triggers re-evaluation, so when the picker closes the next step (`tutorial-set-row`) re-engages automatically.
+**`TutorialContext.tsx`** — auto-advance past Add Exercise when picker opens, and past Pick Exercise when it closes
+- Add a new effect inside `TutorialProvider` that watches the DOM (MutationObserver on body) for `#tutorial-exercise-picker-root`:
+  - When it **appears** AND current step targets `tutorial-add-exercise` → call `next()` (advances to "Pick an Exercise").
+  - When it **disappears** AND current step is "Pick an Exercise" (no targetId, screen=activeSession, after add-exercise) → call `next()` (advances to `tutorial-set-row`).
+- Use a stable check: track previous picker presence in a ref to detect open/close transitions.
 
-**2. `ActiveSession.tsx`** — add the picker root id
-- Line 1425: `<div id="tutorial-exercise-picker-root" className="h-[100dvh] ...">`
+This guarantees the tour progresses in lockstep with the user's actual interaction with the picker — no manual Next click required, and no re-prompting for Add Exercise.
 
 ### Files
-- Modify: `src/components/TutorialOverlay.tsx`, `src/components/ActiveSession.tsx`
+- Modify: `src/contexts/TutorialContext.tsx`
 
 ### Validation
-- Replay tutorial → tap Add Exercise → picker opens with **no** tutorial overlay or dimming, full exercise list visible/scrollable → pick exercise → picker closes → tutorial spotlight resumes on the new set row → continues through weight/reps/RPE/complete/finish/discard.
+- Replay tutorial → reach Add Exercise spotlight → tap + → picker opens, tour silently advances → pick an exercise → picker closes → spotlight smoothly lands on the new set row → walk through Weight → Reps → RPE → Complete → Finish → Discard.
 
