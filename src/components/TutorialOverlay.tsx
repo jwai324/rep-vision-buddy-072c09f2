@@ -115,6 +115,9 @@ export const TutorialOverlay: React.FC = () => {
 
   if (!step) return null;
 
+  // If picker (or other blocking modal not containing target) is open, render nothing — let user interact freely
+  if (modalBlocking) return null;
+
   const isLast = index === steps.length - 1;
   const isFirst = index === 0;
 
