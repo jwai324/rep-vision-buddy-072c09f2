@@ -539,6 +539,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onUpdateProfile={storage.updateProfile}
           onBack={() => setScreen({ type: 'dashboard' })}
           onGoToCustomExercises={() => setScreen({ type: 'customExercises' })}
+          onReplayTutorial={() => {
+            setScreen({ type: 'dashboard' });
+            // Defer to next tick so dashboard mounts before overlay measures
+            setTimeout(() => tutorial.start(), 50);
+          }}
         />
       )}
 
