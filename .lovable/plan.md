@@ -1,27 +1,41 @@
 
 
-## Fix: Push Program Back should update the program schedule too
+## Fix: Calendar doubling after Push Program Back
 
-### Problem
-When pushing a program back by N days, only the `future_workouts` table rows get their dates shifted. The program itself (`workout_programs.start_date` and each `days[].frequency.startDate`) stays unchanged. This causes:
-1. The monthly calendar re-derives schedule from the old program dates for any gaps, showing phantom entries at the original dates.
-2. If the program is ever re-saved or future workouts regenerated, the old unshifted dates are used.
+### Root cause
+
+The monthly calendar fills schedule gaps by iterating every day in the program range and calling `getProgramScheduled()` when no `future_workout` or completed session exists for that date. After pushing back:
+
+- The `future_workouts` rows shift forward by N days (e.g., Wed → Thu).
+- For `weekly` frequency, `getProgramScheduled()` still derives entries on the original weekday (Wednesday) because `f.weekday` is unchanged — shifting `startDate` does not move which Wednesdays fall in the range.
+- `hasStored` is false for the original Wednesday dates (future workouts moved away), so the calendar renders BOTH the shifted future_workout AND the derived program entry.
 
 ### Fix
 
-**`src/hooks/useStorage.ts`** — in the `pushProgramBack` callback, after shifting future_workouts, also update the program:
+**`src/components/MonthlyCalendarScreen.tsx`** — skip the program-derivation loop entirely when `futureWorkouts` already exist for the active program.
 
-1. Find the program by `programId` from the local `programs` state.
-2. Shift `program.startDate` forward by `days` days.
-3. Shift each `day.frequency.startDate` (for `everyNDays` type) forward by `days` days.
-4. Save the updated program to the DB via `supabase.from('workout_programs').update(...)`.
-5. Update the local `programs` state with the shifted program.
+If any `futureWorkouts` have `programId === activeProgram.id`, the future_workouts table is the authoritative schedule for that program. The fallback derivation from `getProgramScheduled()` should only run when NO future_workouts have been generated yet (i.e., a brand-new program before its first schedule generation).
 
-This ensures the calendar's `getProgramScheduled()` fallback and any future regeneration use the correct shifted dates.
+Change the condition at line 101 from:
+```ts
+if (activeProgram) {
+```
+to:
+```ts
+const hasProgramFutureWorkouts = activeProgram && futureWorkouts.some(f => f.programId === activeProgram.id);
+if (activeProgram && !hasProgramFutureWorkouts) {
+```
+
+This means:
+- Before future_workouts are generated: calendar derives schedule from program rules (current behavior).
+- After future_workouts exist (including after push-back): calendar uses only the stored future_workouts, no phantom derivation.
+
+**`src/components/Dashboard.tsx`** — apply the same guard to the dashboard's `todayDay` logic (line 357) which indexes directly into `activeProgram.days` by weekday. After a push-back, this is also stale. Instead, check `futureWorkouts` for today's date first; only fall back to the program's `days` array when no future_workouts exist for the program.
 
 ### Files
-- Modify: `src/hooks/useStorage.ts`
+- Modify: `src/components/MonthlyCalendarScreen.tsx`
+- Modify: `src/components/Dashboard.tsx`
 
 ### Validation
-- Push program back by 1 day -> program's `startDate` and frequency `startDate` values shift by 1 day -> calendar no longer shows phantom entries at old dates.
+- Push a program back by 1 day → calendar shows workouts only on the shifted dates, not on both old and new dates.
 
