@@ -1,49 +1,36 @@
 
 
-## Fix: auto-advance check is short-circuited
+## Add "Re-perform Workout" and "Save as Template" to workout detail/summary screens
 
-### Root cause
-In the `MutationObserver` effect:
-```
-const open = !!document.getElementById('tutorial-exercise-picker-root');
-if (open === pickerOpenRef.current) return;  // ← bails out
-```
-When user taps Finish, picker state hasn't changed (still closed), so `check()` returns immediately — the `tutorial-finish-btn → tutorial-save-workout` branch below never executes.
+### What changes
 
-### Fix
-**`src/contexts/TutorialContext.tsx`** — restructure the `check()` function so the early-return only guards the picker-specific branches, not the summary-appearance branch.
+**1. SessionSummary.tsx — add two new action props and buttons**
+- Add `onReperform?: (session: WorkoutSession) => void` prop.
+- In the `isViewMode` action area (lines 428-443), add:
+  - A "Re-perform Workout" neon button that calls `onReperform(session)` — placed at the top of the action group so it's the primary CTA.
+  - A "Save as Template" outline button that calls `onSaveAsTemplate()` — placed after Re-perform, before Edit.
+- Reorder: Re-perform > Save as Template > Edit > Delete.
 
-Approach: track summary-open state with its own ref (`summaryOpenRef`), and check it independently. Only return early when nothing relevant changed.
+**2. Index.tsx — wire the new callbacks in the `sessionDetail` screen**
+- Add `onReperform` handler: converts the session's exercises into a `WorkoutTemplate` (same pattern used elsewhere) and calls `startFromTemplate(template)`.
+- Fix the existing no-op `onSaveAsTemplate`: create a template from the session (using the same conversion logic as the summary screen) and save it via `storage.saveTemplate`, then show a toast confirming the template was saved and stay on the current screen.
 
+### Conversion logic (session → template, reused pattern)
 ```ts
-const pickerOpenRef = useRef(false);
-const summaryOpenRef = useRef(false);
-
-const check = () => {
-  const pickerOpen = !!document.getElementById('tutorial-exercise-picker-root');
-  const summaryOpen = !!document.getElementById('tutorial-save-workout');
-  const pickerChanged = pickerOpen !== pickerOpenRef.current;
-  const summaryChanged = summaryOpen !== summaryOpenRef.current;
-  if (!pickerChanged && !summaryChanged) return;
-  pickerOpenRef.current = pickerOpen;
-  summaryOpenRef.current = summaryOpen;
-
-  const current = steps[index];
-  if (!current) return;
-
-  if (pickerChanged && pickerOpen && current.targetId === 'tutorial-add-exercise') {
-    setIndex(i => Math.min(steps.length - 1, i + 1));
-  } else if (pickerChanged && !pickerOpen && current.screen === 'activeSession' && !current.targetId && current.title.startsWith('Pick')) {
-    setIndex(i => Math.min(steps.length - 1, i + 1));
-  } else if (summaryChanged && summaryOpen && current.targetId === 'tutorial-finish-btn') {
-    setIndex(i => Math.min(steps.length - 1, i + 1));
-  }
+const template: WorkoutTemplate = {
+  id: crypto.randomUUID(),
+  name: `Workout ${new Date(session.date).toLocaleDateString()}`,
+  exercises: session.exercises.map(ex => ({
+    exerciseId: ex.exerciseId,
+    sets: ex.sets.length,
+    targetReps: ex.sets[0]?.reps ?? 10,
+    setType: ex.sets[0]?.type ?? 'normal',
+    restSeconds: 90,
+  })),
 };
 ```
 
 ### Files
-- Modify: `src/contexts/TutorialContext.tsx`
-
-### Validation
-At 384px: reach Finish step → tap Finish → summary opens → spotlight auto-advances to bottom "Save Workout" button without manual Next.
+- Modify: `src/components/SessionSummary.tsx`
+- Modify: `src/pages/Index.tsx`
 
