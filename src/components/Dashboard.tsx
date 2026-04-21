@@ -353,11 +353,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const lastSession = history[0];
 
   // Determine today's template from active program
-  const dayOfWeek = new Date().getDay(); // 0=Sun
-  const todayDay = activeProgram?.days[(dayOfWeek + 6) % 7]; // Mon=0
-  const todayTemplate = todayDay && todayDay.templateId !== 'rest'
-    ? templates.find(t => t.id === todayDay.templateId)
+  // If future_workouts exist for this program, they are authoritative (e.g. after push-back)
+  const hasProgramFutureWorkouts = activeProgram && futureWorkouts.some(f => f.programId === activeProgram.id);
+  const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+  const todayFutureWorkout = futureWorkouts.find(f => f.date === todayDateStr);
+  const todayDay = !hasProgramFutureWorkouts
+    ? activeProgram?.days[(new Date().getDay() + 6) % 7]
     : null;
+  const todayTemplate = todayFutureWorkout && todayFutureWorkout.templateId !== 'rest'
+    ? templates.find(t => t.id === todayFutureWorkout.templateId)
+    : todayDay && todayDay.templateId !== 'rest'
+      ? templates.find(t => t.id === todayDay.templateId)
+      : null;
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
