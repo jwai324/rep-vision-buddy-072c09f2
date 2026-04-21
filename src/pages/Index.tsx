@@ -486,8 +486,36 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           weightUnit={storage.preferences.weightUnit}
           isViewMode
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
-          onSaveAsTemplate={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onSaveAsTemplate={() => {
+            const t = {
+              id: crypto.randomUUID(),
+              name: `Workout ${parseLocalDate(screen.session.date).toLocaleDateString()}`,
+              exercises: screen.session.exercises.map(ex => ({
+                exerciseId: ex.exerciseId,
+                sets: ex.sets.length,
+                targetReps: ex.sets[0]?.reps ?? 10,
+                setType: (ex.sets[0]?.type ?? 'normal') as any,
+                restSeconds: 90,
+              })),
+            };
+            storage.saveTemplate(t);
+            toast.success('Template saved');
+          }}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
+          onReperform={(session) => {
+            const t = {
+              id: crypto.randomUUID(),
+              name: `Workout ${parseLocalDate(session.date).toLocaleDateString()}`,
+              exercises: session.exercises.map(ex => ({
+                exerciseId: ex.exerciseId,
+                sets: ex.sets.length,
+                targetReps: ex.sets[0]?.reps ?? 10,
+                setType: (ex.sets[0]?.type ?? 'normal') as any,
+                restSeconds: 90,
+              })),
+            };
+            startFromTemplate(t);
+          }}
           onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {
             storage.deleteSession(id);
