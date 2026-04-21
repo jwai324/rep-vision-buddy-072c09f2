@@ -1,36 +1,27 @@
 
 
-## Add "Re-perform Workout" and "Save as Template" to workout detail/summary screens
+## Fix: Push Program Back should update the program schedule too
 
-### What changes
+### Problem
+When pushing a program back by N days, only the `future_workouts` table rows get their dates shifted. The program itself (`workout_programs.start_date` and each `days[].frequency.startDate`) stays unchanged. This causes:
+1. The monthly calendar re-derives schedule from the old program dates for any gaps, showing phantom entries at the original dates.
+2. If the program is ever re-saved or future workouts regenerated, the old unshifted dates are used.
 
-**1. SessionSummary.tsx — add two new action props and buttons**
-- Add `onReperform?: (session: WorkoutSession) => void` prop.
-- In the `isViewMode` action area (lines 428-443), add:
-  - A "Re-perform Workout" neon button that calls `onReperform(session)` — placed at the top of the action group so it's the primary CTA.
-  - A "Save as Template" outline button that calls `onSaveAsTemplate()` — placed after Re-perform, before Edit.
-- Reorder: Re-perform > Save as Template > Edit > Delete.
+### Fix
 
-**2. Index.tsx — wire the new callbacks in the `sessionDetail` screen**
-- Add `onReperform` handler: converts the session's exercises into a `WorkoutTemplate` (same pattern used elsewhere) and calls `startFromTemplate(template)`.
-- Fix the existing no-op `onSaveAsTemplate`: create a template from the session (using the same conversion logic as the summary screen) and save it via `storage.saveTemplate`, then show a toast confirming the template was saved and stay on the current screen.
+**`src/hooks/useStorage.ts`** — in the `pushProgramBack` callback, after shifting future_workouts, also update the program:
 
-### Conversion logic (session → template, reused pattern)
-```ts
-const template: WorkoutTemplate = {
-  id: crypto.randomUUID(),
-  name: `Workout ${new Date(session.date).toLocaleDateString()}`,
-  exercises: session.exercises.map(ex => ({
-    exerciseId: ex.exerciseId,
-    sets: ex.sets.length,
-    targetReps: ex.sets[0]?.reps ?? 10,
-    setType: ex.sets[0]?.type ?? 'normal',
-    restSeconds: 90,
-  })),
-};
-```
+1. Find the program by `programId` from the local `programs` state.
+2. Shift `program.startDate` forward by `days` days.
+3. Shift each `day.frequency.startDate` (for `everyNDays` type) forward by `days` days.
+4. Save the updated program to the DB via `supabase.from('workout_programs').update(...)`.
+5. Update the local `programs` state with the shifted program.
+
+This ensures the calendar's `getProgramScheduled()` fallback and any future regeneration use the correct shifted dates.
 
 ### Files
-- Modify: `src/components/SessionSummary.tsx`
-- Modify: `src/pages/Index.tsx`
+- Modify: `src/hooks/useStorage.ts`
+
+### Validation
+- Push program back by 1 day -> program's `startDate` and frequency `startDate` values shift by 1 day -> calendar no longer shows phantom entries at old dates.
 
