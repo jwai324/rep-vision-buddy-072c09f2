@@ -430,8 +430,35 @@ export function useStorage() {
       return prev.map(fw => map.has(fw.id) ? { ...fw, date: map.get(fw.id)! } : fw)
         .sort((a, b) => a.date.localeCompare(b.date));
     });
+
+    // Also shift the program's startDate and frequency startDates
+    const program = programs.find(p => p.id === programId);
+    if (program) {
+      const shiftDate = (dateStr: string | undefined): string | undefined => {
+        if (!dateStr) return dateStr;
+        const d = parseLocalDate(dateStr);
+        d.setDate(d.getDate() + days);
+        return format(d, 'yyyy-MM-dd');
+      };
+      const updatedProgram: WorkoutProgram = {
+        ...program,
+        startDate: shiftDate(program.startDate),
+        days: program.days.map(day => ({
+          ...day,
+          frequency: day.frequency && day.frequency.type === 'everyNDays' && day.frequency.startDate
+            ? { ...day.frequency, startDate: shiftDate(day.frequency.startDate) }
+            : day.frequency,
+        })),
+      };
+      await supabase.from('workout_programs').update({
+        start_date: updatedProgram.startDate ?? null,
+        days: updatedProgram.days as any,
+      }).eq('id', programId).eq('user_id', user.id);
+      setPrograms(prev => prev.map(p => p.id === programId ? updatedProgram : p));
+    }
+
     toast.success(`Shifted ${updates.length} workout${updates.length === 1 ? '' : 's'} forward by ${days} day${days === 1 ? '' : 's'}`);
-  }, [user, futureWorkouts]);
+  }, [user, futureWorkouts, programs]);
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
     if (!user) return;
