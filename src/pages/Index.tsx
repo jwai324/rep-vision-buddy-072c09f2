@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useStorage } from '@/hooks/useStorage';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
