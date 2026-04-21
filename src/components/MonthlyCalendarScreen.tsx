@@ -98,7 +98,8 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
       const d = parseLocalDate(f.date);
       (f.templateId === 'rest' ? sr : sw).push(d);
     }
-    if (activeProgram) {
+    const hasProgramFutureWorkouts = activeProgram && futureWorkouts.some(f => f.programId === activeProgram.id);
+    if (activeProgram && !hasProgramFutureWorkouts) {
       const start = activeProgram.startDate ? parseLocalDate(activeProgram.startDate) : new Date();
       const end = addWeeks(start, activeProgram.durationWeeks ?? 8);
       let cur = new Date(start);
