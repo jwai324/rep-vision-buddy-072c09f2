@@ -43,6 +43,7 @@ interface SessionSummaryProps {
   onEdit?: (session: WorkoutSession) => void;
   onUpdateSession?: (session: WorkoutSession) => void;
   onContinue?: () => void;
+  onReperform?: (session: WorkoutSession) => void;
   isViewMode?: boolean;
 }
 
@@ -63,7 +64,7 @@ const getSupersetColorClass = (group?: number) => {
   return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
 };
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, isViewMode }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, isViewMode }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -427,8 +428,12 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
         )}
         {isViewMode && (
           <>
+            {onReperform && (
+              <Button variant="neon" onClick={() => onReperform(session)} className="w-full">Re-perform Workout</Button>
+            )}
+            <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
             {onEdit && (
-              <Button variant="neon" onClick={() => onEdit(session)} className="w-full">Edit Workout</Button>
+              <Button variant="outline" onClick={() => onEdit(session)} className="w-full">Edit Workout</Button>
             )}
             {onDelete && (
               <Button
