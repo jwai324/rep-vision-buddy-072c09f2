@@ -1,37 +1,25 @@
 
 
-## Make Camera Feed collapsible in active session
+## Auto-close exercise three-dots menu on selection
 
-### Change
+### Problem
+The three-dots (`...`) Popover menu on each exercise block in an active session stays open after selecting an action.
 
-Wrap the `CameraFeed` component in `ActiveSession.tsx` with a collapsible section that defaults to collapsed. A small tap-target at the top expands/collapses the camera preview.
+### Fix
 
-### Implementation
+**`src/components/ActiveSession.tsx`** — in the `ExerciseTable` component:
 
-**`src/components/ActiveSession.tsx`** (around lines 1600-1604):
-- Import `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent` from `@/components/ui/collapsible`.
-- Import `ChevronDown` (or `Camera`) from `lucide-react`.
-- Add a `useState<boolean>(false)` for `cameraOpen`.
-- Replace the current `<CameraFeed />` block with:
+1. Add a `useState<boolean>(false)` for `menuOpen` to control the Popover's open state.
+2. Pass `open={menuOpen}` and `onOpenChange={setMenuOpen}` to the `<Popover>` component (line 2165).
+3. In the menu item `onClick` handler (line 2175), close the popover before calling the action:
+   ```tsx
+   onClick={() => {
+     setMenuOpen(false);
+     onMenuAction(item.label, blockIdx);
+   }}
+   ```
 
-```tsx
-<Collapsible open={cameraOpen} onOpenChange={setCameraOpen}>
-  <CollapsibleTrigger asChild>
-    <button className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
-      <span className="flex items-center gap-1.5">
-        <Camera className="w-3.5 h-3.5" />
-        Camera
-      </span>
-      <ChevronDown className={cn("w-4 h-4 transition-transform", cameraOpen && "rotate-180")} />
-    </button>
-  </CollapsibleTrigger>
-  <CollapsibleContent>
-    <div className="px-4 pb-4">
-      <CameraFeed />
-    </div>
-  </CollapsibleContent>
-</Collapsible>
-```
+This ensures the menu dismisses immediately when any option is tapped.
 
 ### Files
 - Modify: `src/components/ActiveSession.tsx`
