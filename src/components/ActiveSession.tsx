@@ -2359,24 +2359,27 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
                     {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
                   </span>
-                  {previousSets[setIdx] ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const prev = previousSets[setIdx];
-                        if (prev.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prev.weight, weightUnit))));
-                        if (prev.reps !== undefined) onUpdateSet(blockIdx, setIdx, 'reps', String(prev.reps));
-                        if (prev.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prev.rpe));
-                        if (prev.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prev.time));
-                      }}
-                      className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
-                      title="Tap to copy to current set"
-                    >
-                      {`${previousSets[setIdx].weight != null ? Math.round(fromKg(previousSets[setIdx].weight!, weightUnit)) : '—'} × ${previousSets[setIdx].reps}`}
-                    </button>
-                  ) : (
-                    <span className="text-xs text-muted-foreground text-center">—</span>
-                  )}
+                  {(() => {
+                    const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
+                    const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
+                    return prevSet ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prevSet.weight, weightUnit))));
+                          if (prevSet.reps !== undefined) onUpdateSet(blockIdx, setIdx, 'reps', String(prevSet.reps));
+                          if (prevSet.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prevSet.rpe));
+                          if (prevSet.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prevSet.time));
+                        }}
+                        className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
+                        title="Tap to copy to current set"
+                      >
+                        {`${prevSet.weight != null ? Math.round(fromKg(prevSet.weight!, weightUnit)) : '—'} × ${prevSet.reps}`}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground text-center">—</span>
+                    );
+                  })()}
                   {inputMode === 'band' ? (
                     <select
                       id={buildInputId(blockIdx, setIdx, 'weight')}
