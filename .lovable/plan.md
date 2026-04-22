@@ -1,25 +1,38 @@
 
 
-## Fix: Dashboard calendar emojis still use stale program-derived events
+## Make Camera Feed collapsible in active session
 
-### Problem
-The `WeeklyProgramCalendar` in `Dashboard.tsx` still calls `buildProgramEvents(program)` and uses `day.events` (lines 273-274) to determine emojis/background — even when `futureWorkouts` already exist for the program. This causes the old (pre-push) schedule to show workout/rest emojis on the wrong days.
+### Change
 
-### Fix
+Wrap the `CameraFeed` component in `ActiveSession.tsx` with a collapsible section that defaults to collapsed. A small tap-target at the top expands/collapses the camera preview.
 
-**`src/components/Dashboard.tsx`** — skip program event derivation when future workouts exist for the active program (same pattern applied to the monthly calendar):
+### Implementation
 
-1. In `WeeklyProgramCalendar`, compute `hasProgramFutureWorkouts` from the `futureWorkouts` prop.
-2. Change the `events` memo (line 210) to return an empty array when `hasProgramFutureWorkouts` is true:
-   ```ts
-   const hasProgramFutureWorkouts = program && futureWorkouts.some(f => f.programId === program.id);
-   const events = useMemo(() => (program && !hasProgramFutureWorkouts) ? buildProgramEvents(program) : [], [program, hasProgramFutureWorkouts]);
-   ```
-3. This makes `day.events` empty when future workouts exist, so the icon/background logic at lines 273-291 falls through to the `futureWorkouts`-based checks (`hasScheduledWorkout`, `hasScheduledRest`) which already use the correct shifted dates.
+**`src/components/ActiveSession.tsx`** (around lines 1600-1604):
+- Import `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent` from `@/components/ui/collapsible`.
+- Import `ChevronDown` (or `Camera`) from `lucide-react`.
+- Add a `useState<boolean>(false)` for `cameraOpen`.
+- Replace the current `<CameraFeed />` block with:
+
+```tsx
+<Collapsible open={cameraOpen} onOpenChange={setCameraOpen}>
+  <CollapsibleTrigger asChild>
+    <button className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-foreground">
+      <span className="flex items-center gap-1.5">
+        <Camera className="w-3.5 h-3.5" />
+        Camera
+      </span>
+      <ChevronDown className={cn("w-4 h-4 transition-transform", cameraOpen && "rotate-180")} />
+    </button>
+  </CollapsibleTrigger>
+  <CollapsibleContent>
+    <div className="px-4 pb-4">
+      <CameraFeed />
+    </div>
+  </CollapsibleContent>
+</Collapsible>
+```
 
 ### Files
-- Modify: `src/components/Dashboard.tsx`
-
-### Validation
-- Push program back by 1 day. Dashboard weekly calendar shows emojis only on the shifted dates, not on both old and new dates.
+- Modify: `src/components/ActiveSession.tsx`
 
