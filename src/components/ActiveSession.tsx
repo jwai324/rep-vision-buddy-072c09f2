@@ -12,7 +12,8 @@ import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
-import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin, Focus } from 'lucide-react';
+import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin, Focus, Camera } from 'lucide-react';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
@@ -1596,11 +1597,24 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         )}
       </div>
 
-      {/* Camera - hide in edit mode */}
+      {/* Camera - hide in edit mode, collapsible */}
       {!isEditMode && (
-        <div className="px-4 pb-4">
-          <CameraFeed />
-        </div>
+        <Collapsible open={cameraOpen} onOpenChange={setCameraOpen}>
+          <CollapsibleTrigger asChild>
+            <button className="w-full flex items-center justify-between px-4 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              <span className="flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5" />
+                Camera
+              </span>
+              <ChevronDown className={cn("w-4 h-4 transition-transform", cameraOpen && "rotate-180")} />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="px-4 pb-4">
+              <CameraFeed />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
       {/* Note Editor Modal */}
