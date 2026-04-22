@@ -2134,6 +2134,7 @@ const EXERCISE_MENU_ITEMS = [
 
 export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
+  const [menuOpen, setMenuOpen] = React.useState(false);
   return (
     <div>
       {/* Exercise Header */}
@@ -2162,7 +2163,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
               {isRunningHere ? 'Stop set' : 'Start next set'}
             </button>
           )}
-          <Popover>
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
           <PopoverTrigger asChild>
             <button className="text-muted-foreground hover:text-foreground p-1">
               <MoreHorizontal className="w-4 h-4" />
@@ -2172,7 +2173,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
             {EXERCISE_MENU_ITEMS.map(item => (
               <button
                 key={item.label}
-                onClick={() => onMenuAction(item.label, blockIdx)}
+                onClick={() => { setMenuOpen(false); onMenuAction(item.label, blockIdx); }}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
                   'destructive' in item && item.destructive
                     ? 'text-destructive hover:bg-destructive/10'
