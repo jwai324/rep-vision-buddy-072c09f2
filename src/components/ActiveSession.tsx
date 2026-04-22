@@ -2134,6 +2134,7 @@ const EXERCISE_MENU_ITEMS = [
 
 export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
+  const [menuOpen, setMenuOpen] = React.useState(false);
   return (
     <div>
       {/* Exercise Header */}
