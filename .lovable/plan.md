@@ -1,41 +1,25 @@
 
 
-## Fix: Calendar doubling after Push Program Back
+## Fix: Dashboard calendar emojis still use stale program-derived events
 
-### Root cause
-
-The monthly calendar fills schedule gaps by iterating every day in the program range and calling `getProgramScheduled()` when no `future_workout` or completed session exists for that date. After pushing back:
-
-- The `future_workouts` rows shift forward by N days (e.g., Wed → Thu).
-- For `weekly` frequency, `getProgramScheduled()` still derives entries on the original weekday (Wednesday) because `f.weekday` is unchanged — shifting `startDate` does not move which Wednesdays fall in the range.
-- `hasStored` is false for the original Wednesday dates (future workouts moved away), so the calendar renders BOTH the shifted future_workout AND the derived program entry.
+### Problem
+The `WeeklyProgramCalendar` in `Dashboard.tsx` still calls `buildProgramEvents(program)` and uses `day.events` (lines 273-274) to determine emojis/background — even when `futureWorkouts` already exist for the program. This causes the old (pre-push) schedule to show workout/rest emojis on the wrong days.
 
 ### Fix
 
-**`src/components/MonthlyCalendarScreen.tsx`** — skip the program-derivation loop entirely when `futureWorkouts` already exist for the active program.
+**`src/components/Dashboard.tsx`** — skip program event derivation when future workouts exist for the active program (same pattern applied to the monthly calendar):
 
-If any `futureWorkouts` have `programId === activeProgram.id`, the future_workouts table is the authoritative schedule for that program. The fallback derivation from `getProgramScheduled()` should only run when NO future_workouts have been generated yet (i.e., a brand-new program before its first schedule generation).
-
-Change the condition at line 101 from:
-```ts
-if (activeProgram) {
-```
-to:
-```ts
-const hasProgramFutureWorkouts = activeProgram && futureWorkouts.some(f => f.programId === activeProgram.id);
-if (activeProgram && !hasProgramFutureWorkouts) {
-```
-
-This means:
-- Before future_workouts are generated: calendar derives schedule from program rules (current behavior).
-- After future_workouts exist (including after push-back): calendar uses only the stored future_workouts, no phantom derivation.
-
-**`src/components/Dashboard.tsx`** — apply the same guard to the dashboard's `todayDay` logic (line 357) which indexes directly into `activeProgram.days` by weekday. After a push-back, this is also stale. Instead, check `futureWorkouts` for today's date first; only fall back to the program's `days` array when no future_workouts exist for the program.
+1. In `WeeklyProgramCalendar`, compute `hasProgramFutureWorkouts` from the `futureWorkouts` prop.
+2. Change the `events` memo (line 210) to return an empty array when `hasProgramFutureWorkouts` is true:
+   ```ts
+   const hasProgramFutureWorkouts = program && futureWorkouts.some(f => f.programId === program.id);
+   const events = useMemo(() => (program && !hasProgramFutureWorkouts) ? buildProgramEvents(program) : [], [program, hasProgramFutureWorkouts]);
+   ```
+3. This makes `day.events` empty when future workouts exist, so the icon/background logic at lines 273-291 falls through to the `futureWorkouts`-based checks (`hasScheduledWorkout`, `hasScheduledRest`) which already use the correct shifted dates.
 
 ### Files
-- Modify: `src/components/MonthlyCalendarScreen.tsx`
 - Modify: `src/components/Dashboard.tsx`
 
 ### Validation
-- Push a program back by 1 day → calendar shows workouts only on the shifted dates, not on both old and new dates.
+- Push program back by 1 day. Dashboard weekly calendar shows emojis only on the shifted dates, not on both old and new dates.
 
