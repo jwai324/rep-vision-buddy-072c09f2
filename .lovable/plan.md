@@ -1,25 +1,25 @@
 
 
-## Auto-close exercise three-dots menu on selection
+## Fix: Previous set data misaligned when warmup sets are added
 
 ### Problem
-The three-dots (`...`) Popover menu on each exercise block in an active session stays open after selecting an action.
+The "Previous" column in the active session uses `previousSets[setIdx]` — a direct array index. When warmup sets are added, they shift the index so that set 1's previous data appears next to set 2, set 2's next to set 3, etc. Previous sessions typically don't include warmup sets, causing the mismatch.
 
 ### Fix
 
-**`src/components/ActiveSession.tsx`** — in the `ExerciseTable` component:
+**`src/components/ActiveSession.tsx`** — in the `ExerciseTable` component (around line 2362):
 
-1. Add a `useState<boolean>(false)` for `menuOpen` to control the Popover's open state.
-2. Pass `open={menuOpen}` and `onOpenChange={setMenuOpen}` to the `<Popover>` component (line 2165).
-3. In the menu item `onClick` handler (line 2175), close the popover before calling the action:
-   ```tsx
-   onClick={() => {
-     setMenuOpen(false);
-     onMenuAction(item.label, blockIdx);
-   }}
-   ```
+Instead of `previousSets[setIdx]`, compute a working-set index that skips warmup rows:
 
-This ensures the menu dismisses immediately when any option is tapped.
+```tsx
+// Count how many non-warmup sets appear before this setIdx
+const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
+const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
+```
+
+Then use `prevSet` instead of `previousSets[setIdx]` for both the display and the copy-on-tap handler. Warmup sets will show "—" for previous (since there's no historical warmup data to match).
+
+Apply the same logic in both places where `previousSets[setIdx]` is referenced (the display button and the onClick handler).
 
 ### Files
 - Modify: `src/components/ActiveSession.tsx`
