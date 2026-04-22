@@ -207,7 +207,8 @@ const WeeklyProgramCalendar: React.FC<{
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [weekOffset]);
 
-  const events = useMemo(() => program ? buildProgramEvents(program) : [], [program]);
+  const hasProgramFutureWorkouts = program && futureWorkouts.some(f => f.programId === program.id);
+  const events = useMemo(() => (program && !hasProgramFutureWorkouts) ? buildProgramEvents(program) : [], [program, hasProgramFutureWorkouts]);
 
   const weekSchedule = useMemo(() => {
     return weekDays.map(day => {
