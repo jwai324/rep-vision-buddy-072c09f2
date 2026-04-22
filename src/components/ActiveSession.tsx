@@ -8,6 +8,7 @@ import { parseLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { CameraFeed } from '@/components/CameraFeed';
+import { cn } from '@/lib/utils';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
@@ -343,6 +344,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showFocusMode, setShowFocusMode] = useState(false);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
   const [timerPaused, setTimerPaused] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const pausedElapsed = useRef<number | null>(null);
   const { getStickyNote, setStickyNote } = useStickyNotes();
