@@ -7,7 +7,7 @@ interface SwipeToDeleteProps {
   className?: string;
 }
 
-const THRESHOLD = 80;
+const THRESHOLD = 120;
 
 export const SwipeToDelete: React.FC<SwipeToDeleteProps> = ({ onDelete, children, className = '' }) => {
   const startX = useRef(0);
@@ -22,7 +22,7 @@ export const SwipeToDelete: React.FC<SwipeToDeleteProps> = ({ onDelete, children
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!swiping) return;
     const diff = startX.current - e.touches[0].clientX;
-    setOffsetX(Math.max(0, Math.min(diff, 120)));
+    setOffsetX(Math.max(0, Math.min(diff, 160)));
   }, [swiping]);
 
   const handleTouchEnd = useCallback(() => {
@@ -39,7 +39,7 @@ export const SwipeToDelete: React.FC<SwipeToDeleteProps> = ({ onDelete, children
       <div className="absolute inset-y-0 right-0 flex items-center justify-end pr-3 bg-destructive rounded-md"
         style={{ width: `${Math.max(offsetX, 0)}px` }}
       >
-        {offsetX > 40 && <Trash2 className="w-4 h-4 text-destructive-foreground" />}
+        {offsetX > 60 && <Trash2 className="w-4 h-4 text-destructive-foreground" />}
       </div>
       {/* Content */}
       <div
