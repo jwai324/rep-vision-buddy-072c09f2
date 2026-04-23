@@ -1042,21 +1042,52 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, []);
 
   const removeSet = useCallback((blockIdx: number, setIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      const newSets = block.sets.filter((_, si) => si !== setIdx);
-      let warmupCount = 0;
-      let normalCount = 0;
-      const renumbered = newSets.map(s => {
-        if (s.type === 'warmup') {
-          warmupCount++;
-          return { ...s, setNumber: warmupCount };
-        }
-        normalCount++;
-        return { ...s, setNumber: normalCount };
+    let deletedSet: SetRow | null = null;
+
+    setBlocks(prev => {
+      const block = prev[blockIdx];
+      if (!block) return prev;
+      deletedSet = { ...block.sets[setIdx] };
+
+      return prev.map((b, bi) => {
+        if (bi !== blockIdx) return b;
+        const newSets = b.sets.filter((_, si) => si !== setIdx);
+        let warmupCount = 0;
+        let normalCount = 0;
+        const renumbered = newSets.map(s => {
+          if (s.type === 'warmup') {
+            warmupCount++;
+            return { ...s, setNumber: warmupCount };
+          }
+          normalCount++;
+          return { ...s, setNumber: normalCount };
+        });
+        return { ...b, sets: renumbered };
       });
-      return { ...block, sets: renumbered };
-    }));
+    });
+
+    if (deletedSet) {
+      const captured = deletedSet;
+      toast('Set deleted', {
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            setBlocks(prev => prev.map((b, bi) => {
+              if (bi !== blockIdx) return b;
+              const restored = [...b.sets];
+              restored.splice(setIdx, 0, captured);
+              let warmupCount = 0;
+              let normalCount = 0;
+              const renumbered = restored.map(s => {
+                if (s.type === 'warmup') { warmupCount++; return { ...s, setNumber: warmupCount }; }
+                normalCount++; return { ...s, setNumber: normalCount };
+              });
+              return { ...b, sets: renumbered };
+            }));
+          },
+        },
+      });
+    }
   }, []);
 
   const removeDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number) => {
