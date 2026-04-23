@@ -91,6 +91,7 @@ export interface ActiveSessionCache {
   activeTimer?: PersistedTimer | null;
   restRecords?: Record<string, number>;
   runningSet?: RunningSetState | null;
+  showFocusMode?: boolean;
 }
 
 // Safe localStorage write — never throws
@@ -344,7 +345,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [showFocusMode, setShowFocusMode] = useState(false);
+  const [showFocusMode, setShowFocusMode] = useState(cachedSession?.showFocusMode ?? false);
   const [hideTimers, setHideTimers] = useState(hideTimersPref);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
   const [timerPaused, setTimerPaused] = useState(false);
@@ -432,8 +433,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       activeTimer,
       restRecords,
       runningSet,
+      showFocusMode,
     });
-  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode]);
 
   // Derive remaining seconds from the persisted record. Allowed to go NEGATIVE
   // once the timer passes 0 — the rest timer keeps counting into "overtime"
