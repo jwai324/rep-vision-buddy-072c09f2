@@ -132,6 +132,9 @@ interface ActiveSessionProps {
   onCancel: () => void;
   onMinimize?: () => void;
   onUpdateTemplate?: (template: WorkoutTemplate) => void;
+  /** Persisted hide-timers preference */
+  hideTimersPref?: boolean;
+  onUpdateHideTimers?: (val: boolean) => void;
 }
 
 /** Look up the most recent session data for a given exercise */
@@ -221,7 +224,7 @@ function normalizeBlocks(blocks: ExerciseBlock[]): ExerciseBlock[] {
   });
 }
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers }) => {
   const isEditMode = !!editSession;
   const { exercises: customExercises } = useCustomExercisesContext();
   const exerciseLookup = useMemo(() => {
@@ -342,7 +345,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showFocusMode, setShowFocusMode] = useState(false);
-  const [hideTimers, setHideTimers] = useState(false);
+  const [hideTimers, setHideTimers] = useState(hideTimersPref);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
   const [timerPaused, setTimerPaused] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -1501,7 +1504,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 {workoutNote ? 'Edit Note' : 'Add Note'}
               </button>
               <button
-                onClick={() => setHideTimers(prev => !prev)}
+                onClick={() => { setHideTimers(prev => { const next = !prev; onUpdateHideTimers?.(next); return next; }); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
               >
                 <Timer className="w-4 h-4" />

@@ -317,6 +317,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onCancel={() => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); }}
             onMinimize={handleMinimize}
             onUpdateTemplate={(t) => storage.saveTemplate(t)}
+            hideTimersPref={storage.preferences.hideTimers}
+            onUpdateHideTimers={(val) => storage.updatePreferences({ hideTimers: val })}
           />
         </ErrorBoundary>
       )}

@@ -1,0 +1,1 @@
+ALTER TABLE public.user_settings ADD COLUMN hide_timers boolean NOT NULL DEFAULT false;

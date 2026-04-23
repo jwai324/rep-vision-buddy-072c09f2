@@ -191,6 +191,7 @@ export type Database = {
           created_at: string
           default_drop_sets_enabled: boolean
           default_rest_seconds: number
+          hide_timers: boolean
           id: string
           streak_mode: string
           streak_weekly_target: number
@@ -204,6 +205,7 @@ export type Database = {
           created_at?: string
           default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
+          hide_timers?: boolean
           id?: string
           streak_mode?: string
           streak_weekly_target?: number
@@ -217,6 +219,7 @@ export type Database = {
           created_at?: string
           default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
+          hide_timers?: boolean
           id?: string
           streak_mode?: string
           streak_weekly_target?: number
