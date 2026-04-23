@@ -1,26 +1,19 @@
 
 
-## Fix: Previous set data misaligned when warmup sets are added
+## Reduce swipe-to-delete sensitivity
 
 ### Problem
-The "Previous" column in the active session uses `previousSets[setIdx]` — a direct array index. When warmup sets are added, they shift the index so that set 1's previous data appears next to set 2, set 2's next to set 3, etc. Previous sessions typically don't include warmup sets, causing the mismatch.
+The swipe-to-delete gesture on sets triggers too easily — the 80px threshold is low for touch interactions, causing accidental deletions.
 
 ### Fix
 
-**`src/components/ActiveSession.tsx`** — in the `ExerciseTable` component (around line 2362):
+**`src/components/SwipeToDelete.tsx`**:
+1. Increase `THRESHOLD` from `80` to `120`.
+2. Increase the max drag cap from `120` to `160`.
+3. Increase the icon-show threshold from `40` to `60`.
 
-Instead of `previousSets[setIdx]`, compute a working-set index that skips warmup rows:
-
-```tsx
-// Count how many non-warmup sets appear before this setIdx
-const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
-const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
-```
-
-Then use `prevSet` instead of `previousSets[setIdx]` for both the display and the copy-on-tap handler. Warmup sets will show "—" for previous (since there's no historical warmup data to match).
-
-Apply the same logic in both places where `previousSets[setIdx]` is referenced (the display button and the onClick handler).
+This requires a more deliberate swipe before the delete action fires.
 
 ### Files
-- Modify: `src/components/ActiveSession.tsx`
+- Modify: `src/components/SwipeToDelete.tsx`
 
