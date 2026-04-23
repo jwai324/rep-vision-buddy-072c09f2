@@ -1,33 +1,61 @@
 
 
-## Add "Hide Timers" toggle to workout three-dot menu
+## Add undo button when deleting a set
 
 ### Change
 
-Add a toggle option in the workout-level three-dot menu (top-right `MoreVertical`) that hides all rest timers — both between exercises and between sets. When hidden, the timer UI elements are not rendered. An active timer continues running but the visual is suppressed. Default state: timers visible.
+When a set is deleted via swipe, show a toast notification with an "Undo" button that restores the deleted set to its original position. The toast auto-dismisses after a few seconds.
 
 ### Implementation
 
-**`src/components/ActiveSession.tsx`**:
+**`src/components/ActiveSession.tsx`** — in the `removeSet` callback (lines 1044-1060):
 
-1. Add state: `const [hideTimers, setHideTimers] = useState(false);`
-
-2. In the workout three-dot menu Popover (lines 1463-1471), add a second menu item with a toggle:
+1. Before filtering out the set, capture the deleted set data and its position:
    ```tsx
-   <button
-     onClick={() => setHideTimers(prev => !prev)}
-     className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
-   >
-     <Timer className="w-4 h-4" />
-     {hideTimers ? 'Show Timers' : 'Hide Timers'}
-   </button>
+   const removeSet = useCallback((blockIdx: number, setIdx: number) => {
+     let deletedSet: SetRow | null = null;
+
+     setBlocks(prev => {
+       const block = prev[blockIdx];
+       if (!block) return prev;
+       deletedSet = { ...block.sets[setIdx] };
+
+       const updated = prev.map((b, bi) => {
+         if (bi !== blockIdx) return b;
+         const newSets = b.sets.filter((_, si) => si !== setIdx);
+         // ... existing renumbering logic ...
+         return { ...b, sets: renumbered };
+       });
+       return updated;
+     });
+
+     // Show undo toast after state update
+     if (deletedSet) {
+       toast('Set deleted', {
+         action: {
+           label: 'Undo',
+           onClick: () => {
+             setBlocks(prev => prev.map((b, bi) => {
+               if (bi !== blockIdx) return b;
+               const restored = [...b.sets];
+               restored.splice(setIdx, 0, deletedSet!);
+               // Re-renumber sets
+               let warmupCount = 0;
+               let normalCount = 0;
+               const renumbered = restored.map(s => {
+                 if (s.type === 'warmup') { warmupCount++; return { ...s, setNumber: warmupCount }; }
+                 normalCount++; return { ...s, setNumber: normalCount };
+               });
+               return { ...b, sets: renumbered };
+             }));
+           },
+         },
+       });
+     }
+   }, []);
    ```
 
-3. Wrap the between-exercise `ExerciseRestTimer` (line 1664-1677) with `{!hideTimers && blockIdx > 0 && (`.
-
-4. Wrap the between-set `ExerciseRestTimer` (line 2561-2579) with a `hideTimers` check — render `null` when `hideTimers` is true.
-
-5. Pass `hideTimers` to `ExerciseTable` as a prop so the between-set timers inside it can also be hidden. Add it to the `ExerciseTable` component's props interface and use it to conditionally render the between-set timer block.
+2. Use `toast()` from `sonner` (already imported) with the `action` option, which renders an undo button inside the toast. Sonner supports this natively.
 
 ### Files
 - Modify: `src/components/ActiveSession.tsx`
