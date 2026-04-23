@@ -1,62 +1,47 @@
 
 
-## Add undo button when deleting a set
+## Persist "Hide Timers" toggle with bidirectional sync
 
-### Change
+### Summary
 
-When a set is deleted via swipe, show a toast notification with an "Undo" button that restores the deleted set to its original position. The toast auto-dismisses after a few seconds.
+Add a persistent `hideTimers` preference stored in the database. The setting is accessible from both the Settings page and the active workout three-dot menu. Changing it in either place updates the same underlying preference, so they stay in sync.
+
+### Database migration
+
+Add a `hide_timers` column to `user_settings`:
+
+```sql
+ALTER TABLE public.user_settings
+  ADD COLUMN hide_timers boolean NOT NULL DEFAULT false;
+```
 
 ### Implementation
 
-**`src/components/ActiveSession.tsx`** — in the `removeSet` callback (lines 1044-1060):
+**`src/hooks/useStorage.ts`**:
+1. Add `hideTimers: boolean` to `UserPreferences` interface.
+2. Add `hideTimers: false` to `DEFAULT_PREFERENCES`.
+3. Map `hide_timers` from DB to `hideTimers` in the fetch logic.
+4. Include `hide_timers: updated.hideTimers` in the `updatePreferences` upsert payload.
 
-1. Before filtering out the set, capture the deleted set data and its position:
-   ```tsx
-   const removeSet = useCallback((blockIdx: number, setIdx: number) => {
-     let deletedSet: SetRow | null = null;
+**`src/pages/Index.tsx`**:
+1. Pass `hideTimers={storage.preferences.hideTimers}` and `onUpdateHideTimers={(val) => storage.updatePreferences({ hideTimers: val })}` as new props to `ActiveSession`.
 
-     setBlocks(prev => {
-       const block = prev[blockIdx];
-       if (!block) return prev;
-       deletedSet = { ...block.sets[setIdx] };
+**`src/components/ActiveSession.tsx`**:
+1. Add `hideTimers` and `onUpdateHideTimers` props to `ActiveSessionProps`.
+2. Replace the local `useState(false)` with `useState(hideTimers)` (initialized from the prop).
+3. Update the three-dot menu toggle to also call `onUpdateHideTimers` when toggled, so the change persists to the database and syncs with Settings.
 
-       const updated = prev.map((b, bi) => {
-         if (bi !== blockIdx) return b;
-         const newSets = b.sets.filter((_, si) => si !== setIdx);
-         // ... existing renumbering logic ...
-         return { ...b, sets: renumbered };
-       });
-       return updated;
-     });
-
-     // Show undo toast after state update
-     if (deletedSet) {
-       toast('Set deleted', {
-         action: {
-           label: 'Undo',
-           onClick: () => {
-             setBlocks(prev => prev.map((b, bi) => {
-               if (bi !== blockIdx) return b;
-               const restored = [...b.sets];
-               restored.splice(setIdx, 0, deletedSet!);
-               // Re-renumber sets
-               let warmupCount = 0;
-               let normalCount = 0;
-               const renumbered = restored.map(s => {
-                 if (s.type === 'warmup') { warmupCount++; return { ...s, setNumber: warmupCount }; }
-                 normalCount++; return { ...s, setNumber: normalCount };
-               });
-               return { ...b, sets: renumbered };
-             }));
-           },
-         },
-       });
-     }
-   }, []);
-   ```
-
-2. Use `toast()` from `sonner` (already imported) with the `action` option, which renders an undo button inside the toast. Sonner supports this natively.
+**`src/components/SettingsScreen.tsx`**:
+1. Add a "Hide Timers" toggle card with a `Switch`, similar to the existing "Drop Sets" toggle:
+   - Icon: `Timer`
+   - Title: "Hide Timers"
+   - Description: "Hide rest timers between sets and exercises by default"
+   - Wired to `preferences.hideTimers` / `onUpdatePreferences({ hideTimers: checked })`
 
 ### Files
+- Migration: add `hide_timers` column to `user_settings`
+- Modify: `src/hooks/useStorage.ts`
+- Modify: `src/pages/Index.tsx`
 - Modify: `src/components/ActiveSession.tsx`
+- Modify: `src/components/SettingsScreen.tsx`
 
