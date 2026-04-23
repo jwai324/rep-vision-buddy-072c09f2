@@ -1,19 +1,34 @@
 
 
-## Reduce swipe-to-delete sensitivity
+## Add "Hide Timers" toggle to workout three-dot menu
 
-### Problem
-The swipe-to-delete gesture on sets triggers too easily — the 80px threshold is low for touch interactions, causing accidental deletions.
+### Change
 
-### Fix
+Add a toggle option in the workout-level three-dot menu (top-right `MoreVertical`) that hides all rest timers — both between exercises and between sets. When hidden, the timer UI elements are not rendered. An active timer continues running but the visual is suppressed. Default state: timers visible.
 
-**`src/components/SwipeToDelete.tsx`**:
-1. Increase `THRESHOLD` from `80` to `120`.
-2. Increase the max drag cap from `120` to `160`.
-3. Increase the icon-show threshold from `40` to `60`.
+### Implementation
 
-This requires a more deliberate swipe before the delete action fires.
+**`src/components/ActiveSession.tsx`**:
+
+1. Add state: `const [hideTimers, setHideTimers] = useState(false);`
+
+2. In the workout three-dot menu Popover (lines 1463-1471), add a second menu item with a toggle:
+   ```tsx
+   <button
+     onClick={() => setHideTimers(prev => !prev)}
+     className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
+   >
+     <Timer className="w-4 h-4" />
+     {hideTimers ? 'Show Timers' : 'Hide Timers'}
+   </button>
+   ```
+
+3. Wrap the between-exercise `ExerciseRestTimer` (line 1664-1677) with `{!hideTimers && blockIdx > 0 && (`.
+
+4. Wrap the between-set `ExerciseRestTimer` (line 2561-2579) with a `hideTimers` check — render `null` when `hideTimers` is true.
+
+5. Pass `hideTimers` to `ExerciseTable` as a prop so the between-set timers inside it can also be hidden. Add it to the `ExerciseTable` component's props interface and use it to conditionally render the between-set timer block.
 
 ### Files
-- Modify: `src/components/SwipeToDelete.tsx`
+- Modify: `src/components/ActiveSession.tsx`
 
