@@ -135,13 +135,14 @@ export interface UserPreferences {
   streakMode: StreakMode;
   streakWeeklyTarget: number;
   tutorialCompleted: boolean;
+  hideTimers: boolean;
 }
 
 export interface UserProfile {
   displayName: string | null;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 export function useStorage() {
@@ -192,6 +193,7 @@ export function useStorage() {
             streakMode: ((settingsRes.data as any).streak_mode ?? 'daily') as StreakMode,
             streakWeeklyTarget: (settingsRes.data as any).streak_weekly_target ?? 3,
             tutorialCompleted: (settingsRes.data as any).tutorial_completed ?? false,
+            hideTimers: (settingsRes.data as any).hide_timers ?? false,
           });
         }
         if (profileRes.data) {
@@ -473,6 +475,7 @@ export function useStorage() {
       streak_mode: updated.streakMode,
       streak_weekly_target: updated.streakWeeklyTarget,
       tutorial_completed: updated.tutorialCompleted,
+      hide_timers: updated.hideTimers,
     } as any, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);

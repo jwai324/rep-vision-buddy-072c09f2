@@ -160,6 +160,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
       </div>
 
+      {/* Hide Timers */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Timer className="w-4 h-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Hide Timers</p>
+              <p className="text-xs text-muted-foreground">Hide rest timers between sets and exercises by default</p>
+            </div>
+          </div>
+          <Switch
+            checked={preferences.hideTimers}
+            onCheckedChange={(checked) => onUpdatePreferences({ hideTimers: checked })}
+          />
+        </div>
+      </div>
+
       {/* Streak Mode */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center gap-2">
