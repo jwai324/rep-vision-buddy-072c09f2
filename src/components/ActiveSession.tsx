@@ -342,6 +342,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showFocusMode, setShowFocusMode] = useState(false);
+  const [hideTimers, setHideTimers] = useState(false);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
   const [timerPaused, setTimerPaused] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -1468,6 +1469,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 <FileText className="w-4 h-4" />
                 {workoutNote ? 'Edit Note' : 'Add Note'}
               </button>
+              <button
+                onClick={() => setHideTimers(prev => !prev)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
+              >
+                <Timer className="w-4 h-4" />
+                {hideTimers ? 'Show Timers' : 'Hide Timers'}
+              </button>
             </PopoverContent>
           </Popover>
           {!isEditMode && (
@@ -1661,7 +1669,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               const isBetweenActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenKey;
               return (
               <React.Fragment key={block.exerciseId}>
-                {blockIdx > 0 && (
+                {!hideTimers && blockIdx > 0 && (
                   <ExerciseRestTimer
                     timerId={betweenId}
                     defaultDuration={blocks[blockIdx - 1].restSeconds}
@@ -1701,6 +1709,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                         onExtendTimer={extendTimer}
                         onTitleTap={() => setDetailExerciseId(block.exerciseId)}
                         isEditMode={isEditMode}
+                        hideTimers={hideTimers}
                         runningSet={runningSet}
                         onStartNextSet={handleStartNextSet}
                         onStopSet={handleStopSetClick}
@@ -2118,6 +2127,7 @@ interface ExerciseTableProps {
   onStartNextSet?: (blockIdx: number) => void;
   onStopSet?: () => void;
   hideHeaderName?: boolean;
+  hideTimers?: boolean;
 }
 
 const EXERCISE_MENU_ITEMS = [
@@ -2132,7 +2142,7 @@ const EXERCISE_MENU_ITEMS = [
 ] as const;
 
 
-export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName }) => {
+export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName, hideTimers }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
   const [menuOpen, setMenuOpen] = React.useState(false);
   return (
@@ -2558,7 +2568,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
             )}
 
             {/* Between-set rest timer */}
-            {setIdx < block.sets.length - 1 && (() => {
+            {!hideTimers && setIdx < block.sets.length - 1 && (() => {
               const betweenSetId: TimerId = { type: 'set', blockIdx, setIdx };
               const betweenSetKey = timerIdKey(betweenSetId);
               const isBetweenSetActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenSetKey;
