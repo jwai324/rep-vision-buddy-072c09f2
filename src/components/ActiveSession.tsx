@@ -1359,24 +1359,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const sets: WorkoutSet[] = [];
         b.sets.filter(s => s.completed).forEach(s => {
           const seconds = timeToSeconds(s.time);
+          const distMeters = s.distance ? toMeters(parseFloat(s.distance) || 0, 'km') : undefined;
           sets.push({
             setNumber: s.setNumber,
             type: s.type,
-            reps: isTimeBased(mode) ? 1 : (parseInt(s.reps) || 0),
-            weight: isTimeBased(mode) ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
+            reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(s.reps) || 0),
+            weight: usesWeight(mode) ? (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined) : undefined,
             rpe: s.rpe ? parseFloat(s.rpe) : undefined,
             time: seconds > 0 ? seconds : (isTimeBased(mode) ? (parseInt(s.reps) || 0) : undefined),
+            distance: distMeters && distMeters > 0 ? distMeters : undefined,
           });
           // Append completed dropsets immediately after their parent set
           (s.drops ?? []).filter(d => d.completed).forEach(d => {
             const dSeconds = d.time ? timeToSeconds(d.time) : 0;
+            const dDistMeters = d.distance ? toMeters(parseFloat(d.distance) || 0, 'km') : undefined;
             sets.push({
               setNumber: s.setNumber,
               type: 'dropset',
-              reps: isTimeBased(mode) ? 1 : (parseInt(d.reps) || 0),
-              weight: isTimeBased(mode) ? undefined : (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined),
+              reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(d.reps) || 0),
+              weight: usesWeight(mode) ? (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined) : undefined,
               rpe: d.rpe ? parseFloat(d.rpe) : undefined,
               time: dSeconds > 0 ? dSeconds : undefined,
+              distance: dDistMeters && dDistMeters > 0 ? dDistMeters : undefined,
             });
           });
         });
