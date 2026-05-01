@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
-import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
@@ -359,15 +359,27 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             return { label: `${normalCount}`, isDropset: false };
           });
 
-          const gridCols = isTimeBased(mode)
+          const gridCols = isTimeBased(mode) && !isDistanceBased(mode)
             ? 'grid-cols-[2.5rem_1fr_3rem]'
-            : 'grid-cols-[2.5rem_1fr_1fr_3rem]';
+            : (mode === 'time-distance')
+              ? 'grid-cols-[2.5rem_1fr_1fr_3rem]'
+              : (mode === 'distance')
+                ? 'grid-cols-[2.5rem_1fr_3rem]'
+                : (mode === 'reps')
+                  ? 'grid-cols-[2.5rem_1fr_3rem]'
+                  : 'grid-cols-[2.5rem_1fr_1fr_3rem]';
 
-          const headers = isTimeBased(mode)
-            ? ['SET', 'TIME', 'RPE']
-            : mode === 'band'
-              ? ['SET', 'BAND', 'REPS', 'RPE']
-              : ['SET', 'WEIGHT', 'REPS', 'RPE'];
+          const headers = (() => {
+            switch (mode) {
+              case 'time': return ['SET', 'TIME', 'RPE'];
+              case 'time-distance': return ['SET', 'TIME', 'DIST', 'RPE'];
+              case 'distance': return ['SET', 'DIST', 'RPE'];
+              case 'reps': return ['SET', 'REPS', 'RPE'];
+              case 'band': return ['SET', 'BAND', 'REPS', 'RPE'];
+              case 'reps-weight':
+              default: return ['SET', 'WEIGHT', 'REPS', 'RPE'];
+            }
+          })();
 
           return (
           <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
@@ -383,6 +395,37 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             <div className="flex flex-col gap-1">
               {ex.sets.map((set, j) => {
                 const { label, isDropset } = labels[j];
+                const renderCells = () => {
+                  switch (mode) {
+                    case 'time':
+                      return <span className="text-center">{set.time ?? 0} min</span>;
+                    case 'time-distance':
+                      return (
+                        <>
+                          <span className="text-center">{set.time ?? 0} min</span>
+                          <span className="text-center">{set.distance ? formatDistance(set.distance) : '—'}</span>
+                        </>
+                      );
+                    case 'distance':
+                      return <span className="text-center">{set.distance ? formatDistance(set.distance) : '—'}</span>;
+                    case 'reps':
+                      return <span className="text-center">{set.reps}</span>;
+                    case 'band':
+                      return (
+                        <>
+                          <span className="text-center">{getBandLevelShortLabel(set.weight ?? 0)}</span>
+                          <span className="text-center">{set.reps}</span>
+                        </>
+                      );
+                    default:
+                      return (
+                        <>
+                          <span className="text-center">{set.weight != null ? formatWeightString(set.weight, weightUnit) : '—'}</span>
+                          <span className="text-center">{set.reps}</span>
+                        </>
+                      );
+                  }
+                };
                 return (
                   <div
                     key={j}
@@ -391,19 +434,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                     <span className={`justify-self-start min-w-[2.25rem] px-2 py-0.5 rounded-full text-[10px] font-bold text-center ${SET_TYPE_CONFIG[set.type].colorClass}`}>
                       {label}
                     </span>
-                    {isTimeBased(mode) ? (
-                      <span className="text-center">{set.time ?? 0} min</span>
-                    ) : mode === 'band' ? (
-                      <>
-                        <span className="text-center">{getBandLevelShortLabel(set.weight ?? 0)}</span>
-                        <span className="text-center">{set.reps}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-center">{set.weight != null ? formatWeightString(set.weight, weightUnit) : '—'}</span>
-                        <span className="text-center">{set.reps}</span>
-                      </>
-                    )}
+                    {renderCells()}
                     <span className="text-right text-primary text-xs">{set.rpe ? set.rpe : '—'}</span>
                   </div>
                 );

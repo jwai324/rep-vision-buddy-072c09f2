@@ -10,7 +10,7 @@ import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, usesReps, usesWeight } from '@/utils/exerciseInputMode';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -393,73 +393,76 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                     const mode = getExerciseInputMode(block.exerciseId, customExercises);
                     return (
                       <>
-                        {isTimeBased(mode) ? (
-                          <div className="grid grid-cols-[32px_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
-                            <span>Set</span>
-                            <span className="text-center">Time (min)</span>
-                            <span className="text-center">RPE</span>
-                          </div>
-                        ) : mode === 'band' ? (
-                          <div className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
-                            <span>Set</span>
-                            <span className="text-center">Band</span>
-                            <span className="text-center">Reps</span>
-                            <span className="text-center">RPE</span>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-[32px_1fr_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
-                            <span>Set</span>
-                            <span className="text-center">{weightUnit}</span>
-                            <span className="text-center">Reps</span>
-                            <span className="text-center">RPE</span>
-                          </div>
-                        )}
+                        {(() => {
+                          const showWeight = usesWeight(mode);
+                          const showReps = usesReps(mode);
+                          const isTime = isTimeBased(mode);
+                          const colCount = [true, showWeight || isTime, showReps, true].filter(Boolean).length; // set + inputs + rpe
+                          const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
+                            : colCount === 3 ? 'grid-cols-[32px_1fr_1fr]'
+                            : 'grid-cols-[32px_1fr_1fr]';
+                          const headerLabels = (() => {
+                            switch (mode) {
+                              case 'time': return ['Set', 'Time (min)', 'RPE'];
+                              case 'time-distance': return ['Set', 'Time (min)', 'RPE'];
+                              case 'distance': return ['Set', 'Dist (km)', 'RPE'];
+                              case 'reps': return ['Set', 'Reps', 'RPE'];
+                              case 'band': return ['Set', 'Band', 'Reps', 'RPE'];
+                              default: return ['Set', weightUnit, 'Reps', 'RPE'];
+                            }
+                          })();
+                          return (
+                            <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+                              {headerLabels.map((h, idx) => (
+                                <span key={idx} className={idx === 0 ? '' : 'text-center'}>{h}</span>
+                              ))}
+                            </div>
+                          );
+                        })()}
 
-                        {block.sets.map((set, setIdx) => (
+                        {block.sets.map((set, setIdx) => {
+                          const showWeight = usesWeight(mode);
+                          const showReps = usesReps(mode);
+                          const isTime = isTimeBased(mode);
+                          const colCount = [true, showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
+                          const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
+                            : 'grid-cols-[32px_1fr_1fr]';
+                          return (
                           <div
                             key={setIdx}
-                            className={`grid ${isTimeBased(mode) ? 'grid-cols-[32px_1fr_1fr]' : 'grid-cols-[32px_1fr_1fr_1fr]'} gap-1 items-center py-1.5 px-1 rounded-md`}
+                            className={`grid ${cols} gap-1 items-center py-1.5 px-1 rounded-md`}
                           >
                             <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-                            {isTimeBased(mode) ? (
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                value={set.targetReps}
-                                onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
-                                placeholder="min"
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                              />
+                            {isTime ? (
+                              <input type="number" inputMode="decimal" value={set.targetReps}
+                                onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)} placeholder="min"
+                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                            ) : mode === 'distance' ? (
+                              <input type="number" inputMode="decimal" value={set.targetWeight}
+                                onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="km"
+                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             ) : mode === 'band' ? (
-                              <select
-                                value={set.targetWeight}
+                              <select value={set.targetWeight}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)}
-                                className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
-                              >
+                                className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
                                 <option value="">—</option>
-                                {BAND_LEVELS.map(b => (
-                                  <option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>
-                                ))}
+                                {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
                               </select>
-                            ) : (
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                value={set.targetWeight}
-                                onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)}
-                                placeholder="—"
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                              />
-                            )}
-                            {!isTimeBased(mode) && (
-                              <input
-                                type="number"
-                                inputMode="numeric"
-                                value={set.targetReps}
+                            ) : mode === 'reps' ? (
+                              <input type="number" inputMode="numeric" value={set.targetReps}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
                                 placeholder={block.setType === 'failure' ? 'Fail' : '—'}
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                              />
+                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                            ) : (
+                              <input type="number" inputMode="decimal" value={set.targetWeight}
+                                onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="—"
+                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                            )}
+                            {showReps && mode !== 'reps' && !isTime && mode !== 'distance' && (
+                              <input type="number" inputMode="numeric" value={set.targetReps}
+                                onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
+                                placeholder={block.setType === 'failure' ? 'Fail' : '—'}
+                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             )}
                             <input
                               type="number"
@@ -473,7 +476,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                               className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                             />
                           </div>
-                        ))}
+                          );
+                        })}
                       </>
                     );
                   })()}
