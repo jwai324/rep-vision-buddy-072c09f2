@@ -98,6 +98,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
       selected.forEach(id => onSelect(id));
     }
     setSelected(new Set());
+    onSelectionChange?.([]);
   };
 
   const clearFilters = () => {
