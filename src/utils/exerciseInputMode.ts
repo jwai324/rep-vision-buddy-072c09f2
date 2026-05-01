@@ -154,3 +154,23 @@ export function formatSetDisplay(
       return `${set.reps} reps`;
   }
 }
+
+/** Whether this mode uses time as the primary metric (no reps/weight needed) */
+export function isTimeBased(mode: ExerciseInputMode): boolean {
+  return mode === 'time' || mode === 'time-distance';
+}
+
+/** Whether this mode uses distance */
+export function isDistanceBased(mode: ExerciseInputMode): boolean {
+  return mode === 'distance' || mode === 'time-distance';
+}
+
+/** Whether this mode requires reps */
+export function usesReps(mode: ExerciseInputMode): boolean {
+  return mode === 'reps' || mode === 'reps-weight' || mode === 'band';
+}
+
+/** Whether this mode requires weight */
+export function usesWeight(mode: ExerciseInputMode): boolean {
+  return mode === 'reps-weight' || mode === 'band';
+}
