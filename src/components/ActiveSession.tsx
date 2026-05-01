@@ -2277,7 +2277,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
       )}
 
       {/* Table Header */}
-      {inputMode === 'cardio' ? (
+      {isTimeBased(inputMode) ? (
         <div className="grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
           <span>Set</span>
           <span className="text-center">Minutes</span>
@@ -2379,7 +2379,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
         return (
           <React.Fragment key={setIdx}>
             <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
-              {inputMode === 'cardio' ? (
+              {isTimeBased(inputMode) ? (
                 <div className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
                   <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
                     {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
@@ -2502,7 +2502,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
             {/* Drop rows */}
             {set.drops?.map((drop, dropIdx) => (
               <SwipeToDelete key={`drop-${setIdx}-${dropIdx}`} onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}>
-                {inputMode === 'cardio' ? (
+                {isTimeBased(inputMode) ? (
                   <div
                     className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
                       drop.completed ? 'bg-primary/10' : ''
