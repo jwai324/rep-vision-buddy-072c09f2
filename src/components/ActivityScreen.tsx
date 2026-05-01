@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
-import { getExerciseInputMode, isTimeBased } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
 
 interface ActivityScreenProps {
