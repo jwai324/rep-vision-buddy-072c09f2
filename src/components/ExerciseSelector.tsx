@@ -10,6 +10,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { CreateExerciseForm } from '@/components/CreateExerciseForm';
 import { searchExercises } from '@/utils/exerciseSearch';
+import { getExerciseInputMode, getMeasurementBadge } from '@/utils/exerciseInputMode';
 
 const DIFFICULTIES = ['All', 'Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['All', 'Compound', 'Isolation'] as const;
