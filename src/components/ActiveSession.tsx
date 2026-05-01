@@ -2086,7 +2086,122 @@ const TimeInputButton: React.FC<{ id: string; value: string; onChange: (v: strin
   );
 };
 
+/** Reusable RPE popover tooltip */
+const RpeHeaderPopover: React.FC = () => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
+    </PopoverTrigger>
+    <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
+      <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
+      <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
+    </PopoverContent>
+  </Popover>
+);
 
+/** Reusable timer header icon */
+const TimerHeaderPopover: React.FC = () => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+        <Timer className="w-3 h-3 mx-auto" />
+      </button>
+    </PopoverTrigger>
+    <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+      <p className="font-semibold mb-1">Time elapsed</p>
+      <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+    </PopoverContent>
+  </Popover>
+);
+
+const CheckHeader: React.FC = () => (
+  <span className="text-center"><Check className="w-3 h-3 mx-auto" /></span>
+);
+
+/** Grid column template per mode */
+function getGridCols(mode: ExerciseInputMode): string {
+  switch (mode) {
+    case 'time': return 'grid-cols-[32px_1fr_1fr_30px_36px]';
+    case 'time-distance': return 'grid-cols-[32px_1fr_1fr_1fr_36px]';
+    case 'distance': return 'grid-cols-[32px_1fr_1fr_36px]';
+    case 'reps': return 'grid-cols-[32px_1fr_1fr_42px_30px_36px]';
+    case 'band':
+    case 'reps-weight':
+    default: return 'grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px]';
+  }
+}
+
+/** Table header row per mode */
+const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: WeightUnit }> = ({ inputMode, weightUnit }) => {
+  const cols = getGridCols(inputMode);
+  switch (inputMode) {
+    case 'time':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Minutes</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'time-distance':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Minutes</span>
+          <span className="text-center">km</span>
+          <RpeHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'distance':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">km</span>
+          <RpeHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'reps':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">Reps</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'band':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">Band</span>
+          <span className="text-center">Reps</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'reps-weight':
+    default:
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">{weightUnit}</span>
+          <span className="text-center">Reps</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+  }
+};
 
 const FIELD_ORDER = ['weight', 'reps', 'rpe'] as const;
 
