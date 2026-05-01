@@ -1469,10 +1469,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return (
       <div id="tutorial-exercise-picker-root" className="h-[100dvh] bg-background flex flex-col overflow-hidden min-w-0">
         <div className="p-4 pb-0 shrink-0">
-          <Button variant="outline" onClick={() => setShowExercisePicker(false)} className="mb-2">← Back</Button>
+          <Button variant="outline" onClick={() => { setShowExercisePicker(false); setPendingExerciseIds([]); }} className="mb-2">← Back</Button>
         </div>
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-          <ExerciseSelector onSelect={addExercise} onSelectMultiple={addMultipleExercises} />
+          <ExerciseSelector
+            onSelect={(id) => { setPendingExerciseIds([]); addExercise(id); }}
+            onSelectMultiple={(ids) => { setPendingExerciseIds([]); addMultipleExercises(ids); }}
+            initialSelected={pendingExerciseIds}
+            onSelectionChange={setPendingExerciseIds}
+          />
         </div>
       </div>
     );
