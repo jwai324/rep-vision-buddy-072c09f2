@@ -21,9 +21,11 @@ interface ExerciseSelectorProps {
   multiSelect?: boolean;
   browseMode?: boolean;
   onExerciseTap?: (id: ExerciseId) => void;
+  initialSelected?: ExerciseId[];
+  onSelectionChange?: (ids: ExerciseId[]) => void;
 }
 
-export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
+export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap, initialSelected, onSelectionChange }) => {
   const { exercises: customExercises, addExercise } = useCustomExercisesContext();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState('');

@@ -92,6 +92,8 @@ export interface ActiveSessionCache {
   restRecords?: Record<string, number>;
   runningSet?: RunningSetState | null;
   showFocusMode?: boolean;
+  showExercisePicker?: boolean;
+  pendingExerciseIds?: ExerciseId[];
 }
 
 // Safe localStorage write — never throws
