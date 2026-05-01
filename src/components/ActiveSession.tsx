@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
-import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
@@ -766,7 +766,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       if (!wasCompleted) {
         const mode = getExerciseInputMode(block.exerciseId, customExercises);
         const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
-        const isCardio = mode === 'cardio';
+        const isCardio = isTimeBased(mode);
         if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, isCardio, set.time)) {
           toast.error(isCardio ? 'Enter a time before completing this set.' : 'Enter valid weight and reps before completing this set.');
           return prev;
@@ -1355,10 +1355,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           sets.push({
             setNumber: s.setNumber,
             type: s.type,
-            reps: mode === 'cardio' ? 1 : (parseInt(s.reps) || 0),
-            weight: mode === 'cardio' ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
+            reps: isTimeBased(mode) ? 1 : (parseInt(s.reps) || 0),
+            weight: isTimeBased(mode) ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
             rpe: s.rpe ? parseFloat(s.rpe) : undefined,
-            time: seconds > 0 ? seconds : (mode === 'cardio' ? (parseInt(s.reps) || 0) : undefined),
+            time: seconds > 0 ? seconds : (isTimeBased(mode) ? (parseInt(s.reps) || 0) : undefined),
           });
           // Append completed dropsets immediately after their parent set
           (s.drops ?? []).filter(d => d.completed).forEach(d => {
@@ -1366,8 +1366,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             sets.push({
               setNumber: s.setNumber,
               type: 'dropset',
-              reps: mode === 'cardio' ? 1 : (parseInt(d.reps) || 0),
-              weight: mode === 'cardio' ? undefined : (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined),
+              reps: isTimeBased(mode) ? 1 : (parseInt(d.reps) || 0),
+              weight: isTimeBased(mode) ? undefined : (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined),
               rpe: d.rpe ? parseFloat(d.rpe) : undefined,
               time: dSeconds > 0 ? dSeconds : undefined,
             });
@@ -2277,7 +2277,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
       )}
 
       {/* Table Header */}
-      {inputMode === 'cardio' ? (
+      {isTimeBased(inputMode) ? (
         <div className="grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
           <span>Set</span>
           <span className="text-center">Minutes</span>
@@ -2379,7 +2379,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
         return (
           <React.Fragment key={setIdx}>
             <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
-              {inputMode === 'cardio' ? (
+              {isTimeBased(inputMode) ? (
                 <div className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
                   <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
                     {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
@@ -2502,7 +2502,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
             {/* Drop rows */}
             {set.drops?.map((drop, dropIdx) => (
               <SwipeToDelete key={`drop-${setIdx}-${dropIdx}`} onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}>
-                {inputMode === 'cardio' ? (
+                {isTimeBased(inputMode) ? (
                   <div
                     className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
                       drop.completed ? 'bg-primary/10' : ''

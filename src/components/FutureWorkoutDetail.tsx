@@ -3,7 +3,7 @@ import type { FutureWorkout, WorkoutTemplate, RecoveryActivity, WorkoutSession }
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ArrowLeft, Dumbbell, Plus, X, Check, Search, CalendarIcon, AlertTriangle, SkipForward, CalendarClock, FastForward } from 'lucide-react';
-import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased } from '@/utils/exerciseInputMode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -439,7 +439,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{info?.name ?? exerciseLookup[ex.exerciseId] ?? ex.exerciseId}</p>
                       <p className="text-xs text-muted-foreground">
-                        {mode === 'cardio'
+                        {mode === 'time' || mode === 'time-distance'
                           ? `${ex.sets} × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} min`}`
                           : `${ex.sets} sets × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} reps`}`
                         }

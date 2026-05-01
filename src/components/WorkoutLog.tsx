@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ExerciseLog } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { getExerciseInputMode } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 
 interface WorkoutLogProps {
@@ -20,12 +20,20 @@ export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' 
         {logs.filter(l => l.sets.length > 0).map((log, i) => {
           const mode = getExerciseInputMode(log.exerciseId);
           const totalSeconds = log.sets.reduce((s, set) => s + (set.time ?? 0), 0);
+          const totalDistance = log.sets.reduce((s, set) => s + (set.distance ?? 0), 0);
           return (
             <div key={i} className="flex items-center justify-between text-sm">
               <span className="text-foreground font-medium">{log.exerciseName}</span>
               <span className="text-muted-foreground text-xs">
-                {mode === 'cardio' ? (
-                  <>{formatMmSs(totalSeconds)}</>
+                {isTimeBased(mode) ? (
+                  <>
+                    {formatMmSs(totalSeconds)}
+                    {isDistanceBased(mode) && totalDistance > 0 && <> · {formatDistance(totalDistance)}</>}
+                  </>
+                ) : mode === 'distance' ? (
+                  <>{totalDistance > 0 ? formatDistance(totalDistance) : '—'}</>
+                ) : mode === 'reps' ? (
+                  <>{log.sets.length} set{log.sets.length !== 1 ? 's' : ''} · {log.sets.reduce((s, set) => s + set.reps, 0)} reps</>
                 ) : mode === 'band' ? (
                   <>{log.sets.length} set{log.sets.length !== 1 ? 's' : ''} · {log.sets.reduce((s, set) => s + set.reps, 0)} reps</>
                 ) : (

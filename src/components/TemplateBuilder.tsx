@@ -10,7 +10,7 @@ import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased } from '@/utils/exerciseInputMode';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -393,7 +393,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                     const mode = getExerciseInputMode(block.exerciseId, customExercises);
                     return (
                       <>
-                        {mode === 'cardio' ? (
+                        {isTimeBased(mode) ? (
                           <div className="grid grid-cols-[32px_1fr_1fr] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
                             <span>Set</span>
                             <span className="text-center">Time (min)</span>
@@ -418,10 +418,10 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                         {block.sets.map((set, setIdx) => (
                           <div
                             key={setIdx}
-                            className={`grid ${mode === 'cardio' ? 'grid-cols-[32px_1fr_1fr]' : 'grid-cols-[32px_1fr_1fr_1fr]'} gap-1 items-center py-1.5 px-1 rounded-md`}
+                            className={`grid ${isTimeBased(mode) ? 'grid-cols-[32px_1fr_1fr]' : 'grid-cols-[32px_1fr_1fr_1fr]'} gap-1 items-center py-1.5 px-1 rounded-md`}
                           >
                             <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-                            {mode === 'cardio' ? (
+                            {isTimeBased(mode) ? (
                               <input
                                 type="number"
                                 inputMode="decimal"
@@ -451,7 +451,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                                 className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                               />
                             )}
-                            {mode !== 'cardio' && (
+                            {!isTimeBased(mode) && (
                               <input
                                 type="number"
                                 inputMode="numeric"

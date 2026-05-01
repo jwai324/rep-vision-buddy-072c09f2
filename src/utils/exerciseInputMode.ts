@@ -1,16 +1,24 @@
-import { EXERCISE_DATABASE } from '@/data/exercises';
+import { EXERCISE_DATABASE, type MeasurementType } from '@/data/exercises';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatMmSs } from '@/utils/timeFormat';
 
-export type ExerciseInputMode = 'weighted' | 'cardio' | 'band';
+export type ExerciseInputMode = 'reps' | 'reps-weight' | 'time' | 'distance' | 'time-distance' | 'band';
 
 /**
- * Determine the input mode for an exercise based on its properties.
- * - cardio: primaryBodyPart === 'Cardio' (includes sports)
- * - band: equipment === 'Band'
- * - weighted: everything else (default)
+ * Determine the input mode for an exercise based on its measurementType (preferred)
+ * or legacy heuristics (fallback).
+ *
+ * - reps: bodyweight rep work (push-ups, pull-ups)
+ * - reps-weight: loaded strength work (bench press, squat)
+ * - time: isometric holds + stationary cardio (plank, elliptical)
+ * - distance: distance-only (rare; placeholder)
+ * - time-distance: locomotive cardio (running, rowing, cycling)
+ * - band: band exercises (equipment === 'Band')
  */
-export function getExerciseInputMode(exerciseId: string, customExercises?: { id: string; primaryBodyPart: string; equipment: string }[]): ExerciseInputMode {
+export function getExerciseInputMode(
+  exerciseId: string,
+  customExercises?: { id: string; primaryBodyPart: string; equipment: string; measurementType?: MeasurementType | null }[]
+): ExerciseInputMode {
   // Check built-in database first
   let exercise = EXERCISE_DATABASE.find(e => e.id === exerciseId);
   if (!exercise && customExercises) {
@@ -19,11 +27,29 @@ export function getExerciseInputMode(exerciseId: string, customExercises?: { id:
       exercise = custom as any;
     }
   }
-  if (!exercise) return 'weighted';
+  if (!exercise) return 'reps-weight';
 
-  if (exercise.primaryBodyPart === 'Cardio') return 'cardio';
+  // Band equipment always uses band mode
   if (exercise.equipment === 'Band') return 'band';
-  return 'weighted';
+
+  // Use measurementType if present
+  if (exercise.measurementType) {
+    switch (exercise.measurementType) {
+      case 'Reps': return 'reps';
+      case 'Reps + Weight': return 'reps-weight';
+      case 'Time': return 'time';
+      case 'Distance': return 'distance';
+      case 'Time + Distance': return 'time-distance';
+    }
+  }
+
+  // Legacy fallback: cardio body part → time (previous 'cardio' mode)
+  if (exercise.primaryBodyPart === 'Cardio') {
+    console.warn(`Exercise "${exercise.name}" (${exerciseId}) missing measurementType — falling back to time mode`);
+    return 'time';
+  }
+
+  return 'reps-weight';
 }
 
 export interface BandLevel {
@@ -54,23 +80,97 @@ export function getBandLevelShortLabel(level: number): string {
   return band?.label ?? `Level ${level}`;
 }
 
+/** Convert meters to a display string in the given distance unit */
+export function formatDistance(meters: number, unit: 'km' | 'mi' | 'm' = 'km'): string {
+  switch (unit) {
+    case 'km': return `${(meters / 1000).toFixed(2)} km`;
+    case 'mi': return `${(meters / 1609.344).toFixed(2)} mi`;
+    case 'm': return `${Math.round(meters)} m`;
+  }
+}
+
+/** Convert a display distance value to meters */
+export function toMeters(value: number, unit: 'km' | 'mi' | 'm'): number {
+  switch (unit) {
+    case 'km': return value * 1000;
+    case 'mi': return value * 1609.344;
+    case 'm': return value;
+  }
+}
+
+/** Convert meters to a display value in the given unit */
+export function fromMeters(meters: number, unit: 'km' | 'mi' | 'm'): number {
+  switch (unit) {
+    case 'km': return meters / 1000;
+    case 'mi': return meters / 1609.344;
+    case 'm': return meters;
+  }
+}
+
+export type DistanceUnit = 'km' | 'mi' | 'm';
+
+/**
+ * Get the badge label for a measurement type (used in ExerciseSelector).
+ */
+export function getMeasurementBadge(mode: ExerciseInputMode): { icon: string; label: string } | null {
+  switch (mode) {
+    case 'time': return { icon: '⏱', label: 'Time' };
+    case 'distance': return { icon: '📏', label: 'Distance' };
+    case 'time-distance': return { icon: '⏱📏', label: 'Time+Dist' };
+    case 'reps': return { icon: '#', label: 'Reps' };
+    case 'band': return { icon: '🔗', label: 'Band' };
+    case 'reps-weight':
+    default: return null; // default, no badge
+  }
+}
+
 /**
  * Format a set's data for display based on exercise input mode.
  */
 export function formatSetDisplay(
   mode: ExerciseInputMode,
-  set: { reps: number; weight?: number; time?: number },
+  set: { reps: number; weight?: number; time?: number; distance?: number },
   unit: WeightUnit = 'kg'
 ): string {
   switch (mode) {
-    case 'cardio':
-      return formatMmSs(set.time ?? set.reps ?? 0);
+    case 'time':
+      return formatMmSs(set.time ?? 0);
+    case 'distance':
+      return formatDistance(set.distance ?? 0);
+    case 'time-distance': {
+      const timePart = formatMmSs(set.time ?? 0);
+      const distPart = set.distance ? formatDistance(set.distance) : '';
+      return distPart ? `${timePart} · ${distPart}` : timePart;
+    }
+    case 'reps':
+      return `${set.reps} reps`;
     case 'band':
       return `${getBandLevelShortLabel(set.weight ?? 0)} × ${set.reps}`;
+    case 'reps-weight':
     default:
       if (set.weight !== undefined && set.weight !== 0) {
         return `${set.weight} ${unit} × ${set.reps}`;
       }
       return `${set.reps} reps`;
   }
+}
+
+/** Whether this mode uses time as the primary metric (no reps/weight needed) */
+export function isTimeBased(mode: ExerciseInputMode): boolean {
+  return mode === 'time' || mode === 'time-distance';
+}
+
+/** Whether this mode uses distance */
+export function isDistanceBased(mode: ExerciseInputMode): boolean {
+  return mode === 'distance' || mode === 'time-distance';
+}
+
+/** Whether this mode requires reps */
+export function usesReps(mode: ExerciseInputMode): boolean {
+  return mode === 'reps' || mode === 'reps-weight' || mode === 'band';
+}
+
+/** Whether this mode requires weight */
+export function usesWeight(mode: ExerciseInputMode): boolean {
+  return mode === 'reps-weight' || mode === 'band';
 }
