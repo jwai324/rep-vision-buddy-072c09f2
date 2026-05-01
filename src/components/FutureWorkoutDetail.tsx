@@ -441,7 +441,9 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                       <p className="text-xs text-muted-foreground">
                         {mode === 'time' || mode === 'time-distance'
                           ? `${ex.sets} × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} min`}`
-                          : `${ex.sets} sets × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} reps`}`
+                          : mode === 'distance'
+                            ? `${ex.sets} sets`
+                            : `${ex.sets} sets × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} reps`}`
                         }
                       </p>
                     </div>
