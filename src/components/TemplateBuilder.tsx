@@ -476,7 +476,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                               className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                             />
                           </div>
-                        ))}
+                          );
+                        })}
                       </>
                     );
                   })()}
