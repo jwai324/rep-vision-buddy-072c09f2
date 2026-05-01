@@ -3,7 +3,7 @@ import type { FutureWorkout, WorkoutTemplate, RecoveryActivity, WorkoutSession }
 import { EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ArrowLeft, Dumbbell, Plus, X, Check, Search, CalendarIcon, AlertTriangle, SkipForward, CalendarClock, FastForward } from 'lucide-react';
-import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased } from '@/utils/exerciseInputMode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';

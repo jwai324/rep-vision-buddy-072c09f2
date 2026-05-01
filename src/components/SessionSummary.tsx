@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
-import { getExerciseInputMode, getBandLevelShortLabel } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
@@ -359,11 +359,11 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             return { label: `${normalCount}`, isDropset: false };
           });
 
-          const gridCols = mode === 'cardio'
+          const gridCols = isTimeBased(mode)
             ? 'grid-cols-[2.5rem_1fr_3rem]'
             : 'grid-cols-[2.5rem_1fr_1fr_3rem]';
 
-          const headers = mode === 'cardio'
+          const headers = isTimeBased(mode)
             ? ['SET', 'TIME', 'RPE']
             : mode === 'band'
               ? ['SET', 'BAND', 'REPS', 'RPE']
@@ -391,7 +391,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                     <span className={`justify-self-start min-w-[2.25rem] px-2 py-0.5 rounded-full text-[10px] font-bold text-center ${SET_TYPE_CONFIG[set.type].colorClass}`}>
                       {label}
                     </span>
-                    {mode === 'cardio' ? (
+                    {isTimeBased(mode) ? (
                       <span className="text-center">{set.time ?? 0} min</span>
                     ) : mode === 'band' ? (
                       <>
