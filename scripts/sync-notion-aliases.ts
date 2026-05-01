@@ -1,8 +1,8 @@
 /**
- * Notion → Exercise Aliases Sync Script
+ * Notion → Exercise Aliases + Measurement Type Sync Script
  *
- * Fetches the Aliases property from the Notion Exercise Database
- * and updates src/data/exercises.ts with alias arrays.
+ * Fetches the Aliases and Measurement Type properties from the Notion Exercise Database
+ * and updates src/data/exercises.ts with alias arrays and measurementType values.
  *
  * Usage:
  *   npx tsx scripts/sync-notion-aliases.ts
@@ -22,6 +22,7 @@ interface NotionPage {
   properties: {
     Exercise: { title: Array<{ plain_text: string }> };
     Aliases: { rich_text: Array<{ plain_text: string }> };
+    'Measurement Type': { select: { name: string } | null };
   };
 }
 
@@ -73,8 +74,9 @@ async function main() {
   const pages = await fetchAllPages(apiKey);
   console.log(`Fetched ${pages.length} exercises`);
 
-  // Build alias map: canonical name → string[]
+  // Build alias map and measurement type map
   const aliasMap = new Map<string, string[]>();
+  const measurementTypeMap = new Map<string, string>();
   const canonicalNames = new Set<string>();
 
   // First pass: collect all canonical names
@@ -83,43 +85,53 @@ async function main() {
     if (name) canonicalNames.add(normalizeSearch(name));
   }
 
-  // Second pass: parse and validate aliases
+  // Second pass: parse aliases and measurement types
   let skipped = 0;
   for (const page of pages) {
     const name = page.properties.Exercise?.title?.[0]?.plain_text;
+    if (!name) continue;
+
+    // Aliases
     const aliasRaw = page.properties.Aliases?.rich_text
       ?.map((t: { plain_text: string }) => t.plain_text)
       .join('') || '';
 
-    if (!name || !aliasRaw.trim()) continue;
+    if (aliasRaw.trim()) {
+      const aliases = aliasRaw
+        .split(',')
+        .map(s => s.trim().toLowerCase())
+        .filter(Boolean);
 
-    const aliases = aliasRaw
-      .split(',')
-      .map(s => s.trim().toLowerCase())
-      .filter(Boolean);
+      const valid = aliases.filter(alias => {
+        const norm = normalizeSearch(alias);
+        if (canonicalNames.has(norm)) {
+          console.warn(`⚠ Skipping alias "${alias}" for "${name}" — collides with canonical name`);
+          skipped++;
+          return false;
+        }
+        return true;
+      });
 
-    const valid = aliases.filter(alias => {
-      const norm = normalizeSearch(alias);
-      if (canonicalNames.has(norm)) {
-        console.warn(`⚠ Skipping alias "${alias}" for "${name}" — collides with canonical name`);
-        skipped++;
-        return false;
+      if (valid.length > 0) {
+        aliasMap.set(name, valid);
       }
-      return true;
-    });
+    }
 
-    if (valid.length > 0) {
-      aliasMap.set(name, valid);
+    // Measurement Type
+    const mt = page.properties['Measurement Type']?.select?.name;
+    if (mt) {
+      measurementTypeMap.set(name, mt);
     }
   }
 
   console.log(`Parsed aliases for ${aliasMap.size} exercises (${skipped} aliases skipped due to collisions)`);
+  console.log(`Parsed measurement types for ${measurementTypeMap.size} exercises`);
 
   // Read and update exercises.ts
   let source = fs.readFileSync(EXERCISES_FILE, 'utf-8');
 
+  // Inject aliases
   for (const [name, aliases] of aliasMap) {
-    // Find the exercise entry by name and inject aliases
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(
       `(name: '${escapedName}'.*?secondaryMuscles: \\[[^\\]]*\\])`,
@@ -132,12 +144,30 @@ async function main() {
     if (pattern.test(source)) {
       source = source.replace(pattern, replacement);
     } else {
-      console.warn(`Could not find exercise "${name}" in exercises.ts`);
+      console.warn(`Could not find exercise "${name}" in exercises.ts for aliases`);
+    }
+  }
+
+  // Inject measurement types
+  for (const [name, mt] of measurementTypeMap) {
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Match the exercise line up to the closing }, accounting for aliases and existing measurementType
+    const pattern = new RegExp(
+      `(name: '${escapedName}'.*?secondaryMuscles: \\[[^\\]]*\\](?:, aliases: \\[[^\\]]*\\])?)(?:, measurementType: '[^']*')?`,
+      's'
+    );
+
+    const replacement = `$1, measurementType: '${mt}'`;
+
+    if (pattern.test(source)) {
+      source = source.replace(pattern, replacement);
+    } else {
+      console.warn(`Could not find exercise "${name}" in exercises.ts for measurementType`);
     }
   }
 
   fs.writeFileSync(EXERCISES_FILE, source);
-  console.log('✅ Updated exercises.ts with aliases');
+  console.log('✅ Updated exercises.ts with aliases and measurement types');
 }
 
 main().catch(err => {
