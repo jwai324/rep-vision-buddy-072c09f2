@@ -1,4 +1,5 @@
 import type { WeightUnit } from '@/hooks/useStorage';
+import type { ExerciseInputMode } from '@/utils/exerciseInputMode';
 
 export interface ValidationResult {
   valid: boolean;
