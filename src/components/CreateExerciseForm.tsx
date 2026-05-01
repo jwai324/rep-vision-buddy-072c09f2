@@ -112,7 +112,16 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div>
+        <label className="text-xs text-muted-foreground mb-1 block">Measurement Type</label>
+        <p className="text-[10px] text-muted-foreground/60 mb-1">How is this exercise measured? Leave blank for Reps + Weight (default)</p>
+        <div className="flex gap-1 flex-wrap">
+          {MEASUREMENT_TYPES.map(mt => (
+            <button key={mt} onClick={() => setMeasurementType(measurementType === mt ? null : mt)} className={chipClass(measurementType === mt)}>{mt}</button>
+          ))}
+        </div>
+      </div>
+
         <div className="flex items-center gap-2">
           <Heart className="w-4 h-4 text-primary" />
           <div>
