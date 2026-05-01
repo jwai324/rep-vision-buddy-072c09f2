@@ -194,9 +194,15 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>{s.exercises.map(e => {
                         const mode = getExerciseInputMode(e.exerciseId);
-                        if (mode === 'time' || mode === 'time-distance') {
+                        if (isTimeBased(mode)) {
                           const totalTime = e.sets.reduce((acc, set) => acc + (set.time ?? 0), 0);
-                          return `${e.exerciseName} (${totalTime} min)`;
+                          const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);
+                          const distStr = isDistanceBased(mode) && totalDist > 0 ? ` · ${formatDistance(totalDist)}` : '';
+                          return `${e.exerciseName} (${totalTime} min${distStr})`;
+                        }
+                        if (mode === 'distance') {
+                          const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);
+                          return `${e.exerciseName} (${totalDist > 0 ? formatDistance(totalDist) : '—'})`;
                         }
                         return e.exerciseName;
                       }).join(', ')}</span>
