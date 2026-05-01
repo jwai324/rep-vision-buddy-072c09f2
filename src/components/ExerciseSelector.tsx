@@ -308,6 +308,15 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
                               ex.difficulty === 'Beginner' ? 'text-green-400' :
                               ex.difficulty === 'Intermediate' ? 'text-yellow-400' : 'text-red-400'
                             }`}>{ex.difficulty}</span>
+                            {(() => {
+                              const badge = getMeasurementBadge(getExerciseInputMode(ex.id, customExercises));
+                              return badge ? (
+                                <>
+                                  <span className="text-xs text-muted-foreground/50">·</span>
+                                  <span className="text-[10px] text-primary/80 font-medium">{badge.icon} {badge.label}</span>
+                                </>
+                              ) : null;
+                            })()}
                           </div>
                         </div>
                       </div>
