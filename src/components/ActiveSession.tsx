@@ -157,6 +157,7 @@ export interface DropRow {
   rpe: string;
   completed: boolean;
   time?: string;
+  distance?: string; // display-unit value (string)
   startedAt?: number;
   endedAt?: number;
 }
@@ -169,6 +170,7 @@ export interface SetRow {
   type: SetType;
   rpe: string;
   time: string;          // total seconds (string), formatted as mm:ss for display
+  distance?: string;     // display-unit value (string)
   startedAt?: number;    // epoch ms — when "Start next set" countdown completed
   endedAt?: number;      // epoch ms — when "Stop set" was tapped
   drops?: DropRow[];
