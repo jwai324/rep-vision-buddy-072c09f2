@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
-import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
