@@ -122,7 +122,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
         </div>
       </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between">
           <Heart className="w-4 h-4 text-primary" />
           <div>
             <p className="text-sm font-medium text-foreground">Rest Day Activity</p>
