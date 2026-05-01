@@ -86,7 +86,8 @@ export function useCustomExercises() {
       movement_pattern: input.movementPattern,
       secondary_muscles: input.secondaryMuscles as any,
       is_recovery: input.isRecovery,
-    }).eq('id', dbId);
+      measurement_type: input.measurementType ?? null,
+    } as any).eq('id', dbId);
     if (error) { toast.error('Failed to update exercise'); return; }
     toast.success('Exercise updated');
     fetchExercises();
