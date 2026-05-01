@@ -49,6 +49,7 @@ export type Database = {
           exercise_type: string
           id: string
           is_recovery: boolean
+          measurement_type: string | null
           movement_pattern: string
           name: string
           primary_body_part: string
@@ -63,6 +64,7 @@ export type Database = {
           exercise_type?: string
           id?: string
           is_recovery?: boolean
+          measurement_type?: string | null
           movement_pattern?: string
           name: string
           primary_body_part?: string
@@ -77,6 +79,7 @@ export type Database = {
           exercise_type?: string
           id?: string
           is_recovery?: boolean
+          measurement_type?: string | null
           movement_pattern?: string
           name?: string
           primary_body_part?: string

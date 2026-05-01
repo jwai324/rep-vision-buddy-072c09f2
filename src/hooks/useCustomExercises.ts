@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import type { Exercise } from '@/data/exercises';
+import type { Exercise, MeasurementType } from '@/data/exercises';
 
 export interface CustomExerciseInput {
   name: string;
@@ -13,6 +13,7 @@ export interface CustomExerciseInput {
   movementPattern: string;
   secondaryMuscles: string[];
   isRecovery: boolean;
+  measurementType?: MeasurementType | null;
 }
 
 export function useCustomExercises() {
@@ -36,6 +37,7 @@ export function useCustomExercises() {
       exerciseType: row.exercise_type as Exercise['exerciseType'],
       movementPattern: row.movement_pattern,
       secondaryMuscles: (row.secondary_muscles as string[]) ?? [],
+      measurementType: (row as any).measurement_type as MeasurementType | undefined,
       isCustom: true as const,
       isRecovery: row.is_recovery,
     })));
@@ -56,7 +58,8 @@ export function useCustomExercises() {
       movement_pattern: input.movementPattern,
       secondary_muscles: input.secondaryMuscles as any,
       is_recovery: input.isRecovery,
-    });
+      measurement_type: input.measurementType ?? null,
+    } as any);
     if (error) { toast.error('Failed to save exercise'); return; }
     toast.success('Exercise created');
     fetchExercises();
@@ -83,7 +86,8 @@ export function useCustomExercises() {
       movement_pattern: input.movementPattern,
       secondary_muscles: input.secondaryMuscles as any,
       is_recovery: input.isRecovery,
-    }).eq('id', dbId);
+      measurement_type: input.measurementType ?? null,
+    } as any).eq('id', dbId);
     if (error) { toast.error('Failed to update exercise'); return; }
     toast.success('Exercise updated');
     fetchExercises();

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { BODY_PARTS, EQUIPMENT_LIST, EXERCISE_DATABASE } from '@/data/exercises';
+import type { MeasurementType } from '@/data/exercises';
 import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
 import type { Exercise } from '@/data/exercises';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
@@ -13,6 +14,7 @@ const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['Compound', 'Isolation'] as const;
 const BODY_PART_OPTIONS = BODY_PARTS.filter(b => b !== 'All');
 const EQUIPMENT_OPTIONS = EQUIPMENT_LIST.filter(e => e !== 'All');
+const MEASUREMENT_TYPES: MeasurementType[] = ['Reps', 'Reps + Weight', 'Time', 'Distance', 'Time + Distance'];
 
 interface CreateExerciseFormProps {
   onSave: (input: CustomExerciseInput) => void;
@@ -32,6 +34,9 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
     (editingExercise?.exerciseType as any) || 'Isolation'
   );
   const [isRecovery, setIsRecovery] = useState(editingExercise?.isRecovery || false);
+  const [measurementType, setMeasurementType] = useState<MeasurementType | null>(
+    editingExercise?.measurementType ?? null
+  );
 
   const isDuplicate = useMemo(() => {
     if (!name.trim()) return false;
@@ -51,6 +56,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
       movementPattern: 'Other',
       secondaryMuscles: [],
       isRecovery,
+      measurementType: measurementType,
     });
   };
 
@@ -102,6 +108,16 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
         <div className="flex gap-1 flex-wrap">
           {EXERCISE_TYPES.map(t => (
             <button key={t} onClick={() => setExerciseType(t)} className={chipClass(exerciseType === t)}>{t}</button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground mb-1 block">Measurement Type</label>
+        <p className="text-[10px] text-muted-foreground/60 mb-1">How is this exercise measured? Leave blank for Reps + Weight (default)</p>
+        <div className="flex gap-1 flex-wrap">
+          {MEASUREMENT_TYPES.map(mt => (
+            <button key={mt} onClick={() => setMeasurementType(measurementType === mt ? null : mt)} className={chipClass(measurementType === mt)}>{mt}</button>
           ))}
         </div>
       </div>
