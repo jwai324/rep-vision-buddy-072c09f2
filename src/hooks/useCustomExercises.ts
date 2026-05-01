@@ -37,6 +37,7 @@ export function useCustomExercises() {
       exerciseType: row.exercise_type as Exercise['exerciseType'],
       movementPattern: row.movement_pattern,
       secondaryMuscles: (row.secondary_muscles as string[]) ?? [],
+      measurementType: (row as any).measurement_type as MeasurementType | undefined,
       isCustom: true as const,
       isRecovery: row.is_recovery,
     })));
