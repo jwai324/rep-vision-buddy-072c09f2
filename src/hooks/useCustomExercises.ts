@@ -58,7 +58,8 @@ export function useCustomExercises() {
       movement_pattern: input.movementPattern,
       secondary_muscles: input.secondaryMuscles as any,
       is_recovery: input.isRecovery,
-    });
+      measurement_type: input.measurementType ?? null,
+    } as any);
     if (error) { toast.error('Failed to save exercise'); return; }
     toast.success('Exercise created');
     fetchExercises();
