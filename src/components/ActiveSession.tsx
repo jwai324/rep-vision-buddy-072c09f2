@@ -437,8 +437,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       restRecords,
       runningSet,
       showFocusMode,
+      showExercisePicker,
+      pendingExerciseIds: pendingExerciseIds.length > 0 ? pendingExerciseIds : undefined,
     });
-  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode]);
+  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds]);
 
   // Derive remaining seconds from the persisted record. Allowed to go NEGATIVE
   // once the timer passes 0 — the rest timer keeps counting into "overtime"
