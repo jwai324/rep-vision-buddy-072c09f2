@@ -1,4 +1,5 @@
 import type { WeightUnit } from '@/hooks/useStorage';
+import type { ExerciseInputMode } from '@/utils/exerciseInputMode';
 
 export interface ValidationResult {
   valid: boolean;
@@ -78,9 +79,45 @@ export function canCompleteSet(
   isBodyweight = false,
   isCardio = false,
   time = '',
+  mode?: ExerciseInputMode,
+  distance?: string,
 ): boolean {
+  // If mode is provided, use mode-aware logic
+  if (mode) {
+    switch (mode) {
+      case 'time': {
+        const timeVal = parseFloat(time);
+        return !isNaN(timeVal) && timeVal > 0;
+      }
+      case 'distance': {
+        const distVal = parseFloat(distance ?? '');
+        return !isNaN(distVal) && distVal > 0;
+      }
+      case 'time-distance': {
+        const timeVal = parseFloat(time);
+        const distVal = parseFloat(distance ?? '');
+        // At least one must be filled
+        return (!isNaN(timeVal) && timeVal > 0) || (!isNaN(distVal) && distVal > 0);
+      }
+      case 'reps': {
+        const repsResult = validateReps(reps);
+        return repsResult.valid;
+      }
+      case 'band': {
+        const repsResult = validateReps(reps);
+        return repsResult.valid && weight !== '';
+      }
+      case 'reps-weight':
+      default: {
+        const weightResult = validateWeight(weight, unit, isBodyweight);
+        const repsResult = validateReps(reps);
+        return weightResult.valid && repsResult.valid;
+      }
+    }
+  }
+
+  // Legacy fallback
   if (isCardio) {
-    // Cardio only needs time
     const timeVal = parseFloat(time);
     return !isNaN(timeVal) && timeVal > 0;
   }

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
-import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
@@ -157,6 +157,7 @@ export interface DropRow {
   rpe: string;
   completed: boolean;
   time?: string;
+  distance?: string; // display-unit value (string)
   startedAt?: number;
   endedAt?: number;
 }
@@ -169,6 +170,7 @@ export interface SetRow {
   type: SetType;
   rpe: string;
   time: string;          // total seconds (string), formatted as mm:ss for display
+  distance?: string;     // display-unit value (string)
   startedAt?: number;    // epoch ms — when "Start next set" countdown completed
   endedAt?: number;      // epoch ms — when "Stop set" was tapped
   drops?: DropRow[];
@@ -767,8 +769,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const mode = getExerciseInputMode(block.exerciseId, customExercises);
         const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
         const isCardio = isTimeBased(mode);
-        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, isCardio, set.time)) {
-          toast.error(isCardio ? 'Enter a time before completing this set.' : 'Enter valid weight and reps before completing this set.');
+        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, isCardio, set.time, mode, set.distance)) {
+          const errorMsg = isTimeBased(mode) ? 'Enter a time before completing this set.'
+            : isDistanceBased(mode) ? 'Enter a distance before completing this set.'
+            : mode === 'reps' ? 'Enter reps before completing this set.'
+            : 'Enter valid weight and reps before completing this set.';
+          toast.error(errorMsg);
           return prev;
         }
       }
@@ -788,6 +794,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 reps: s.reps || completedSet.reps,
                 rpe: s.rpe || completedSet.rpe,
                 time: s.time || completedSet.time,
+                distance: s.distance || completedSet.distance,
               };
             }
             return s;
@@ -1352,24 +1359,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const sets: WorkoutSet[] = [];
         b.sets.filter(s => s.completed).forEach(s => {
           const seconds = timeToSeconds(s.time);
+          const distMeters = s.distance ? toMeters(parseFloat(s.distance) || 0, 'km') : undefined;
           sets.push({
             setNumber: s.setNumber,
             type: s.type,
-            reps: isTimeBased(mode) ? 1 : (parseInt(s.reps) || 0),
-            weight: isTimeBased(mode) ? undefined : (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined),
+            reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(s.reps) || 0),
+            weight: usesWeight(mode) ? (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined) : undefined,
             rpe: s.rpe ? parseFloat(s.rpe) : undefined,
             time: seconds > 0 ? seconds : (isTimeBased(mode) ? (parseInt(s.reps) || 0) : undefined),
+            distance: distMeters && distMeters > 0 ? distMeters : undefined,
           });
           // Append completed dropsets immediately after their parent set
           (s.drops ?? []).filter(d => d.completed).forEach(d => {
             const dSeconds = d.time ? timeToSeconds(d.time) : 0;
+            const dDistMeters = d.distance ? toMeters(parseFloat(d.distance) || 0, 'km') : undefined;
             sets.push({
               setNumber: s.setNumber,
               type: 'dropset',
-              reps: isTimeBased(mode) ? 1 : (parseInt(d.reps) || 0),
-              weight: isTimeBased(mode) ? undefined : (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined),
+              reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(d.reps) || 0),
+              weight: usesWeight(mode) ? (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined) : undefined,
               rpe: d.rpe ? parseFloat(d.rpe) : undefined,
               time: dSeconds > 0 ? dSeconds : undefined,
+              distance: dDistMeters && dDistMeters > 0 ? dDistMeters : undefined,
             });
           });
         });
@@ -2075,7 +2086,122 @@ const TimeInputButton: React.FC<{ id: string; value: string; onChange: (v: strin
   );
 };
 
+/** Reusable RPE popover tooltip */
+const RpeHeaderPopover: React.FC = () => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
+    </PopoverTrigger>
+    <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
+      <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
+      <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
+    </PopoverContent>
+  </Popover>
+);
 
+/** Reusable timer header icon */
+const TimerHeaderPopover: React.FC = () => (
+  <Popover>
+    <PopoverTrigger asChild>
+      <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+        <Timer className="w-3 h-3 mx-auto" />
+      </button>
+    </PopoverTrigger>
+    <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
+      <p className="font-semibold mb-1">Time elapsed</p>
+      <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
+    </PopoverContent>
+  </Popover>
+);
+
+const CheckHeader: React.FC = () => (
+  <span className="text-center"><Check className="w-3 h-3 mx-auto" /></span>
+);
+
+/** Grid column template per mode */
+function getGridCols(mode: ExerciseInputMode): string {
+  switch (mode) {
+    case 'time': return 'grid-cols-[32px_1fr_1fr_30px_36px]';
+    case 'time-distance': return 'grid-cols-[32px_1fr_1fr_1fr_36px]';
+    case 'distance': return 'grid-cols-[32px_1fr_1fr_36px]';
+    case 'reps': return 'grid-cols-[32px_1fr_1fr_42px_30px_36px]';
+    case 'band':
+    case 'reps-weight':
+    default: return 'grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px]';
+  }
+}
+
+/** Table header row per mode */
+const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: WeightUnit }> = ({ inputMode, weightUnit }) => {
+  const cols = getGridCols(inputMode);
+  switch (inputMode) {
+    case 'time':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Minutes</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'time-distance':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Minutes</span>
+          <span className="text-center">km</span>
+          <RpeHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'distance':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">km</span>
+          <RpeHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'reps':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">Reps</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'band':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">Band</span>
+          <span className="text-center">Reps</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'reps-weight':
+    default:
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">{weightUnit}</span>
+          <span className="text-center">Reps</span>
+          <RpeHeaderPopover />
+          <TimerHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+  }
+};
 
 const FIELD_ORDER = ['weight', 'reps', 'rpe'] as const;
 
@@ -2277,329 +2403,253 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
       )}
 
       {/* Table Header */}
-      {isTimeBased(inputMode) ? (
-        <div className="grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
-          <span>Set</span>
-          <span className="text-center">Minutes</span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
-              <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
-              <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
-            </PopoverContent>
-          </Popover>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
-                <Timer className="w-3 h-3 mx-auto" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
-              <p className="font-semibold mb-1">Time elapsed</p>
-              <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
-            </PopoverContent>
-          </Popover>
-          <span className="text-center">
-            <Check className="w-3 h-3 mx-auto" />
-          </span>
-        </div>
-      ) : inputMode === 'band' ? (
-        <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
-          <span>Set</span>
-          <span className="text-center">Previous</span>
-          <span className="text-center">Band</span>
-          <span className="text-center">Reps</span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
-              <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
-              <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels.</p>
-            </PopoverContent>
-          </Popover>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
-                <Timer className="w-3 h-3 mx-auto" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
-              <p className="font-semibold mb-1">Time elapsed</p>
-              <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
-            </PopoverContent>
-          </Popover>
-          <span className="text-center">
-            <Check className="w-3 h-3 mx-auto" />
-          </span>
-        </div>
-      ) : (
-      <div className="grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 text-xs font-medium text-muted-foreground mb-1 px-1">
-        <span>Set</span>
-        <span className="text-center">Previous</span>
-        <span className="text-center">{weightUnit}</span>
-        <span className="text-center">Reps</span>
-        <Popover>
-          <PopoverTrigger asChild>
-            <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors underline decoration-dotted underline-offset-2">RPE</button>
-          </PopoverTrigger>
-          <PopoverContent side="top" align="center" className="w-64 p-3 text-xs leading-relaxed text-foreground">
-            <p className="font-semibold mb-1">Rate of Perceived Exertion (RPE)</p>
-            <p className="text-muted-foreground">A subjective 1–10 scale measuring how hard an exercise feels. It helps prevent overtraining and optimizes training loads without specialized equipment.</p>
-            <ul className="mt-2 space-y-0.5 text-muted-foreground">
-              <li><span className="font-medium text-foreground">1–3:</span> Light</li>
-              <li><span className="font-medium text-foreground">4–6:</span> Moderate</li>
-              <li><span className="font-medium text-foreground">7–9:</span> Hard</li>
-              <li><span className="font-medium text-foreground">10:</span> Max effort / failure</li>
-            </ul>
-          </PopoverContent>
-        </Popover>
-        <Popover>
-          <PopoverTrigger asChild>
-            <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
-              <Timer className="w-3 h-3 mx-auto" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent side="top" align="center" className="w-56 p-3 text-xs leading-relaxed text-foreground">
-            <p className="font-semibold mb-1">Time elapsed</p>
-            <p className="text-muted-foreground">Time it took to complete the set, captured automatically when you start and finish a set.</p>
-          </PopoverContent>
-        </Popover>
-        <span className="text-center">
-          <Check className="w-3 h-3 mx-auto" />
-        </span>
-      </div>
-      )}
+      <SetTableHeader inputMode={inputMode} weightUnit={weightUnit} />
 
       {/* Set Rows */}
       {block.sets.map((set, setIdx) => {
         const superscripts = ['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
-        return (
-          <React.Fragment key={setIdx}>
-            <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
-              {isTimeBased(inputMode) ? (
-                <div className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
-                  <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
-                    {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
-                  </span>
-                  <TimeInputButton
-                    id={buildInputId(blockIdx, setIdx, 'time')}
-                    value={set.time}
-                    onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)}
-                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx}
-                  />
-                  <RpePickerButton
-                    id={buildInputId(blockIdx, setIdx, 'rpe')}
-                    value={set.rpe}
-                    onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
-                  />
+        const gridCols = getGridCols(inputMode);
+        const setLabel = set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber;
+        const setLabelClass = `text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`;
+        const completeBtn = (
+          <button
+            id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
+            onClick={() => onToggleComplete(blockIdx, setIdx)}
+            className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+              set.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Check className="w-4 h-4" />
+          </button>
+        );
+
+        const renderSetRow = () => {
+          switch (inputMode) {
+            case 'time':
+              return (
+                <div className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={setLabelClass}>{setLabel}</span>
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
                   <span />
-                  <button
-                    onClick={() => onToggleComplete(blockIdx, setIdx)}
-                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                      set.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                  </button>
+                  {completeBtn}
                 </div>
-              ) : (
-                <div
-                  id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
-                  className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ${
-                    set.completed ? 'bg-primary/10' : ''
-                  }`}
-                >
-                  <span className={`text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`}>
-                    {set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber}
-                  </span>
-                  {(() => {
-                    const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
-                    const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
-                    return prevSet ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prevSet.weight, weightUnit))));
-                          if (prevSet.reps !== undefined) onUpdateSet(blockIdx, setIdx, 'reps', String(prevSet.reps));
-                          if (prevSet.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prevSet.rpe));
-                          if (prevSet.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prevSet.time));
-                        }}
-                        className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer"
-                        title="Tap to copy to current set"
-                      >
-                        {`${prevSet.weight != null ? Math.round(fromKg(prevSet.weight!, weightUnit)) : '—'} × ${prevSet.reps}`}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground text-center">—</span>
-                    );
-                  })()}
-                  {inputMode === 'band' ? (
-                    <select
-                      id={buildInputId(blockIdx, setIdx, 'weight')}
-                      value={set.weight}
-                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
-                    >
-                      <option value="">—</option>
-                      {BAND_LEVELS.map(b => (
-                        <option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      id={blockIdx === 0 && setIdx === 0 ? 'tutorial-weight-input' : buildInputId(blockIdx, setIdx, 'weight')}
-                      type="number"
-                      inputMode="decimal"
-                      value={set.weight}
-                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-                      onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
-                      onFocus={e => e.target.value && e.target.select()}
-                      placeholder="—"
-                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                    />
-                  )}
+              );
+            case 'time-distance':
+              return (
+                <div className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={setLabelClass}>{setLabel}</span>
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} />
                   <input
-                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-reps-input' : buildInputId(blockIdx, setIdx, 'reps')}
+                    id={buildInputId(blockIdx, setIdx, 'distance')}
                     type="number"
-                    inputMode="numeric"
-                    value={set.reps}
-                    onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
-                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
+                    inputMode="decimal"
+                    value={set.distance ?? ''}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'distance' as keyof SetRow, e.target.value)}
                     onFocus={e => e.target.value && e.target.select()}
                     placeholder="—"
                     className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
-                  <RpePickerButton
-                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : buildInputId(blockIdx, setIdx, 'rpe')}
-                    value={set.rpe}
-                    onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)}
-                  />
-                  <TimeInputButton
-                    id={buildInputId(blockIdx, setIdx, 'time')}
-                    value={set.time}
-                    onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)}
-                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx}
-                    small
-                  />
-                  <button
-                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
-                    onClick={() => onToggleComplete(blockIdx, setIdx)}
-                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                      set.completed
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                  </button>
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
+                  {completeBtn}
                 </div>
-              )}
+              );
+            case 'distance':
+              return (
+                <div className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={setLabelClass}>{setLabel}</span>
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'distance')}
+                    type="number"
+                    inputMode="decimal"
+                    value={set.distance ?? ''}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'distance' as keyof SetRow, e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
+                  {completeBtn}
+                </div>
+              );
+            case 'reps': {
+              const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
+              const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
+              return (
+                <div id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
+                  className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={setLabelClass}>{setLabel}</span>
+                  {prevSet ? (
+                    <button type="button" onClick={() => {
+                      if (prevSet.reps !== undefined) onUpdateSet(blockIdx, setIdx, 'reps', String(prevSet.reps));
+                      if (prevSet.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prevSet.rpe));
+                    }} className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer" title="Tap to copy">
+                      {`${prevSet.reps} reps`}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground text-center">—</span>
+                  )}
+                  <input
+                    id={blockIdx === 0 && setIdx === 0 ? 'tutorial-reps-input' : buildInputId(blockIdx, setIdx, 'reps')}
+                    type="number" inputMode="numeric" value={set.reps}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()} placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                  />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} small />
+                  {completeBtn}
+                </div>
+              );
+            }
+            case 'band':
+            case 'reps-weight':
+            default: {
+              const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
+              const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
+              return (
+                <div id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
+                  className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={setLabelClass}>{setLabel}</span>
+                  {prevSet ? (
+                    <button type="button" onClick={() => {
+                      if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prevSet.weight, weightUnit))));
+                      if (prevSet.reps !== undefined) onUpdateSet(blockIdx, setIdx, 'reps', String(prevSet.reps));
+                      if (prevSet.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prevSet.rpe));
+                      if (prevSet.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prevSet.time));
+                    }} className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer" title="Tap to copy to current set">
+                      {`${prevSet.weight != null ? Math.round(fromKg(prevSet.weight!, weightUnit)) : '—'} × ${prevSet.reps}`}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground text-center">—</span>
+                  )}
+                  {inputMode === 'band' ? (
+                    <select id={buildInputId(blockIdx, setIdx, 'weight')} value={set.weight}
+                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                      <option value="">—</option>
+                      {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
+                    </select>
+                  ) : (
+                    <input id={blockIdx === 0 && setIdx === 0 ? 'tutorial-weight-input' : buildInputId(blockIdx, setIdx, 'weight')}
+                      type="number" inputMode="decimal" value={set.weight}
+                      onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                      onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
+                      onFocus={e => e.target.value && e.target.select()} placeholder="—"
+                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  )}
+                  <input id={blockIdx === 0 && setIdx === 0 ? 'tutorial-reps-input' : buildInputId(blockIdx, setIdx, 'reps')}
+                    type="number" inputMode="numeric" value={set.reps}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
+                    onFocus={e => e.target.value && e.target.select()} placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  <RpePickerButton id={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} small />
+                  {completeBtn}
+                </div>
+              );
+            }
+          }
+        };
+
+        const renderDropRow = (drop: DropRow, dropIdx: number) => {
+          const dropLabel = `${set.setNumber}D${superscripts[dropIdx] ?? `${dropIdx + 1}`}`;
+          const dropCompleteBtn = (
+            <button onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${drop.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'}`}>
+              <Check className="w-4 h-4" />
+            </button>
+          );
+          const baseClass = `grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${drop.completed ? 'bg-primary/10' : ''}`;
+
+          switch (inputMode) {
+            case 'time':
+              return (
+                <div className={baseClass}>
+                  <span className="text-xs font-bold text-set-dropset text-center">{dropLabel}</span>
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
+                  <span />
+                  {dropCompleteBtn}
+                </div>
+              );
+            case 'time-distance':
+              return (
+                <div className={baseClass}>
+                  <span className="text-xs font-bold text-set-dropset text-center">{dropLabel}</span>
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} />
+                  <input id={buildInputId(blockIdx, setIdx, 'distance', dropIdx)} type="number" inputMode="decimal" value={drop.distance ?? ''}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'distance' as keyof DropRow, e.target.value)}
+                    placeholder="—" className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
+                  {dropCompleteBtn}
+                </div>
+              );
+            case 'distance':
+              return (
+                <div className={baseClass}>
+                  <span className="text-xs font-bold text-set-dropset text-center">{dropLabel}</span>
+                  <input id={buildInputId(blockIdx, setIdx, 'distance', dropIdx)} type="number" inputMode="decimal" value={drop.distance ?? ''}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'distance' as keyof DropRow, e.target.value)}
+                    placeholder="—" className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
+                  {dropCompleteBtn}
+                </div>
+              );
+            case 'reps':
+              return (
+                <div className={baseClass}>
+                  <span className="text-xs font-bold text-set-dropset text-center">{dropLabel}</span>
+                  <span className="text-xs text-muted-foreground text-center">—</span>
+                  <input id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)} type="number" inputMode="numeric" value={drop.reps}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)} placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} small />
+                  {dropCompleteBtn}
+                </div>
+              );
+            default:
+              return (
+                <div className={baseClass}>
+                  <span className="text-xs font-bold text-set-dropset text-center">{dropLabel}</span>
+                  <span className="text-xs text-muted-foreground text-center">—</span>
+                  {inputMode === 'band' ? (
+                    <select id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} value={drop.weight}
+                      onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                      <option value="">—</option>
+                      {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
+                    </select>
+                  ) : (
+                    <input id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} type="number" inputMode="decimal" value={drop.weight}
+                      onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                      onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)} placeholder="—"
+                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  )}
+                  <input id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)} type="number" inputMode="numeric" value={drop.reps}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
+                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps', dropIdx)} placeholder="—"
+                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} small />
+                  {dropCompleteBtn}
+                </div>
+              );
+          }
+        };
+
+        return (
+          <React.Fragment key={setIdx}>
+            <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
+              {renderSetRow()}
             </SwipeToDelete>
 
             {/* Drop rows */}
             {set.drops?.map((drop, dropIdx) => (
               <SwipeToDelete key={`drop-${setIdx}-${dropIdx}`} onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}>
-                {isTimeBased(inputMode) ? (
-                  <div
-                    className={`grid grid-cols-[32px_1fr_1fr_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
-                      drop.completed ? 'bg-primary/10' : ''
-                    }`}
-                  >
-                    <span className="text-xs font-bold text-set-dropset text-center">
-                      {set.setNumber}D{superscripts[dropIdx] ?? `${dropIdx + 1}`}
-                    </span>
-                    <TimeInputButton
-                      id={buildInputId(blockIdx, setIdx, 'time', dropIdx)}
-                      value={drop.time ?? ''}
-                      onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)}
-                      running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx}
-                    />
-                    <RpePickerButton
-                      id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)}
-                      value={drop.rpe}
-                      onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)}
-                    />
-                    <span />
-                    <button
-                      onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
-                      className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                        drop.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <Check className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                <div
-                  className={`grid grid-cols-[32px_1fr_1fr_1fr_42px_30px_36px] gap-1 items-center py-1.5 px-1 rounded-md ml-4 border-l-2 border-set-dropset/40 ${
-                    drop.completed ? 'bg-primary/10' : ''
-                  }`}
-                >
-                  <span className="text-xs font-bold text-set-dropset text-center">
-                    {set.setNumber}D{superscripts[dropIdx] ?? `${dropIdx + 1}`}
-                  </span>
-                  <span className="text-xs text-muted-foreground text-center">—</span>
-                  {inputMode === 'band' ? (
-                    <select
-                      id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)}
-                      value={drop.weight}
-                      onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
-                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
-                    >
-                      <option value="">—</option>
-                      {BAND_LEVELS.map(b => (
-                        <option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)}
-                      type="number"
-                      inputMode="decimal"
-                      value={drop.weight}
-                      onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
-                      onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)}
-                      placeholder="—"
-                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                    />
-                  )}
-                  <input
-                    id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)}
-                    type="number"
-                    inputMode="numeric"
-                    value={drop.reps}
-                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
-                    onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps', dropIdx)}
-                    placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
-                  />
-                  <RpePickerButton
-                    id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)}
-                    value={drop.rpe}
-                    onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)}
-                  />
-                  <TimeInputButton
-                    id={buildInputId(blockIdx, setIdx, 'time', dropIdx)}
-                    value={drop.time ?? ''}
-                    onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)}
-                    running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx}
-                    small
-                  />
-                  <button
-                    onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
-                    className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
-                      drop.completed
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                  </button>
-                </div>
-                )}
+                {renderDropRow(drop, dropIdx)}
               </SwipeToDelete>
             ))}
 
