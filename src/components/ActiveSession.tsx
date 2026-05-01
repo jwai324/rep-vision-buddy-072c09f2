@@ -794,6 +794,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 reps: s.reps || completedSet.reps,
                 rpe: s.rpe || completedSet.rpe,
                 time: s.time || completedSet.time,
+                distance: s.distance || completedSet.distance,
               };
             }
             return s;
