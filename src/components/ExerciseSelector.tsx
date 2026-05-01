@@ -21,9 +21,11 @@ interface ExerciseSelectorProps {
   multiSelect?: boolean;
   browseMode?: boolean;
   onExerciseTap?: (id: ExerciseId) => void;
+  initialSelected?: ExerciseId[];
+  onSelectionChange?: (ids: ExerciseId[]) => void;
 }
 
-export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap }) => {
+export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, onSelectMultiple, onStartTemplate, multiSelect = true, browseMode = false, onExerciseTap, initialSelected, onSelectionChange }) => {
   const { exercises: customExercises, addExercise } = useCustomExercisesContext();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState('');
@@ -33,7 +35,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
   const [typeFilter, setTypeFilter] = useState<string>('All');
   const [showFilters, setShowFilters] = useState(false);
-  const [selected, setSelected] = useState<Set<ExerciseId>>(new Set());
+  const [selected, setSelected] = useState<Set<ExerciseId>>(() => new Set(initialSelected ?? []));
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,6 +86,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      onSelectionChange?.(Array.from(next));
       return next;
     });
   };
@@ -95,6 +98,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
       selected.forEach(id => onSelect(id));
     }
     setSelected(new Set());
+    onSelectionChange?.([]);
   };
 
   const clearFilters = () => {

@@ -1,18 +1,21 @@
-
-
-## Persist Focus Mode state across navigation and sleep
+## Persist exercise picker selections across navigation
 
 ### Problem
-When the phone goes to sleep or the user navigates away from the active session, Focus Mode closes because `showFocusMode` is a simple `useState(false)` that isn't included in the localStorage cache.
+When the user opens the exercise picker during a workout, selects exercises, then navigates away (e.g. via the minimized session bar), the ActiveSession component unmounts. On return, `showExercisePicker` resets to `false` and the ExerciseSelector's internal `selected` state is lost.
 
 ### Fix
 
-**`src/components/ActiveSession.tsx`**:
+1. **Cache `showExercisePicker` and selected exercise IDs** in the `ActiveSessionCache` interface and the `safeWriteCache` call, so they survive unmount/remount.
 
-1. Add `showFocusMode?: boolean` to the `ActiveSessionCache` interface.
-2. Include `showFocusMode` in the `safeWriteCache` call (the `useEffect` at ~line 423).
-3. Initialize `showFocusMode` state from the cache: change `useState(false)` to `useState(cachedSession?.showFocusMode ?? false)`.
+2. **Lift `selected` state** into `ActiveSession.tsx` — initialize from cache, pass into `ExerciseSelector` as a new prop.
+
+3. **Update `ExerciseSelector`** to accept optional `initialSelected` and `onSelectionChange` props so the parent controls persistence.
 
 ### Files
-- Modify: `src/components/ActiveSession.tsx`
-
+- **`src/components/ActiveSession.tsx`**
+  - Add `showExercisePicker?: boolean` and `pendingExerciseIds?: ExerciseId[]` to `ActiveSessionCache`
+  - Initialize `showExercisePicker` from cache
+  - Manage a `pendingExerciseIds` state, pass to ExerciseSelector and include in cache writes
+- **`src/components/ExerciseSelector.tsx`**
+  - Add `initialSelected?: ExerciseId[]` and `onSelectionChange?: (ids: ExerciseId[]) => void` props
+  - Initialize `selected` from `initialSelected`; call `onSelectionChange` when selection changes
