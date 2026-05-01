@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
-import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
