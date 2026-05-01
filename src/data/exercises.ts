@@ -1,3 +1,5 @@
+export type MeasurementType = 'Reps' | 'Reps + Weight' | 'Time' | 'Distance' | 'Time + Distance';
+
 export interface Exercise {
   id: string;
   name: string;
@@ -9,6 +11,8 @@ export interface Exercise {
   secondaryMuscles: string[];
   /** Lowercase comma-separated alternate search terms pulled from Notion */
   aliases?: string[];
+  /** Determines which input fields to show when logging sets. Synced from Notion. */
+  measurementType?: MeasurementType;
 }
 
 export const EXERCISE_DATABASE: Exercise[] = [
