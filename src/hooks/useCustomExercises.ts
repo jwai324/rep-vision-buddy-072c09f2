@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import type { Exercise } from '@/data/exercises';
+import type { Exercise, MeasurementType } from '@/data/exercises';
 
 export interface CustomExerciseInput {
   name: string;
@@ -13,6 +13,7 @@ export interface CustomExerciseInput {
   movementPattern: string;
   secondaryMuscles: string[];
   isRecovery: boolean;
+  measurementType?: MeasurementType | null;
 }
 
 export function useCustomExercises() {
