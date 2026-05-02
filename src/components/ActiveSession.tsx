@@ -1604,7 +1604,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                     onChange={e => setNewLocationInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addCustomLocation()}
                     placeholder="Add location..."
-                    className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground px-1 py-1"
+                    className="flex-1 text-base bg-transparent outline-none text-foreground placeholder:text-muted-foreground px-1 py-1"
                   />
                   <button
                     onClick={addCustomLocation}
