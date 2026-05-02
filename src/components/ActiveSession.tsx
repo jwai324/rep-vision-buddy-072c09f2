@@ -381,8 +381,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   });
   const [editTime, setEditTime] = useState(() => {
     if (!editSession) return '';
-    const d = parseLocalDate(editSession.date);
-    return format(d, 'HH:mm');
+    if (editSession.startedAt) {
+      return format(new Date(editSession.startedAt), 'HH:mm');
+    }
+    return '';
   });
   const [editDurationMin, setEditDurationMin] = useState(() => {
     if (!editSession) return '';
