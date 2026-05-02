@@ -1626,7 +1626,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 type="date"
                 value={editDate}
                 onChange={e => setEditDate(e.target.value)}
-                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-base text-foreground outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -1635,7 +1635,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 type="time"
                 value={editTime}
                 onChange={e => setEditTime(e.target.value)}
-                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-base text-foreground outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -1646,7 +1646,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 min="0"
                 value={editDurationMin}
                 onChange={e => setEditDurationMin(e.target.value)}
-                className="w-20 bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+                className="w-20 bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-base text-foreground outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
           </div>
@@ -1706,7 +1706,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               onChange={e => setNoteText(e.target.value)}
               placeholder="Type your note..."
               rows={3}
-              className="w-full bg-secondary/60 border border-border rounded-lg p-3 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary resize-none"
+              className="w-full bg-secondary/60 border border-border rounded-lg p-3 text-base text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary resize-none"
             />
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setEditingNote(null)}>Cancel</Button>
@@ -1832,7 +1832,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             value={workoutNote}
             onChange={e => setWorkoutNote(e.target.value)}
             placeholder="How did this workout feel? Any observations..."
-            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             maxLength={500}
           />
           <p className="text-xs text-muted-foreground text-right">{workoutNote.length}/500</p>
