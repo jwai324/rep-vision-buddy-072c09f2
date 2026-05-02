@@ -1,21 +1,37 @@
-## What changes
+## Problem
 
-In the Focus Mode "Up next" footer, show the next exercise's upcoming set weight and reps alongside the exercise name (e.g. "Bench Press — 80kg × 8").
+Workout start time is not persisted. The `date` column only stores `yyyy-MM-dd`. The edit mode has a "Time" input but it's not wired to anything on save. New workouts don't record when they began.
 
-## Technical details
+## Plan
 
-**File: `src/components/FocusMode.tsx`**
+### 1. Database migration — add `started_at` column
 
-1. Refactor `computeNextName` into `computeNextInfo` that returns `{ name, weight, reps } | null` instead of just a string. It will:
-   - Find the next block index (same as today)
-   - Find the first incomplete set in that block
-   - Return the set's weight and reps values along with the exercise name
+Add a nullable `timestamptz` column to `workout_sessions`:
 
-2. Update the `nextExerciseName` memo to use the new function, getting back an object.
+```sql
+ALTER TABLE public.workout_sessions ADD COLUMN started_at timestamptz;
+```
 
-3. In the "Up next" footer UI, append weight/reps after the exercise name when available, e.g.:
-   ```
-   Up next
-   Bench Press · 80kg × 8
-   ```
-   Weight will be displayed with the user's weight unit. If weight or reps are empty/zero, only show what's available.
+### 2. Update WorkoutSession type
+
+**`src/types/workout.ts`** — add `startedAt?: string` to the `WorkoutSession` interface.
+
+### 3. Save start time on new workouts
+
+**`src/components/ActiveSession.tsx`** — in `finishWorkout`:
+- For new workouts: set `startedAt` to `new Date(startTime.current).toISOString()` (the ref already tracks when the session began).
+- For edit mode: combine `editDate` + `editTime` into a `startedAt` ISO string so the "Time" input actually persists.
+
+### 4. Persist and load `started_at`
+
+**`src/hooks/useStorage.ts`**:
+- `saveSession`: include `started_at: session.startedAt ?? null` in the upsert.
+- `mapSession`: read `row.started_at` into `startedAt`.
+
+### 5. Show start time on completed sessions
+
+**`src/components/SessionSummary.tsx`** — display the start time (e.g. "Started at 6:45 AM") below the date when `session.startedAt` is available.
+
+### 6. Wire start time into edit mode
+
+**`src/components/ActiveSession.tsx`** — initialize `editTime` from `editSession.startedAt` (if present) instead of parsing the date-only string. This way the existing "Time" input correctly shows and edits the start time.

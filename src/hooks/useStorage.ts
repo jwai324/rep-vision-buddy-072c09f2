@@ -81,6 +81,7 @@ function mapSession(row: any): WorkoutSession {
   return {
     id: row.id,
     date: row.date,
+    startedAt: row.started_at ?? undefined,
     exercises: row.exercises as any[],
     duration: row.duration,
     totalVolume: Number(row.total_volume),
@@ -222,6 +223,7 @@ export function useStorage() {
       id: session.id,
       user_id: user.id,
       date: session.date,
+      started_at: session.startedAt ?? null,
       exercises: session.exercises as any,
       duration: session.duration,
       total_volume: session.totalVolume,

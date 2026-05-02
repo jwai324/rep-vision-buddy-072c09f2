@@ -28,6 +28,7 @@ export interface ExerciseLog {
 export interface WorkoutSession {
   id: string;
   date: string;
+  startedAt?: string; // ISO 8601 timestamp of when the workout began
   exercises: ExerciseLog[];
   duration: number; // seconds
   totalVolume: number;
