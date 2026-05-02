@@ -1426,6 +1426,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const finalSession: WorkoutSession = {
       id: isEditMode && editSession ? editSession.id : crypto.randomUUID(),
       date: sessionDate,
+      startedAt,
       exercises: exerciseLogs,
       duration,
       totalVolume,
