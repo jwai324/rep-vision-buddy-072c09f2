@@ -1400,13 +1400,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
     let sessionDate: string;
     let duration: number;
+    let startedAt: string | undefined;
 
     if (isEditMode && editSession) {
       sessionDate = editDate || editSession.date.substring(0, 10);
       duration = editDurationMin ? parseInt(editDurationMin) * 60 : editSession.duration;
+      // Combine editDate + editTime into a startedAt ISO string
+      if (editTime) {
+        const combined = new Date(`${sessionDate}T${editTime}:00`);
+        startedAt = combined.toISOString();
+      } else {
+        startedAt = editSession.startedAt;
+      }
     } else {
       sessionDate = format(new Date(), 'yyyy-MM-dd');
       duration = Math.floor((Date.now() - startTime.current) / 1000);
+      startedAt = new Date(startTime.current).toISOString();
     }
 
     // Duration < 30s prompt
