@@ -341,7 +341,7 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
           </div>
 
           {/* Up next footer */}
-          {nextExerciseName && (
+          {nextInfo && (
             <div
               className={cn(
                 'px-4 pt-8 pb-4 transition-opacity duration-300',
@@ -353,7 +353,14 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
                 ref={upNextSlotRef}
                 className="mt-1 text-base font-medium text-muted-foreground inline-block"
               >
-                {nextExerciseName}
+                {nextInfo.name}
+                {(nextInfo.weight || nextInfo.reps) && (
+                  <span className="ml-2 text-sm font-normal">
+                    {nextInfo.weight ? `${nextInfo.weight}${props.weightUnit === 'lb' ? 'lb' : 'kg'}` : ''}
+                    {nextInfo.weight && nextInfo.reps ? ' × ' : ''}
+                    {nextInfo.reps || ''}
+                  </span>
+                )}
               </div>
             </div>
           )}
