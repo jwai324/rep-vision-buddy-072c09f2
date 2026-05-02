@@ -287,7 +287,10 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           </button>
           <div>
             <h1 className="text-xl font-extrabold text-foreground">Workout Details</h1>
-            <p className="text-xs text-muted-foreground">{parseLocalDate(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            <p className="text-xs text-muted-foreground">
+              {parseLocalDate(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {session.startedAt && ` · ${format(new Date(session.startedAt), 'h:mm a')}`}
+            </p>
           </div>
         </div>
       ) : (
