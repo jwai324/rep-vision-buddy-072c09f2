@@ -91,7 +91,13 @@ export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
   return null;
 }
 
-function computeNextName(blocks: ExerciseBlock[], focusedIdx: number | null): string | null {
+interface NextExerciseInfo {
+  name: string;
+  weight: string;
+  reps: string;
+}
+
+function computeNextInfo(blocks: ExerciseBlock[], focusedIdx: number | null): NextExerciseInfo | null {
   if (focusedIdx === null) return null;
   const synthetic = blocks.map((b, i) =>
     i === focusedIdx
@@ -107,7 +113,13 @@ function computeNextName(blocks: ExerciseBlock[], focusedIdx: number | null): st
   );
   const nextIdx = pickFocusedBlockIdx(synthetic);
   if (nextIdx === null || nextIdx === focusedIdx) return null;
-  return blocks[nextIdx].exerciseName;
+  const nextBlock = blocks[nextIdx];
+  const nextSet = nextBlock.sets.find(s => !isSetFullyComplete(s));
+  return {
+    name: nextBlock.exerciseName,
+    weight: nextSet?.weight ?? '',
+    reps: nextSet?.reps ?? '',
+  };
 }
 
 type Phase = 'idle' | 'promoting' | 'revealing';
