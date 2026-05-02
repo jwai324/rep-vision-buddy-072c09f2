@@ -356,7 +356,7 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
                 {nextInfo.name}
                 {(nextInfo.weight || nextInfo.reps) && (
                   <span className="ml-2 text-sm font-normal">
-                    {nextInfo.weight ? `${nextInfo.weight}${props.weightUnit === 'lb' ? 'lb' : 'kg'}` : ''}
+                    {nextInfo.weight ? `${nextInfo.weight}${props.weightUnit === 'lbs' ? 'lbs' : 'kg'}` : ''}
                     {nextInfo.weight && nextInfo.reps ? ' × ' : ''}
                     {nextInfo.reps || ''}
                   </span>
