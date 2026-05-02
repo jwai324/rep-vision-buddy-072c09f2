@@ -417,3 +417,75 @@ const FloatingPromotedName: React.FC<FloatingPromotedNameProps> = ({
     </div>
   );
 };
+
+/* ── Floating Rest Timer ─────────────────────────────────────── */
+
+interface FloatingRestTimerProps {
+  activeTimer: PersistedTimer | null;
+  onSkip: () => void;
+  onExtend: (delta?: number) => void;
+}
+
+const FloatingRestTimer: React.FC<FloatingRestTimerProps> = ({ activeTimer, onSkip, onExtend }) => {
+  const [remaining, setRemaining] = useState(0);
+
+  useEffect(() => {
+    if (!activeTimer || activeTimer.status !== 'running') {
+      setRemaining(0);
+      return;
+    }
+    const tick = () => {
+      const r = Math.max(0, Math.ceil((activeTimer.startedAtEpoch + activeTimer.duration * 1000 - Date.now()) / 1000));
+      setRemaining(r);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [activeTimer]);
+
+  if (!activeTimer || activeTimer.status !== 'running' || remaining <= 0) return null;
+
+  const progress = Math.max(0, Math.min(1, 1 - remaining / Math.max(1, activeTimer.originalDuration)));
+  const radius = 18;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - progress);
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+
+  return (
+    <div className="fixed bottom-6 right-4 z-[55] flex flex-col items-center gap-1.5 animate-fade-in">
+      <div className="relative w-14 h-14 bg-card/95 backdrop-blur border border-border rounded-full shadow-lg flex items-center justify-center">
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 56 56">
+          <circle cx="28" cy="28" r={radius} fill="none" stroke="hsl(var(--surface-3))" strokeWidth="3" />
+          <circle
+            cx="28" cy="28" r={radius}
+            fill="none"
+            stroke="hsl(var(--primary))"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            className="transition-all duration-1000 ease-linear"
+          />
+        </svg>
+        <span className="font-mono text-xs font-bold text-foreground tabular-nums z-10">
+          {mins}:{secs.toString().padStart(2, '0')}
+        </span>
+      </div>
+      <div className="flex gap-1">
+        <button
+          onClick={onSkip}
+          className="px-2 py-0.5 rounded-md bg-secondary/90 text-secondary-foreground text-[10px] font-medium hover:bg-secondary transition-colors"
+        >
+          Skip
+        </button>
+        <button
+          onClick={() => onExtend(30)}
+          className="px-2 py-0.5 rounded-md bg-secondary/90 text-secondary-foreground text-[10px] font-medium hover:bg-secondary transition-colors"
+        >
+          +30s
+        </button>
+      </div>
+    </div>
+  );
+};
