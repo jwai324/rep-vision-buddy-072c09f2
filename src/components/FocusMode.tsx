@@ -359,6 +359,13 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
         </div>
       )}
 
+      {/* Floating rest timer pill — bottom right */}
+      <FloatingRestTimer
+        activeTimer={props.activeTimer}
+        onSkip={props.onSkipTimer}
+        onExtend={props.onExtendTimer}
+      />
+
       {/* Floating promoted name clone — positioned over the title slot,
           starts transformed back to the upNext slot and animates to identity. */}
       {isPromoting && promotingName && titleSlotRef.current && (
