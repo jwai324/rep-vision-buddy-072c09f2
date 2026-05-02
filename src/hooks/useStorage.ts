@@ -223,6 +223,7 @@ export function useStorage() {
       id: session.id,
       user_id: user.id,
       date: session.date,
+      started_at: session.startedAt ?? null,
       exercises: session.exercises as any,
       duration: session.duration,
       total_volume: session.totalVolume,
