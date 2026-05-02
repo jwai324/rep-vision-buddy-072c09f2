@@ -243,8 +243,8 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   const currentRound = block ? completedRounds(block) + 1 : 0;
   const setLabel = block && currentRound <= totalSets ? `Set ${currentRound} of ${totalSets}` : null;
 
-  const nextExerciseName = useMemo(
-    () => computeNextName(blocks, displayedIdx),
+  const nextInfo = useMemo(
+    () => computeNextInfo(blocks, displayedIdx),
     [blocks, displayedIdx]
   );
 
