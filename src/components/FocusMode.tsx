@@ -215,11 +215,16 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
 
   const supersetLabel = useMemo(() => {
     if (!block || block.supersetGroup === undefined || displayedIdx === null) return null;
+    // Determine the ordinal of this superset GROUP (A for first group, B for second, etc.)
+    const uniqueGroups = Array.from(new Set(
+      blocks.filter(b => b.supersetGroup !== undefined).map(b => b.supersetGroup as number)
+    )).sort((a, b) => a - b);
+    const groupOrdinal = uniqueGroups.indexOf(block.supersetGroup) + 1;
     const groupIdxs = blocks
       .map((b, i) => (b.supersetGroup === block.supersetGroup ? i : -1))
       .filter(i => i >= 0);
-    const pos = groupIdxs.indexOf(displayedIdx) + 1;
-    return `Superset ${String.fromCharCode(64 + pos)} of ${groupIdxs.length}`;
+    const posInGroup = groupIdxs.indexOf(displayedIdx) + 1;
+    return `Superset ${String.fromCharCode(64 + groupOrdinal)} · ${posInGroup} of ${groupIdxs.length}`;
   }, [blocks, block, displayedIdx]);
 
   const totalSets = block?.sets.length ?? 0;
