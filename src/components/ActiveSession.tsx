@@ -1604,7 +1604,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                     onChange={e => setNewLocationInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addCustomLocation()}
                     placeholder="Add location..."
-                    className="flex-1 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground px-1 py-1"
+                    className="flex-1 text-base bg-transparent outline-none text-foreground placeholder:text-muted-foreground px-1 py-1"
                   />
                   <button
                     onClick={addCustomLocation}
@@ -1626,7 +1626,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 type="date"
                 value={editDate}
                 onChange={e => setEditDate(e.target.value)}
-                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-base text-foreground outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -1635,7 +1635,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 type="time"
                 value={editTime}
                 onChange={e => setEditTime(e.target.value)}
-                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+                className="bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-base text-foreground outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -1646,7 +1646,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 min="0"
                 value={editDurationMin}
                 onChange={e => setEditDurationMin(e.target.value)}
-                className="w-20 bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+                className="w-20 bg-secondary/60 border border-border rounded-md px-2 py-1.5 text-base text-foreground outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
           </div>
@@ -1706,7 +1706,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               onChange={e => setNoteText(e.target.value)}
               placeholder="Type your note..."
               rows={3}
-              className="w-full bg-secondary/60 border border-border rounded-lg p-3 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary resize-none"
+              className="w-full bg-secondary/60 border border-border rounded-lg p-3 text-base text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary resize-none"
             />
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setEditingNote(null)}>Cancel</Button>
@@ -1832,7 +1832,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             value={workoutNote}
             onChange={e => setWorkoutNote(e.target.value)}
             placeholder="How did this workout feel? Any observations..."
-            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             maxLength={500}
           />
           <p className="text-xs text-muted-foreground text-right">{workoutNote.length}/500</p>
@@ -2448,7 +2448,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     onChange={e => onUpdateSet(blockIdx, setIdx, 'distance' as keyof SetRow, e.target.value)}
                     onFocus={e => e.target.value && e.target.select()}
                     placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
                   {completeBtn}
@@ -2466,7 +2466,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     onChange={e => onUpdateSet(blockIdx, setIdx, 'distance' as keyof SetRow, e.target.value)}
                     onFocus={e => e.target.value && e.target.select()}
                     placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
                   {completeBtn}
@@ -2494,7 +2494,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     type="number" inputMode="numeric" value={set.reps}
                     onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
                     onFocus={e => e.target.value && e.target.select()} placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
                   />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} small />
@@ -2526,7 +2526,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   {inputMode === 'band' ? (
                     <select id={buildInputId(blockIdx, setIdx, 'weight')} value={set.weight}
                       onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
                       <option value="">—</option>
                       {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
                     </select>
@@ -2536,14 +2536,14 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                       onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
                       onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
                       onFocus={e => e.target.value && e.target.select()} placeholder="—"
-                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                   )}
                   <input id={blockIdx === 0 && setIdx === 0 ? 'tutorial-reps-input' : buildInputId(blockIdx, setIdx, 'reps')}
                     type="number" inputMode="numeric" value={set.reps}
                     onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
                     onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
                     onFocus={e => e.target.value && e.target.select()} placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                   <RpePickerButton id={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} small />
                   {completeBtn}
@@ -2581,7 +2581,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} />
                   <input id={buildInputId(blockIdx, setIdx, 'distance', dropIdx)} type="number" inputMode="decimal" value={drop.distance ?? ''}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'distance' as keyof DropRow, e.target.value)}
-                    placeholder="—" className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    placeholder="—" className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   {dropCompleteBtn}
                 </div>
@@ -2592,7 +2592,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <span className="text-xs font-bold text-set-dropset text-center">{dropLabel}</span>
                   <input id={buildInputId(blockIdx, setIdx, 'distance', dropIdx)} type="number" inputMode="decimal" value={drop.distance ?? ''}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'distance' as keyof DropRow, e.target.value)}
-                    placeholder="—" className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    placeholder="—" className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   {dropCompleteBtn}
                 </div>
@@ -2604,7 +2604,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <span className="text-xs text-muted-foreground text-center">—</span>
                   <input id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)} type="number" inputMode="numeric" value={drop.reps}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)} placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} small />
                   {dropCompleteBtn}
@@ -2618,7 +2618,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   {inputMode === 'band' ? (
                     <select id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} value={drop.weight}
                       onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
-                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
                       <option value="">—</option>
                       {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
                     </select>
@@ -2626,12 +2626,12 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     <input id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} type="number" inputMode="decimal" value={drop.weight}
                       onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
                       onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)} placeholder="—"
-                      className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                   )}
                   <input id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)} type="number" inputMode="numeric" value={drop.reps}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
                     onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps', dropIdx)} placeholder="—"
-                    className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} small />
                   {dropCompleteBtn}
