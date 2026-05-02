@@ -33,9 +33,13 @@ export function formatWeight(
   }
   const converted = fromKg(valueKg, unit);
   // Remove unnecessary decimals
-  const display = Number.isInteger(converted)
+  const raw = Number.isInteger(converted)
     ? String(converted)
     : converted.toFixed(1).replace(/\.0$/, '');
+  // Add thousands separators (e.g. 1,234)
+  const parts = raw.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const display = parts.join('.');
   return { value: converted, display, unitLabel: unit };
 }
 
