@@ -2526,7 +2526,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   {inputMode === 'band' ? (
                     <select id={buildInputId(blockIdx, setIdx, 'weight')} value={set.weight}
                       onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
-                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
                       <option value="">—</option>
                       {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
                     </select>
@@ -2618,7 +2618,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   {inputMode === 'band' ? (
                     <select id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} value={drop.weight}
                       onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
-                      className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
                       <option value="">—</option>
                       {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
                     </select>
