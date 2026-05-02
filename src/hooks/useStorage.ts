@@ -81,6 +81,7 @@ function mapSession(row: any): WorkoutSession {
   return {
     id: row.id,
     date: row.date,
+    startedAt: row.started_at ?? undefined,
     exercises: row.exercises as any[],
     duration: row.duration,
     totalVolume: Number(row.total_volume),
