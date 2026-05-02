@@ -91,7 +91,13 @@ export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
   return null;
 }
 
-function computeNextName(blocks: ExerciseBlock[], focusedIdx: number | null): string | null {
+interface NextExerciseInfo {
+  name: string;
+  weight: string;
+  reps: string;
+}
+
+function computeNextInfo(blocks: ExerciseBlock[], focusedIdx: number | null): NextExerciseInfo | null {
   if (focusedIdx === null) return null;
   const synthetic = blocks.map((b, i) =>
     i === focusedIdx
@@ -107,7 +113,13 @@ function computeNextName(blocks: ExerciseBlock[], focusedIdx: number | null): st
   );
   const nextIdx = pickFocusedBlockIdx(synthetic);
   if (nextIdx === null || nextIdx === focusedIdx) return null;
-  return blocks[nextIdx].exerciseName;
+  const nextBlock = blocks[nextIdx];
+  const nextSet = nextBlock.sets.find(s => !isSetFullyComplete(s));
+  return {
+    name: nextBlock.exerciseName,
+    weight: nextSet?.weight ?? '',
+    reps: nextSet?.reps ?? '',
+  };
 }
 
 type Phase = 'idle' | 'promoting' | 'revealing';
@@ -231,8 +243,8 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   const currentRound = block ? completedRounds(block) + 1 : 0;
   const setLabel = block && currentRound <= totalSets ? `Set ${currentRound} of ${totalSets}` : null;
 
-  const nextExerciseName = useMemo(
-    () => computeNextName(blocks, displayedIdx),
+  const nextInfo = useMemo(
+    () => computeNextInfo(blocks, displayedIdx),
     [blocks, displayedIdx]
   );
 
@@ -329,7 +341,7 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
           </div>
 
           {/* Up next footer */}
-          {nextExerciseName && (
+          {nextInfo && (
             <div
               className={cn(
                 'px-4 pt-8 pb-4 transition-opacity duration-300',
@@ -341,7 +353,14 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
                 ref={upNextSlotRef}
                 className="mt-1 text-base font-medium text-muted-foreground inline-block"
               >
-                {nextExerciseName}
+                {nextInfo.name}
+                {(nextInfo.weight || nextInfo.reps) && (
+                  <span className="ml-2 text-sm font-normal">
+                    {nextInfo.weight ? `${nextInfo.weight}${props.weightUnit === 'lbs' ? 'lbs' : 'kg'}` : ''}
+                    {nextInfo.weight && nextInfo.reps ? ' × ' : ''}
+                    {nextInfo.reps || ''}
+                  </span>
+                )}
               </div>
             </div>
           )}
