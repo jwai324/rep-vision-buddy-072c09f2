@@ -2191,7 +2191,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Minutes</span>
+          <span className="text-center">Time</span>
           <RpeHeaderPopover />
           <TimerHeaderPopover />
           <CheckHeader />
@@ -2201,7 +2201,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Minutes</span>
+          <span className="text-center">Time</span>
           <span className="text-center">km</span>
           <RpeHeaderPopover />
           <CheckHeader />
