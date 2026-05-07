@@ -145,7 +145,7 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
   for (const session of history) {
     const log = session.exercises.find(e => e.exerciseId === exerciseId);
     if (log && log.sets.length > 0) {
-      return log.sets.map(s => ({ weight: s.weight, reps: s.reps, rpe: s.rpe, time: s.time }));
+      return log.sets.filter(s => s.type !== 'warmup').map(s => ({ weight: s.weight, reps: s.reps, rpe: s.rpe, time: s.time }));
     }
   }
   return [];
