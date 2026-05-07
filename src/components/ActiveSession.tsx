@@ -2034,21 +2034,27 @@ const RpePickerButton: React.FC<{ id: string; value: string; onChange: (v: strin
 
 const TimeInputButton: React.FC<{ id: string; value: string; onChange: (v: string) => void; running?: boolean; small?: boolean }> = ({ id, value, onChange, running, small }) => {
   const [open, setOpen] = React.useState(false);
-  const [draft, setDraft] = React.useState('');
-  const seconds = timeToSeconds(value);
-  const display = seconds > 0 ? formatMmSs(seconds) : '—';
+  const totalSeconds = timeToSeconds(value);
+  const display = totalSeconds > 0 ? formatMmSs(totalSeconds) : '—';
+
+  const [draftMin, setDraftMin] = React.useState('');
+  const [draftSec, setDraftSec] = React.useState('');
+  const secRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    if (open) setDraft(seconds > 0 ? formatMmSs(seconds) : '');
-  }, [open, seconds]);
+    if (open) {
+      const m = Math.floor(totalSeconds / 60);
+      const s = totalSeconds % 60;
+      setDraftMin(totalSeconds > 0 ? String(m) : '');
+      setDraftSec(totalSeconds > 0 ? String(s).padStart(2, '0') : '');
+    }
+  }, [open, totalSeconds]);
 
   const commit = () => {
-    const parsed = parseMmSs(draft);
-    if (parsed === null) {
-      onChange('');
-    } else {
-      onChange(String(parsed));
-    }
+    const m = parseInt(draftMin, 10) || 0;
+    const s = Math.min(59, Math.max(0, parseInt(draftSec, 10) || 0));
+    const total = m * 60 + s;
+    onChange(total > 0 ? String(total) : '');
     setOpen(false);
   };
 
@@ -2065,21 +2071,55 @@ const TimeInputButton: React.FC<{ id: string; value: string; onChange: (v: strin
           {display}
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="center" className="w-48 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-muted-foreground text-center mb-2">Time (m:ss)</div>
-        <input
-          autoFocus
-          type="text"
-          inputMode="numeric"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); commit(); }
-          }}
-          placeholder="1:30"
-          className="w-full text-center text-lg font-mono bg-secondary rounded-md py-2 text-foreground outline-none focus:ring-1 focus:ring-primary"
-        />
-        <div className="flex gap-2 mt-2">
+      <PopoverContent side="top" align="center" className="w-52 p-3">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground text-center mb-2">Time</div>
+        <div className="flex items-center justify-center gap-1">
+          <div className="flex flex-col items-center">
+            <input
+              autoFocus
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={draftMin}
+              onChange={e => setDraftMin(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              onFocus={e => e.target.select()}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commit(); }
+                if (e.key === ':' || e.key === 'Tab') { e.preventDefault(); secRef.current?.focus(); }
+              }}
+              placeholder="0"
+              className="w-16 text-center text-2xl font-mono bg-secondary rounded-md py-2 text-foreground outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+            />
+            <span className="text-[9px] text-muted-foreground mt-0.5">min</span>
+          </div>
+          <span className="text-2xl font-mono font-bold text-foreground pb-4">:</span>
+          <div className="flex flex-col items-center">
+            <input
+              ref={secRef}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={59}
+              value={draftSec}
+              onChange={e => {
+                const v = e.target.value.replace(/\D/g, '').slice(0, 2);
+                setDraftSec(v);
+              }}
+              onFocus={e => e.target.select()}
+              onBlur={() => {
+                const n = parseInt(draftSec, 10);
+                if (!isNaN(n)) setDraftSec(String(Math.min(59, n)).padStart(2, '0'));
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); commit(); }
+              }}
+              placeholder="00"
+              className="w-16 text-center text-2xl font-mono bg-secondary rounded-md py-2 text-foreground outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
+            />
+            <span className="text-[9px] text-muted-foreground mt-0.5">sec</span>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-3">
           <button
             onClick={() => { onChange(''); setOpen(false); }}
             className="flex-1 text-xs py-1.5 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80"
@@ -2151,7 +2191,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Minutes</span>
+          <span className="text-center">Time</span>
           <RpeHeaderPopover />
           <TimerHeaderPopover />
           <CheckHeader />
@@ -2161,7 +2201,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Minutes</span>
+          <span className="text-center">Time</span>
           <span className="text-center">km</span>
           <RpeHeaderPopover />
           <CheckHeader />
