@@ -137,6 +137,7 @@ export interface UserPreferences {
   streakWeeklyTarget: number;
   tutorialCompleted: boolean;
   hideTimers: boolean;
+  customLocations: string[];
 }
 
 export interface UserProfile {
