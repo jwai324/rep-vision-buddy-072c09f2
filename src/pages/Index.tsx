@@ -158,6 +158,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     });
   };
 
+  const handleDayClick = useDayClickHandler(
+    { history: storage.history, futureWorkouts: storage.futureWorkouts, activeProgram, activeProgramId: storage.activeProgramId },
+    setScreen,
+  );
+
   const handleDesktopNav = (key: string) => {
     setScreen({ type: key } as Screen);
   };
