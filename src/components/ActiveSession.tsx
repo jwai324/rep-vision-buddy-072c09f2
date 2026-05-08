@@ -56,7 +56,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 export type { TimerStatus, PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import type { PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import { SUPERSET_COLORS } from '@/types/activeSession';
-import { ExerciseTable as ExerciseTableImport, timerIdKey } from '@/components/ExerciseTableComponent';
+import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
 const CACHE_KEY = 'active-session-cache';
