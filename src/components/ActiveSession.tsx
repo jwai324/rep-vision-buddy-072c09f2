@@ -7,6 +7,8 @@ import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/uti
 import { parseLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
+import { useBlockMutations, normalizeBlocks } from '@/hooks/useBlockMutations';
 import { CameraFeed } from '@/components/CameraFeed';
 import { cn } from '@/lib/utils';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
@@ -118,41 +120,11 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
   }
   return [];
 }
-/**
- * Normalize blocks restored from cache or built from saved sessions:
- * - Parent rows in `block.sets` must never be `type: 'dropset'`.
- *   If found (legacy buggy state), coerce to 'superset' (when block is in
- *   a superset group) or 'normal'.
- * - `drops` remains the only source of nested dropsets.
- */
-function normalizeBlocks(blocks: ExerciseBlock[]): ExerciseBlock[] {
-  return blocks.map(b => {
-    const fallback: SetType = b.supersetGroup !== undefined ? 'superset' : 'normal';
-    let needsFix = false;
-    const sets = b.sets.map(s => {
-      if (s.type === 'dropset') {
-        needsFix = true;
-        return { ...s, type: fallback };
-      }
-      return s;
-    });
-    return needsFix ? { ...b, sets } : b;
-  });
-}
+// normalizeBlocks is imported from useBlockMutations
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
   const { exercises: customExercises } = useCustomExercisesContext();
-  const exerciseLookup = useMemo(() => {
-    const lookup: Record<string, string> = {};
-    for (const [id, ex] of Object.entries(EXERCISES)) {
-      lookup[id] = ex.name;
-    }
-    for (const ce of customExercises) {
-      lookup[ce.id] = ce.name;
-    }
-    return lookup;
-  }, [customExercises]);
   // Convert saved session exercises back to blocks for editing.
   // Rebuilds nested `drops` from flat saved WorkoutSet[] (consecutive 'dropset'
   // rows attach to the most recent non-dropset parent of the same setNumber).
@@ -218,7 +190,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const restSec = tpl?.restSeconds ?? 90;
       return {
         exerciseId: id,
-        exerciseName: exerciseLookup[id] ?? id,
+        exerciseName: EXERCISES[id]?.name ?? customExercises.find(c => c.id === id)?.name ?? id,
         restSeconds: restSec,
         dropSetsEnabled: defaultDropSetsEnabled,
         sets: Array.from({ length: numSets }, (_, i) => ({
@@ -233,6 +205,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       };
     });
   });
+
+  // ===== Extracted hooks =====
+  const restTimer = useSessionRestTimer({ cachedSession });
+  const { activeTimer, restRecords, computeRemaining, recalcRestTimer, startTimer, skipTimer, extendTimer } = restTimer;
+
+  const blockOps = useBlockMutations(blocks, setBlocks, {
+    weightUnit,
+    defaultDropSetsEnabled,
+    customExercises,
+    startTimer,
+  });
+  const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, toggleDropSets, addWarmupSet } = blockOps;
   const [workoutName, setWorkoutName] = useState(() => {
     if (cachedSession?.workoutName) return cachedSession.workoutName;
     if (editSession) return 'Workout';
@@ -319,18 +303,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setShowLocationDropdown(false);
   }, [newLocationInput, locations, location, onUpdateCustomLocations]);
 
-  // ============= Persistent timestamp-based rest timer =============
-  // Source of truth = persisted record. setInterval below only triggers re-render.
-  const [activeTimer, setActiveTimer] = useState<PersistedTimer | null>(
-    cachedSession?.activeTimer ?? null
-  );
-  const [restRecords, setRestRecords] = useState<Record<string, number>>(
-    cachedSession?.restRecords ?? {}
-  );
-  const [, setTimerTick] = useState(0); // forces re-render every ~1s while running
-  const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const notificationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const completedFiredFor = useRef<Set<string>>(new Set());
+  // Rest timer state is managed by useSessionRestTimer hook (above)
 
   // Per-set live timing state (5s countdown -> running)
   const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
@@ -338,273 +311,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     cachedSession?.runningSet ?? null
   );
   const blockRefs = useRef<Record<number, HTMLDivElement | null>>({});
-
-  // Cache full session state (including timer) to localStorage on changes (skip in edit mode)
-  useEffect(() => {
-    if (isEditMode) return;
-    safeWriteCache({
-      blocks,
-      workoutName,
-      startTimestamp: startTime.current,
-      elapsedAtCache: elapsedSeconds,
-      location,
-      workoutNote: workoutNote || undefined,
-      activeTimer,
-      restRecords,
-      runningSet,
-      showFocusMode,
-      showExercisePicker,
-      pendingExerciseIds: pendingExerciseIds.length > 0 ? pendingExerciseIds : undefined,
-    });
-  }, [blocks, workoutName, elapsedSeconds, isEditMode, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds]);
-
-  // Derive remaining seconds from the persisted record. Allowed to go NEGATIVE
-  // once the timer passes 0 — the rest timer keeps counting into "overtime"
-  // until the user explicitly starts the next set or skips.
-  const computeRemaining = useCallback((t: PersistedTimer | null): number => {
-    if (!t) return 0;
-    if (t.status === 'paused') {
-      return t.originalDuration - (t.elapsedAtPause ?? 0);
-    }
-    if (t.status !== 'running' || !t.startedAtEpoch) return 0;
-    const target = t.startedAtEpoch + t.duration * 1000;
-    const remainingMs = target - Date.now();
-    // Negative values are intentional (overtime). Cap upper bound at originalDuration.
-    return Math.min(t.originalDuration, Math.ceil(remainingMs / 1000));
-  }, []);
-
-  // ---- Web Notification helpers (graceful no-op when unavailable) ----
-  // For true app-killed delivery on native, @capacitor/local-notifications is required.
-  const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
-
-  const ensureNotificationPermission = useCallback(async () => {
-    if (!notificationsSupported) return false;
-    try {
-      if (Notification.permission === 'granted') return true;
-      if (Notification.permission === 'denied') return false;
-      const res = await Notification.requestPermission();
-      return res === 'granted';
-    } catch {
-      return false;
-    }
-  }, [notificationsSupported]);
-
-  const cancelNotification = useCallback(() => {
-    if (notificationTimeout.current) {
-      clearTimeout(notificationTimeout.current);
-      notificationTimeout.current = null;
-    }
-  }, []);
-
-  const fireRestCompleteNotification = useCallback((late: boolean = false) => {
-    try {
-      if (notificationsSupported && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-        new Notification('Rest complete', {
-          body: late ? 'Your rest finished while you were away.' : 'Time for your next set.',
-          tag: 'rest-timer',
-          silent: false,
-        });
-      }
-    } catch (e) {
-      console.warn('[ActiveSession] Notification failed:', e);
-    }
-    toast.success(late ? 'Rest finished' : 'Rest complete', {
-      description: late ? 'Your rest finished while you were away.' : 'Time for your next set.',
-    });
-  }, [notificationsSupported]);
-
-  const scheduleNotification = useCallback((msUntil: number) => {
-    cancelNotification();
-    if (msUntil <= 0) return;
-    notificationTimeout.current = setTimeout(() => {
-      fireRestCompleteNotification(false);
-    }, msUntil);
-  }, [cancelNotification, fireRestCompleteNotification]);
-
-  // ---- Reconcile / recalc on every relevant trigger ----
-  // Timer NO LONGER auto-completes at 0 — it keeps ticking into negative
-  // (overtime) until the user starts the next set or taps Skip. We still fire
-  // the "rest complete" notification once when the threshold is first crossed.
-  const recalcRestTimer = useCallback(() => {
-    setActiveTimer(prev => {
-      if (!prev) return prev;
-      if (prev.status !== 'running') return prev;
-      const remaining = computeRemaining(prev);
-      const key = `${timerIdKey(prev.id)}@${prev.startedAtEpoch}`;
-      if (remaining <= 0 && !completedFiredFor.current.has(key)) {
-        completedFiredFor.current.add(key);
-        const target = prev.startedAtEpoch + prev.duration * 1000;
-        const wasLate = Date.now() - target > 1500;
-        if (wasLate) fireRestCompleteNotification(true);
-        cancelNotification();
-      }
-      // Force re-render so derived UI updates (countdown + overtime)
-      setTimerTick(n => (n + 1) % 1000000);
-      return prev;
-    });
-  }, [computeRemaining, cancelNotification, fireRestCompleteNotification]);
-
-  // ---- Public timer controls ----
-  const startTimer = useCallback((id: TimerId, duration: number) => {
-    cancelNotification();
-    // If a previous timer was running, record actual elapsed (incl. overtime)
-    setActiveTimer(prev => {
-      if (prev && prev.status === 'running') {
-        const taken = prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
-      }
-      return null;
-    });
-    const now = Date.now();
-    const newTimer: PersistedTimer = {
-      id,
-      startedAtEpoch: now,
-      duration,
-      originalDuration: duration,
-      status: 'running',
-    };
-    setActiveTimer(newTimer);
-    // Schedule notification + ask permission lazily
-    ensureNotificationPermission().finally(() => {
-      scheduleNotification(duration * 1000);
-    });
-  }, [cancelNotification, computeRemaining, ensureNotificationPermission, scheduleNotification]);
-
-  const skipTimer = useCallback(() => {
-    cancelNotification();
-    setActiveTimer(prev => {
-      if (prev) {
-        const taken = prev.status === 'paused'
-          ? (prev.elapsedAtPause ?? 0)
-          : prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
-      }
-      return null;
-    });
-  }, [cancelNotification, computeRemaining]);
-
-  const extendTimer = useCallback((delta: number = 30) => {
-    setActiveTimer(prev => {
-      if (!prev) return prev;
-      const newOriginal = Math.max(1, prev.originalDuration + delta);
-      let next: PersistedTimer;
-      if (prev.status === 'running') {
-        const remaining = computeRemaining(prev);
-        const newRemaining = Math.max(1, remaining + delta);
-        const now = Date.now();
-        next = {
-          ...prev,
-          originalDuration: newOriginal,
-          duration: newRemaining,
-          startedAtEpoch: now,
-          status: 'running',
-        };
-        cancelNotification();
-        scheduleNotification(newRemaining * 1000);
-      } else {
-        next = { ...prev, originalDuration: newOriginal };
-      }
-      return next;
-    });
-  }, [computeRemaining, cancelNotification, scheduleNotification]);
-
-  // Pause / resume — exposed for future UI; logic ready now.
-  const pauseTimer = useCallback(() => {
-    cancelNotification();
-    setActiveTimer(prev => {
-      if (!prev || prev.status !== 'running') return prev;
-      const remaining = computeRemaining(prev);
-      const elapsedAtPause = prev.originalDuration - remaining;
-      return {
-        ...prev,
-        status: 'paused',
-        startedAtEpoch: 0,
-        elapsedAtPause: Math.max(0, elapsedAtPause),
-      };
-    });
-  }, [cancelNotification, computeRemaining]);
-
-  const resumeTimer = useCallback(() => {
-    setActiveTimer(prev => {
-      if (!prev || prev.status !== 'paused') return prev;
-      const elapsed = prev.elapsedAtPause ?? 0;
-      const newDuration = Math.max(1, prev.originalDuration - elapsed);
-      const now = Date.now();
-      ensureNotificationPermission().finally(() => scheduleNotification(newDuration * 1000));
-      return {
-        ...prev,
-        status: 'running',
-        startedAtEpoch: now,
-        duration: newDuration,
-        elapsedAtPause: undefined,
-      };
-    });
-  }, [ensureNotificationPermission, scheduleNotification]);
-
-  // ---- Hydrate on mount: reconcile if running timer expired while away ----
-  useEffect(() => {
-    const t = cachedSession?.activeTimer;
-    if (!t || t.status !== 'running') return;
-    const remaining = computeRemaining(t);
-    if (remaining <= 0) {
-      // Completed while app was closed
-      const key = `${timerIdKey(t.id)}@${t.startedAtEpoch}`;
-      completedFiredFor.current.add(key);
-      setRestRecords(r => ({ ...r, [timerIdKey(t.id)]: t.originalDuration }));
-      setActiveTimer(null);
-      fireRestCompleteNotification(true);
-    } else {
-      // Resume: reschedule notification for remaining time
-      ensureNotificationPermission().finally(() => scheduleNotification(remaining * 1000));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ---- Tick interval — UI refresh only ----
-  useEffect(() => {
-    if (timerInterval.current) clearInterval(timerInterval.current);
-    if (activeTimer && activeTimer.status === 'running') {
-      timerInterval.current = setInterval(recalcRestTimer, 1000);
-      // Immediate recalc in case >1s passed since last update
-      recalcRestTimer();
-    }
-    return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
-  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer?.status, activeTimer?.startedAtEpoch, recalcRestTimer]);
-
-  // ---- Visibility / focus / cross-tab listeners ----
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') recalcRestTimer();
-    };
-    const onFocus = () => recalcRestTimer();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== CACHE_KEY || !e.newValue) return;
-      try {
-        const parsed: ActiveSessionCache = JSON.parse(e.newValue);
-        if (parsed.activeTimer !== undefined) {
-          setActiveTimer(parsed.activeTimer ?? null);
-        }
-        if (parsed.restRecords) {
-          setRestRecords(parsed.restRecords);
-        }
-      } catch {
-        // ignore malformed
-      }
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('focus', onFocus);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, [recalcRestTimer]);
-
-  // Cleanup notification timeout on unmount
-  useEffect(() => () => cancelNotification(), [cancelNotification]);
-
-
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
   const [noteText, setNoteText] = useState('');
@@ -652,75 +358,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      const currentSet = block.sets[setIdx];
-      const shouldCascade = (field === 'weight' || field === 'reps') && typeof value === 'string' && value !== '' && currentSet.type !== 'warmup';
-      const oldValue = shouldCascade ? currentSet[field] : null;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si === setIdx) return { ...set, [field]: value };
-          // Cascade: update fields below that are blank or still hold the previous cascaded value
-          if (shouldCascade && si > setIdx && set.type !== 'warmup' && (set[field] === '' || set[field] === oldValue)) {
-            return { ...set, [field]: value };
-          }
-          return set;
-        }),
-      };
-    }));
-  }, []);
-
-  const toggleSetComplete = useCallback((blockIdx: number, setIdx: number) => {
-    setBlocks(prev => {
-      const block = prev[blockIdx];
-      const set = block.sets[setIdx];
-      const wasCompleted = set.completed;
-
-      // If trying to complete, validate first
-      if (!wasCompleted) {
-        const mode = getExerciseInputMode(block.exerciseId, customExercises);
-        const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
-        const isCardio = isTimeBased(mode);
-        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, isCardio, set.time, mode, set.distance)) {
-          const errorMsg = isTimeBased(mode) ? 'Enter a time before completing this set.'
-            : isDistanceBased(mode) ? 'Enter a distance before completing this set.'
-            : mode === 'reps' ? 'Enter reps before completing this set.'
-            : 'Enter valid weight and reps before completing this set.';
-          toast.error(errorMsg);
-          return prev;
-        }
-      }
-
-      const updated = prev.map((b, bi) => {
-        if (bi !== blockIdx) return b;
-        const completedSet = b.sets[setIdx];
-        return {
-          ...b,
-          sets: b.sets.map((s, si) => {
-            if (si === setIdx) return { ...s, completed: !s.completed };
-            // Auto-fill subsequent empty sets when completing (not uncompleting)
-            if (!wasCompleted && si > setIdx && !s.completed) {
-              return {
-                ...s,
-                weight: s.weight || completedSet.weight,
-                reps: s.reps || completedSet.reps,
-                rpe: s.rpe || completedSet.rpe,
-                time: s.time || completedSet.time,
-                distance: s.distance || completedSet.distance,
-              };
-            }
-            return s;
-          }),
-        };
-      });
-      if (!wasCompleted) {
-        startTimer({ type: 'set', blockIdx, setIdx }, block.restSeconds);
-      }
-      return updated;
-    });
-  }, [startTimer, weightUnit, customExercises]);
+  // updateSet and toggleSetComplete are provided by useBlockMutations hook
 
   // Internal: stop a running set (or dropset), write its duration into time, mark complete, start rest timer.
   // bonusSeconds is added when the user starts a NEW set while one is still running (per spec: +5s).
@@ -925,148 +563,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setCountdown(null);
   }, [countdown, skipTimer]);
 
-  const addSet = useCallback((blockIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      const lastSet = block.sets[block.sets.length - 1];
-      const normalCount = block.sets.filter(s => s.type !== 'warmup').length;
-      return {
-        ...block,
-        sets: [...block.sets, {
-          setNumber: normalCount + 1,
-          weight: lastSet?.weight ?? '',
-          reps: lastSet?.reps ?? '',
-          completed: false,
-          type: lastSet?.type === 'warmup' ? 'normal' : (lastSet?.type ?? 'normal'),
-          rpe: '',
-          time: '',
-        }],
-      };
-    }));
-  }, []);
-
-  const addDrop = useCallback((blockIdx: number, setIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si !== setIdx) return set;
-          const drops = set.drops ?? [];
-          return { ...set, drops: [...drops, { weight: '', reps: '', rpe: '', completed: false }] };
-        }),
-      };
-    }));
-  }, []);
-
-  const updateDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number, field: keyof DropRow, value: string | boolean) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si !== setIdx || !set.drops) return set;
-          return { ...set, drops: set.drops.map((d, di) => di === dropIdx ? { ...d, [field]: value } : d) };
-        }),
-      };
-    }));
-  }, []);
-
-  const removeSet = useCallback((blockIdx: number, setIdx: number) => {
-    let deletedSet: SetRow | null = null;
-
-    setBlocks(prev => {
-      const block = prev[blockIdx];
-      if (!block) return prev;
-      deletedSet = { ...block.sets[setIdx] };
-
-      return prev.map((b, bi) => {
-        if (bi !== blockIdx) return b;
-        const newSets = b.sets.filter((_, si) => si !== setIdx);
-        let warmupCount = 0;
-        let normalCount = 0;
-        const renumbered = newSets.map(s => {
-          if (s.type === 'warmup') {
-            warmupCount++;
-            return { ...s, setNumber: warmupCount };
-          }
-          normalCount++;
-          return { ...s, setNumber: normalCount };
-        });
-        return { ...b, sets: renumbered };
-      });
-    });
-
-    if (deletedSet) {
-      const captured = deletedSet;
-      toast('Set deleted', {
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            setBlocks(prev => prev.map((b, bi) => {
-              if (bi !== blockIdx) return b;
-              const restored = [...b.sets];
-              restored.splice(setIdx, 0, captured);
-              let warmupCount = 0;
-              let normalCount = 0;
-              const renumbered = restored.map(s => {
-                if (s.type === 'warmup') { warmupCount++; return { ...s, setNumber: warmupCount }; }
-                normalCount++; return { ...s, setNumber: normalCount };
-              });
-              return { ...b, sets: renumbered };
-            }));
-          },
-        },
-      });
-    }
-  }, []);
-
-  const removeDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si !== setIdx || !set.drops) return set;
-          const newDrops = set.drops.filter((_, di) => di !== dropIdx);
-          return { ...set, drops: newDrops.length > 0 ? newDrops : undefined };
-        }),
-      };
-    }));
-  }, []);
-
-  const addExercise = useCallback((id: ExerciseId) => {
-    addMultipleExercises([id]);
-  }, []);
-
-  const addMultipleExercises = useCallback((ids: ExerciseId[]) => {
-    setBlocks(prev => {
-      const existingIds = new Set(prev.map(b => b.exerciseId));
-      const newBlocks = ids
-        .filter(id => !existingIds.has(id))
-        .map(id => ({
-          exerciseId: id,
-          exerciseName: exerciseLookup[id] ?? id,
-          restSeconds: 90,
-          dropSetsEnabled: defaultDropSetsEnabled,
-          sets: Array.from({ length: 3 }, (_, i) => ({
-            setNumber: i + 1,
-            weight: '',
-            reps: '',
-            completed: false,
-            type: 'normal' as SetType,
-            rpe: '',
-            time: '',
-          })),
-        }));
-      return [...prev, ...newBlocks];
-    });
-    setShowExercisePicker(false);
-  }, [defaultDropSetsEnabled]);
-
-  const removeExercise = useCallback((blockIdx: number) => {
-    setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
-  }, []);
+  // addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise
+  // are provided by useBlockMutations hook
 
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1169,52 +667,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return () => unregisterSession();
   }, [blocks, defaultDropSetsEnabled]);
 
-  const toggleDropSets = useCallback((blockIdx: number) => {
-    setBlocks(prev => prev.map((b, i) => {
-      if (i !== blockIdx) return b;
-      const nowEnabled = !b.dropSetsEnabled;
-      // If disabling, remove all drops from sets
-      if (!nowEnabled) {
-        return {
-          ...b,
-          dropSetsEnabled: false,
-          sets: b.sets.map(s => ({ ...s, drops: undefined })),
-        };
-      }
-      return { ...b, dropSetsEnabled: true };
-    }));
-  }, []);
-
-  const addWarmupSet = useCallback((blockIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      const warmupSet: SetRow = {
-        setNumber: 0,
-        weight: '',
-        reps: '',
-        completed: false,
-        type: 'warmup' as SetType,
-        rpe: '',
-        time: '',
-      };
-      const newSets = [warmupSet, ...block.sets].map((s, i) => ({
-        ...s,
-        setNumber: s.type === 'warmup' ? 0 : i,
-      }));
-      // Re-number: warm-ups get "W1, W2..." and normals get "1, 2..."
-      let warmupCount = 0;
-      let normalCount = 0;
-      const renumbered = newSets.map(s => {
-        if (s.type === 'warmup') {
-          warmupCount++;
-          return { ...s, setNumber: warmupCount };
-        }
-        normalCount++;
-        return { ...s, setNumber: normalCount };
-      });
-      return { ...block, sets: renumbered };
-    }));
-  }, []);
+  // toggleDropSets and addWarmupSet are provided by useBlockMutations hook
 
   const handleMenuAction = useCallback((action: string, blockIdx: number) => {
     const block = blocks[blockIdx];
