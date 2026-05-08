@@ -217,6 +217,8 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-arm-kettlebell-swing', name: 'Single-Arm Kettlebell Swing', primaryBodyPart: 'Glutes', equipment: 'Kettlebell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Core'] },
   { id: 'dumbbell-sumo-squat', name: 'Dumbbell Sumo Squat', primaryBodyPart: 'Glutes', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Squat', secondaryMuscles: ['Quads', 'Adductors'] },
   { id: 'curtsy-lunge', name: 'Curtsy Lunge', primaryBodyPart: 'Glutes', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Adductors'] },
+  { id: 'donkey-kicks', name: 'Donkey Kicks', primaryBodyPart: 'Glutes', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: ['Hamstrings', 'Core', 'Lower Back'], aliases: ['quadruped hip extension', 'glute kickbacks'] },
+  { id: 'fire-hydrants', name: 'Fire Hydrants', primaryBodyPart: 'Glutes', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Abduction', secondaryMuscles: ['Abductors', 'Core', 'Hip Flexors'], aliases: ['quadruped hip abduction'] },
 
   // Calves
   { id: 'standing-calf-raise-machine', name: 'Standing Calf Raise Machine', primaryBodyPart: 'Calves', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Raise', secondaryMuscles: [] },
