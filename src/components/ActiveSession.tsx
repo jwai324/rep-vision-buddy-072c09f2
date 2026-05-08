@@ -358,75 +358,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      const currentSet = block.sets[setIdx];
-      const shouldCascade = (field === 'weight' || field === 'reps') && typeof value === 'string' && value !== '' && currentSet.type !== 'warmup';
-      const oldValue = shouldCascade ? currentSet[field] : null;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si === setIdx) return { ...set, [field]: value };
-          // Cascade: update fields below that are blank or still hold the previous cascaded value
-          if (shouldCascade && si > setIdx && set.type !== 'warmup' && (set[field] === '' || set[field] === oldValue)) {
-            return { ...set, [field]: value };
-          }
-          return set;
-        }),
-      };
-    }));
-  }, []);
-
-  const toggleSetComplete = useCallback((blockIdx: number, setIdx: number) => {
-    setBlocks(prev => {
-      const block = prev[blockIdx];
-      const set = block.sets[setIdx];
-      const wasCompleted = set.completed;
-
-      // If trying to complete, validate first
-      if (!wasCompleted) {
-        const mode = getExerciseInputMode(block.exerciseId, customExercises);
-        const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
-        const isCardio = isTimeBased(mode);
-        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, isCardio, set.time, mode, set.distance)) {
-          const errorMsg = isTimeBased(mode) ? 'Enter a time before completing this set.'
-            : isDistanceBased(mode) ? 'Enter a distance before completing this set.'
-            : mode === 'reps' ? 'Enter reps before completing this set.'
-            : 'Enter valid weight and reps before completing this set.';
-          toast.error(errorMsg);
-          return prev;
-        }
-      }
-
-      const updated = prev.map((b, bi) => {
-        if (bi !== blockIdx) return b;
-        const completedSet = b.sets[setIdx];
-        return {
-          ...b,
-          sets: b.sets.map((s, si) => {
-            if (si === setIdx) return { ...s, completed: !s.completed };
-            // Auto-fill subsequent empty sets when completing (not uncompleting)
-            if (!wasCompleted && si > setIdx && !s.completed) {
-              return {
-                ...s,
-                weight: s.weight || completedSet.weight,
-                reps: s.reps || completedSet.reps,
-                rpe: s.rpe || completedSet.rpe,
-                time: s.time || completedSet.time,
-                distance: s.distance || completedSet.distance,
-              };
-            }
-            return s;
-          }),
-        };
-      });
-      if (!wasCompleted) {
-        startTimer({ type: 'set', blockIdx, setIdx }, block.restSeconds);
-      }
-      return updated;
-    });
-  }, [startTimer, weightUnit, customExercises]);
+  // updateSet and toggleSetComplete are provided by useBlockMutations hook
 
   // Internal: stop a running set (or dropset), write its duration into time, mark complete, start rest timer.
   // bonusSeconds is added when the user starts a NEW set while one is still running (per spec: +5s).
