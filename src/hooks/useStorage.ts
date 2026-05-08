@@ -93,7 +93,7 @@ function mapSession(row: SessionRow): WorkoutSession {
     id: row.id,
     date: row.date,
     startedAt: row.started_at ?? undefined,
-    exercises: row.exercises as WorkoutSession['exercises'],
+    exercises: row.exercises as unknown as WorkoutSession['exercises'],
     duration: row.duration,
     totalVolume: Number(row.total_volume),
     totalSets: row.total_sets,
@@ -102,7 +102,7 @@ function mapSession(row: SessionRow): WorkoutSession {
     note: row.note ?? undefined,
     location: row.location ?? undefined,
     isRestDay: row.is_rest_day ?? false,
-    recoveryActivities: row.recovery_activities as WorkoutSession['recoveryActivities'],
+    recoveryActivities: row.recovery_activities as unknown as WorkoutSession['recoveryActivities'],
   };
 }
 
@@ -110,7 +110,7 @@ function mapTemplate(row: TemplateRow): WorkoutTemplate {
   return {
     id: row.id,
     name: row.name,
-    exercises: row.exercises as WorkoutTemplate['exercises'],
+    exercises: row.exercises as unknown as WorkoutTemplate['exercises'],
   };
 }
 
@@ -118,10 +118,10 @@ function mapProgram(row: ProgramRow): WorkoutProgram {
   return {
     id: row.id,
     name: row.name,
-    days: row.days as WorkoutProgram['days'],
+    days: row.days as unknown as WorkoutProgram['days'],
     durationWeeks: row.duration_weeks ?? 8,
     startDate: row.start_date ?? undefined,
-    schedule: row.schedule as WorkoutProgram['schedule'],
+    schedule: row.schedule as unknown as WorkoutProgram['schedule'],
   };
 }
 
@@ -133,7 +133,7 @@ function mapFutureWorkout(row: FutureWorkoutRow): FutureWorkout {
     templateId: row.template_id,
     label: row.label,
     completed: row.completed ?? false,
-    recoveryActivities: row.recovery_activities as FutureWorkout['recoveryActivities'],
+    recoveryActivities: row.recovery_activities as unknown as FutureWorkout['recoveryActivities'],
   };
 }
 
@@ -246,7 +246,7 @@ export function useStorage() {
       user_id: user.id,
       date: session.date,
       started_at: session.startedAt ?? null,
-      exercises: session.exercises as Database['public']['Tables']['workout_sessions']['Insert']['exercises'],
+      exercises: session.exercises as unknown as Database['public']['Tables']['workout_sessions']['Insert']['exercises'],
       duration: session.duration,
       total_volume: session.totalVolume,
       total_sets: session.totalSets,
@@ -255,7 +255,7 @@ export function useStorage() {
       note: session.note ?? null,
       location: session.location ?? null,
       is_rest_day: session.isRestDay ?? false,
-      recovery_activities: session.recoveryActivities as Database['public']['Tables']['workout_sessions']['Insert']['recovery_activities'] ?? null,
+      recovery_activities: session.recoveryActivities as unknown as Database['public']['Tables']['workout_sessions']['Insert']['recovery_activities'] ?? null,
     });
     if (error) {
       console.error('[useStorage] saveSession error:', error);
@@ -289,7 +289,7 @@ export function useStorage() {
       id: template.id,
       user_id: user.id,
       name: template.name,
-      exercises: template.exercises as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
+      exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
     });
     if (error) {
       console.error('[useStorage] saveTemplate error:', error);
@@ -320,10 +320,10 @@ export function useStorage() {
       id: program.id,
       user_id: user.id,
       name: program.name,
-      days: program.days as Database['public']['Tables']['workout_programs']['Insert']['days'],
+      days: program.days as unknown as Database['public']['Tables']['workout_programs']['Insert']['days'],
       duration_weeks: program.durationWeeks ?? 8,
       start_date: program.startDate ?? null,
-      schedule: program.schedule as Database['public']['Tables']['workout_programs']['Insert']['schedule'] ?? null,
+      schedule: program.schedule as unknown as Database['public']['Tables']['workout_programs']['Insert']['schedule'] ?? null,
     });
     if (error) {
       console.error('[useStorage] saveProgram error:', error);
@@ -417,7 +417,7 @@ export function useStorage() {
       template_id: updated.templateId,
       label: updated.label,
       completed: updated.completed ?? false,
-      recovery_activities: updated.recoveryActivities as Database['public']['Tables']['future_workouts']['Insert']['recovery_activities'] ?? null,
+      recovery_activities: updated.recoveryActivities as unknown as Database['public']['Tables']['future_workouts']['Insert']['recovery_activities'] ?? null,
     });
     if (error) {
       console.error('[useStorage] updateFutureWorkout error:', error);
@@ -488,7 +488,7 @@ export function useStorage() {
       };
       await supabase.from('workout_programs').update({
         start_date: updatedProgram.startDate ?? null,
-        days: updatedProgram.days as Database['public']['Tables']['workout_programs']['Update']['days'],
+        days: updatedProgram.days as unknown as Database['public']['Tables']['workout_programs']['Update']['days'],
       }).eq('id', programId).eq('user_id', user.id);
       setPrograms(prev => prev.map(p => p.id === programId ? updatedProgram : p));
     }
@@ -511,7 +511,7 @@ export function useStorage() {
       streak_weekly_target: updated.streakWeeklyTarget,
       tutorial_completed: updated.tutorialCompleted,
       hide_timers: updated.hideTimers,
-      custom_locations: updated.customLocations as Database['public']['Tables']['user_settings']['Insert']['custom_locations'],
+      custom_locations: updated.customLocations as unknown as Database['public']['Tables']['user_settings']['Insert']['custom_locations'],
     }, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);
