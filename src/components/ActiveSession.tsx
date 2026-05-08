@@ -7,6 +7,8 @@ import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/uti
 import { parseLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
+import { useBlockMutations, normalizeBlocks } from '@/hooks/useBlockMutations';
 import { CameraFeed } from '@/components/CameraFeed';
 import { cn } from '@/lib/utils';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
