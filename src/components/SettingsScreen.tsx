@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { exportUserData, importUserData, validateBackup, getBackupCounts, type RepVisionBackup } from '@/utils/dataPortability';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
