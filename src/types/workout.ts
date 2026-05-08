@@ -36,6 +36,7 @@ export interface WorkoutSession {
   totalReps: number;
   averageRpe?: number;
   note?: string;
+  location?: string;
   isRestDay?: boolean;
   recoveryActivities?: RecoveryActivity[];
 }

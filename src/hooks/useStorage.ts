@@ -89,6 +89,7 @@ function mapSession(row: any): WorkoutSession {
     totalReps: row.total_reps,
     averageRpe: row.average_rpe ? Number(row.average_rpe) : undefined,
     note: row.note ?? undefined,
+    location: row.location ?? undefined,
     isRestDay: row.is_rest_day ?? false,
     recoveryActivities: row.recovery_activities as any,
   };
@@ -137,13 +138,14 @@ export interface UserPreferences {
   streakWeeklyTarget: number;
   tutorialCompleted: boolean;
   hideTimers: boolean;
+  customLocations: string[];
 }
 
 export interface UserProfile {
   displayName: string | null;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'] };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 export function useStorage() {
@@ -195,6 +197,7 @@ export function useStorage() {
             streakWeeklyTarget: (settingsRes.data as any).streak_weekly_target ?? 3,
             tutorialCompleted: (settingsRes.data as any).tutorial_completed ?? false,
             hideTimers: (settingsRes.data as any).hide_timers ?? false,
+            customLocations: (settingsRes.data as any).custom_locations ?? ['Home Gym'],
           });
         }
         if (profileRes.data) {
@@ -231,6 +234,7 @@ export function useStorage() {
       total_reps: session.totalReps,
       average_rpe: session.averageRpe ?? null,
       note: session.note ?? null,
+      location: session.location ?? null,
       is_rest_day: session.isRestDay ?? false,
       recovery_activities: session.recoveryActivities as any ?? null,
     });
@@ -478,6 +482,7 @@ export function useStorage() {
       streak_weekly_target: updated.streakWeeklyTarget,
       tutorial_completed: updated.tutorialCompleted,
       hide_timers: updated.hideTimers,
+      custom_locations: updated.customLocations,
     } as any, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);

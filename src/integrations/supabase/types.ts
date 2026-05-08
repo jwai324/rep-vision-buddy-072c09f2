@@ -192,6 +192,7 @@ export type Database = {
         Row: {
           active_program_id: string | null
           created_at: string
+          custom_locations: Json
           default_drop_sets_enabled: boolean
           default_rest_seconds: number
           hide_timers: boolean
@@ -206,6 +207,7 @@ export type Database = {
         Insert: {
           active_program_id?: string | null
           created_at?: string
+          custom_locations?: Json
           default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
           hide_timers?: boolean
@@ -220,6 +222,7 @@ export type Database = {
         Update: {
           active_program_id?: string | null
           created_at?: string
+          custom_locations?: Json
           default_drop_sets_enabled?: boolean
           default_rest_seconds?: number
           hide_timers?: boolean
@@ -278,6 +281,7 @@ export type Database = {
           exercises: Json
           id: string
           is_rest_day: boolean | null
+          location: string | null
           note: string | null
           recovery_activities: Json | null
           started_at: string | null
@@ -295,6 +299,7 @@ export type Database = {
           exercises?: Json
           id?: string
           is_rest_day?: boolean | null
+          location?: string | null
           note?: string | null
           recovery_activities?: Json | null
           started_at?: string | null
@@ -312,6 +317,7 @@ export type Database = {
           exercises?: Json
           id?: string
           is_rest_day?: boolean | null
+          location?: string | null
           note?: string | null
           recovery_activities?: Json | null
           started_at?: string | null

@@ -1,42 +1,32 @@
-## Data Export & Import Feature
+## Persist Locations to Database
 
-Add export/download and import/upload buttons to the Settings screen so users can back up all their data as a JSON file and restore it on any instance of the app.
+### Database Migration
 
-### What gets exported
+Add two columns:
+```sql
+ALTER TABLE public.workout_sessions ADD COLUMN IF NOT EXISTS location text;
+ALTER TABLE public.user_settings ADD COLUMN IF NOT EXISTS custom_locations jsonb NOT NULL DEFAULT '["Home Gym"]'::jsonb;
+```
 
-A single `.json` file containing all user data:
-- **workout_sessions** — all completed workouts
-- **workout_templates** — saved templates
-- **workout_programs** — programs and schedules
-- **future_workouts** — upcoming scheduled workouts
-- **custom_exercises** — user-created exercises
-- **user_settings** — preferences (units, rest timer, streak settings, etc.)
-- **profile** — display name
+### Code Changes
 
-The file is timestamped (e.g. `repvision-backup-2026-05-08.json`) and includes a version field for future compatibility.
+**`src/types/workout.ts`** — Add `location?: string` to `WorkoutSession` interface (after `note`).
 
-### What gets imported
+**`src/hooks/useStorage.ts`** — 4 changes:
+1. `UserPreferences` interface: add `customLocations: string[]`
+2. `DEFAULT_PREFERENCES`: add `customLocations: ['Home Gym']`
+3. `mapSession`: add `location: row.location ?? undefined`
+4. `saveSession`: add `location: session.location ?? null` to the upsert
+5. Load settings: add `customLocations: (settingsRes.data as any).custom_locations ?? ['Home Gym']`
+6. `updatePreferences`: add `custom_locations: updated.customLocations` to the upsert
+7. Export `customLocations` and add `saveCustomLocations` callback or rely on `updatePreferences`
 
-The same JSON file. On import:
-- Each table's data is upserted (matching on `id`), so duplicates are safely handled.
-- The user is shown a confirmation dialog before import proceeds, listing counts (e.g. "42 sessions, 5 templates, 2 programs").
-- `user_id` fields are replaced with the current authenticated user's ID, so the data works on any account/instance.
+**`src/components/ActiveSession.tsx`** — 3 changes:
+1. Accept `customLocations` and `onUpdateCustomLocations` props (or read from preferences)
+2. Replace `getSavedLocations()` / `saveLocations()` localStorage functions with the DB-backed list from props
+3. In the `finalSession` object (~line 1428): add `location` field from the current `location` state
+4. Remove `LOCATIONS_KEY`, `getSavedLocations`, `saveLocations` localStorage functions (lines 55-70)
 
-### UI Changes
+**`src/components/ActiveSession.tsx` props** — The parent component that renders `ActiveSession` needs to pass `customLocations` from `preferences.customLocations` and a callback to update them via `updatePreferences({ customLocations: [...] })`.
 
-**`src/components/SettingsScreen.tsx`**
-- Add a "Data Management" section near the bottom (above Sign Out) with two buttons:
-  - **Export Data** — downloads the JSON backup file
-  - **Import Data** — opens a hidden file input, parses the JSON, shows confirmation, then upserts
-
-### New file
-
-**`src/utils/dataPortability.ts`**
-- `exportUserData(supabase, userId)` — queries all 6 tables, bundles into a typed JSON object, triggers browser download
-- `importUserData(supabase, userId, data)` — validates the JSON shape, replaces user_id fields, upserts each table in order (settings first, then templates, programs, sessions, future workouts, custom exercises)
-- Includes a version constant and basic schema validation
-
-### Technical details
-- No database or migration changes needed — uses existing tables and upsert operations
-- Works with the existing RLS policies since all operations use the authenticated user's ID
-- File size is typically small (a few hundred KB for most users)
+**No changes needed to `src/utils/dataPortability.ts`** — It already exports full rows via `select('*')`, so the new `location` column on sessions and `custom_locations` on settings will be included automatically in export and restored on import.

@@ -52,23 +52,7 @@ import type { WorkoutTemplate } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 
 const CACHE_KEY = 'active-session-cache';
-const LOCATIONS_KEY = 'workout-locations';
 const DEFAULT_LOCATION = 'Home Gym';
-
-function getSavedLocations(): string[] {
-  try {
-    const raw = localStorage.getItem(LOCATIONS_KEY);
-    if (!raw) return [DEFAULT_LOCATION];
-    const parsed = JSON.parse(raw) as string[];
-    return parsed.includes(DEFAULT_LOCATION) ? parsed : [DEFAULT_LOCATION, ...parsed];
-  } catch {
-    return [DEFAULT_LOCATION];
-  }
-}
-
-function saveLocations(locations: string[]) {
-  localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locations));
-}
 
 export type TimerStatus = 'running' | 'paused' | 'completed';
 
@@ -122,6 +106,8 @@ export function getSessionCache(): ActiveSessionCache | null {
 interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
+  customLocations?: string[];
+  onUpdateCustomLocations?: (locations: string[]) => void;
   templateName?: string;
   templateId?: string;
   template?: WorkoutTemplate | null;
@@ -229,7 +215,7 @@ function normalizeBlocks(blocks: ExerciseBlock[]): ExerciseBlock[] {
   });
 }
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations }) => {
   const isEditMode = !!editSession;
   const { exercises: customExercises } = useCustomExercisesContext();
   const exerciseLookup = useMemo(() => {
@@ -339,7 +325,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [workoutNote, setWorkoutNote] = useState(cachedSession?.workoutNote ?? editSession?.note ?? '');
   const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [location, setLocation] = useState(cachedSession?.location ?? DEFAULT_LOCATION);
-  const [locations, setLocations] = useState<string[]>(getSavedLocations);
+  const [locations, setLocations] = useState<string[]>(propLocations);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [newLocationInput, setNewLocationInput] = useState('');
   const [deleteLocationConfirm, setDeleteLocationConfirm] = useState<string | null>(null);
@@ -400,12 +386,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     if (trimmed && !locations.includes(trimmed)) {
       const updated = [...locations, trimmed];
       setLocations(updated);
-      saveLocations(updated);
+      onUpdateCustomLocations?.(updated);
     }
     setLocation(trimmed || location);
     setNewLocationInput('');
     setShowLocationDropdown(false);
-  }, [newLocationInput, locations, location]);
+  }, [newLocationInput, locations, location, onUpdateCustomLocations]);
 
   // ============= Persistent timestamp-based rest timer =============
   // Source of truth = persisted record. setInterval below only triggers re-render.
@@ -1436,6 +1422,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalReps,
       averageRpe,
       note: workoutNote.trim() || undefined,
+      location: location || undefined,
     };
 
     // Check whether to prompt user about updating the source template
@@ -1918,7 +1905,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 if (!deleteLocationConfirm) return;
                 const updated = locations.filter(l => l !== deleteLocationConfirm);
                 setLocations(updated);
-                saveLocations(updated);
+                onUpdateCustomLocations?.(updated);
                 if (location === deleteLocationConfirm) setLocation(DEFAULT_LOCATION);
                 setDeleteLocationConfirm(null);
               }}
