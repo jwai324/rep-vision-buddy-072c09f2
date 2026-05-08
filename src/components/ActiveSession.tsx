@@ -205,6 +205,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       };
     });
   });
+
+  // ===== Extracted hooks =====
+  const restTimer = useSessionRestTimer({ cachedSession });
+  const { activeTimer, restRecords, computeRemaining, recalcRestTimer, startTimer, skipTimer, extendTimer } = restTimer;
+
+  const blockOps = useBlockMutations(blocks, setBlocks, {
+    weightUnit,
+    defaultDropSetsEnabled,
+    customExercises,
+    startTimer,
+  });
+  const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, toggleDropSets, addWarmupSet } = blockOps;
   const [workoutName, setWorkoutName] = useState(() => {
     if (cachedSession?.workoutName) return cachedSession.workoutName;
     if (editSession) return 'Workout';
