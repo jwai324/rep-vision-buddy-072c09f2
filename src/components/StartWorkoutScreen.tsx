@@ -99,9 +99,9 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
                   >
                     <div className="flex-1">
                       <h3 className="text-sm font-semibold text-foreground">{fw.label}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      {template && <p className="text-xs text-muted-foreground mt-0.5">{template.name}</p>}
+                      <p className="text-sm font-medium text-foreground/80 mt-1">
                         {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                        {template ? ` · ${template.exercises.map(e => lookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(', ')}` : ''}
                       </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
