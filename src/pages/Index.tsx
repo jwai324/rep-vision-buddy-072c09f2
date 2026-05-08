@@ -279,18 +279,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onSaveAsTemplate={() => {
               storage.saveSession(pendingSummary);
               clearSessionCache();
-              const template: WorkoutTemplate = {
-                id: crypto.randomUUID(),
-                name: `Workout ${new Date(pendingSummary.date).toLocaleDateString()}`,
-                exercises: pendingSummary.exercises.map(ex => ({
-                  exerciseId: ex.exerciseId,
-                  sets: ex.sets.length,
-                  targetReps: ex.sets[0]?.reps ?? 10,
-                  setType: ex.sets[0]?.type ?? 'normal',
-                  restSeconds: 90,
-                })),
-              };
-              storage.saveTemplate(template);
+              storage.saveTemplate(templateFromSession(pendingSummary));
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
