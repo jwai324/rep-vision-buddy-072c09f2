@@ -133,6 +133,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     }
   };
 
+  const activeProgram = storage.activeProgramId
+    ? storage.programs.find(p => p.id === storage.activeProgramId) ?? null
+    : null;
+
+  const handleDayClick = useDayClickHandler(
+    { history: storage.history, futureWorkouts: storage.futureWorkouts, activeProgram, activeProgramId: storage.activeProgramId },
+    setScreen,
+  );
+
   if (storage.loading) {
     return (
       <div className="max-w-lg mx-auto min-h-screen flex items-center justify-center">
@@ -144,10 +153,6 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     );
   }
 
-  const activeProgram = storage.activeProgramId
-    ? storage.programs.find(p => p.id === storage.activeProgramId) ?? null
-    : null;
-
   const startFromTemplate = (template: WorkoutTemplate) => {
     setScreen({
       type: 'activeSession',
@@ -157,11 +162,6 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       templateId: template.id,
     });
   };
-
-  const handleDayClick = useDayClickHandler(
-    { history: storage.history, futureWorkouts: storage.futureWorkouts, activeProgram, activeProgramId: storage.activeProgramId },
-    setScreen,
-  );
 
   const handleDesktopNav = (key: string) => {
     setScreen({ type: key } as Screen);
