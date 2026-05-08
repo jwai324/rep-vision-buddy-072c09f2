@@ -385,6 +385,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'treadmill-incline-walk', name: 'Treadmill Incline Walk', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Glutes', 'Calves', 'Hamstrings'], measurementType: 'Time + Distance' },
 
   // Cardio / Sport
+  { id: 'assault-bike', name: 'Assault Bike', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Core'], measurementType: 'Time + Distance' },
   { id: 'elliptical', name: 'Elliptical', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Shoulders'], measurementType: 'Time' },
   { id: 'stationary-cycling', name: 'Stationary Cycling', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Hamstrings', 'Glutes', 'Calves'], measurementType: 'Time + Distance' },
   { id: 'sprinting', name: 'Sprinting', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Hip Flexors'], measurementType: 'Time + Distance' },
