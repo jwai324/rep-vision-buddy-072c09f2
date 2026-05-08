@@ -3,8 +3,19 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
+import type { Database } from '@/integrations/supabase/types';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
+
+type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
+type TemplateRow = Database['public']['Tables']['workout_templates']['Row'];
+type ProgramRow = Database['public']['Tables']['workout_programs']['Row'];
+type FutureWorkoutRow = Database['public']['Tables']['future_workouts']['Row'];
+type SettingsRow = Database['public']['Tables']['user_settings']['Row'];
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+
+// Maximum rows to fetch per table (Supabase default is 1000)
+const MAX_ROWS = 5000;
 
 function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
   const workouts: Omit<FutureWorkout, 'id'>[] = [];
@@ -76,13 +87,13 @@ function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'i
   return workouts;
 }
 
-// Map DB row to app type
-function mapSession(row: any): WorkoutSession {
+// Map DB row to app type — typed row inputs
+function mapSession(row: SessionRow): WorkoutSession {
   return {
     id: row.id,
     date: row.date,
     startedAt: row.started_at ?? undefined,
-    exercises: row.exercises as any[],
+    exercises: row.exercises as unknown as WorkoutSession['exercises'],
     duration: row.duration,
     totalVolume: Number(row.total_volume),
     totalSets: row.total_sets,
@@ -91,30 +102,30 @@ function mapSession(row: any): WorkoutSession {
     note: row.note ?? undefined,
     location: row.location ?? undefined,
     isRestDay: row.is_rest_day ?? false,
-    recoveryActivities: row.recovery_activities as any,
+    recoveryActivities: row.recovery_activities as unknown as WorkoutSession['recoveryActivities'],
   };
 }
 
-function mapTemplate(row: any): WorkoutTemplate {
+function mapTemplate(row: TemplateRow): WorkoutTemplate {
   return {
     id: row.id,
     name: row.name,
-    exercises: row.exercises as any[],
+    exercises: row.exercises as unknown as WorkoutTemplate['exercises'],
   };
 }
 
-function mapProgram(row: any): WorkoutProgram {
+function mapProgram(row: ProgramRow): WorkoutProgram {
   return {
     id: row.id,
     name: row.name,
-    days: row.days as any[],
+    days: row.days as unknown as WorkoutProgram['days'],
     durationWeeks: row.duration_weeks ?? 8,
     startDate: row.start_date ?? undefined,
-    schedule: row.schedule as any,
+    schedule: row.schedule as unknown as WorkoutProgram['schedule'],
   };
 }
 
-function mapFutureWorkout(row: any): FutureWorkout {
+function mapFutureWorkout(row: FutureWorkoutRow): FutureWorkout {
   return {
     id: row.id,
     programId: row.program_id,
@@ -122,7 +133,7 @@ function mapFutureWorkout(row: any): FutureWorkout {
     templateId: row.template_id,
     label: row.label,
     completed: row.completed ?? false,
-    recoveryActivities: row.recovery_activities as any,
+    recoveryActivities: row.recovery_activities as unknown as FutureWorkout['recoveryActivities'],
   };
 }
 
@@ -147,6 +158,22 @@ export interface UserProfile {
 
 const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'] };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
+
+function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; preferences: UserPreferences } {
+  return {
+    activeProgramId: row.active_program_id,
+    preferences: {
+      weightUnit: (row.weight_unit ?? 'lbs') as WeightUnit,
+      defaultRestSeconds: row.default_rest_seconds ?? 90,
+      defaultDropSetsEnabled: row.default_drop_sets_enabled ?? false,
+      streakMode: (row.streak_mode ?? 'daily') as StreakMode,
+      streakWeeklyTarget: row.streak_weekly_target ?? 3,
+      tutorialCompleted: row.tutorial_completed ?? false,
+      hideTimers: row.hide_timers ?? false,
+      customLocations: (row.custom_locations as string[]) ?? ['Home Gym'],
+    },
+  };
+}
 
 export function useStorage() {
   const { user } = useAuth();
@@ -175,10 +202,10 @@ export function useStorage() {
       setLoading(true);
       try {
         const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes] = await Promise.all([
-          supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }),
-          supabase.from('workout_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+          supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
+          supabase.from('workout_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
           supabase.from('workout_programs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }),
+          supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
           supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
           supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
         ]);
@@ -188,17 +215,9 @@ export function useStorage() {
         if (programsRes.data) setPrograms(programsRes.data.map(mapProgram));
         if (futureRes.data) setFutureWorkouts(futureRes.data.map(mapFutureWorkout));
         if (settingsRes.data) {
-          setActiveProgramIdState(settingsRes.data.active_program_id);
-          setPreferencesState({
-            weightUnit: (settingsRes.data as any).weight_unit ?? 'lbs',
-            defaultRestSeconds: (settingsRes.data as any).default_rest_seconds ?? 90,
-            defaultDropSetsEnabled: (settingsRes.data as any).default_drop_sets_enabled ?? false,
-            streakMode: ((settingsRes.data as any).streak_mode ?? 'daily') as StreakMode,
-            streakWeeklyTarget: (settingsRes.data as any).streak_weekly_target ?? 3,
-            tutorialCompleted: (settingsRes.data as any).tutorial_completed ?? false,
-            hideTimers: (settingsRes.data as any).hide_timers ?? false,
-            customLocations: (settingsRes.data as any).custom_locations ?? ['Home Gym'],
-          });
+          const mapped = mapSettingsRow(settingsRes.data);
+          setActiveProgramIdState(mapped.activeProgramId);
+          setPreferencesState(mapped.preferences);
         }
         if (profileRes.data) {
           setProfileState({
@@ -227,7 +246,7 @@ export function useStorage() {
       user_id: user.id,
       date: session.date,
       started_at: session.startedAt ?? null,
-      exercises: session.exercises as any,
+      exercises: session.exercises as unknown as Database['public']['Tables']['workout_sessions']['Insert']['exercises'],
       duration: session.duration,
       total_volume: session.totalVolume,
       total_sets: session.totalSets,
@@ -236,7 +255,7 @@ export function useStorage() {
       note: session.note ?? null,
       location: session.location ?? null,
       is_rest_day: session.isRestDay ?? false,
-      recovery_activities: session.recoveryActivities as any ?? null,
+      recovery_activities: session.recoveryActivities as unknown as Database['public']['Tables']['workout_sessions']['Insert']['recovery_activities'] ?? null,
     });
     if (error) {
       console.error('[useStorage] saveSession error:', error);
@@ -248,15 +267,21 @@ export function useStorage() {
       if (exists >= 0) return prev.map(s => s.id === session.id ? session : s);
       return [session, ...prev];
     });
-    // Clean future workouts that match this date
-    setFutureWorkouts(prev => {
-      const toRemove = prev.filter(fw => fw.date === session.date.split('T')[0] && !fw.completed);
-      toRemove.forEach(fw => {
-        supabase.from('future_workouts').delete().eq('id', fw.id).then(() => {});
-      });
-      return prev.filter(fw => !toRemove.some(r => r.id === fw.id));
-    });
-  }, [user]);
+
+    // Clean future workouts that match this date — await deletes with error handling
+    const matchingFws = futureWorkouts.filter(fw => fw.date === session.date.split('T')[0] && !fw.completed);
+    if (matchingFws.length > 0) {
+      const deleteResults = await Promise.all(
+        matchingFws.map(fw => supabase.from('future_workouts').delete().eq('id', fw.id))
+      );
+      const failedDelete = deleteResults.find(r => r.error);
+      if (failedDelete?.error) {
+        console.error('[useStorage] future workout cleanup error:', failedDelete.error);
+      }
+      const deletedIds = new Set(matchingFws.map(fw => fw.id));
+      setFutureWorkouts(prev => prev.filter(fw => !deletedIds.has(fw.id)));
+    }
+  }, [user, futureWorkouts]);
 
   const saveTemplate = useCallback(async (template: WorkoutTemplate) => {
     if (!user) return;
@@ -264,7 +289,7 @@ export function useStorage() {
       id: template.id,
       user_id: user.id,
       name: template.name,
-      exercises: template.exercises as any,
+      exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
     });
     if (error) {
       console.error('[useStorage] saveTemplate error:', error);
@@ -295,10 +320,10 @@ export function useStorage() {
       id: program.id,
       user_id: user.id,
       name: program.name,
-      days: program.days as any,
+      days: program.days as unknown as Database['public']['Tables']['workout_programs']['Insert']['days'],
       duration_weeks: program.durationWeeks ?? 8,
       start_date: program.startDate ?? null,
-      schedule: program.schedule as any ?? null,
+      schedule: program.schedule as unknown as Database['public']['Tables']['workout_programs']['Insert']['schedule'] ?? null,
     });
     if (error) {
       console.error('[useStorage] saveProgram error:', error);
@@ -370,14 +395,17 @@ export function useStorage() {
 
   const deleteSession = useCallback(async (id: string) => {
     if (!user) return;
+    // Capture for rollback
+    const previous = history;
+    setHistory(prev => prev.filter(s => s.id !== id));
     const { error } = await supabase.from('workout_sessions').delete().eq('id', id).eq('user_id', user.id);
     if (error) {
       console.error('[useStorage] deleteSession error:', error);
       toast.error('Failed to delete session');
+      setHistory(previous); // rollback
       return;
     }
-    setHistory(prev => prev.filter(s => s.id !== id));
-  }, [user]);
+  }, [user, history]);
 
   const updateFutureWorkout = useCallback(async (updated: FutureWorkout) => {
     if (!user) return;
@@ -389,7 +417,7 @@ export function useStorage() {
       template_id: updated.templateId,
       label: updated.label,
       completed: updated.completed ?? false,
-      recovery_activities: updated.recoveryActivities as any ?? null,
+      recovery_activities: updated.recoveryActivities as unknown as Database['public']['Tables']['future_workouts']['Insert']['recovery_activities'] ?? null,
     });
     if (error) {
       console.error('[useStorage] updateFutureWorkout error:', error);
@@ -460,7 +488,7 @@ export function useStorage() {
       };
       await supabase.from('workout_programs').update({
         start_date: updatedProgram.startDate ?? null,
-        days: updatedProgram.days as any,
+        days: updatedProgram.days as unknown as Database['public']['Tables']['workout_programs']['Update']['days'],
       }).eq('id', programId).eq('user_id', user.id);
       setPrograms(prev => prev.map(p => p.id === programId ? updatedProgram : p));
     }
@@ -471,6 +499,7 @@ export function useStorage() {
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
     if (!user) return;
     const updated = { ...preferences, ...prefs };
+    const previous = preferences;
     setPreferencesState(updated);
     const { error } = await supabase.from('user_settings').upsert({
       user_id: user.id,
@@ -482,17 +511,19 @@ export function useStorage() {
       streak_weekly_target: updated.streakWeeklyTarget,
       tutorial_completed: updated.tutorialCompleted,
       hide_timers: updated.hideTimers,
-      custom_locations: updated.customLocations,
-    } as any, { onConflict: 'user_id' });
+      custom_locations: updated.customLocations as unknown as Database['public']['Tables']['user_settings']['Insert']['custom_locations'],
+    }, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);
       toast.error('Failed to save preferences');
+      setPreferencesState(previous); // rollback
     }
   }, [user, preferences, activeProgramId]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;
     const updated = { ...profile, ...updates };
+    const previous = profile;
     setProfileState(updated);
     const { error } = await supabase.from('profiles').upsert({
       user_id: user.id,
@@ -501,6 +532,7 @@ export function useStorage() {
     if (error) {
       console.error('[useStorage] updateProfile error:', error);
       toast.error('Failed to save profile');
+      setProfileState(previous); // rollback
     }
   }, [user, profile]);
 
