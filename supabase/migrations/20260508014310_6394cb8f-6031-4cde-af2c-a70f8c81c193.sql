@@ -1,0 +1,1 @@
+ALTER TABLE public.user_settings ADD COLUMN sticky_notes jsonb NOT NULL DEFAULT '{}'::jsonb;

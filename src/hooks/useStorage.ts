@@ -150,13 +150,14 @@ export interface UserPreferences {
   tutorialCompleted: boolean;
   hideTimers: boolean;
   customLocations: string[];
+  stickyNotes: Record<string, string>;
 }
 
 export interface UserProfile {
   displayName: string | null;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'] };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'], stickyNotes: {} };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; preferences: UserPreferences } {
@@ -171,6 +172,7 @@ function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; pre
       tutorialCompleted: row.tutorial_completed ?? false,
       hideTimers: row.hide_timers ?? false,
       customLocations: (row.custom_locations as string[]) ?? ['Home Gym'],
+      stickyNotes: (row.sticky_notes as Record<string, string>) ?? {},
     },
   };
 }
@@ -512,6 +514,7 @@ export function useStorage() {
       tutorial_completed: updated.tutorialCompleted,
       hide_timers: updated.hideTimers,
       custom_locations: updated.customLocations as unknown as Database['public']['Tables']['user_settings']['Insert']['custom_locations'],
+      sticky_notes: updated.stickyNotes as unknown as Database['public']['Tables']['user_settings']['Insert']['sticky_notes'],
     }, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);

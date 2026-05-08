@@ -321,6 +321,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onUpdateHideTimers={(val) => storage.updatePreferences({ hideTimers: val })}
             customLocations={storage.preferences.customLocations}
             onUpdateCustomLocations={(locs) => storage.updatePreferences({ customLocations: locs })}
+            stickyNotes={storage.preferences.stickyNotes}
+            onUpdateStickyNotes={storage.updatePreferences}
           />
         </ErrorBoundary>
       )}
@@ -383,6 +385,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onCancel={() => setScreen({ type: 'sessionDetail', session: screen.session, from: 'activity' })}
             customLocations={storage.preferences.customLocations}
             onUpdateCustomLocations={(locs) => storage.updatePreferences({ customLocations: locs })}
+            stickyNotes={storage.preferences.stickyNotes}
+            onUpdateStickyNotes={storage.updatePreferences}
           />
         </ErrorBoundary>
       )}

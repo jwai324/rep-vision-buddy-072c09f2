@@ -71,7 +71,8 @@ const DataManagementSection: React.FC = () => {
     setImporting(true);
     const result = await importUserData(supabase, user.id, pendingBackup);
     if (result.success) {
-      toast({ title: 'Import complete', description: 'Your data has been restored. Reload the app to see changes.' });
+      toast({ title: 'Import complete', description: 'Your data has been restored. Reloading…' });
+      setTimeout(() => window.location.reload(), 1200);
     } else {
       toast({ title: 'Import failed', description: result.error, variant: 'destructive' });
     }
