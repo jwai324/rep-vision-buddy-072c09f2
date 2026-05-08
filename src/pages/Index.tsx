@@ -327,19 +327,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onSaveAsTemplate={() => {
             storage.saveSession(screen.session);
             clearSessionCache();
-            // Auto-create template from session
-            const template: WorkoutTemplate = {
-              id: crypto.randomUUID(),
-              name: `Workout ${new Date(screen.session.date).toLocaleDateString()}`,
-              exercises: screen.session.exercises.map(ex => ({
-                exerciseId: ex.exerciseId,
-                sets: ex.sets.length,
-                targetReps: ex.sets[0]?.reps ?? 10,
-                setType: ex.sets[0]?.type ?? 'normal',
-                restSeconds: 90,
-              })),
-            };
-            storage.saveTemplate(template);
+            storage.saveTemplate(templateFromSession(screen.session));
             setScreen({ type: 'dashboard' });
           }}
           onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
