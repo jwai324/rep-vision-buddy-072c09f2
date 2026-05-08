@@ -144,7 +144,7 @@ export interface UserProfile {
   displayName: string | null;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'] };
 const DEFAULT_PROFILE: UserProfile = { displayName: null };
 
 export function useStorage() {
