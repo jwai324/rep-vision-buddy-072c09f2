@@ -25,8 +25,111 @@ const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
 ];
 
 const REST_OPTIONS = [30, 45, 60, 90, 120, 150, 180];
+const DataManagementSection: React.FC = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [pendingBackup, setPendingBackup] = useState<RepVisionBackup | null>(null);
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({
+  const handleExport = async () => {
+    if (!user) return;
+    setExporting(true);
+    try {
+      await exportUserData(supabase, user.id);
+      toast({ title: 'Export complete', description: 'Your data has been downloaded.' });
+    } catch {
+      toast({ title: 'Export failed', description: 'Could not export data.', variant: 'destructive' });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (!validateBackup(parsed)) {
+          toast({ title: 'Invalid file', description: 'This does not look like a RepVision backup.', variant: 'destructive' });
+          return;
+        }
+        setPendingBackup(parsed);
+      } catch {
+        toast({ title: 'Invalid file', description: 'Could not parse JSON file.', variant: 'destructive' });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const confirmImport = async () => {
+    if (!user || !pendingBackup) return;
+    setImporting(true);
+    const result = await importUserData(supabase, user.id, pendingBackup);
+    if (result.success) {
+      toast({ title: 'Import complete', description: 'Your data has been restored. Reload the app to see changes.' });
+    } else {
+      toast({ title: 'Import failed', description: result.error, variant: 'destructive' });
+    }
+    setImporting(false);
+    setPendingBackup(null);
+  };
+
+  const counts = pendingBackup ? getBackupCounts(pendingBackup) : null;
+
+  return (
+    <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <div className="px-4 py-3 border-b border-border">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Data Management</p>
+      </div>
+      <div className="p-4 flex flex-col gap-3">
+        <Button variant="outline" className="w-full justify-start gap-3" onClick={handleExport} disabled={exporting}>
+          <Download className="w-4 h-4" />
+          {exporting ? 'Exporting...' : 'Export All Data'}
+        </Button>
+        <Button variant="outline" className="w-full justify-start gap-3" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+          <Upload className="w-4 h-4" />
+          {importing ? 'Importing...' : 'Import Data'}
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileSelect} />
+        <p className="text-xs text-muted-foreground">Export downloads a JSON backup of all your workouts, templates, programs, and settings.</p>
+      </div>
+
+      {/* Confirmation dialog */}
+      {pendingBackup && counts && (
+        <div className="px-4 pb-4">
+          <div className="bg-secondary rounded-lg p-3 border border-border">
+            <p className="text-sm font-semibold text-foreground mb-2">Confirm Import</p>
+            <ul className="text-xs text-muted-foreground space-y-0.5 mb-3">
+              {counts.sessions > 0 && <li>• {counts.sessions} workout sessions</li>}
+              {counts.templates > 0 && <li>• {counts.templates} templates</li>}
+              {counts.programs > 0 && <li>• {counts.programs} programs</li>}
+              {counts.futureWorkouts > 0 && <li>• {counts.futureWorkouts} future workouts</li>}
+              {counts.customExercises > 0 && <li>• {counts.customExercises} custom exercises</li>}
+              {counts.hasSettings && <li>• Settings & preferences</li>}
+              {counts.hasProfile && <li>• Profile info</li>}
+            </ul>
+            <p className="text-xs text-muted-foreground mb-3">Existing data with the same IDs will be overwritten.</p>
+            <div className="flex gap-2">
+              <Button size="sm" className="flex-1" onClick={confirmImport} disabled={importing}>
+                {importing ? 'Importing...' : 'Import'}
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1" onClick={() => setPendingBackup(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
   preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onReplayTutorial,
 }) => {
   const { user, signOut } = useAuth();
