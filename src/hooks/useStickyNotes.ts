@@ -1,38 +1,25 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
+import type { UserPreferences } from '@/hooks/useStorage';
 
-const STORAGE_KEY = 'replog:stickyNotes';
-
-function loadNotes(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveNotes(notes: Record<string, string>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
-}
-
-/** Persistent sticky notes keyed by exerciseId — survive across workout sessions. */
-export function useStickyNotes() {
-  const [notes, setNotes] = useState<Record<string, string>>(loadNotes);
-
+/**
+ * Persistent sticky notes keyed by exerciseId — stored in Supabase via user preferences.
+ * Accepts the stickyNotes record and an updatePreferences callback from useStorage.
+ */
+export function useStickyNotes(
+  stickyNotes: Record<string, string>,
+  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>,
+) {
   const setStickyNote = useCallback((exerciseId: string, text: string) => {
-    setNotes(prev => {
-      const next = { ...prev };
-      if (text.trim()) {
-        next[exerciseId] = text.trim();
-      } else {
-        delete next[exerciseId];
-      }
-      saveNotes(next);
-      return next;
-    });
-  }, []);
+    const next = { ...stickyNotes };
+    if (text.trim()) {
+      next[exerciseId] = text.trim();
+    } else {
+      delete next[exerciseId];
+    }
+    updatePreferences({ stickyNotes: next });
+  }, [stickyNotes, updatePreferences]);
 
-  const getStickyNote = useCallback((exerciseId: string) => notes[exerciseId] ?? '', [notes]);
+  const getStickyNote = useCallback((exerciseId: string) => stickyNotes[exerciseId] ?? '', [stickyNotes]);
 
   return { getStickyNote, setStickyNote };
 }
