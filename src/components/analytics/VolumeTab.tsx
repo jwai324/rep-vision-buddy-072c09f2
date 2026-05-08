@@ -20,7 +20,7 @@ interface VolumeTabProps {
 }
 
 export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => {
-  const [selectedBodyPart, setSelectedBodyPart] = useState<string | null>(null);
+  const [selectedBodyParts, setSelectedBodyParts] = useState<Set<string>>(new Set());
   const { exercises: customExercises } = useCustomExercisesContext();
   const exerciseBodyPartMap = useMemo(() => {
     const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
