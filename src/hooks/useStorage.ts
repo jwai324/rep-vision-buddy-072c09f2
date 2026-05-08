@@ -234,6 +234,7 @@ export function useStorage() {
       total_reps: session.totalReps,
       average_rpe: session.averageRpe ?? null,
       note: session.note ?? null,
+      location: session.location ?? null,
       is_rest_day: session.isRestDay ?? false,
       recovery_activities: session.recoveryActivities as any ?? null,
     });
