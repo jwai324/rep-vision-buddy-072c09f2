@@ -482,6 +482,7 @@ export function useStorage() {
       streak_weekly_target: updated.streakWeeklyTarget,
       tutorial_completed: updated.tutorialCompleted,
       hide_timers: updated.hideTimers,
+      custom_locations: updated.customLocations,
     } as any, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);
