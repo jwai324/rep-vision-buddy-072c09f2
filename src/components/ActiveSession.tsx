@@ -125,16 +125,6 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
   const { exercises: customExercises } = useCustomExercisesContext();
-  const exerciseLookup = useMemo(() => {
-    const lookup: Record<string, string> = {};
-    for (const [id, ex] of Object.entries(EXERCISES)) {
-      lookup[id] = ex.name;
-    }
-    for (const ce of customExercises) {
-      lookup[ce.id] = ce.name;
-    }
-    return lookup;
-  }, [customExercises]);
   // Convert saved session exercises back to blocks for editing.
   // Rebuilds nested `drops` from flat saved WorkoutSet[] (consecutive 'dropset'
   // rows attach to the most recent non-dropset parent of the same setNumber).
