@@ -89,6 +89,7 @@ function mapSession(row: any): WorkoutSession {
     totalReps: row.total_reps,
     averageRpe: row.average_rpe ? Number(row.average_rpe) : undefined,
     note: row.note ?? undefined,
+    location: row.location ?? undefined,
     isRestDay: row.is_rest_day ?? false,
     recoveryActivities: row.recovery_activities as any,
   };
