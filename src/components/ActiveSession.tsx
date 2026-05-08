@@ -106,6 +106,8 @@ export function getSessionCache(): ActiveSessionCache | null {
 interface ActiveSessionProps {
   exercises: ExerciseId[];
   templateExercises?: TemplateExercise[];
+  customLocations?: string[];
+  onUpdateCustomLocations?: (locations: string[]) => void;
   templateName?: string;
   templateId?: string;
   template?: WorkoutTemplate | null;
