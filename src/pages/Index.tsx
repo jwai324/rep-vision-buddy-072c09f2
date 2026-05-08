@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useStorage } from '@/hooks/useStorage';
-import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
@@ -27,9 +26,10 @@ import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/C
 import { TutorialProvider, useTutorial } from '@/contexts/TutorialContext';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { AIChatBubble } from '@/components/AIChatBubble';
+import { templateFromSession, useDayClickHandler } from '@/hooks/useScreenHelpers';
 
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-import { format, addDays, addWeeks, getDay, isSameDay } from 'date-fns';
+import { format } from 'date-fns';
 import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
 
 type Screen =
