@@ -108,6 +108,8 @@ interface ActiveSessionProps {
   templateExercises?: TemplateExercise[];
   customLocations?: string[];
   onUpdateCustomLocations?: (locations: string[]) => void;
+  stickyNotes?: Record<string, string>;
+  onUpdateStickyNotes?: (notes: Partial<import('@/hooks/useStorage').UserPreferences>) => Promise<void>;
   templateName?: string;
   templateId?: string;
   template?: WorkoutTemplate | null;
