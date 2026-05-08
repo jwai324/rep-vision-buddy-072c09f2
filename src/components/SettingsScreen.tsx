@@ -129,7 +129,7 @@ const DataManagementSection: React.FC = () => {
   );
 };
 
-
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onReplayTutorial,
 }) => {
   const { user, signOut } = useAuth();
