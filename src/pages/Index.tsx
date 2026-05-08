@@ -381,6 +381,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               setScreen({ type: 'activity', initialTab: 'history' });
             }}
             onCancel={() => setScreen({ type: 'sessionDetail', session: screen.session, from: 'activity' })}
+            customLocations={storage.preferences.customLocations}
+            onUpdateCustomLocations={(locs) => storage.updatePreferences({ customLocations: locs })}
           />
         </ErrorBoundary>
       )}
