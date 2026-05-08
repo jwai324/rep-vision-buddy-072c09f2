@@ -53,6 +53,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'archer-push-up', name: 'Archer Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core', 'Shoulders'] },
   { id: 'plyo-push-up', name: 'Plyo Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-push-up', name: 'Single-Arm Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core', 'Shoulders'] },
+  { id: 'weighted-dips', name: 'Weighted Dips', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts', 'Shoulders', 'Core'] },
 
   // Back
   { id: 'conventional-deadlift', name: 'Conventional Deadlift', primaryBodyPart: 'Back', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Glutes', 'Core', 'Forearms', 'Traps'] },
