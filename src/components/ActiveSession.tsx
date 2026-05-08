@@ -1422,6 +1422,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       totalReps,
       averageRpe,
       note: workoutNote.trim() || undefined,
+      location: location || undefined,
     };
 
     // Check whether to prompt user about updating the source template
