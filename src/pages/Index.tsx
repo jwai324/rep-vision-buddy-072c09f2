@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useStorage } from '@/hooks/useStorage';
-import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
@@ -27,9 +26,10 @@ import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/C
 import { TutorialProvider, useTutorial } from '@/contexts/TutorialContext';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { AIChatBubble } from '@/components/AIChatBubble';
+import { templateFromSession, useDayClickHandler } from '@/hooks/useScreenHelpers';
 
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
-import { format, addDays, addWeeks, getDay, isSameDay } from 'date-fns';
+import { format } from 'date-fns';
 import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
 
 type Screen =
@@ -158,6 +158,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     });
   };
 
+  const handleDayClick = useDayClickHandler(
+    { history: storage.history, futureWorkouts: storage.futureWorkouts, activeProgram, activeProgramId: storage.activeProgramId },
+    setScreen,
+  );
+
   const handleDesktopNav = (key: string) => {
     setScreen({ type: key } as Screen);
   };
@@ -211,76 +216,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               };
               setScreen({ type: 'futureWorkoutDetail', futureWorkout: restFw });
             }}
-            onDayClick={(date) => {
-              const dateStr = format(date, 'yyyy-MM-dd');
-              const todayStr = formatLocalDate();
-              const isPast = dateStr < todayStr;
-              const hasCompleted = storage.history.some(s => s.date === dateStr);
-              const hasStoredScheduled = storage.futureWorkouts.some(f => f.date === dateStr);
-
-              // Check if active program defines a scheduled day for this date
-              let programScheduled: { label: string; templateId: string } | null = null;
-              if (activeProgram && !hasStoredScheduled && !hasCompleted) {
-                const start = activeProgram.startDate ? parseLocalDate(activeProgram.startDate) : new Date();
-                const end = addWeeks(start, activeProgram.durationWeeks ?? 8);
-                if (date >= start && date < end) {
-                  for (const day of activeProgram.days) {
-                    if (!day.frequency) continue;
-                    const f = day.frequency;
-                    let match = false;
-                    if (f.type === 'weekly') {
-                      const diff = (f.weekday - getDay(start) + 7) % 7;
-                      let cur = addDays(start, diff);
-                      while (cur < end) {
-                        if (isSameDay(cur, date)) { match = true; break; }
-                        cur = addDays(cur, 7);
-                      }
-                    } else if (f.type === 'everyNDays') {
-                      const origin = f.startDate ? parseLocalDate(f.startDate) : start;
-                      let cur = new Date(origin);
-                      while (cur < end) {
-                        if (cur >= start && isSameDay(cur, date)) { match = true; break; }
-                        cur = addDays(cur, f.interval);
-                      }
-                    } else if (f.type === 'monthly') {
-                      let cur = new Date(start);
-                      cur.setDate(f.dayOfMonth);
-                      if (cur < start) cur.setMonth(cur.getMonth() + 1);
-                      while (cur < end) {
-                        if (isSameDay(cur, date)) { match = true; break; }
-                        const nxt = new Date(cur); nxt.setMonth(nxt.getMonth() + 1); cur = nxt;
-                      }
-                    }
-                    if (match) {
-                      programScheduled = { label: day.label, templateId: day.templateId };
-                      break;
-                    }
-                  }
-                }
-              }
-
-              // If a scheduled item exists for this date and nothing is completed → open detail
-              if (!hasCompleted) {
-                const stored = storage.futureWorkouts.find(f => f.date === dateStr);
-                if (stored) {
-                  setScreen({ type: 'futureWorkoutDetail', futureWorkout: stored });
-                  return;
-                }
-                if (programScheduled) {
-                  const synthetic: FutureWorkout = {
-                    id: `synthetic-${dateStr}`,
-                    programId: storage.activeProgramId ?? 'manual',
-                    date: dateStr,
-                    templateId: programScheduled.templateId,
-                    label: programScheduled.label,
-                  };
-                  setScreen({ type: 'futureWorkoutDetail', futureWorkout: synthetic });
-                  return;
-                }
-              }
-
-              setScreen({ type: 'activity', initialTab: isPast ? 'history' : 'future', filterDate: dateStr });
-            }}
+            onDayClick={handleDayClick}
           />
         </ErrorBoundary>
       )}
@@ -343,18 +279,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onSaveAsTemplate={() => {
               storage.saveSession(pendingSummary);
               clearSessionCache();
-              const template: WorkoutTemplate = {
-                id: crypto.randomUUID(),
-                name: `Workout ${new Date(pendingSummary.date).toLocaleDateString()}`,
-                exercises: pendingSummary.exercises.map(ex => ({
-                  exerciseId: ex.exerciseId,
-                  sets: ex.sets.length,
-                  targetReps: ex.sets[0]?.reps ?? 10,
-                  setType: ex.sets[0]?.type ?? 'normal',
-                  restSeconds: 90,
-                })),
-              };
-              storage.saveTemplate(template);
+              storage.saveTemplate(templateFromSession(pendingSummary));
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
@@ -402,19 +327,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onSaveAsTemplate={() => {
             storage.saveSession(screen.session);
             clearSessionCache();
-            // Auto-create template from session
-            const template: WorkoutTemplate = {
-              id: crypto.randomUUID(),
-              name: `Workout ${new Date(screen.session.date).toLocaleDateString()}`,
-              exercises: screen.session.exercises.map(ex => ({
-                exerciseId: ex.exerciseId,
-                sets: ex.sets.length,
-                targetReps: ex.sets[0]?.reps ?? 10,
-                setType: ex.sets[0]?.type ?? 'normal',
-                restSeconds: 90,
-              })),
-            };
-            storage.saveTemplate(template);
+            storage.saveTemplate(templateFromSession(screen.session));
             setScreen({ type: 'dashboard' });
           }}
           onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
@@ -498,34 +411,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           isViewMode
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => {
-            const t = {
-              id: crypto.randomUUID(),
-              name: `Workout ${parseLocalDate(screen.session.date).toLocaleDateString()}`,
-              exercises: screen.session.exercises.map(ex => ({
-                exerciseId: ex.exerciseId,
-                sets: ex.sets.length,
-                targetReps: ex.sets[0]?.reps ?? 10,
-                setType: (ex.sets[0]?.type ?? 'normal') as any,
-                restSeconds: 90,
-              })),
-            };
-            storage.saveTemplate(t);
+            storage.saveTemplate(templateFromSession(screen.session));
             toast.success('Template saved');
           }}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onReperform={(session) => {
-            const t = {
-              id: crypto.randomUUID(),
-              name: `Workout ${parseLocalDate(session.date).toLocaleDateString()}`,
-              exercises: session.exercises.map(ex => ({
-                exerciseId: ex.exerciseId,
-                sets: ex.sets.length,
-                targetReps: ex.sets[0]?.reps ?? 10,
-                setType: (ex.sets[0]?.type ?? 'normal') as any,
-                restSeconds: 90,
-              })),
-            };
-            startFromTemplate(t);
+            startFromTemplate(templateFromSession(session));
           }}
           onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {
