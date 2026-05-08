@@ -197,6 +197,7 @@ export type Database = {
           default_rest_seconds: number
           hide_timers: boolean
           id: string
+          sticky_notes: Json
           streak_mode: string
           streak_weekly_target: number
           tutorial_completed: boolean
@@ -212,6 +213,7 @@ export type Database = {
           default_rest_seconds?: number
           hide_timers?: boolean
           id?: string
+          sticky_notes?: Json
           streak_mode?: string
           streak_weekly_target?: number
           tutorial_completed?: boolean
@@ -227,6 +229,7 @@ export type Database = {
           default_rest_seconds?: number
           hide_timers?: boolean
           id?: string
+          sticky_notes?: Json
           streak_mode?: string
           streak_weekly_target?: number
           tutorial_completed?: boolean
