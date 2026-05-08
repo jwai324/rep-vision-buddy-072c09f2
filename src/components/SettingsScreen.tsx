@@ -281,6 +281,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </button>
       )}
 
+      {/* Data Management */}
+      <DataManagementSection />
+
       {/* App Info */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
