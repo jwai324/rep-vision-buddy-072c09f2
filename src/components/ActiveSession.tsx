@@ -305,7 +305,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   // Rest timer state is managed by useSessionRestTimer hook (above)
 
-
+  // Per-set live timing state (5s countdown -> running)
+  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
+  const [runningSet, setRunningSet] = useState<RunningSetState | null>(
+    cachedSession?.runningSet ?? null
+  );
+  const blockRefs = useRef<Record<number, HTMLDivElement | null>>({});
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
   const [noteText, setNoteText] = useState('');
