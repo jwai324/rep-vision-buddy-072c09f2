@@ -51,8 +51,6 @@ import type { WorkoutTemplate } from '@/types/workout';
 
 import type { WeightUnit } from '@/hooks/useStorage';
 
-const CACHE_KEY = 'active-session-cache';
-const DEFAULT_LOCATION = 'Home Gym';
 
 // Re-export shared types from dedicated module
 export type { TimerStatus, PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
