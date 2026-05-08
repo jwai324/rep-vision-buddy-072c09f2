@@ -1904,7 +1904,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 if (!deleteLocationConfirm) return;
                 const updated = locations.filter(l => l !== deleteLocationConfirm);
                 setLocations(updated);
-                saveLocations(updated);
+                onUpdateCustomLocations?.(updated);
                 if (location === deleteLocationConfirm) setLocation(DEFAULT_LOCATION);
                 setDeleteLocationConfirm(null);
               }}
