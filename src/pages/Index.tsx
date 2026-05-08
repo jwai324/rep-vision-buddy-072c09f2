@@ -319,6 +319,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onUpdateTemplate={(t) => storage.saveTemplate(t)}
             hideTimersPref={storage.preferences.hideTimers}
             onUpdateHideTimers={(val) => storage.updatePreferences({ hideTimers: val })}
+            customLocations={storage.preferences.customLocations}
+            onUpdateCustomLocations={(locs) => storage.updatePreferences({ customLocations: locs })}
           />
         </ErrorBoundary>
       )}
