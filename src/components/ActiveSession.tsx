@@ -190,7 +190,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const restSec = tpl?.restSeconds ?? 90;
       return {
         exerciseId: id,
-        exerciseName: exerciseLookup[id] ?? id,
+        exerciseName: EXERCISES[id]?.name ?? customExercises.find(c => c.id === id)?.name ?? id,
         restSeconds: restSec,
         dropSetsEnabled: defaultDropSetsEnabled,
         sets: Array.from({ length: numSets }, (_, i) => ({
