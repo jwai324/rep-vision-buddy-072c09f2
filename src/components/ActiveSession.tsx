@@ -345,7 +345,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [cameraOpen, setCameraOpen] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
   const pausedElapsed = useRef<number | null>(null);
-  const { getStickyNote, setStickyNote } = useStickyNotes();
+  const updateStickyNotesFn = onUpdateStickyNotes ?? (async () => {});
+  const { getStickyNote, setStickyNote } = useStickyNotes(propStickyNotes, updateStickyNotesFn);
 
   // Snapshot the original template structure (only when launched from a template, not edit mode, not resumed-from-cache)
   const originalTemplateSnapshot = useRef<TemplateSnapshot | null>(
