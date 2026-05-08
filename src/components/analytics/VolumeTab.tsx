@@ -104,9 +104,13 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
           Volume by Body Part ({weightUnit})
         </p>
         <div className="flex flex-wrap gap-1.5 mb-4">
-          <button onClick={() => setSelectedBodyPart(null)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyPart === null ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>All</button>
+          <button onClick={() => setSelectedBodyParts(new Set())} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyParts.size === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>All</button>
           {bodyPartsWithData.map(bp => (
-            <button key={bp} onClick={() => setSelectedBodyPart(bp)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyPart === bp ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>{bp}</button>
+            <button key={bp} onClick={() => setSelectedBodyParts(prev => {
+              const next = new Set(prev);
+              if (next.has(bp)) next.delete(bp); else next.add(bp);
+              return next;
+            })} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyParts.has(bp) ? 'text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`} style={selectedBodyParts.has(bp) ? { backgroundColor: BODY_PART_COLORS[bp] || 'hsl(var(--primary))' } : undefined}>{bp}</button>
           ))}
         </div>
         <div className="h-48">
@@ -116,14 +120,10 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
               <XAxis dataKey="week" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
               <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
               <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number, name: string) => [`${value.toLocaleString()} ${weightUnit}`, name]} />
-              {selectedBodyPart ? (
-                <Line type="monotone" dataKey={selectedBodyPart} stroke={BODY_PART_COLORS[selectedBodyPart] || 'hsl(var(--primary))'} strokeWidth={2} dot={{ r: 3, fill: BODY_PART_COLORS[selectedBodyPart] || 'hsl(var(--primary))' }} name={selectedBodyPart} />
-              ) : (
-                bodyPartsWithData.map(bp => (
-                  <Line key={bp} type="monotone" dataKey={bp} stroke={BODY_PART_COLORS[bp]} strokeWidth={1.5} dot={false} name={bp} />
-                ))
-              )}
-              {!selectedBodyPart && <Legend wrapperStyle={{ fontSize: '10px' }} />}
+              {(selectedBodyParts.size > 0 ? bodyPartsWithData.filter(bp => selectedBodyParts.has(bp)) : bodyPartsWithData).map(bp => (
+                <Line key={bp} type="monotone" dataKey={bp} stroke={BODY_PART_COLORS[bp]} strokeWidth={selectedBodyParts.size > 0 ? 2 : 1.5} dot={selectedBodyParts.size > 0 ? { r: 3, fill: BODY_PART_COLORS[bp] } : false} name={bp} />
+              ))}
+              {selectedBodyParts.size === 0 && <Legend wrapperStyle={{ fontSize: '10px' }} />}
             </LineChart>
           </ResponsiveContainer>
         </div>
