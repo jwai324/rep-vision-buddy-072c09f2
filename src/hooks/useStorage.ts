@@ -196,6 +196,7 @@ export function useStorage() {
             streakWeeklyTarget: (settingsRes.data as any).streak_weekly_target ?? 3,
             tutorialCompleted: (settingsRes.data as any).tutorial_completed ?? false,
             hideTimers: (settingsRes.data as any).hide_timers ?? false,
+            customLocations: (settingsRes.data as any).custom_locations ?? ['Home Gym'],
           });
         }
         if (profileRes.data) {
