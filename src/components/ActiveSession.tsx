@@ -667,52 +667,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return () => unregisterSession();
   }, [blocks, defaultDropSetsEnabled]);
 
-  const toggleDropSets = useCallback((blockIdx: number) => {
-    setBlocks(prev => prev.map((b, i) => {
-      if (i !== blockIdx) return b;
-      const nowEnabled = !b.dropSetsEnabled;
-      // If disabling, remove all drops from sets
-      if (!nowEnabled) {
-        return {
-          ...b,
-          dropSetsEnabled: false,
-          sets: b.sets.map(s => ({ ...s, drops: undefined })),
-        };
-      }
-      return { ...b, dropSetsEnabled: true };
-    }));
-  }, []);
-
-  const addWarmupSet = useCallback((blockIdx: number) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      const warmupSet: SetRow = {
-        setNumber: 0,
-        weight: '',
-        reps: '',
-        completed: false,
-        type: 'warmup' as SetType,
-        rpe: '',
-        time: '',
-      };
-      const newSets = [warmupSet, ...block.sets].map((s, i) => ({
-        ...s,
-        setNumber: s.type === 'warmup' ? 0 : i,
-      }));
-      // Re-number: warm-ups get "W1, W2..." and normals get "1, 2..."
-      let warmupCount = 0;
-      let normalCount = 0;
-      const renumbered = newSets.map(s => {
-        if (s.type === 'warmup') {
-          warmupCount++;
-          return { ...s, setNumber: warmupCount };
-        }
-        normalCount++;
-        return { ...s, setNumber: normalCount };
-      });
-      return { ...block, sets: renumbered };
-    }));
-  }, []);
+  // toggleDropSets and addWarmupSet are provided by useBlockMutations hook
 
   const handleMenuAction = useCallback((action: string, blockIdx: number) => {
     const block = blocks[blockIdx];
