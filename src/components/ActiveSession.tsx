@@ -58,12 +58,68 @@ const DEFAULT_LOCATION = 'Home Gym';
 export type { TimerStatus, PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import type { PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import { SUPERSET_COLORS } from '@/types/activeSession';
-import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
-export { ExerciseTable } from '@/components/ExerciseTableComponent';
-export type { ExerciseTableProps } from '@/components/ExerciseTableComponent';
+import { ExerciseTable as ExerciseTableImport, timerIdKey } from '@/components/ExerciseTableComponent';
+export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
-const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
+const CACHE_KEY = 'active-session-cache';
+const DEFAULT_LOCATION = 'Home Gym';
 
+// Safe localStorage write — never throws
+function safeWriteCache(cache: ActiveSessionCache) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('[ActiveSession] Failed to write cache:', e);
+  }
+}
+
+export function clearSessionCache() {
+  localStorage.removeItem(CACHE_KEY);
+}
+
+export function getSessionCache(): ActiveSessionCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+interface ActiveSessionProps {
+  exercises: ExerciseId[];
+  templateExercises?: TemplateExercise[];
+  customLocations?: string[];
+  onUpdateCustomLocations?: (locations: string[]) => void;
+  stickyNotes?: Record<string, string>;
+  onUpdateStickyNotes?: (notes: Partial<import('@/hooks/useStorage').UserPreferences>) => Promise<void>;
+  templateName?: string;
+  templateId?: string;
+  template?: WorkoutTemplate | null;
+  history?: WorkoutSession[];
+  weightUnit?: WeightUnit;
+  defaultDropSetsEnabled?: boolean;
+  cachedSession?: ActiveSessionCache | null;
+  editSession?: WorkoutSession | null;
+  onFinish: (session: WorkoutSession) => void;
+  onCancel: () => void;
+  onMinimize?: () => void;
+  onUpdateTemplate?: (template: WorkoutTemplate) => void;
+  hideTimersPref?: boolean;
+  onUpdateHideTimers?: (val: boolean) => void;
+}
+
+/** Look up the most recent session data for a given exercise */
+function getPreviousExerciseData(history: WorkoutSession[], exerciseId: ExerciseId): { weight?: number; reps: number; rpe?: number; time?: number }[] {
+  for (const session of history) {
+    const log = session.exercises.find(e => e.exerciseId === exerciseId);
+    if (log && log.sets.length > 0) {
+      return log.sets.filter(s => s.type !== 'warmup').map(s => ({ weight: s.weight, reps: s.reps, rpe: s.rpe, time: s.time }));
+    }
+  }
+  return [];
+}
 /**
  * Normalize blocks restored from cache or built from saved sessions:
  * - Parent rows in `block.sets` must never be `type: 'dropset'`.
