@@ -386,12 +386,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     if (trimmed && !locations.includes(trimmed)) {
       const updated = [...locations, trimmed];
       setLocations(updated);
-      saveLocations(updated);
+      onUpdateCustomLocations?.(updated);
     }
     setLocation(trimmed || location);
     setNewLocationInput('');
     setShowLocationDropdown(false);
-  }, [newLocationInput, locations, location]);
+  }, [newLocationInput, locations, location, onUpdateCustomLocations]);
 
   // ============= Persistent timestamp-based rest timer =============
   // Source of truth = persisted record. setInterval below only triggers re-render.
