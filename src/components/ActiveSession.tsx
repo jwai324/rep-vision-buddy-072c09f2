@@ -287,10 +287,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return Math.floor(editSession.duration / 60).toString();
   });
 
-  // Cache session state to localStorage on changes (skip in edit mode)
-  // NOTE: this effect is updated below to also persist activeTimer + restRecords
-  // (see the dedicated cache-write effect after the timer state declarations).
-
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
     if (trimmed && !locations.includes(trimmed)) {
@@ -335,6 +331,37 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [timerPaused, recalcRestTimer]);
+
+  // Persist active session state to localStorage — debounced 500ms, skipped in edit mode.
+  // elapsedSeconds intentionally omitted from deps; startTime.current anchors resume time.
+  useEffect(() => {
+    if (isEditMode) return;
+    const buildCache = (): ActiveSessionCache => ({
+      blocks,
+      workoutName,
+      startTimestamp: startTime.current,
+      elapsedAtCache: Math.floor((Date.now() - startTime.current) / 1000),
+      location,
+      workoutNote,
+      activeTimer,
+      restRecords,
+      runningSet,
+      showFocusMode,
+      showExercisePicker,
+      pendingExerciseIds,
+    });
+    const timeout = setTimeout(() => safeWriteCache(buildCache()), 500);
+    // Flush immediately on page hide / tab switch to background (mobile Safari)
+    const flush = () => safeWriteCache(buildCache());
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', flush);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks, workoutName, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds, isEditMode]);
 
   const toggleTimerPause = useCallback(() => {
     setTimerPaused(prev => {
