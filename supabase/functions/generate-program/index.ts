@@ -1,10 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const MODEL = "claude-opus-4-7";
 
 const SYSTEM_PROMPT = `You are a certified strength and conditioning coach building a workout program.
 
@@ -66,14 +69,13 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get user for rate limiting
     const authHeader = req.headers.get("Authorization");
     let userId: string | null = null;
     if (authHeader) {
@@ -82,7 +84,6 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    // Program generation costs 3 messages
     if (userId) {
       const today = new Date().toISOString().split('T')[0];
       const DAILY_LIMIT = 30;
@@ -131,58 +132,51 @@ serve(async (req) => {
 Available exercises (use ONLY from this list, names must match exactly):
 ${exercises.map((e: any) => `- ${e.name} (${e.primaryBodyPart}, ${e.equipment}, ${e.exerciseType}, ${e.movementPattern})`).join('\n')}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 8000,
-      }),
-    });
+    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
-    if (!response.ok) {
-      const errText = await response.text();
+    let message;
+    try {
+      message = await client.messages.create({
+        model: MODEL,
+        max_tokens: 8000,
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        messages: [{ role: "user", content: userPrompt }],
+      });
+    } catch (err: any) {
+      const status = err?.status ?? 500;
       if (userId) {
         await supabase.from('ai_error_log').insert({
           user_id: userId,
-          error_type: `gateway_${response.status}`,
-          error_message: errText,
+          error_type: `anthropic_${status}`,
+          error_message: String(err?.message ?? err),
         });
       }
-      if (response.status === 429) {
+      if (status === 429) {
         return new Response(JSON.stringify({ error: "Rate limited. Please try again in a moment." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds in Settings." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      console.error("AI gateway error:", response.status, errText);
+      console.error("Anthropic error:", status, err);
       return new Response(JSON.stringify({ error: "AI generation failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const data = await response.json();
-    const finishReason = data.choices?.[0]?.finish_reason;
-    if (finishReason === "length") {
-      console.error("AI response truncated (finish_reason=length)");
+    if (message.stop_reason === "max_tokens") {
+      console.error("AI response truncated (stop_reason=max_tokens)");
       return new Response(JSON.stringify({ error: "AI response was too long and got cut off. Try reducing days or session duration." }), {
         status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let content = data.choices?.[0]?.message?.content ?? "";
+    const textBlock = message.content.find((b: any) => b.type === "text");
+    let content = textBlock && "text" in textBlock ? textBlock.text : "";
     content = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
 
     try {
