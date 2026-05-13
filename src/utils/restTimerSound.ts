@@ -4,7 +4,7 @@ export const REST_TIMER_SOUND_OPTIONS: { value: RestTimerSound; label: string }[
   { value: 'none', label: 'None' },
   { value: 'chime', label: 'Chime' },
   { value: 'opening-bell', label: 'Opening Bell' },
-  { value: 'mario-kart', label: 'Mario Kart' },
+  { value: 'mario-kart', label: 'Race Start' },
 ];
 
 const STORAGE_KEY = 'restTimerSound';
@@ -122,7 +122,7 @@ function playViaHtmlAudio(sound: AudibleSound): void {
   if (!audio) return;
   try {
     audio.currentTime = 0;
-    void audio.play().catch(() => undefined);
+    void audio.play().catch((e) => console.warn('[RestTimer] Audio play blocked:', e));
   } catch {
     // ignore — play may reject if autoplay is blocked
   }
@@ -186,7 +186,8 @@ export function scheduleRestTimerSound(durationSeconds: number): () => void {
   preloadRestTimerSound(sound);
 
   if (sound === 'mario-kart') {
-    const delayMs = Math.max(0, (durationSeconds - MARIO_KART_LEAD_SECONDS) * 1000);
+    if (durationSeconds <= MARIO_KART_LEAD_SECONDS) return () => undefined;
+    const delayMs = (durationSeconds - MARIO_KART_LEAD_SECONDS) * 1000;
     return scheduleAt(sound, delayMs);
   }
 
@@ -206,6 +207,30 @@ export function scheduleRestTimerSound(durationSeconds: number): () => void {
   cancellers.push(scheduleAt(sound, finalDelayMs));
 
   return () => cancellers.forEach(c => c());
+}
+
+/**
+ * Play a sound immediately for settings preview — no vibration, no scheduling.
+ * Called when the user selects a new sound in Settings so they can hear it.
+ */
+export function playPreviewSound(sound: RestTimerSound): void {
+  if (sound === 'none') return;
+  preloadRestTimerSound(sound);
+  const ctx = getAudioContext();
+  const buffer = audioBufferCache[sound];
+  if (ctx && buffer) {
+    if (ctx.state === 'suspended') void ctx.resume().catch(() => undefined);
+    try {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start();
+      return;
+    } catch {
+      // fall through to HTMLAudioElement
+    }
+  }
+  playViaHtmlAudio(sound);
 }
 
 /**

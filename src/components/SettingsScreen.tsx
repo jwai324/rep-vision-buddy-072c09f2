@@ -278,7 +278,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           })}
         </div>
         <p className="px-4 pb-3 text-xs text-muted-foreground">
-          Plays when your rest timer finishes. Mario Kart starts 3.5s early so the countdown lands on the go.
+          Plays when your rest timer finishes. Race Start begins 3.5s early so the countdown lands on the go.
         </p>
       </div>
 

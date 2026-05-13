@@ -12,12 +12,72 @@ export interface ChatMessage {
   isLoading?: boolean;
 }
 
-export interface ToolCall {
+interface ExerciseInput {
+  exerciseId: string;
+  exerciseName?: string;
+  sets?: number;
+  targetReps?: number;
+  setType?: string;
+  restSeconds?: number;
+  targetRpe?: number;
+}
+
+interface ProgramDay {
+  day: string;
+  templateId: string;
+}
+
+export interface ToolCallResult {
+  success?: boolean;
+  message?: string;
+  error?: string;
+  needs_confirmation?: boolean;
+  action?: string;
+  itemName?: string;
+  templateId?: string;
+  programId?: string;
+  prs?: Record<string, { weight: number; reps: number }>;
+  period_days?: number;
+  total_workouts?: number;
+  total_volume?: number;
+  total_sets?: number;
+  total_reps?: number;
+  avg_duration_min?: number;
+  frequency?: Record<string, number>;
+  sets_by_muscle?: Record<string, number>;
+  workouts?: number;
+  validation_errors?: string[];
+  suggestions?: string[];
+}
+
+type ToolCallStatus = 'pending' | 'executing' | 'done' | 'error' | 'confirm';
+
+type TC<N extends string, A> = {
+  id: string;
+  name: N;
+  arguments: A;
+  result?: ToolCallResult;
+  status: ToolCallStatus;
+};
+
+export type ToolCall =
+  | TC<'create_template', { name: string; exercises: ExerciseInput[] }>
+  | TC<'edit_template', { templateId: string; name?: string; exercises?: ExerciseInput[] }>
+  | TC<'delete_template', { templateId: string }>
+  | TC<'create_program', { name: string; days: ProgramDay[]; durationWeeks?: number; startDate?: string }>
+  | TC<'delete_program', { programId: string }>
+  | TC<'set_active_program', { programId: string }>
+  | TC<'confirm_destructive_action', { action: string; itemName: string }>
+  | TC<'get_workout_history', { days?: number; analysisType?: 'summary' | 'prs' | 'frequency' | 'volume_by_muscle' }>
+  | TC<'add_exercise_to_workout', { exerciseId: string; exerciseName?: string; sets?: number; targetReps?: number; weight?: number }>
+  | TC<'add_sets_to_exercise', { exerciseName?: string; exerciseIndex?: number; count?: number }>
+  | TC<'update_set_weight_reps', { exerciseName: string; setNumber: number; weight?: number; reps?: number }>
+  | TC<'swap_exercise_in_workout', { exerciseName: string; newExerciseId: string; newExerciseName?: string }>;
+
+interface RawToolCallAccumulator {
   id: string;
   name: string;
-  arguments: any;
-  result?: any;
-  status: 'pending' | 'executing' | 'done' | 'error' | 'confirm';
+  arguments: string;
 }
 
 interface ScreenContext {
@@ -83,12 +143,6 @@ const AI_ALLOWED_ACTIONS = new Set([
   'update_set_weight_reps', 'swap_exercise_in_workout',
 ]);
 
-// Actions that require exercise validation before execution
-const ACTIONS_REQUIRING_EXERCISE_VALIDATION = new Set([
-  'create_template', 'edit_template', 'create_program',
-  'add_exercise_to_workout', 'swap_exercise_in_workout',
-]);
-
 function validateExerciseReference(exerciseId: string, exerciseName?: string): { valid: boolean; resolvedId?: string; error?: string; suggestions?: string[] } {
   // Check by ID first
   if (EXERCISE_BY_ID.has(exerciseId)) return { valid: true, resolvedId: exerciseId };
@@ -120,7 +174,7 @@ function validateExerciseReference(exerciseId: string, exerciseName?: string): {
   };
 }
 
-function validateAllExercises(exercises: any[]): { valid: boolean; validated: any[]; errors: string[] } {
+function validateAllExercises(exercises: ExerciseInput[]): { valid: boolean; validated: ExerciseInput[]; errors: string[] } {
   const errors: string[] = [];
   const validated = exercises.map(e => {
     const result = validateExerciseReference(e.exerciseId, e.exerciseName);
@@ -128,10 +182,10 @@ function validateAllExercises(exercises: any[]): { valid: boolean; validated: an
       errors.push(result.error!);
       return null;
     }
-    return { ...e, exerciseId: result.resolvedId };
-  }).filter(Boolean);
+    return { ...e, exerciseId: result.resolvedId! };
+  }).filter((e): e is ExerciseInput => e !== null);
 
-  return { valid: errors.length === 0, validated: validated as any[], errors };
+  return { valid: errors.length === 0, validated, errors };
 }
 
 const SCREEN_CHIPS: Record<string, string[]> = {
@@ -247,47 +301,24 @@ export const ChatProvider: React.FC<{
     return ctx;
   }, [storage]);
 
-  const executeToolCall = useCallback(async (tc: ToolCall): Promise<any> => {
+  const executeToolCall = useCallback(async (tc: ToolCall): Promise<ToolCallResult> => {
     // Allowlist check — block any action not explicitly permitted
     if (!AI_ALLOWED_ACTIONS.has(tc.name)) {
       return { error: `Action "${tc.name}" is not allowed. I can only perform actions available through the app's UI.` };
     }
 
-    const args = tc.arguments;
-
-    // Exercise validation for actions that reference exercises
-    if (ACTIONS_REQUIRING_EXERCISE_VALIDATION.has(tc.name)) {
-      // For template/program actions, validate exercises array
-      if (args.exercises?.length > 0) {
-        const { valid, validated, errors } = validateAllExercises(args.exercises);
-        if (!valid) {
-          return { success: false, message: errors.join('\n'), validation_errors: errors };
-        }
-        args.exercises = validated;
-      }
-      // For workout actions, validate single exercise references
-      if (args.exerciseId) {
-        const result = validateExerciseReference(args.exerciseId, args.exerciseName);
-        if (!result.valid) {
-          return { success: false, message: result.error, suggestions: result.suggestions };
-        }
-        args.exerciseId = result.resolvedId;
-      }
-      if (args.newExerciseId) {
-        const result = validateExerciseReference(args.newExerciseId, args.newExerciseName);
-        if (!result.valid) {
-          return { success: false, message: result.error, suggestions: result.suggestions };
-        }
-        args.newExerciseId = result.resolvedId;
-      }
-    }
-
     switch (tc.name) {
       case 'create_template': {
+        const args = tc.arguments;
+        if (!args.name || !Array.isArray(args.exercises) || args.exercises.length === 0) {
+          return { success: false, message: 'Template requires a name and at least one exercise.' };
+        }
+        const { valid, validated, errors } = validateAllExercises(args.exercises);
+        if (!valid) return { success: false, message: errors.join('\n'), validation_errors: errors };
         const template = {
           id: crypto.randomUUID(),
           name: args.name,
-          exercises: args.exercises.map((e: any) => ({
+          exercises: validated.map(e => ({
             exerciseId: e.exerciseId,
             sets: e.sets,
             targetReps: e.targetReps,
@@ -297,46 +328,70 @@ export const ChatProvider: React.FC<{
           })),
         };
         await storage.saveTemplate(template);
-        return { success: true, templateId: template.id, message: `Created template "${args.name}" with ${args.exercises.length} exercises.` };
+        return { success: true, templateId: template.id, message: `Created template "${args.name}" with ${validated.length} exercises.` };
       }
       case 'edit_template': {
+        const args = tc.arguments;
+        if (!args.templateId) return { success: false, message: 'Template ID is required.' };
         const existing = storage.templates.find((t: any) => t.id === args.templateId);
         if (!existing) return { success: false, message: "Template not found" };
-        const updated = { ...existing, name: args.name || existing.name, exercises: args.exercises || existing.exercises };
+        let exercises = args.exercises || existing.exercises;
+        if (args.exercises?.length) {
+          const { valid, validated, errors } = validateAllExercises(args.exercises);
+          if (!valid) return { success: false, message: errors.join('\n'), validation_errors: errors };
+          exercises = validated;
+        }
+        const updated = { ...existing, name: args.name || existing.name, exercises };
         await storage.saveTemplate(updated);
         return { success: true, message: `Updated template "${updated.name}".` };
       }
       case 'delete_template': {
+        const args = tc.arguments;
+        if (!args.templateId) return { success: false, message: 'Template ID is required.' };
         await storage.deleteTemplate(args.templateId);
         return { success: true, message: "Template deleted." };
       }
       case 'create_program': {
+        const args = tc.arguments;
+        if (!args.name || !Array.isArray(args.days)) {
+          return { success: false, message: 'Program requires a name and days.' };
+        }
         const programId = crypto.randomUUID();
         const program = { id: programId, name: args.name, days: args.days, durationWeeks: args.durationWeeks || 8, startDate: args.startDate || formatLocalDate() };
         await storage.saveProgram(program);
         return { success: true, programId, message: `Created program "${args.name}".` };
       }
       case 'delete_program': {
+        const args = tc.arguments;
+        if (!args.programId) return { success: false, message: 'Program ID is required.' };
         await storage.deleteProgram(args.programId);
         return { success: true, message: "Program deleted." };
       }
       case 'set_active_program': {
+        const args = tc.arguments;
+        if (!args.programId) return { success: false, message: 'Program ID is required.' };
         await storage.setActiveProgram(args.programId);
         return { success: true, message: "Active program updated." };
       }
-      case 'confirm_destructive_action':
+      case 'confirm_destructive_action': {
+        const args = tc.arguments;
         return { needs_confirmation: true, action: args.action, itemName: args.itemName };
-      
-      // Active workout mutation actions
+      }
       case 'add_exercise_to_workout': {
+        const args = tc.arguments;
+        if (!args.exerciseId) return { success: false, message: 'Exercise ID is required.' };
+        const validation = validateExerciseReference(args.exerciseId, args.exerciseName);
+        if (!validation.valid) return { success: false, message: validation.error, suggestions: validation.suggestions };
+        const resolvedId = validation.resolvedId!;
         const controller = getSessionController();
         if (!controller) return { success: false, message: "No active workout session. Start a workout first." };
-        const ok = controller.addExercise(args.exerciseId, args.sets || 3, args.targetReps, args.weight);
+        const ok = controller.addExercise(resolvedId, args.sets || 3, args.targetReps, args.weight);
         if (!ok) return { success: false, message: "Exercise is already in the workout." };
-        const exName = EXERCISE_DATABASE.find(e => e.id === args.exerciseId)?.name || args.exerciseId;
+        const exName = EXERCISE_DATABASE.find(e => e.id === resolvedId)?.name || resolvedId;
         return { success: true, message: `Added ${exName} to your workout.` };
       }
       case 'add_sets_to_exercise': {
+        const args = tc.arguments;
         const controller = getSessionController();
         if (!controller) return { success: false, message: "No active workout session." };
         const identifier = args.exerciseName || args.exerciseIndex?.toString();
@@ -345,6 +400,7 @@ export const ChatProvider: React.FC<{
         return { success: true, message: `Added ${args.count || 1} set(s) to ${args.exerciseName || 'the exercise'}.` };
       }
       case 'update_set_weight_reps': {
+        const args = tc.arguments;
         const controller = getSessionController();
         if (!controller) return { success: false, message: "No active workout session." };
         const ok = controller.updateSet(args.exerciseName, args.setNumber, { weight: args.weight, reps: args.reps });
@@ -352,15 +408,20 @@ export const ChatProvider: React.FC<{
         return { success: true, message: `Updated set ${args.setNumber} of ${args.exerciseName}.` };
       }
       case 'swap_exercise_in_workout': {
+        const args = tc.arguments;
+        if (!args.newExerciseId) return { success: false, message: 'New exercise ID is required.' };
+        const validation = validateExerciseReference(args.newExerciseId, args.newExerciseName);
+        if (!validation.valid) return { success: false, message: validation.error, suggestions: validation.suggestions };
+        const resolvedId = validation.resolvedId!;
         const controller = getSessionController();
         if (!controller) return { success: false, message: "No active workout session." };
-        const ok = controller.swapExercise(args.exerciseName, args.newExerciseId);
+        const ok = controller.swapExercise(args.exerciseName, resolvedId);
         if (!ok) return { success: false, message: `Couldn't find "${args.exerciseName}" in the current workout.` };
-        const newName = EXERCISE_DATABASE.find(e => e.id === args.newExerciseId)?.name || args.newExerciseId;
+        const newName = EXERCISE_DATABASE.find(e => e.id === resolvedId)?.name || resolvedId;
         return { success: true, message: `Swapped ${args.exerciseName} for ${newName}.` };
       }
-
       case 'get_workout_history': {
+        const args = tc.arguments;
         const days = args.days || 14;
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
@@ -411,7 +472,7 @@ export const ChatProvider: React.FC<{
         return { workouts: recent.length };
       }
       default:
-        return { error: `Action "${tc.name}" is not allowed.` };
+        return { error: `Action is not allowed.` };
     }
   }, [storage]);
 
@@ -470,7 +531,7 @@ export const ChatProvider: React.FC<{
       const decoder = new TextDecoder();
       let textBuffer = "";
       let assistantContent = "";
-      let toolCalls: any[] = [];
+      let toolCalls: RawToolCallAccumulator[] = [];
 
       const updateAssistant = () => {
         setMessages(prev => {
@@ -531,14 +592,14 @@ export const ChatProvider: React.FC<{
       // Process tool calls
       if (toolCalls.length > 0) {
         const parsedToolCalls: ToolCall[] = toolCalls
-          .filter(tc => tc && tc.name)
-          .map(tc => ({
-            id: tc.id, name: tc.name,
-            arguments: (() => { try { return JSON.parse(tc.arguments); } catch { return {}; } })(),
-            status: 'pending' as const,
-          }));
+          .filter((tc): tc is RawToolCallAccumulator => Boolean(tc?.name) && AI_ALLOWED_ACTIONS.has(tc.name))
+          .map(tc => {
+            let parsedArgs: unknown;
+            try { parsedArgs = JSON.parse(tc.arguments); } catch { parsedArgs = {}; }
+            return { id: tc.id, name: tc.name, arguments: parsedArgs, status: 'pending' as const } as ToolCall;
+          });
 
-        const results: any[] = [];
+        const results: { tool_call_id: string; result: ToolCallResult }[] = [];
         for (const tc of parsedToolCalls) {
           tc.status = 'executing';
           try {
@@ -556,7 +617,9 @@ export const ChatProvider: React.FC<{
         const needsConfirm = parsedToolCalls.some(tc => tc.status === 'confirm');
         if (needsConfirm) {
           const confirmTc = parsedToolCalls.find(tc => tc.status === 'confirm')!;
-          const confirmContent = assistantContent || `I'll ${confirmTc.arguments.action} "${confirmTc.arguments.itemName}". This can't be undone. Go ahead?`;
+          const confirmContent = confirmTc.name === 'confirm_destructive_action'
+            ? (assistantContent || `I'll ${confirmTc.arguments.action} "${confirmTc.arguments.itemName}". This can't be undone. Go ahead?`)
+            : (assistantContent || "This action requires confirmation. Go ahead?");
           setMessages(prev => prev.map((m, i) =>
             i === prev.length - 1 ? { ...m, content: confirmContent, isLoading: false, toolCalls: parsedToolCalls } : m
           ));

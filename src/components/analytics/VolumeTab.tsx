@@ -76,7 +76,7 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
     const parts = new Set<string>();
     for (const week of weeklyData) {
       for (const bp of VISIBLE_BODY_PARTS) {
-        if ((week as any)[bp] > 0) parts.add(bp);
+        if (((week as Record<string, number>)[bp] ?? 0) > 0) parts.add(bp);
       }
     }
     return VISIBLE_BODY_PARTS.filter(bp => parts.has(bp));

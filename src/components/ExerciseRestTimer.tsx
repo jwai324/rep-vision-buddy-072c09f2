@@ -85,13 +85,13 @@ export const ExerciseRestTimer: React.FC<ExerciseRestTimerProps> = ({
           <span className={`text-[10px] uppercase tracking-widest ${isOvertime ? 'text-destructive' : 'text-muted-foreground'}`}>{labelText}</span>
           <span className={`font-mono text-sm font-bold tabular-nums ${timeColor}`}>{timeStr}</span>
           <div className="flex gap-2">
-            <button onClick={onSkip} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+            <button aria-label="Skip rest timer" onClick={onSkip} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
               Skip
             </button>
-            <button onClick={() => onExtend(-30)} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+            <button aria-label="Subtract 30 seconds" onClick={() => onExtend(-30)} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
               -30s
             </button>
-            <button onClick={() => onExtend(30)} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
+            <button aria-label="Add 30 seconds" onClick={() => onExtend(30)} className="px-2.5 py-0.5 rounded bg-secondary text-secondary-foreground text-[10px] font-medium hover:bg-secondary/80 transition-colors">
               +30s
             </button>
           </div>

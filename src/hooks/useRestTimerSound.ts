@@ -3,6 +3,7 @@ import {
   getRestTimerSound,
   setRestTimerSound,
   preloadRestTimerSound,
+  playPreviewSound,
   type RestTimerSound,
 } from '@/utils/restTimerSound';
 
@@ -21,6 +22,7 @@ export function useRestTimerSound() {
   const setSound = useCallback((next: RestTimerSound) => {
     setRestTimerSound(next);
     setSoundState(next);
+    playPreviewSound(next);
   }, []);
 
   return { sound, setSound };
