@@ -22,12 +22,16 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
   const exerciseHistory = useMemo(() => {
     if (!exerciseId) return [];
     return history
-      .filter(s => s.exercises.some(e => e.exerciseId === exerciseId))
-      .map(s => ({
-        date: parseLocalDate(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        rawDate: s.date,
-        exerciseLog: s.exercises.find(e => e.exerciseId === exerciseId)!,
-      }))
+      .map(s => {
+        const exerciseLog = s.exercises.find(e => e.exerciseId === exerciseId);
+        if (!exerciseLog) return null;
+        return {
+          date: parseLocalDate(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          rawDate: s.date,
+          exerciseLog,
+        };
+      })
+      .filter((h): h is NonNullable<typeof h> => h !== null)
       .reverse();
   }, [exerciseId, history]);
 
