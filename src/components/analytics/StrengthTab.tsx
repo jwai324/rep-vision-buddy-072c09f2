@@ -12,6 +12,7 @@ import {
   getBandLevelShortLabel,
 } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
+import { fromKg } from '@/utils/weightConversion';
 
 function hasDataForMode(set: WorkoutSet, mode: ExerciseInputMode): boolean {
   switch (mode) {
@@ -42,7 +43,7 @@ function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): Metr
     case 'reps-weight':
       return {
         label: `Top Working Weight (${weightUnit})`,
-        getValue: s => (s.weight && s.weight > 0 ? s.weight : null),
+        getValue: s => (s.weight && s.weight > 0 ? fromKg(s.weight, weightUnit) : null),
         formatValue: v => `${v} ${weightUnit}`,
       };
     case 'band':
