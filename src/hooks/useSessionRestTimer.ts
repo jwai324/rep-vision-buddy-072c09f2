@@ -10,9 +10,10 @@ type TimerStatus = 'running' | 'paused' | 'completed';
 
 interface UseSessionRestTimerOptions {
   cachedSession?: ActiveSessionCache | null;
+  hideTimers?: boolean;
 }
 
-export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOptions) {
+export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSessionRestTimerOptions) {
   const [activeTimer, setActiveTimer] = useState<PersistedTimer | null>(
     cachedSession?.activeTimer ?? null
   );
@@ -27,6 +28,9 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
   const workerRef = useRef<Worker | null>(null);
   const recalcRef = useRef<() => void>(() => undefined);
 
+  const hideTimersRef = useRef(hideTimers);
+  useEffect(() => { hideTimersRef.current = hideTimers; }, [hideTimers]);
+
   const cancelPendingSound = useCallback(() => {
     if (cancelSound.current) {
       cancelSound.current();
@@ -36,7 +40,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
 
   const scheduleSound = useCallback((remainingSeconds: number) => {
     cancelPendingSound();
-    if (remainingSeconds <= 0) return;
+    if (remainingSeconds <= 0 || hideTimersRef.current) return;
     cancelSound.current = scheduleRestTimerSound(remainingSeconds);
   }, [cancelPendingSound]);
 
@@ -126,7 +130,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
           if (!soundCaughtUpFor.current.has(key)) {
             soundCaughtUpFor.current.add(key);
             cancelPendingSound();
-            playRestTimerSoundNow();
+            if (!hideTimersRef.current) playRestTimerSoundNow();
           }
         }
         cancelNotification();
