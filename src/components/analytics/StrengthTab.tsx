@@ -5,7 +5,13 @@ import { EXERCISE_DATABASE, BODY_PARTS } from '@/data/exercises';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
-import { getExerciseInputMode, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+import {
+  getExerciseInputMode,
+  type ExerciseInputMode,
+  formatDistance,
+  getBandLevelShortLabel,
+} from '@/utils/exerciseInputMode';
+import { formatMmSs } from '@/utils/timeFormat';
 
 function hasDataForMode(set: WorkoutSet, mode: ExerciseInputMode): boolean {
   switch (mode) {
@@ -24,6 +30,61 @@ function hasDataForMode(set: WorkoutSet, mode: ExerciseInputMode): boolean {
 }
 
 const COLORS = ['hsl(var(--primary))', '#ef4444', '#3b82f6', '#10b981', '#f97316', '#a855f7'];
+
+interface MetricConfig {
+  label: string;
+  getValue: (set: WorkoutSet) => number | null;
+  formatValue: (value: number) => string;
+}
+
+function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): MetricConfig {
+  switch (mode) {
+    case 'reps-weight':
+      return {
+        label: `Top Working Weight (${weightUnit})`,
+        getValue: s => (s.weight && s.weight > 0 ? s.weight : null),
+        formatValue: v => `${v} ${weightUnit}`,
+      };
+    case 'band':
+      return {
+        label: 'Top Band Level',
+        getValue: s => (s.weight && s.weight > 0 ? s.weight : null),
+        formatValue: v => `Lv ${v} · ${getBandLevelShortLabel(v)}`,
+      };
+    case 'reps':
+      return {
+        label: 'Top Reps',
+        getValue: s => (s.reps > 0 ? s.reps : null),
+        formatValue: v => `${v} reps`,
+      };
+    case 'time':
+      return {
+        label: 'Longest Time',
+        getValue: s => (s.time && s.time > 0 ? s.time : null),
+        formatValue: v => formatMmSs(v),
+      };
+    case 'distance':
+      return {
+        label: 'Longest Distance',
+        getValue: s => (s.distance && s.distance > 0 ? s.distance : null),
+        formatValue: v => formatDistance(v),
+      };
+    case 'time-distance':
+      return {
+        label: 'Longest Distance',
+        getValue: s => (s.distance && s.distance > 0 ? s.distance : null),
+        formatValue: v => formatDistance(v),
+      };
+  }
+}
+
+interface ChartPanel {
+  mode: ExerciseInputMode;
+  exIds: string[];
+  label: string;
+  formatValue: (value: number) => string;
+  data: Array<Record<string, unknown>>;
+}
 
 interface StrengthTabProps {
   history: WorkoutSession[];
@@ -76,28 +137,52 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
     );
   };
 
-  const chartData = useMemo(() => {
+  // Group selected exercises by their input mode so the chart can plot each
+  // mode against the metric that actually has data (#21: non-weight custom
+  // exercises produced an empty chart when forced through a weight-only path).
+  const chartPanels = useMemo<ChartPanel[]>(() => {
     if (selectedExercises.length === 0) return [];
+
+    const groups = new Map<ExerciseInputMode, string[]>();
+    for (const exId of selectedExercises) {
+      const mode = getExerciseInputMode(exId, customExercises);
+      const arr = groups.get(mode) ?? [];
+      arr.push(exId);
+      groups.set(mode, arr);
+    }
+
     const sorted = [...history]
       .filter(s => !s.isRestDay)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    return sorted.map(session => {
-      const point: Record<string, any> = { date: format(new Date(session.date.substring(0, 10) + 'T00:00:00'), 'MMM d') };
-      for (const exId of selectedExercises) {
-        const exLog = session.exercises.find(e => e.exerciseId === exId);
-        if (exLog) {
-          // Heaviest working set (exclude warmup)
-          const workingSets = exLog.sets.filter(s => s.type !== 'warmup' && s.weight && s.weight > 0);
-          if (workingSets.length > 0) {
-            point[exId] = Math.max(...workingSets.map(s => s.weight || 0));
+    const panels: ChartPanel[] = [];
+    for (const [mode, exIds] of groups) {
+      const metric = getMetricForMode(mode, weightUnit);
+      const data = sorted
+        .map(session => {
+          const point: Record<string, unknown> = {
+            date: format(new Date(session.date.substring(0, 10) + 'T00:00:00'), 'MMM d'),
+          };
+          for (const exId of exIds) {
+            const exLog = session.exercises.find(e => e.exerciseId === exId);
+            if (exLog) {
+              const values = exLog.sets
+                .filter(s => s.type !== 'warmup')
+                .map(s => metric.getValue(s))
+                .filter((v): v is number => v != null);
+              if (values.length > 0) point[exId] = Math.max(...values);
+            }
           }
-        }
+          return Object.keys(point).length > 1 ? point : null;
+        })
+        .filter((p): p is Record<string, unknown> => p !== null);
+
+      if (data.length > 0) {
+        panels.push({ mode, exIds, label: metric.label, formatValue: metric.formatValue, data });
       }
-      // Only include if at least one selected exercise has data
-      return Object.keys(point).length > 1 ? point : null;
-    }).filter(Boolean);
-  }, [history, selectedExercises]);
+    }
+    return panels;
+  }, [history, selectedExercises, customExercises, weightUnit]);
 
   const getExerciseName = (id: string) => allExercises.find(e => e.id === id)?.name || id;
 
@@ -154,30 +239,49 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
         </div>
       </div>
 
-      {selectedExercises.length > 0 && chartData.length > 0 ? (
-        <div className="bg-card rounded-xl border border-border p-4">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
-            Top Working Weight ({weightUnit})
-          </p>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-                <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number, name: string) => [`${value} ${weightUnit}`, getExerciseName(name)]} />
-                {selectedExercises.map((exId, i) => (
-                  <Line key={exId} type="monotone" dataKey={exId} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 2 }} connectNulls name={exId} />
-                ))}
-                <Legend formatter={(value) => getExerciseName(value)} wrapperStyle={{ fontSize: '10px' }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      ) : selectedExercises.length > 0 ? (
+      {selectedExercises.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">Select exercises above to see progression.</div>
+      ) : chartPanels.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground text-sm">No data for selected exercises.</div>
       ) : (
-        <div className="text-center py-8 text-muted-foreground text-sm">Select exercises above to see progression.</div>
+        chartPanels.map(panel => (
+          <div key={panel.mode} className="bg-card rounded-xl border border-border p-4">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
+              {panel.label}
+            </p>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={panel.data}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--popover))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      color: 'hsl(var(--popover-foreground))',
+                    }}
+                    formatter={(value: number, name: string) => [panel.formatValue(value), getExerciseName(name)]}
+                  />
+                  {panel.exIds.map((exId, i) => (
+                    <Line
+                      key={exId}
+                      type="monotone"
+                      dataKey={exId}
+                      stroke={COLORS[i % COLORS.length]}
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      connectNulls
+                      name={exId}
+                    />
+                  ))}
+                  <Legend formatter={value => getExerciseName(value as string)} wrapperStyle={{ fontSize: '10px' }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        ))
       )}
     </div>
   );
