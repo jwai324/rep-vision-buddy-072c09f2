@@ -144,6 +144,8 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   const upNextSlotRef = useRef<HTMLDivElement | null>(null);
   const previousTargetRef = useRef<number | null>(targetIdx);
   const timersRef = useRef<number[]>([]);
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
 
   const clearTimers = () => {
     timersRef.current.forEach(t => window.clearTimeout(t));
@@ -173,7 +175,7 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
 
     const startEl = upNextSlotRef.current;
     const endEl = titleSlotRef.current;
-    const newName = blocks[targetIdx]?.exerciseName ?? '';
+    const newName = blocksRef.current[targetIdx]?.exerciseName ?? '';
 
     if (!startEl || !endEl) {
       // Can't measure — snap.
@@ -220,7 +222,6 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
     return () => {
       window.cancelAnimationFrame(raf);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetIdx]);
 
   const block = displayedIdx !== null ? blocks[displayedIdx] : null;

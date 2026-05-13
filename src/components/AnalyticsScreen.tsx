@@ -49,7 +49,7 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weigh
   }, []);
 
   const dismissHint = () => {
-    try { localStorage.setItem(HINT_KEY, '1'); } catch {}
+    try { localStorage.setItem(HINT_KEY, '1'); } catch (e) { console.warn('[Analytics] Failed to persist hint dismissal:', e); }
     setHintSeen(true);
   };
 

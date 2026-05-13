@@ -582,11 +582,13 @@ const Index = () => {
   }, [storage]);
   return (
     <CustomExercisesProvider>
-      <ChatProvider storage={storage}>
-        <TutorialProvider onComplete={handleTutorialComplete}>
-          <IndexInner storage={storage} />
-        </TutorialProvider>
-      </ChatProvider>
+      <ErrorBoundary fallbackTitle="Chat unavailable — try reloading">
+        <ChatProvider storage={storage}>
+          <TutorialProvider onComplete={handleTutorialComplete}>
+            <IndexInner storage={storage} />
+          </TutorialProvider>
+        </ChatProvider>
+      </ErrorBoundary>
     </CustomExercisesProvider>
   );
 };

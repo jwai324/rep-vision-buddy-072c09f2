@@ -122,7 +122,7 @@ function playViaHtmlAudio(sound: AudibleSound): void {
   if (!audio) return;
   try {
     audio.currentTime = 0;
-    void audio.play().catch(() => undefined);
+    void audio.play().catch((e) => console.warn('[RestTimer] Audio play blocked:', e));
   } catch {
     // ignore — play may reject if autoplay is blocked
   }
@@ -186,7 +186,8 @@ export function scheduleRestTimerSound(durationSeconds: number): () => void {
   preloadRestTimerSound(sound);
 
   if (sound === 'mario-kart') {
-    const delayMs = Math.max(0, (durationSeconds - MARIO_KART_LEAD_SECONDS) * 1000);
+    if (durationSeconds <= MARIO_KART_LEAD_SECONDS) return () => undefined;
+    const delayMs = (durationSeconds - MARIO_KART_LEAD_SECONDS) * 1000;
     return scheduleAt(sound, delayMs);
   }
 
