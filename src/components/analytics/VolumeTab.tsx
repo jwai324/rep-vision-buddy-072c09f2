@@ -5,6 +5,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format, addDays, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { fromKg } from '@/utils/weightConversion';
 
 const BODY_PART_COLORS: Record<string, string> = {
   Chest: '#ef4444', Back: '#3b82f6', Shoulders: '#f97316', Biceps: '#a855f7',
@@ -49,22 +50,27 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
         const d = new Date(s.date.substring(0, 10) + 'T00:00:00');
         return isWithinInterval(d, { start: week.weekStart, end: week.weekEnd });
       });
-      const totalVolume = weekSessions.reduce((sum, s) => sum + s.totalVolume, 0);
+      // Aggregate in kg, convert to display unit at the end (reps are unit-invariant).
+      const totalVolumeKg = weekSessions.reduce((sum, s) => sum + s.totalVolume, 0);
       const bodyPartVolumes: Record<string, number> = {};
       for (const bp of VISIBLE_BODY_PARTS) bodyPartVolumes[bp] = 0;
       for (const session of weekSessions) {
         for (const ex of session.exercises) {
           const bp = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
-          const vol = ex.sets.reduce(
+          const volKg = ex.sets.reduce(
             (s, set) => (set.type === 'warmup' ? s : s + (set.weight || 0) * set.reps),
             0
           );
-          bodyPartVolumes[bp] = (bodyPartVolumes[bp] || 0) + vol;
+          bodyPartVolumes[bp] = (bodyPartVolumes[bp] || 0) + volKg;
         }
       }
-      return { week: week.label, totalVolume, ...bodyPartVolumes };
+      const convertedBodyPartVolumes: Record<string, number> = {};
+      for (const bp of Object.keys(bodyPartVolumes)) {
+        convertedBodyPartVolumes[bp] = Math.round(fromKg(bodyPartVolumes[bp], weightUnit));
+      }
+      return { week: week.label, totalVolume: Math.round(fromKg(totalVolumeKg, weightUnit)), ...convertedBodyPartVolumes };
     });
-  }, [history]);
+  }, [history, weightUnit, exerciseBodyPartMap]);
 
   const bodyPartsWithData = useMemo(() => {
     const parts = new Set<string>();
