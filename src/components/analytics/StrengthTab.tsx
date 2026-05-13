@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { WorkoutSession, WorkoutSet } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { EXERCISE_DATABASE } from '@/data/exercises';
+import { EXERCISE_DATABASE, BODY_PARTS } from '@/data/exercises';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
@@ -32,6 +32,7 @@ interface StrengthTabProps {
 
 export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit }) => {
   const [selectedExercises, setSelectedExercises] = useState<string[]>([]);
+  const [bodyPartFilter, setBodyPartFilter] = useState<string>('All');
   const { exercises: customExercises } = useCustomExercisesContext();
 
   const allExercises = useMemo(() => {
@@ -53,6 +54,21 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
     }
     return allExercises.filter(e => ids.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
   }, [history, allExercises, customExercises]);
+
+  // Body parts that have at least one exercise with logged data — suppresses
+  // empty chips so the row only shows actionable filters.
+  const availableBodyParts = useMemo(() => {
+    const present = new Set<string>();
+    for (const ex of exercisesInHistory) present.add(ex.primaryBodyPart);
+    return BODY_PARTS.filter(bp => bp === 'All' || present.has(bp));
+  }, [exercisesInHistory]);
+
+  // Filter applied to the picker only — does NOT touch selectedExercises, so
+  // changing the filter preserves the current chart selection.
+  const filteredExercises = useMemo(() => {
+    if (bodyPartFilter === 'All') return exercisesInHistory;
+    return exercisesInHistory.filter(ex => ex.primaryBodyPart === bodyPartFilter);
+  }, [exercisesInHistory, bodyPartFilter]);
 
   const toggleExercise = (id: string) => {
     setSelectedExercises(prev =>
@@ -99,10 +115,30 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
     <div className="flex flex-col gap-4">
       <div className="bg-card rounded-xl border border-border p-4">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
+          Filter by Body Part
+        </p>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {availableBodyParts.map(bp => (
+            <button
+              key={bp}
+              onClick={() => setBodyPartFilter(bp)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
+                bodyPartFilter === bp
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-secondary text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {bp}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
           Select Exercises (max 6)
         </p>
         <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-          {exercisesInHistory.map(ex => (
+          {filteredExercises.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No exercises for this body part.</p>
+          ) : filteredExercises.map(ex => (
             <button
               key={ex.id}
               onClick={() => toggleExercise(ex.id)}
