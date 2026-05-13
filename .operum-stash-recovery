@@ -1,0 +1,42 @@
+operum-auto-checkpoint WIP commit created on agent restart
+==========================================================
+
+Timestamp: 2026-05-13T21:59:38.215930200+00:00
+Agent:     engineer
+Branch:    fix/issue-49-50-history-limit
+Commit:    255c573
+Label:     operum-auto-stash: engineer restart at 2026-05-13T21:59:36Z (8 file(s))
+Worktree:  C:\tmp\.operum\a264177a-rep-vision-buddy\engineer\repo
+
+Files preserved: 8:
+  - src/components/AnalyticsScreen.tsx
+  - src/components/ExerciseRestTimer.tsx
+  - src/components/FocusMode.tsx
+  - src/components/analytics/ConsistencyTab.tsx
+  - src/components/analytics/VolumeTab.tsx
+  - src/contexts/ChatContext.tsx
+  - src/pages/Index.tsx
+  - src/utils/restTimerSound.ts
+
+This is a WIP checkpoint, not a final commit. Squash or amend
+before pushing the branch — the message starts with `WIP:` so
+CI / branch-protection grep can also catch a forgotten one.
+
+Recovery commands:
+  # Inspect the WIP commit
+  git show 255c573
+
+  # Continue building on top of the checkpoint (most common)
+  # — just keep editing; the commit is already on the branch.
+
+  # Amend further changes into the same commit
+  git commit --amend --no-edit
+
+  # Squash WIP into the previous commit before pushing
+  git rebase -i HEAD~2     # then mark this commit as `fixup`
+
+  # Undo the WIP commit, keep the changes staged
+  git reset --soft 255c573^
+
+After deciding how to handle the checkpoint, delete this hint file:
+  rm .operum-stash-recovery
