@@ -47,7 +47,7 @@ export const BalanceTab: React.FC<BalanceTabProps> = ({ history }) => {
       <div className="bg-card rounded-xl border border-border p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
-            Volume by Movement Pattern
+            Volume by Movement Pattern (sets)
           </p>
           <div className="flex gap-1">
             {([30, 60, 90] as const).map(p => (
