@@ -216,7 +216,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     customExercises,
     startTimer,
   });
-  const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, toggleDropSets, addWarmupSet } = blockOps;
+  const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, replaceExercise, toggleDropSets, addWarmupSet } = blockOps;
   const [workoutName, setWorkoutName] = useState(() => {
     if (cachedSession?.workoutName) return cachedSession.workoutName;
     if (editSession) return 'Workout';
@@ -242,6 +242,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(cachedSession?.showExercisePicker ?? false);
   const [pendingExerciseIds, setPendingExerciseIds] = useState<ExerciseId[]>(cachedSession?.pendingExerciseIds ?? []);
+  // Transient — not persisted to ActiveSessionCache. A cold reload that resumes the
+  // picker should land in add mode rather than a half-completed replace flow.
+  const [replaceIdx, setReplaceIdx] = useState<number | null>(null);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -719,8 +722,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       case 'Remove Exercise':
         setPendingRemoveIdx(blockIdx);
         break;
+      case 'Replace Exercise':
+        setReplaceIdx(blockIdx);
+        setShowExercisePicker(true);
+        break;
     }
-  }, [blocks, getStickyNote, removeExercise, toggleDropSets, addWarmupSet]);
+  }, [blocks, getStickyNote, toggleDropSets, addWarmupSet]);
 
   const saveNote = useCallback(() => {
     if (!editingNote) return;
@@ -882,17 +889,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }
 
   if (showExercisePicker) {
+    const isReplaceMode = replaceIdx !== null;
     return (
       <div id="tutorial-exercise-picker-root" className="h-[100dvh] bg-background flex flex-col overflow-hidden min-w-0">
         <div className="p-4 pb-0 shrink-0">
-          <Button variant="outline" onClick={() => { setShowExercisePicker(false); setPendingExerciseIds([]); }} className="mb-2">← Back</Button>
+          <Button variant="outline" onClick={() => { setShowExercisePicker(false); setPendingExerciseIds([]); setReplaceIdx(null); }} className="mb-2">← Back</Button>
         </div>
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <ExerciseSelector
-            onSelect={(id) => { setPendingExerciseIds([]); addExercise(id); }}
-            onSelectMultiple={(ids) => { setPendingExerciseIds([]); addMultipleExercises(ids); }}
-            initialSelected={pendingExerciseIds}
-            onSelectionChange={setPendingExerciseIds}
+            multiSelect={!isReplaceMode}
+            onSelect={(id) => {
+              if (isReplaceMode) {
+                replaceExercise(replaceIdx!, id);
+                setReplaceIdx(null);
+                setShowExercisePicker(false);
+              } else {
+                setPendingExerciseIds([]);
+                addExercise(id);
+              }
+            }}
+            onSelectMultiple={isReplaceMode ? undefined : (ids) => { setPendingExerciseIds([]); addMultipleExercises(ids); }}
+            initialSelected={isReplaceMode ? [] : pendingExerciseIds}
+            onSelectionChange={isReplaceMode ? undefined : setPendingExerciseIds}
           />
         </div>
       </div>

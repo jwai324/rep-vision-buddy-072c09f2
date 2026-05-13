@@ -260,6 +260,24 @@ export function useBlockMutations(
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
   }, [setBlocks]);
 
+  const replaceExercise = useCallback((blockIdx: number, newId: ExerciseId) => {
+    setBlocks(prev => {
+      if (blockIdx < 0 || blockIdx >= prev.length) return prev;
+      if (prev.some((b, i) => i !== blockIdx && b.exerciseId === newId)) {
+        toast.error('That exercise is already in this session.');
+        return prev;
+      }
+      return prev.map((block, bi) => {
+        if (bi !== blockIdx) return block;
+        return {
+          ...block,
+          exerciseId: newId,
+          exerciseName: exerciseLookup[newId] ?? newId,
+        };
+      });
+    });
+  }, [setBlocks, exerciseLookup]);
+
   const toggleDropSets = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((b, i) => {
       if (i !== blockIdx) return b;
@@ -314,6 +332,7 @@ export function useBlockMutations(
     addExercise,
     addMultipleExercises,
     removeExercise,
+    replaceExercise,
     toggleDropSets,
     addWarmupSet,
   };
