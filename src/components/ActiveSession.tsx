@@ -193,6 +193,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? customExercises.find(c => c.id === id)?.name ?? id,
         restSeconds: restSec,
+        supersetGroup: tpl?.supersetGroup,
         dropSetsEnabled: defaultDropSetsEnabled,
         sets: Array.from({ length: numSets }, (_, i) => ({
           setNumber: i + 1,

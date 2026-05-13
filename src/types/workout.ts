@@ -49,6 +49,7 @@ export interface TemplateExercise {
   setType: SetType;
   restSeconds: number;
   targetRpe?: number;
+  supersetGroup?: number;
 }
 
 export interface WorkoutTemplate {

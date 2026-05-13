@@ -4,7 +4,7 @@ import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/t
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreHorizontal, Trash2, Timer, ArrowLeftRight, Search } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Timer, ArrowLeftRight, Search, Layers } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
@@ -15,6 +15,8 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, 
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
+import { SupersetLinker } from '@/components/SupersetLinker';
+import { SUPERSET_COLORS } from '@/types/activeSession';
 
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
@@ -38,6 +40,12 @@ interface TemplateBlock {
   sets: TemplateSetRow[];
   setType: SetType;
   restSeconds: number;
+  supersetGroup?: number;
+}
+
+function getSupersetColorClass(group?: number): string {
+  if (group === undefined) return '';
+  return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
 }
 
 function exerciseToBlock(ex: TemplateExercise, lookup?: Record<string, string>): TemplateBlock {
@@ -47,6 +55,7 @@ function exerciseToBlock(ex: TemplateExercise, lookup?: Record<string, string>):
     exerciseName: name,
     setType: ex.setType,
     restSeconds: ex.restSeconds,
+    supersetGroup: ex.supersetGroup,
     sets: Array.from({ length: ex.sets }, (_, i) => ({
       setNumber: i + 1,
       targetWeight: '',
@@ -66,6 +75,7 @@ function blockToExercise(block: TemplateBlock): TemplateExercise {
     setType: block.setType,
     restSeconds: block.restSeconds,
     targetRpe: firstSet?.targetRpe ? parseInt(firstSet.targetRpe) : undefined,
+    supersetGroup: block.supersetGroup,
   };
 }
 
@@ -105,6 +115,12 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [swapTarget, setSwapTarget] = useState<number | null>(null); // blockIdx being swapped
+  const [showSupersetLinker, setShowSupersetLinker] = useState(false);
+
+  const handleSupersetSave = useCallback((groups: Record<string, number | undefined>) => {
+    setBlocks(prev => prev.map(b => ({ ...b, supersetGroup: groups[b.exerciseId] })));
+    setShowSupersetLinker(false);
+  }, []);
 
   // Re-resolve exercise names when custom exercises load
   React.useEffect(() => {
@@ -279,6 +295,20 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     );
   }
 
+  if (showSupersetLinker) {
+    return (
+      <SupersetLinker
+        exercises={blocks.map(b => ({
+          exerciseId: b.exerciseId,
+          exerciseName: b.exerciseName,
+          supersetGroup: b.supersetGroup,
+        }))}
+        onSave={handleSupersetSave}
+        onCancel={() => setShowSupersetLinker(false)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -306,7 +336,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
           <SortableContext items={blocks.map(b => b.exerciseId)} strategy={verticalListSortingStrategy}>
             {blocks.map((block, blockIdx) => (
               <SortableExerciseItem key={block.exerciseId} id={block.exerciseId}>
-                <div className="rounded-lg">
+                <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
                   {/* Exercise Header */}
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
@@ -322,6 +352,13 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
                         >
                           <ArrowLeftRight className="w-4 h-4" /> Swap Exercise
+                        </button>
+                        <button
+                          onClick={() => setShowSupersetLinker(true)}
+                          disabled={blocks.length < 2}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        >
+                          <Layers className="w-4 h-4" /> Create Superset
                         </button>
                         <button
                           onClick={() => removeExercise(blockIdx)}
