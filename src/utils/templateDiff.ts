@@ -105,6 +105,7 @@ export function buildUpdatedTemplate(template: WorkoutTemplate, finished: Finish
       targetReps: b.lastReps && b.lastReps > 0 ? b.lastReps : 'failure',
       setType: b.setType,
       restSeconds: restById.get(b.exerciseId) ?? b.restSeconds ?? 90,
+      supersetGroup: b.supersetGroup,
     })),
   };
 }
