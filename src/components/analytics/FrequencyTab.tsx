@@ -4,6 +4,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { subDays, isAfter } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const BODY_PARTS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Traps'];
 
@@ -14,6 +15,7 @@ interface FrequencyTabProps {
 export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
   const [period, setPeriod] = useState<7 | 14 | 30>(7);
   const { exercises: customExercises } = useCustomExercisesContext();
+  const isMobile = useIsMobile();
   const exerciseBodyPartMap = useMemo(() => {
     const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
     for (const ce of customExercises) map.set(ce.id, ce.primaryBodyPart);
@@ -69,10 +71,10 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
         </div>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} layout="vertical" margin={{ left: 70 }}>
+            <BarChart data={data} layout="vertical" margin={{ left: isMobile ? 0 : 70 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-              <YAxis type="category" dataKey="bodyPart" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} width={65} />
+              <YAxis type="category" dataKey="bodyPart" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} width={isMobile ? 60 : 65} />
               <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number, _: string, entry: any) => [`${value} sessions (${entry.payload.perWeek}/wk)`, 'Frequency']} />
               <Bar dataKey="sessions" radius={[0, 4, 4, 0]}>
                 {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}

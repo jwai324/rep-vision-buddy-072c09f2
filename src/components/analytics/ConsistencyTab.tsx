@@ -87,7 +87,7 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, prefere
         <div className="flex gap-[1px] sm:gap-0.5 pb-2 min-w-0 max-w-full">
           <div className="flex flex-col gap-[1px] sm:gap-0.5 mr-1 pt-0 flex-shrink-0">
             {dayLabels.map((label, i) => (
-              <div key={i} className="h-[6px] sm:h-[11px] text-[8px] text-muted-foreground flex items-center justify-end pr-0.5 w-3">
+              <div key={i} className="h-[6px] md:h-[11px] text-[8px] text-muted-foreground flex items-center justify-end pr-0.5 w-3">
                 {i % 2 === 0 ? label : ''}
               </div>
             ))}
@@ -100,7 +100,7 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, prefere
                   return (
                     <div
                       key={di}
-                      className={`w-full aspect-square sm:w-[11px] sm:h-[11px] rounded-[2px] ${day ? getIntensity(day.volume) : 'bg-transparent'}`}
+                      className={`w-full aspect-square md:w-[11px] md:h-[11px] rounded-[2px] ${day ? getIntensity(day.volume) : 'bg-transparent'}`}
                       title={day ? `${day.date}: ${day.volume.toLocaleString()}` : ''}
                     />
                   );
