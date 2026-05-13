@@ -1,8 +1,10 @@
 import React from 'react';
+import { format } from 'date-fns';
 import type { WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { Dumbbell, ClipboardList, Calendar, ChevronRight } from 'lucide-react';
+import { getScheduledWorkoutForDate } from '@/utils/scheduledWorkout';
 
 interface StartWorkoutScreenProps {
   templates: WorkoutTemplate[];
@@ -18,12 +20,9 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
   templates, activeProgram, futureWorkouts, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
 }) => {
   const lookup = useExerciseLookup();
-  const dayOfWeek = new Date().getDay();
-  const todayDay = activeProgram?.days[(dayOfWeek + 6) % 7];
-  const todayTemplate = todayDay && todayDay.templateId !== 'rest'
-    ? templates.find(t => t.id === todayDay.templateId)
-    : null;
-  const isRestDay = todayDay?.templateId === 'rest';
+  const { template: todayTemplate, isRestDay } = getScheduledWorkoutForDate(
+    format(new Date(), 'yyyy-MM-dd'), activeProgram, futureWorkouts, templates,
+  );
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
