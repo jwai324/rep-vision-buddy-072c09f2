@@ -4,7 +4,9 @@ import {
   fuzzyIncludes,
   levenshtein,
   scoreExercise,
+  scoreExerciseMultiWord,
   searchExercises,
+  tokenize,
   parseAliases,
   validateAliases,
   isDuplicateExerciseName,
@@ -20,6 +22,24 @@ const makeExercise = (overrides: Partial<Exercise> & { name: string }): Exercise
   movementPattern: 'Curl',
   secondaryMuscles: [],
   ...overrides,
+});
+
+describe('tokenize', () => {
+  it('splits on whitespace and lowercases', () => {
+    expect(tokenize('db curl')).toEqual(['db', 'curl']);
+  });
+
+  it('handles multiple spaces', () => {
+    expect(tokenize('  bicep  curl  ')).toEqual(['bicep', 'curl']);
+  });
+
+  it('single word returns one-element array', () => {
+    expect(tokenize('dumbbell')).toEqual(['dumbbell']);
+  });
+
+  it('empty string returns empty array', () => {
+    expect(tokenize('')).toEqual([]);
+  });
 });
 
 describe('normalizeSearch', () => {
@@ -60,6 +80,25 @@ describe('fuzzyIncludes', () => {
   });
 });
 
+describe('scoreExerciseMultiWord AND-filter', () => {
+  const dbCurl = makeExercise({ name: 'Dumbbell Bicep Curl', aliases: ['bicep curl', 'db curl', 'arm curl'] });
+  const skullCrusher = makeExercise({ name: 'Dumbbell Skull Crusher', primaryBodyPart: 'Triceps', aliases: ['skull crusher'] });
+
+  it('matches exercise when ALL tokens are found', () => {
+    expect(scoreExerciseMultiWord(dbCurl, ['db', 'curl'])).toBeGreaterThanOrEqual(0);
+  });
+
+  it('rejects exercise when ANY token is missing', () => {
+    expect(scoreExerciseMultiWord(skullCrusher, ['db', 'curl'])).toBe(-1);
+  });
+
+  it('fuzzy token still requires all tokens — "dumbell" matches dumbbell but "snatch" must also match', () => {
+    const snatch = makeExercise({ name: 'Dumbbell Snatch', primaryBodyPart: 'Shoulders' });
+    // "dumbell" fuzzy-matches "dumbbell", but "curl" does not match "snatch"
+    expect(scoreExerciseMultiWord(snatch, ['dumbell', 'curl'])).toBe(-1);
+  });
+});
+
 describe('searchExercises', () => {
   const exercises: Exercise[] = [
     makeExercise({ name: 'Dumbbell Bicep Curl', aliases: ['bicep curl', 'db curl', 'arm curl'] }),
@@ -67,6 +106,7 @@ describe('searchExercises', () => {
     makeExercise({ name: 'Hammer Curl' }),
     makeExercise({ name: 'Pull-Ups', primaryBodyPart: 'Back', equipment: 'Bodyweight', exerciseType: 'Compound', aliases: ['pullup', 'chin up'] }),
     makeExercise({ name: 'Dumbbell Skull Crusher', primaryBodyPart: 'Triceps', aliases: ['skull crusher'] }),
+    makeExercise({ name: 'Dumbbell Snatch', primaryBodyPart: 'Shoulders', equipment: 'Dumbbell' }),
     makeExercise({ name: 'EZ-Bar Curl', equipment: 'EZ-Bar', aliases: ['ez curl'] }),
     makeExercise({ name: 'Cable Curl', equipment: 'Cable', aliases: ['cable bicep curl'] }),
     makeExercise({ name: 'Machine Bicep Curl', equipment: 'Machine', aliases: ['machine curl'] }),
@@ -123,6 +163,21 @@ describe('searchExercises', () => {
   it('"dumbell curl" (typo) finds Dumbbell Bicep Curl via Levenshtein', () => {
     const results = searchExercises(exercises, 'dumbell curl');
     expect(results.some(e => e.name === 'Dumbbell Bicep Curl')).toBe(true);
+  });
+
+  it('"dumbell curl" does NOT return Dumbbell Snatch', () => {
+    const results = searchExercises(exercises, 'dumbell curl');
+    expect(results.some(e => e.name === 'Dumbbell Snatch')).toBe(false);
+  });
+
+  it('"zzzznotreal" returns empty — no OR fallback', () => {
+    const results = searchExercises(exercises, 'zzzznotreal');
+    expect(results).toHaveLength(0);
+  });
+
+  it('"db xyz" returns empty when one token matches nothing', () => {
+    const results = searchExercises(exercises, 'db xyz');
+    expect(results).toHaveLength(0);
   });
 });
 
