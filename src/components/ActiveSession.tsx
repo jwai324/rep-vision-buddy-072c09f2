@@ -210,7 +210,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   });
 
   // ===== Extracted hooks =====
-  const restTimer = useSessionRestTimer({ cachedSession });
+  const restTimer = useSessionRestTimer({ cachedSession, hideTimers: hideTimersPref });
   const { activeTimer, restRecords, computeRemaining, recalcRestTimer, startTimer, skipTimer, extendTimer } = restTimer;
 
   const blockOps = useBlockMutations(blocks, setBlocks, {
