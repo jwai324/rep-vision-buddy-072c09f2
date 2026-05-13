@@ -4,7 +4,7 @@ import { useStorage } from '@/hooks/useStorage';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
-import { MinimizedSessionBar } from '@/components/MinimizedSessionBar';
+import { MinimizedSessionBar, MINIMIZED_BAR_HEIGHT } from '@/components/MinimizedSessionBar';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
 import { ActivityScreen } from '@/components/ActivityScreen';
@@ -167,10 +167,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     setScreen({ type: key } as Screen);
   };
 
+  const showMinimizedBar = !!minimizedSession && screen.type !== 'activeSession';
+
   return (
     <div className="flex min-h-screen w-full">
       <DesktopSidebar activeScreen={screen.type} onNavigate={handleDesktopNav} />
-      <div className="flex-1 max-w-3xl mx-auto min-h-screen">
+      <div
+        className="flex-1 max-w-3xl mx-auto min-h-screen transition-[padding-bottom] duration-150"
+        style={showMinimizedBar ? { paddingBottom: `calc(${MINIMIZED_BAR_HEIGHT}px + env(safe-area-inset-bottom))` } : undefined}
+      >
       {screen.type === 'dashboard' && (
         <ErrorBoundary fallbackTitle="Dashboard error" onReset={() => setScreen({ type: 'dashboard' })}>
           <Dashboard
@@ -555,7 +560,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
-      {minimizedSession && screen.type !== 'activeSession' && (
+      {showMinimizedBar && (
         <MinimizedSessionBar
           workoutName={getSessionCache()?.workoutName ?? 'Workout'}
           onExpand={handleExpand}
