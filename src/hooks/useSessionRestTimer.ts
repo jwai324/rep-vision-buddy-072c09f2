@@ -237,7 +237,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
       const now = Date.now();
       ensureNotificationPermission().finally(() => scheduleNotification(newDuration * 1000));
       scheduleSound(newDuration);
-      startWorker(newDuration * 1000);
+      startWorker(now, newDuration * 1000);
       return {
         ...prev,
         status: 'running',
@@ -292,7 +292,10 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
     } else {
       ensureNotificationPermission().finally(() => scheduleNotification(remaining * 1000));
       scheduleSound(remaining);
-      startWorker(remaining * 1000);
+      // For hydration from cache we don't know the real wall-clock origin —
+      // anchor the worker to `now` so its remaining matches the freshly
+      // computed `remaining` (in seconds).
+      startWorker(Date.now(), remaining * 1000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -301,12 +304,19 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
   // the action callbacks (e.g. a status flip from external cache hydration).
   useEffect(() => {
     if (activeTimer && activeTimer.status === 'running' && workerRef.current) {
-      const remainingSec = computeRemaining(activeTimer);
-      if (remainingSec > 0) startWorker(remainingSec * 1000);
+      // Anchor the worker to the timer's own start epoch so re-running this
+      // effect (e.g. after a cross-tab storage sync) produces an identical
+      // remaining time, not one shifted by however long the React render
+      // took.
+      startWorker(activeTimer.startedAtEpoch, activeTimer.duration * 1000);
     } else {
       cancelWorker();
     }
-  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer?.status, activeTimer?.startedAtEpoch, computeRemaining, startWorker, cancelWorker]);
+    // We intentionally depend on the primitive fields, not the `activeTimer`
+    // object itself, so this effect re-runs only when the timer's
+    // wall-clock identity changes — not on every fast-changing tick render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer?.status, activeTimer?.startedAtEpoch, activeTimer?.duration, startWorker, cancelWorker]);
 
   // Visibility / focus / cross-tab listeners — these are the catch-up path
   // when the main thread was throttled while the tab was hidden. The worker
