@@ -57,14 +57,10 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
       for (const session of weekSessions) {
         for (const ex of session.exercises) {
           const bp = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
-<<<<<<< HEAD
           const volKg = ex.sets.reduce(
             (s, set) => (set.type === 'warmup' ? s : s + (set.weight || 0) * set.reps),
             0
           );
-=======
-          const volKg = ex.sets.reduce((s, set) => (set.type === 'warmup' ? s : s + (set.weight || 0) * set.reps), 0);
->>>>>>> 45062a7 (fix(analytics): restore warmup filter in VolumeTab volume sum (#33))
           bodyPartVolumes[bp] = (bodyPartVolumes[bp] || 0) + volKg;
         }
       }
