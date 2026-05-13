@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload, Volume2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { exportUserData, importUserData, validateBackup, getBackupCounts, type RepVisionBackup } from '@/utils/dataPortability';
 import { useToast } from '@/hooks/use-toast';
@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRestTimerSound } from '@/hooks/useRestTimerSound';
+import { REST_TIMER_SOUND_OPTIONS } from '@/utils/restTimerSound';
 import type { WeightUnit, UserPreferences, UserProfile } from '@/hooks/useStorage';
 
 interface SettingsScreenProps {
@@ -136,6 +138,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { user, signOut } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(profile.displayName ?? '');
+  const { sound: restTimerSound, setSound: setRestTimerSound } = useRestTimerSound();
 
   const saveName = () => {
     onUpdateProfile({ displayName: nameDraft.trim() || null });
@@ -248,6 +251,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             );
           })}
         </div>
+      </div>
+
+      {/* Rest Timer Sound */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+          <Volume2 className="w-4 h-4 text-primary" />
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Rest Timer Sound</p>
+        </div>
+        <div className="px-4 py-3 grid grid-cols-2 gap-2">
+          {REST_TIMER_SOUND_OPTIONS.map(opt => {
+            const isActive = restTimerSound === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => setRestTimerSound(opt.value)}
+                className={`py-2.5 rounded-lg text-sm font-bold transition-colors ${
+                  isActive
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="px-4 pb-3 text-xs text-muted-foreground">
+          Plays when your rest timer finishes. Mario Kart starts 3.5s early so the countdown lands on the go.
+        </p>
       </div>
 
       {/* Drop Sets Default */}

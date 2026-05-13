@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import type { PersistedTimer, ActiveSessionCache } from '@/types/activeSession';
 import { timerIdKey } from '@/components/ExerciseTableComponent';
 import type { TimerId } from '@/components/ExerciseRestTimer';
+import { scheduleRestTimerSound } from '@/utils/restTimerSound';
 
 type TimerStatus = 'running' | 'paused' | 'completed';
 
@@ -20,7 +21,21 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
   const [, setTimerTick] = useState(0);
   const timerInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const notificationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelSound = useRef<(() => void) | null>(null);
   const completedFiredFor = useRef<Set<string>>(new Set());
+
+  const cancelPendingSound = useCallback(() => {
+    if (cancelSound.current) {
+      cancelSound.current();
+      cancelSound.current = null;
+    }
+  }, []);
+
+  const scheduleSound = useCallback((remainingSeconds: number) => {
+    cancelPendingSound();
+    if (remainingSeconds <= 0) return;
+    cancelSound.current = scheduleRestTimerSound(remainingSeconds);
+  }, [cancelPendingSound]);
 
   const computeRemaining = useCallback((t: PersistedTimer | null): number => {
     if (!t) return 0;
@@ -101,6 +116,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
   // Public timer controls
   const startTimer = useCallback((id: TimerId, duration: number) => {
     cancelNotification();
+    cancelPendingSound();
     setActiveTimer(prev => {
       if (prev && prev.status === 'running') {
         const taken = prev.originalDuration - computeRemaining(prev);
@@ -117,13 +133,15 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
       status: 'running',
     };
     setActiveTimer(newTimer);
+    scheduleSound(duration);
     ensureNotificationPermission().finally(() => {
       scheduleNotification(duration * 1000);
     });
-  }, [cancelNotification, computeRemaining, ensureNotificationPermission, scheduleNotification]);
+  }, [cancelNotification, cancelPendingSound, computeRemaining, ensureNotificationPermission, scheduleNotification, scheduleSound]);
 
   const skipTimer = useCallback(() => {
     cancelNotification();
+    cancelPendingSound();
     setActiveTimer(prev => {
       if (prev) {
         const taken = prev.status === 'paused'
@@ -133,7 +151,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
       }
       return null;
     });
-  }, [cancelNotification, computeRemaining]);
+  }, [cancelNotification, cancelPendingSound, computeRemaining]);
 
   const extendTimer = useCallback((delta: number = 30) => {
     setActiveTimer(prev => {
@@ -153,15 +171,17 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
         };
         cancelNotification();
         scheduleNotification(newRemaining * 1000);
+        scheduleSound(newRemaining);
       } else {
         next = { ...prev, originalDuration: newOriginal };
       }
       return next;
     });
-  }, [computeRemaining, cancelNotification, scheduleNotification]);
+  }, [computeRemaining, cancelNotification, scheduleNotification, scheduleSound]);
 
   const pauseTimer = useCallback(() => {
     cancelNotification();
+    cancelPendingSound();
     setActiveTimer(prev => {
       if (!prev || prev.status !== 'running') return prev;
       const remaining = computeRemaining(prev);
@@ -173,7 +193,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
         elapsedAtPause: Math.max(0, elapsedAtPause),
       };
     });
-  }, [cancelNotification, computeRemaining]);
+  }, [cancelNotification, cancelPendingSound, computeRemaining]);
 
   const resumeTimer = useCallback(() => {
     setActiveTimer(prev => {
@@ -182,6 +202,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
       const newDuration = Math.max(1, prev.originalDuration - elapsed);
       const now = Date.now();
       ensureNotificationPermission().finally(() => scheduleNotification(newDuration * 1000));
+      scheduleSound(newDuration);
       return {
         ...prev,
         status: 'running',
@@ -190,7 +211,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
         elapsedAtPause: undefined,
       };
     });
-  }, [ensureNotificationPermission, scheduleNotification]);
+  }, [ensureNotificationPermission, scheduleNotification, scheduleSound]);
 
   // Hydrate on mount: reconcile if running timer expired while away
   useEffect(() => {
@@ -205,6 +226,7 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
       fireRestCompleteNotification(true);
     } else {
       ensureNotificationPermission().finally(() => scheduleNotification(remaining * 1000));
+      scheduleSound(remaining);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -252,6 +274,9 @@ export function useSessionRestTimer({ cachedSession }: UseSessionRestTimerOption
 
   // Cleanup notification timeout on unmount
   useEffect(() => () => cancelNotification(), [cancelNotification]);
+
+  // Cleanup pending sound on unmount
+  useEffect(() => () => cancelPendingSound(), [cancelPendingSound]);
 
   return {
     activeTimer,
