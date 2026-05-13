@@ -902,13 +902,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               if (isReplaceMode) {
                 replaceExercise(replaceIdx!, id);
                 setReplaceIdx(null);
-                setShowExercisePicker(false);
               } else {
                 setPendingExerciseIds([]);
                 addExercise(id);
               }
+              setShowExercisePicker(false);
             }}
-            onSelectMultiple={isReplaceMode ? undefined : (ids) => { setPendingExerciseIds([]); addMultipleExercises(ids); }}
+            onSelectMultiple={isReplaceMode ? undefined : (ids) => { setPendingExerciseIds([]); addMultipleExercises(ids); setShowExercisePicker(false); }}
             initialSelected={isReplaceMode ? [] : pendingExerciseIds}
             onSelectionChange={isReplaceMode ? undefined : setPendingExerciseIds}
           />
