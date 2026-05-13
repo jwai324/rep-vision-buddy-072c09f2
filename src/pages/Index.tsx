@@ -170,10 +170,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const showMinimizedBar = !!minimizedSession && screen.type !== 'activeSession';
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex min-h-screen w-full overflow-x-hidden">
       <DesktopSidebar activeScreen={screen.type} onNavigate={handleDesktopNav} />
       <div
-        className="flex-1 max-w-3xl mx-auto min-h-screen transition-[padding-bottom] duration-150"
+        className="flex-1 max-w-3xl mx-auto min-h-screen overflow-x-hidden transition-[padding-bottom] duration-150"
         style={showMinimizedBar ? { paddingBottom: `calc(${MINIMIZED_BAR_HEIGHT}px + env(safe-area-inset-bottom))` } : undefined}
       >
       {screen.type === 'dashboard' && (
