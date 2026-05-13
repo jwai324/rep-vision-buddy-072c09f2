@@ -12,6 +12,7 @@ import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import type { UserPreferences } from '@/hooks/useStorage';
 import { getCurrentStreak } from '@/utils/streak';
+import { getScheduledWorkoutForDate } from '@/utils/scheduledWorkout';
 
 interface DashboardProps {
   history: WorkoutSession[];
@@ -353,19 +354,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const exerciseLookup = useExerciseLookup();
   const lastSession = history[0];
 
-  // Determine today's template from active program
-  // If future_workouts exist for this program, they are authoritative (e.g. after push-back)
-  const hasProgramFutureWorkouts = activeProgram && futureWorkouts.some(f => f.programId === activeProgram.id);
   const todayDateStr = format(new Date(), 'yyyy-MM-dd');
-  const todayFutureWorkout = futureWorkouts.find(f => f.date === todayDateStr);
-  const todayDay = !hasProgramFutureWorkouts
-    ? activeProgram?.days[(new Date().getDay() + 6) % 7]
-    : null;
-  const todayTemplate = todayFutureWorkout && todayFutureWorkout.templateId !== 'rest'
-    ? templates.find(t => t.id === todayFutureWorkout.templateId)
-    : todayDay && todayDay.templateId !== 'rest'
-      ? templates.find(t => t.id === todayDay.templateId)
-      : null;
+  const { template: todayTemplate, isRestDay: isTodayRestDay } = getScheduledWorkoutForDate(
+    todayDateStr, activeProgram, futureWorkouts, templates,
+  );
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
@@ -410,7 +402,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </button>
       )}
 
-      {todayDay?.templateId === 'rest' && activeProgram && (
+      {isTodayRestDay && activeProgram && (
         <div className="bg-card rounded-xl p-4 border border-border text-center">
           <span className="text-2xl">🛏️</span>
           <p className="text-sm text-muted-foreground mt-1">Rest day — recover and grow!</p>
