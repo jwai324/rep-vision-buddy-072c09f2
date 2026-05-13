@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
-import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, distanceUnitFromWeightUnit, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
@@ -124,6 +124,7 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
+  const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const { exercises: customExercises } = useCustomExercisesContext();
   // Convert saved session exercises back to blocks for editing.
   // Rebuilds nested `drops` from flat saved WorkoutSet[] (consecutive 'dropset'
@@ -795,7 +796,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         const sets: WorkoutSet[] = [];
         b.sets.filter(s => s.completed).forEach(s => {
           const seconds = timeToSeconds(s.time);
-          const distMeters = s.distance ? toMeters(parseFloat(s.distance) || 0, 'km') : undefined;
+          const distMeters = s.distance ? toMeters(parseFloat(s.distance) || 0, distanceUnit) : undefined;
           sets.push({
             setNumber: s.setNumber,
             type: s.type,
@@ -808,7 +809,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           // Append completed dropsets immediately after their parent set
           (s.drops ?? []).filter(d => d.completed).forEach(d => {
             const dSeconds = d.time ? timeToSeconds(d.time) : 0;
-            const dDistMeters = d.distance ? toMeters(parseFloat(d.distance) || 0, 'km') : undefined;
+            const dDistMeters = d.distance ? toMeters(parseFloat(d.distance) || 0, distanceUnit) : undefined;
             sets.push({
               setNumber: s.setNumber,
               type: 'dropset',
@@ -1206,6 +1207,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                         block={block}
                         blockIdx={blockIdx}
                         weightUnit={weightUnit}
+                        distanceUnit={distanceUnit}
                         blocks={blocks}
                         stickyNote={getStickyNote(block.exerciseId)}
                         activeTimer={activeTimer}

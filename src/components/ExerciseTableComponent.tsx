@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
-import { BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { fromKg } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
 import type { WeightUnit } from '@/hooks/useStorage';
@@ -188,7 +188,7 @@ function getGridCols(mode: ExerciseInputMode): string {
   }
 }
 
-const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: WeightUnit }> = ({ inputMode, weightUnit }) => {
+const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: WeightUnit; distanceUnit: DistanceUnit }> = ({ inputMode, weightUnit, distanceUnit }) => {
   const cols = getGridCols(inputMode);
   switch (inputMode) {
     case 'time':
@@ -206,7 +206,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
           <span className="text-center">Time</span>
-          <span className="text-center">km</span>
+          <span className="text-center">{distanceUnit}</span>
           <RpeHeaderPopover />
           <CheckHeader />
         </div>
@@ -215,7 +215,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">km</span>
+          <span className="text-center">{distanceUnit}</span>
           <RpeHeaderPopover />
           <CheckHeader />
         </div>
@@ -339,6 +339,7 @@ export interface ExerciseTableProps {
   block: ExerciseBlock;
   blockIdx: number;
   weightUnit: WeightUnit;
+  distanceUnit: DistanceUnit;
   blocks: ExerciseBlock[];
   stickyNote: string;
   activeTimer: PersistedTimer | null;
@@ -367,7 +368,7 @@ export interface ExerciseTableProps {
 
 /* ---------- ExerciseTable Component ---------- */
 
-export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName, hideTimers }) => {
+export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, distanceUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName, hideTimers }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
   const [menuOpen, setMenuOpen] = React.useState(false);
   return (
@@ -456,7 +457,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
       )}
 
       {/* Table Header */}
-      <SetTableHeader inputMode={inputMode} weightUnit={weightUnit} />
+      <SetTableHeader inputMode={inputMode} weightUnit={weightUnit} distanceUnit={distanceUnit} />
 
       {/* Set Rows */}
       {block.sets.map((set, setIdx) => {

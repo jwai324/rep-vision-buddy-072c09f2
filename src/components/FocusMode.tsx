@@ -12,7 +12,7 @@ import {
 } from '@/components/ActiveSession';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 import type { WeightUnit } from '@/hooks/useStorage';
-import type { ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { distanceUnitFromWeightUnit, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 
 interface FocusModeProps {
   blocks: ExerciseBlock[];
@@ -317,6 +317,7 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
               block={block}
               blockIdx={displayedIdx}
               weightUnit={props.weightUnit}
+              distanceUnit={distanceUnitFromWeightUnit(props.weightUnit)}
               blocks={blocks}
               stickyNote={props.getStickyNote(block.exerciseId)}
               activeTimer={props.activeTimer}

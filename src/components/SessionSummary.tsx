@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
-import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
@@ -65,6 +65,7 @@ const getSupersetColorClass = (group?: number) => {
 };
 
 export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, isViewMode }) => {
+  const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -412,11 +413,11 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                       return (
                         <>
                           <span className="text-center">{set.time ?? 0} min</span>
-                          <span className="text-center">{set.distance ? formatDistance(set.distance) : '—'}</span>
+                          <span className="text-center">{set.distance ? formatDistance(set.distance, distanceUnit) : '—'}</span>
                         </>
                       );
                     case 'distance':
-                      return <span className="text-center">{set.distance ? formatDistance(set.distance) : '—'}</span>;
+                      return <span className="text-center">{set.distance ? formatDistance(set.distance, distanceUnit) : '—'}</span>;
                     case 'reps':
                       return <span className="text-center">{set.reps}</span>;
                     case 'band':

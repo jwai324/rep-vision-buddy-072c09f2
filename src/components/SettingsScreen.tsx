@@ -22,8 +22,8 @@ interface SettingsScreenProps {
 }
 
 const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
-  { value: 'kg', label: 'kg' },
-  { value: 'lbs', label: 'lbs' },
+  { value: 'kg', label: 'Metric (kg/km)' },
+  { value: 'lbs', label: 'Imperial (lb/mi)' },
 ];
 
 const REST_OPTIONS = [30, 45, 60, 90, 120, 150, 180];
