@@ -31,7 +31,8 @@ export const BalanceTab: React.FC<BalanceTabProps> = ({ history }) => {
     for (const s of recentSessions) {
       for (const ex of s.exercises) {
         const pattern = exercisePatternMap.get(ex.exerciseId) || 'Other';
-        setCounts[pattern] = (setCounts[pattern] || 0) + ex.sets.length;
+        const workingSetCount = ex.sets.filter(set => set.type !== 'warmup').length;
+        setCounts[pattern] = (setCounts[pattern] || 0) + workingSetCount;
       }
     }
 

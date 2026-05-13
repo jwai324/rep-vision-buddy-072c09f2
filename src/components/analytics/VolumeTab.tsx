@@ -55,7 +55,10 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
       for (const session of weekSessions) {
         for (const ex of session.exercises) {
           const bp = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
-          const vol = ex.sets.reduce((s, set) => s + (set.weight || 0) * set.reps, 0);
+          const vol = ex.sets.reduce(
+            (s, set) => (set.type === 'warmup' ? s : s + (set.weight || 0) * set.reps),
+            0
+          );
           bodyPartVolumes[bp] = (bodyPartVolumes[bp] || 0) + vol;
         }
       }
