@@ -3,6 +3,8 @@ import type { WorkoutSession } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { subDays, isAfter } from 'date-fns';
+import { Info } from 'lucide-react';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -55,16 +57,34 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
       else if (perWeek <= 3.5) color = '#10b981'; // green - optimal
       else color = '#f97316'; // orange - high
       return { bodyPart: bp, sessions: count, perWeek: Math.round(perWeek * 10) / 10, color };
-    }).sort((a, b) => b.sessions - a.sessions);
+    })
+      .filter(d => d.sessions > 0)
+      .sort((a, b) => b.sessions - a.sessions);
   }, [history, period]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-card rounded-xl border border-border p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
-            Muscle Group Frequency
-          </p>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground font-bold"
+                aria-label="About Muscle Group Frequency"
+              >
+                Muscle Group Frequency
+                <Info className="w-3 h-3" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 text-xs normal-case tracking-normal" align="start">
+              Shows how many sessions each muscle group was trained in the selected period.
+              Color indicates weekly frequency:{' '}
+              <span className="text-[#10b981] font-semibold">green</span> = optimal (1.5–3.5×/wk),{' '}
+              <span className="text-[#eab308] font-semibold">yellow</span> = undertrained (&lt;1.5×/wk),{' '}
+              <span className="text-[#f97316] font-semibold">orange</span> = high frequency (&gt;3.5×/wk).
+            </PopoverContent>
+          </Popover>
           <div className="flex gap-1">
             {([7, 14, 30] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)} className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors ${period === p ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
@@ -86,10 +106,10 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex gap-3 mt-3 justify-center">
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#10b981]" /><span className="text-[10px] text-muted-foreground">2-3×/wk</span></div>
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#eab308]" /><span className="text-[10px] text-muted-foreground">1×/wk</span></div>
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[10px] text-muted-foreground">0×</span></div>
+        <div className="flex gap-3 mt-3 justify-center flex-wrap">
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#eab308]" /><span className="text-[10px] text-muted-foreground">&lt;1.5×/wk</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#10b981]" /><span className="text-[10px] text-muted-foreground">1.5–3.5×/wk</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#f97316]" /><span className="text-[10px] text-muted-foreground">&gt;3.5×/wk</span></div>
         </div>
       </div>
     </div>
