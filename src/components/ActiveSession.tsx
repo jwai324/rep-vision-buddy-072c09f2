@@ -177,6 +177,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         supersetGroup: ex.supersetGroup,
         sets: rows,
         dropSetsEnabled: rows.some(r => (r.drops?.length ?? 0) > 0),
+        note: ex.note,
       };
     });
   }, [editSession, weightUnit]);
@@ -790,6 +791,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           exerciseName: b.exerciseName,
           supersetGroup: b.supersetGroup,
           sets,
+          note: b.note?.trim() || undefined,
         };
       });
 

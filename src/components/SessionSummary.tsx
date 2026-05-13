@@ -393,6 +393,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
               <span className="text-xl">{icon}</span>
               <h3 className="font-semibold text-foreground">{ex.exerciseName}</h3>
             </div>
+            {ex.note && (
+              <p className="text-sm text-muted-foreground mb-3 whitespace-pre-wrap break-words">{ex.note}</p>
+            )}
             <div className={`grid ${gridCols} gap-2 mb-2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold`}>
               {headers.map((h, idx) => (
                 <span key={h} className={idx === 0 ? 'text-left' : idx === headers.length - 1 ? 'text-right' : 'text-center'}>{h}</span>
