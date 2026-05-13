@@ -6,6 +6,8 @@ const LBS_TO_KG = 1 / KG_TO_LBS;
 /**
  * Convert a weight value from kg to the user's display unit.
  * All weights in the database are stored in kg (canonical).
+ * Round-trips (kg→lbs→kg) are lossy at the 0.01-unit level — this is
+ * intentional: conversion is display-only; storage is always in kg.
  */
 export function fromKg(valueKg: number, unit: WeightUnit): number {
   if (unit === 'kg') return valueKg;
@@ -14,6 +16,8 @@ export function fromKg(valueKg: number, unit: WeightUnit): number {
 
 /**
  * Convert a weight value from the user's display unit to kg for storage.
+ * Only call this when persisting user-entered lbs values; never chain with
+ * fromKg on an existing kg value as repeated round-trips accumulate drift.
  */
 export function toKg(valueDisplay: number, unit: WeightUnit): number {
   if (unit === 'kg') return valueDisplay;

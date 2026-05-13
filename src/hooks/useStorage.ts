@@ -16,6 +16,10 @@ type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
 // Maximum rows to fetch per table (Supabase default is 1000)
 const MAX_ROWS = 5000;
+// Session history cap — loads most-recent 500 sessions eagerly.
+// Full pagination is a future improvement; 500 covers ~1.4 years of daily workouts
+// without the memory/startup cost of a 5000-row fetch on mobile.
+const MAX_SESSIONS = 500;
 
 function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
   const workouts: Omit<FutureWorkout, 'id'>[] = [];
@@ -204,7 +208,7 @@ export function useStorage() {
       setLoading(true);
       try {
         const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes] = await Promise.all([
-          supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
+          supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
           supabase.from('workout_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
           supabase.from('workout_programs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
           supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
@@ -271,7 +275,8 @@ export function useStorage() {
     });
 
     // Clean future workouts that match this date — await deletes with error handling
-    const matchingFws = futureWorkouts.filter(fw => fw.date === session.date.split('T')[0] && !fw.completed);
+    const sessionDateStr = format(parseLocalDate(session.date), 'yyyy-MM-dd');
+    const matchingFws = futureWorkouts.filter(fw => format(parseLocalDate(fw.date), 'yyyy-MM-dd') === sessionDateStr && !fw.completed);
     if (matchingFws.length > 0) {
       const deleteResults = await Promise.all(
         matchingFws.map(fw => supabase.from('future_workouts').delete().eq('id', fw.id))
