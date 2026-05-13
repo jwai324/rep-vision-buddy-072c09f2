@@ -49,6 +49,7 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
       });
       const totalVolume = weekSessions.reduce((sum, s) => sum + s.totalVolume, 0);
       const bodyPartVolumes: Record<string, number> = {};
+      for (const bp of VISIBLE_BODY_PARTS) bodyPartVolumes[bp] = 0;
       for (const session of weekSessions) {
         for (const ex of session.exercises) {
           const bp = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
