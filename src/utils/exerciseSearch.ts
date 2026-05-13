@@ -156,8 +156,17 @@ export function scoreExerciseMultiWord(ex: Exercise, searchWords: string[]): num
 }
 
 /**
+ * Split a query into tokens for AND-matching.
+ * Normalizes first, then splits on whitespace.
+ */
+export function tokenize(query: string): string[] {
+  return normalizeSearch(query).split(/\s+/).filter(Boolean);
+}
+
+/**
  * Search exercises with alias support, ranking, and fuzzy matching.
- * Also handles no-space queries by trying concatenated matching.
+ * Multi-token queries use strict AND logic — every token must match.
+ * Single-token no-space queries (e.g. "bicepcurl") get a subsequence fallback.
  * Returns deduplicated results sorted by rank.
  */
 export function searchExercises(exercises: Exercise[], query: string): Exercise[] {
@@ -167,7 +176,7 @@ export function searchExercises(exercises: Exercise[], query: string): Exercise[
   const searchWords = normalized.split(/\s+/).filter(Boolean);
   if (searchWords.length === 0) return exercises;
 
-  // Primary: multi-word matching with ranking
+  // Primary: multi-word AND matching with ranking
   const scored: SearchMatch[] = [];
   for (const ex of exercises) {
     const rank = scoreExerciseMultiWord(ex, searchWords);
@@ -181,26 +190,26 @@ export function searchExercises(exercises: Exercise[], query: string): Exercise[
     return scored.map(s => s.exercise);
   }
 
-  // Fallback for no-space queries (e.g., "bicepcurl"): try single-token scoring
-  if (searchWords.length === 1) {
-    const singleScored: SearchMatch[] = [];
-    for (const ex of exercises) {
-      const rank = scoreExercise(ex, normalized);
-      if (rank >= 0) {
-        singleScored.push({ exercise: ex, rank });
-      }
-    }
-    if (singleScored.length > 0) {
-      singleScored.sort((a, b) => a.rank - b.rank);
-      return singleScored.map(s => s.exercise);
+  // For multi-token queries, AND-filter found nothing — return empty (no OR fallback).
+  if (searchWords.length > 1) return [];
+
+  // Single-token fallback: try single-token scoring (handles "bicepcurl" no-space queries)
+  const singleScored: SearchMatch[] = [];
+  for (const ex of exercises) {
+    const rank = scoreExercise(ex, normalized);
+    if (rank >= 0) {
+      singleScored.push({ exercise: ex, rank });
     }
   }
+  if (singleScored.length > 0) {
+    singleScored.sort((a, b) => a.rank - b.rank);
+    return singleScored.map(s => s.exercise);
+  }
 
-  // Last resort: fuzzy subsequence matching
-  const joinedQuery = searchWords.join('');
+  // Last resort for single token: fuzzy subsequence matching
   return exercises.filter(ex => {
     const target = normalizeSearch(`${ex.name} ${ex.primaryBodyPart} ${ex.equipment}`);
-    return fuzzyIncludes(target, joinedQuery);
+    return fuzzyIncludes(target, normalized);
   });
 }
 
