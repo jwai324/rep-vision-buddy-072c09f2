@@ -109,6 +109,11 @@ export function fromMeters(meters: number, unit: 'km' | 'mi' | 'm'): number {
 
 export type DistanceUnit = 'km' | 'mi' | 'm';
 
+/** Returns the canonical distance unit for a given weight unit (metric → km, imperial → mi). */
+export function distanceUnitFromWeightUnit(weightUnit: WeightUnit): DistanceUnit {
+  return weightUnit === 'lbs' ? 'mi' : 'km';
+}
+
 /**
  * Get the badge label for a measurement type (used in ExerciseSelector).
  */

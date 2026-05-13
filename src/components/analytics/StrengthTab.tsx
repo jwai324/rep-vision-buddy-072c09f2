@@ -9,6 +9,7 @@ import {
   getExerciseInputMode,
   type ExerciseInputMode,
   formatDistance,
+  distanceUnitFromWeightUnit,
   getBandLevelShortLabel,
 } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
@@ -39,6 +40,7 @@ interface MetricConfig {
 }
 
 function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): MetricConfig {
+  const distUnit = distanceUnitFromWeightUnit(weightUnit);
   switch (mode) {
     case 'reps-weight':
       return {
@@ -68,13 +70,13 @@ function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): Metr
       return {
         label: 'Longest Distance',
         getValue: s => (s.distance && s.distance > 0 ? s.distance : null),
-        formatValue: v => formatDistance(v),
+        formatValue: v => formatDistance(v, distUnit),
       };
     case 'time-distance':
       return {
         label: 'Longest Distance',
         getValue: s => (s.distance && s.distance > 0 ? s.distance : null),
-        formatValue: v => formatDistance(v),
+        formatValue: v => formatDistance(v, distUnit),
       };
   }
 }
