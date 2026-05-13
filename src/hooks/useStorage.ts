@@ -276,11 +276,14 @@ export function useStorage() {
       const deleteResults = await Promise.all(
         matchingFws.map(fw => supabase.from('future_workouts').delete().eq('id', fw.id))
       );
-      const failedDelete = deleteResults.find(r => r.error);
-      if (failedDelete?.error) {
-        console.error('[useStorage] future workout cleanup error:', failedDelete.error);
+      const deletedIds = new Set(
+        deleteResults
+          .map((r, i) => (r.error ? null : matchingFws[i].id))
+          .filter((id): id is string => id !== null)
+      );
+      if (deletedIds.size < matchingFws.length) {
+        console.error('[useStorage] future workout cleanup: some deletes failed');
       }
-      const deletedIds = new Set(matchingFws.map(fw => fw.id));
       setFutureWorkouts(prev => prev.filter(fw => !deletedIds.has(fw.id)));
     }
   }, [user, futureWorkouts]);
@@ -488,10 +491,15 @@ export function useStorage() {
             : day.frequency,
         })),
       };
-      await supabase.from('workout_programs').update({
+      const { error: progUpdateError } = await supabase.from('workout_programs').update({
         start_date: updatedProgram.startDate ?? null,
         days: updatedProgram.days as unknown as Database['public']['Tables']['workout_programs']['Update']['days'],
       }).eq('id', programId).eq('user_id', user.id);
+      if (progUpdateError) {
+        console.error('[useStorage] pushProgramBack program update error:', progUpdateError);
+        toast.error('Failed to reschedule program');
+        return;
+      }
       setPrograms(prev => prev.map(p => p.id === programId ? updatedProgram : p));
     }
 
