@@ -337,36 +337,69 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     };
   }, [timerPaused, recalcRestTimer]);
 
-  // Persist active session state to localStorage — debounced 500ms, skipped in edit mode.
-  // startTime is a ref (stable identity); startTime.current is read fresh each write so it
-  // does not need to be a reactive dependency.
-  useEffect(() => {
-    if (isEditMode) return;
-    const buildCache = (): ActiveSessionCache => ({
-      blocks,
-      workoutName,
+  // Ref snapshot of every state field persisted by the cache writer. The same
+  // list appears in three places that MUST stay aligned: this ref initializer,
+  // the dependency array of the schedule-write effect below, and the
+  // safeWriteCache() call inside flushCache. react-hooks/exhaustive-deps will
+  // flag any state used in the schedule effect that's not in the deps array.
+  const cacheStateRef = useRef({
+    blocks, workoutName, location, workoutNote, activeTimer,
+    restRecords, runningSet, showFocusMode, showExercisePicker,
+    pendingExerciseIds, isEditMode,
+  });
+  const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushCache = useCallback(() => {
+    if (writeTimerRef.current) {
+      clearTimeout(writeTimerRef.current);
+      writeTimerRef.current = null;
+    }
+    const s = cacheStateRef.current;
+    if (s.isEditMode) return;
+    safeWriteCache({
+      blocks: s.blocks,
+      workoutName: s.workoutName,
       startTimestamp: startTime.current,
       elapsedAtCache: Math.floor((Date.now() - startTime.current) / 1000),
-      location,
-      workoutNote,
-      activeTimer,
-      restRecords,
-      runningSet,
-      showFocusMode,
-      showExercisePicker,
-      pendingExerciseIds,
+      location: s.location,
+      workoutNote: s.workoutNote,
+      activeTimer: s.activeTimer,
+      restRecords: s.restRecords,
+      runningSet: s.runningSet,
+      showFocusMode: s.showFocusMode,
+      showExercisePicker: s.showExercisePicker,
+      pendingExerciseIds: s.pendingExerciseIds,
     });
-    const timeout = setTimeout(() => safeWriteCache(buildCache()), 500);
-    // Flush immediately on page hide / tab switch to background (mobile Safari)
-    const flush = () => safeWriteCache(buildCache());
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', flush);
-    return () => {
-      clearTimeout(timeout);
-      window.removeEventListener('pagehide', flush);
-      document.removeEventListener('visibilitychange', flush);
+  }, []);
+
+  // Persist active session state to localStorage — debounced 500ms, skipped in edit mode.
+  // startTime is a ref (stable identity); startTime.current is read fresh inside flushCache
+  // so it does not need to be a reactive dependency.
+  useEffect(() => {
+    cacheStateRef.current = {
+      blocks, workoutName, location, workoutNote, activeTimer,
+      restRecords, runningSet, showFocusMode, showExercisePicker,
+      pendingExerciseIds, isEditMode,
     };
-  }, [blocks, workoutName, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds, isEditMode]);
+    if (isEditMode) return;
+    if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
+    writeTimerRef.current = setTimeout(flushCache, 500);
+  }, [blocks, workoutName, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds, isEditMode, flushCache]);
+
+  // Flush immediately on page hide / tab switch to background (mobile Safari).
+  // flushCache is stable, so listeners are attached once for the session lifetime.
+  useEffect(() => {
+    window.addEventListener('pagehide', flushCache);
+    document.addEventListener('visibilitychange', flushCache);
+    return () => {
+      window.removeEventListener('pagehide', flushCache);
+      document.removeEventListener('visibilitychange', flushCache);
+      if (writeTimerRef.current) {
+        clearTimeout(writeTimerRef.current);
+        writeTimerRef.current = null;
+      }
+    };
+  }, [flushCache]);
 
   const toggleTimerPause = useCallback(() => {
     setTimerPaused(prev => {
