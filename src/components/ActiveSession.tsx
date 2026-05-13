@@ -338,7 +338,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   }, [timerPaused, recalcRestTimer]);
 
   // Persist active session state to localStorage — debounced 500ms, skipped in edit mode.
-  // elapsedSeconds intentionally omitted from deps; startTime.current anchors resume time.
+  // startTime is a ref (stable identity); startTime.current is read fresh each write so it
+  // does not need to be a reactive dependency.
   useEffect(() => {
     if (isEditMode) return;
     const buildCache = (): ActiveSessionCache => ({
@@ -365,7 +366,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       window.removeEventListener('pagehide', flush);
       document.removeEventListener('visibilitychange', flush);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocks, workoutName, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds, isEditMode]);
 
   const toggleTimerPause = useCallback(() => {
