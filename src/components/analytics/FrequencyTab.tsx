@@ -6,7 +6,11 @@ import { subDays, isAfter } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 
-const BODY_PARTS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Traps'];
+const BODY_PARTS = [
+  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings',
+  'Glutes', 'Calves', 'Core', 'Traps', 'Hip Flexors', 'Forearms', 'Full Body',
+  'Cardio', 'Neck',
+];
 
 interface FrequencyTabProps {
   history: WorkoutSession[];

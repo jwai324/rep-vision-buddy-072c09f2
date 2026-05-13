@@ -10,6 +10,8 @@ const BODY_PART_COLORS: Record<string, string> = {
   Chest: '#ef4444', Back: '#3b82f6', Shoulders: '#f97316', Biceps: '#a855f7',
   Triceps: '#ec4899', Quads: '#10b981', Hamstrings: '#14b8a6', Glutes: '#f43f5e',
   Calves: '#06b6d4', Core: '#eab308', Traps: '#8b5cf6',
+  'Hip Flexors': '#84cc16', Forearms: '#f59e0b', 'Full Body': '#64748b',
+  Cardio: '#0ea5e9', Neck: '#d946ef',
 };
 
 const VISIBLE_BODY_PARTS = Object.keys(BODY_PART_COLORS);

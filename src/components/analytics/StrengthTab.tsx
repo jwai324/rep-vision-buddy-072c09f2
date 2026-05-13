@@ -1,10 +1,27 @@
 import React, { useMemo, useState } from 'react';
-import type { WorkoutSession } from '@/types/workout';
+import type { WorkoutSession, WorkoutSet } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { getExerciseInputMode, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+
+function hasDataForMode(set: WorkoutSet, mode: ExerciseInputMode): boolean {
+  switch (mode) {
+    case 'reps-weight':
+    case 'band':
+      return !!set.weight && set.weight > 0;
+    case 'reps':
+      return set.reps > 0;
+    case 'time':
+      return !!set.time && set.time > 0;
+    case 'distance':
+      return !!set.distance && set.distance > 0;
+    case 'time-distance':
+      return (!!set.time && set.time > 0) || (!!set.distance && set.distance > 0);
+  }
+}
 
 const COLORS = ['hsl(var(--primary))', '#ef4444', '#3b82f6', '#10b981', '#f97316', '#a855f7'];
 
@@ -22,18 +39,20 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
     return combined;
   }, [customExercises]);
 
-  // Find exercises that appear in history
+  // Find exercises that appear in history (mode-aware so custom exercises with
+  // non-weight modes — reps-only, time, distance — are still included).
   const exercisesInHistory = useMemo(() => {
     const ids = new Set<string>();
     for (const s of history) {
       for (const ex of s.exercises) {
-        if (ex.sets.some(set => set.weight && set.weight > 0)) {
+        const mode = getExerciseInputMode(ex.exerciseId, customExercises);
+        if (ex.sets.some(set => set.type !== 'warmup' && hasDataForMode(set, mode))) {
           ids.add(ex.exerciseId);
         }
       }
     }
     return allExercises.filter(e => ids.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
-  }, [history, allExercises]);
+  }, [history, allExercises, customExercises]);
 
   const toggleExercise = (id: string) => {
     setSelectedExercises(prev =>
