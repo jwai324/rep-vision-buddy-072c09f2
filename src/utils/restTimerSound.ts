@@ -8,7 +8,6 @@ export const REST_TIMER_SOUND_OPTIONS: { value: RestTimerSound; label: string }[
 ];
 
 const STORAGE_KEY = 'restTimerSound';
-const VIBRATION_PATTERN = [200, 100, 200, 100, 200];
 const MARIO_KART_LEAD_SECONDS = 3.5;
 
 const SOUND_FILES: Record<Exclude<RestTimerSound, 'none'>, string> = {
@@ -60,10 +59,10 @@ export function setRestTimerSound(sound: RestTimerSound): void {
   preloadRestTimerSound(sound);
 }
 
-function vibrate3x(): void {
+function vibrate(): void {
   if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
   try {
-    navigator.vibrate(VIBRATION_PATTERN);
+    navigator.vibrate(200);
   } catch {
     // ignore — some browsers throw outside a user-gesture context
   }
@@ -84,7 +83,7 @@ function play(sound: Exclude<RestTimerSound, 'none'>): void {
  * Schedule the rest-timer sound (and vibration when applicable) for a timer that has
  * `durationSeconds` left from right now. Returns a cancel function.
  *
- * - chime / opening-bell: fires at 0s with a 3-pulse vibration.
+ * - chime / opening-bell: vibrates at T-3s, T-2s, T-1s, then vibrates + plays at T=0.
  * - mario-kart: fires at 3.5s remaining (no vibration).
  * - none: no-op.
  */
@@ -96,21 +95,26 @@ export function scheduleRestTimerSound(durationSeconds: number): () => void {
 
   preloadRestTimerSound(sound);
 
-  let delayMs: number;
-  let withVibration: boolean;
-
   if (sound === 'mario-kart') {
-    delayMs = Math.max(0, (durationSeconds - MARIO_KART_LEAD_SECONDS) * 1000);
-    withVibration = false;
-  } else {
-    delayMs = durationSeconds * 1000;
-    withVibration = true;
+    const delayMs = Math.max(0, (durationSeconds - MARIO_KART_LEAD_SECONDS) * 1000);
+    const handle = window.setTimeout(() => play(sound), delayMs);
+    return () => window.clearTimeout(handle);
   }
 
-  const handle = window.setTimeout(() => {
-    if (withVibration) vibrate3x();
-    play(sound);
-  }, delayMs);
+  // Chime / Opening Bell: countdown vibrations at T-3, T-2, T-1, then vibrate+play at T=0.
+  const handles: ReturnType<typeof window.setTimeout>[] = [];
 
-  return () => window.clearTimeout(handle);
+  for (const secondsBefore of [3, 2, 1]) {
+    const delay = (durationSeconds - secondsBefore) * 1000;
+    if (delay > 0) {
+      handles.push(window.setTimeout(() => vibrate(), delay));
+    }
+  }
+
+  handles.push(window.setTimeout(() => {
+    vibrate();
+    play(sound);
+  }, durationSeconds * 1000));
+
+  return () => handles.forEach(h => window.clearTimeout(h));
 }
