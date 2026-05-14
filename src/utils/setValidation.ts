@@ -11,6 +11,13 @@ const MAX_WEIGHT_KG = 900;
 const WARN_WEIGHT_KG = 450;
 const MAX_WEIGHT_LBS = 2000;
 const WARN_WEIGHT_LBS = 1000;
+const MAX_REPS = 200;
+const WARN_REPS = 100;
+
+export function weightRangeMessage(unit: WeightUnit): string {
+  const max = unit === 'kg' ? MAX_WEIGHT_KG : MAX_WEIGHT_LBS;
+  return `Weight must be 0–${max} ${unit}`;
+}
 
 /**
  * Validate a weight value in the user's display unit.
@@ -27,13 +34,14 @@ export function validateWeight(
 
   const num = parseFloat(value);
   if (isNaN(num)) return { valid: false, error: 'Must be a number' };
-  if (num < 0) return { valid: false, error: 'Weight cannot be negative' };
-  if (num === 0 && !isBodyweight) return { valid: false, error: 'Weight required' };
 
   const max = unit === 'kg' ? MAX_WEIGHT_KG : MAX_WEIGHT_LBS;
   const warn = unit === 'kg' ? WARN_WEIGHT_KG : WARN_WEIGHT_LBS;
+  const rangeMsg = weightRangeMessage(unit);
 
-  if (num > max) return { valid: false, error: `Max ${max} ${unit}` };
+  if (num < 0) return { valid: false, error: rangeMsg };
+  if (num === 0 && !isBodyweight) return { valid: false, error: 'Weight required' };
+  if (num > max) return { valid: false, error: rangeMsg };
   if (num > warn) return { valid: true, warning: `That's very heavy (${num} ${unit})` };
 
   return { valid: true };
@@ -46,10 +54,10 @@ export function validateReps(value: string): ValidationResult {
   if (value === '' || value === undefined) return { valid: false, error: 'Required' };
 
   const num = parseInt(value, 10);
-  if (isNaN(num) || String(num) !== value.trim()) return { valid: false, error: 'Must be a whole number' };
-  if (num < 0) return { valid: false, error: 'Reps cannot be negative' };
-  if (num > 200) return { valid: false, error: 'Max 200 reps' };
-  if (num > 100) return { valid: true, warning: 'That\'s a lot of reps!' };
+  if (isNaN(num) || String(num) !== value.trim()) return { valid: false, error: 'Reps must be 0–200' };
+  if (num < 0) return { valid: false, error: 'Reps must be 0–200' };
+  if (num > MAX_REPS) return { valid: false, error: 'Reps must be 0–200' };
+  if (num > WARN_REPS) return { valid: true, warning: "That's a lot of reps!" };
 
   return { valid: true };
 }
@@ -61,11 +69,11 @@ export function validateRpe(value: string): ValidationResult {
   if (value === '' || value === undefined) return { valid: true }; // RPE is optional
 
   const num = parseFloat(value);
-  if (isNaN(num)) return { valid: false, error: 'Must be a number' };
-  if (num < 1 || num > 10) return { valid: false, error: 'RPE must be 1-10' };
+  if (isNaN(num)) return { valid: false, error: 'RPE must be 1–10' };
+  if (num < 1 || num > 10) return { valid: false, error: 'RPE must be 1–10' };
 
   // Check 0.5 increments
-  if ((num * 2) % 1 !== 0) return { valid: false, error: 'Use 0.5 increments' };
+  if ((num * 2) % 1 !== 0) return { valid: false, error: 'RPE must use 0.5 increments' };
 
   return { valid: true };
 }
@@ -126,4 +134,49 @@ export function canCompleteSet(
   const weightResult = validateWeight(weight, unit, isBodyweight);
   const repsResult = validateReps(reps);
   return weightResult.valid && repsResult.valid;
+}
+
+export interface SetFieldErrors {
+  weight?: string;
+  reps?: string;
+  rpe?: string;
+}
+
+/**
+ * Compute display-time errors for a set's fields. Returns an entry only when the
+ * field is non-empty AND invalid — empty fields are treated as "not yet filled"
+ * (no inline error). The mode controls which fields are checked.
+ */
+export function getSetFieldErrors(
+  fields: { weight?: string; reps?: string; rpe?: string },
+  unit: WeightUnit,
+  mode: ExerciseInputMode | undefined,
+  isBodyweight = false,
+): SetFieldErrors {
+  const errors: SetFieldErrors = {};
+
+  const weightApplies = mode === undefined || mode === 'reps-weight';
+  const repsApplies = mode === undefined || mode === 'reps-weight' || mode === 'reps' || mode === 'band';
+
+  if (weightApplies && fields.weight && fields.weight !== '') {
+    const r = validateWeight(fields.weight, unit, isBodyweight);
+    if (!r.valid) errors.weight = r.error;
+  }
+  if (repsApplies && fields.reps && fields.reps !== '') {
+    const r = validateReps(fields.reps);
+    if (!r.valid) errors.reps = r.error;
+  }
+  if (fields.rpe && fields.rpe !== '') {
+    const r = validateRpe(fields.rpe);
+    if (!r.valid) errors.rpe = r.error;
+  }
+  return errors;
+}
+
+export function hasFieldErrors(errors: SetFieldErrors): boolean {
+  return !!(errors.weight || errors.reps || errors.rpe);
+}
+
+export function isBodyweightExercise(exerciseName: string): boolean {
+  return exerciseName.toLowerCase().includes('bodyweight');
 }

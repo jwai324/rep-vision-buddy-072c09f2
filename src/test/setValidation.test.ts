@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
+import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors, hasFieldErrors, isBodyweightExercise } from '@/utils/setValidation';
 
 describe('validateWeight', () => {
   it('rejects empty', () => {
     expect(validateWeight('', 'kg').valid).toBe(false);
   });
 
-  it('rejects negative', () => {
+  it('rejects negative with 0–max range message', () => {
     expect(validateWeight('-50', 'kg').valid).toBe(false);
-    expect(validateWeight('-50', 'kg').error).toMatch(/negative/i);
+    expect(validateWeight('-50', 'kg').error).toMatch(/0.*900.*kg/);
   });
 
   it('rejects 0 for non-bodyweight', () => {
@@ -47,6 +47,28 @@ describe('validateWeight', () => {
   it('rejects NaN', () => {
     expect(validateWeight('abc', 'kg').valid).toBe(false);
   });
+
+  // ── Boundary tests (lbs unit) ──
+  it.each([
+    ['-201', false],
+    ['-200', false],
+    ['200',  true ],
+    ['201',  true ],
+    ['2000', true ],
+    ['2001', false],
+  ])('boundary lbs %s → valid=%s', (value, expected) => {
+    expect(validateWeight(value, 'lbs').valid).toBe(expected);
+  });
+
+  it('lbs boundary error message names range', () => {
+    expect(validateWeight('2001', 'lbs').error).toMatch(/0.*2000.*lbs/);
+    expect(validateWeight('-201', 'lbs').error).toMatch(/0.*2000.*lbs/);
+  });
+
+  it('rejects -300 (acceptance criterion)', () => {
+    expect(validateWeight('-300', 'lbs').valid).toBe(false);
+    expect(validateWeight('-300', 'kg').valid).toBe(false);
+  });
 });
 
 describe('validateReps', () => {
@@ -76,8 +98,24 @@ describe('validateReps', () => {
     expect(validateReps('10').valid).toBe(true);
   });
 
-  it('rejects decimals', () => {
+  it('rejects decimals (non-integer)', () => {
     expect(validateReps('10.5').valid).toBe(false);
+    expect(validateReps('10.5').error).toMatch(/0.*200/);
+  });
+
+  // ── Boundary tests ──
+  it.each([
+    ['-1',  false],
+    ['0',   true ],
+    ['200', true ],
+    ['201', false],
+  ])('boundary reps %s → valid=%s', (value, expected) => {
+    expect(validateReps(value).valid).toBe(expected);
+  });
+
+  it('error message names 0–200 range', () => {
+    expect(validateReps('-5').error).toMatch(/0.*200/);
+    expect(validateReps('500').error).toMatch(/0.*200/);
   });
 });
 
@@ -101,6 +139,82 @@ describe('validateRpe', () => {
 
   it('rejects non-0.5 increments', () => {
     expect(validateRpe('7.3').valid).toBe(false);
+    expect(validateRpe('7.3').error).toMatch(/0\.5/);
+  });
+
+  // ── Boundary tests ──
+  it.each([
+    ['0.5',  false],
+    ['1',    true ],
+    ['10',   true ],
+    ['10.5', false],
+    ['11',   false],
+  ])('boundary RPE %s → valid=%s', (value, expected) => {
+    expect(validateRpe(value).valid).toBe(expected);
+  });
+
+  it('out-of-range error names 1-10 range', () => {
+    expect(validateRpe('11').error).toMatch(/1.*10/);
+    expect(validateRpe('0.5').error).toMatch(/1.*10/);
+  });
+});
+
+describe('getSetFieldErrors', () => {
+  it('returns no errors when all fields empty', () => {
+    expect(getSetFieldErrors({ weight: '', reps: '', rpe: '' }, 'lbs', 'reps-weight')).toEqual({});
+  });
+
+  it('returns weight error for -250 lbs', () => {
+    const errs = getSetFieldErrors({ weight: '-250', reps: '10', rpe: '' }, 'lbs', 'reps-weight');
+    expect(errs.weight).toMatch(/0.*2000.*lbs/);
+    expect(errs.reps).toBeUndefined();
+  });
+
+  it('returns reps error for 99999 reps', () => {
+    const errs = getSetFieldErrors({ weight: '100', reps: '99999', rpe: '' }, 'lbs', 'reps-weight');
+    expect(errs.reps).toMatch(/0.*200/);
+    expect(errs.weight).toBeUndefined();
+  });
+
+  it('returns rpe error for 11', () => {
+    const errs = getSetFieldErrors({ weight: '100', reps: '10', rpe: '11' }, 'lbs', 'reps-weight');
+    expect(errs.rpe).toMatch(/1.*10/);
+  });
+
+  it('reports nothing for valid set', () => {
+    const errs = getSetFieldErrors({ weight: '135', reps: '10', rpe: '8' }, 'lbs', 'reps-weight');
+    expect(errs).toEqual({});
+  });
+
+  it('does not check weight for reps-only mode', () => {
+    const errs = getSetFieldErrors({ weight: '-50', reps: '10', rpe: '' }, 'lbs', 'reps');
+    expect(errs.weight).toBeUndefined();
+  });
+
+  it('does not check reps for time-only mode', () => {
+    const errs = getSetFieldErrors({ weight: '', reps: '99999', rpe: '' }, 'lbs', 'time');
+    expect(errs.reps).toBeUndefined();
+  });
+
+  it('allows 0 weight for bodyweight exercises', () => {
+    const errs = getSetFieldErrors({ weight: '0', reps: '10', rpe: '' }, 'lbs', 'reps-weight', true);
+    expect(errs.weight).toBeUndefined();
+  });
+
+  it('hasFieldErrors returns true when any field invalid', () => {
+    expect(hasFieldErrors({ weight: 'bad' })).toBe(true);
+    expect(hasFieldErrors({})).toBe(false);
+  });
+});
+
+describe('isBodyweightExercise', () => {
+  it('detects "Bodyweight" in name', () => {
+    expect(isBodyweightExercise('Pull-up (Bodyweight)')).toBe(true);
+    expect(isBodyweightExercise('bodyweight squat')).toBe(true);
+  });
+
+  it('returns false for normal names', () => {
+    expect(isBodyweightExercise('Bench Press')).toBe(false);
   });
 });
 

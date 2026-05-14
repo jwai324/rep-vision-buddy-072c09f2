@@ -61,7 +61,7 @@ describe('Invalid input blocking', () => {
   it('-50 weight is blocked in kg', () => {
     const result = validateWeight('-50', 'kg');
     expect(result.valid).toBe(false);
-    expect(result.error).toContain('negative');
+    expect(result.error).toMatch(/0.*900.*kg/);
   });
 
   it('-50 weight is blocked in lbs', () => {
