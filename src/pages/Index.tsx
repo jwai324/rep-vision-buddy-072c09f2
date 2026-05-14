@@ -56,13 +56,13 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const { registerScreen } = useChatContext();
   const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise, updateExercise: updateCustomExercise } = useCustomExercisesContext();
   const tutorial = useTutorial();
-  const [minimizedSession, setMinimizedSession] = useState<Screen | null>(null);
-  const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
-  const [screen, setScreen] = useState<Screen>(() => {
-    const cached = getSessionCache();
-    if (cached) return { type: 'activeSession', exercises: [] };
-    return { type: 'dashboard' };
+  // On a cold load with a cached in-progress workout, surface a dashboard
+  // banner instead of dropping the user straight back into the session.
+  const [minimizedSession, setMinimizedSession] = useState<Screen | null>(() => {
+    return getSessionCache() ? { type: 'activeSession', exercises: [] } : null;
   });
+  const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
+  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
 
   // Register screen context with AI chat
   useEffect(() => {
@@ -133,6 +133,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     }
   };
 
+  const handleDiscardMinimized = () => {
+    clearSessionCache();
+    setMinimizedSession(null);
+    setPendingSummary(null);
+  };
+
   const activeProgram = storage.activeProgramId
     ? storage.programs.find(p => p.id === storage.activeProgramId) ?? null
     : null;
@@ -184,7 +190,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             templates={storage.templates}
             futureWorkouts={storage.futureWorkouts}
             preferences={storage.preferences}
-            onStartWorkout={() => setScreen({ type: 'startWorkout' })}
+            hasActiveWorkout={!!minimizedSession}
+            onStartWorkout={() => {
+              if (minimizedSession) handleExpand();
+              else setScreen({ type: 'startWorkout' });
+            }}
             onGoToFutureWorkouts={() => setScreen({ type: 'activity', initialTab: 'future' })}
             onStartTemplate={startFromTemplate}
             onGoToHistory={() => setScreen({ type: 'activity', initialTab: 'history' })}
@@ -563,7 +573,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       {showMinimizedBar && (
         <MinimizedSessionBar
           workoutName={getSessionCache()?.workoutName ?? 'Workout'}
+          startTimestamp={getSessionCache()?.startTimestamp ?? null}
           onExpand={handleExpand}
+          onDiscard={handleDiscardMinimized}
         />
       )}
 

@@ -20,6 +20,7 @@ interface DashboardProps {
   templates: WorkoutTemplate[];
   futureWorkouts: FutureWorkout[];
   preferences: UserPreferences;
+  hasActiveWorkout?: boolean;
   onStartWorkout: () => void;
   onGoToFutureWorkouts: () => void;
   onStartTemplate: (template: WorkoutTemplate) => void;
@@ -345,7 +346,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, preferences, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar, onOpenTodayWorkout
+  history, activeProgram, templates, futureWorkouts, preferences, hasActiveWorkout = false, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar, onOpenTodayWorkout
 }) => {
   const streak = getCurrentStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
   const streakLabel = preferences.streakMode === 'weekly'
@@ -449,7 +450,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Quick actions */}
       <Button id="tutorial-start-btn" variant="neon" size="lg" onClick={onStartWorkout} className="w-full text-lg font-bold">
-        🎯 Start Workout
+        {hasActiveWorkout ? '▶️ Resume Workout' : '🎯 Start Workout'}
       </Button>
 
       <Button variant="outline" size="sm" onClick={onAddRestDay} className="w-full text-muted-foreground">
