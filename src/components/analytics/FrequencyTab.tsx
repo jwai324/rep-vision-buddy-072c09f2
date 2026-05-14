@@ -61,6 +61,10 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
       .sort((a, b) => b.sessions - a.sessions);
   }, [history, period]);
 
+  const weeks = period / 7;
+  const lowThreshold = Math.floor(weeks);
+  const highThreshold = Math.floor(3 * weeks);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-card rounded-xl border border-border p-4">
@@ -105,9 +109,9 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
           </ResponsiveContainer>
         </div>
         <div className="flex gap-3 mt-3 justify-center flex-wrap">
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[10px] text-muted-foreground">≤1×/wk</span></div>
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#10b981]" /><span className="text-[10px] text-muted-foreground">1–3×/wk</span></div>
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[10px] text-muted-foreground">&gt;3×/wk</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[10px] text-muted-foreground">≤{lowThreshold} {lowThreshold === 1 ? 'session' : 'sessions'}</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#10b981]" /><span className="text-[10px] text-muted-foreground">{lowThreshold + 1}–{highThreshold} sessions</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[10px] text-muted-foreground">&gt;{highThreshold} sessions</span></div>
         </div>
       </div>
     </div>
