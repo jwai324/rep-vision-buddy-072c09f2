@@ -47,9 +47,10 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
               <div className="flex flex-wrap gap-1 mb-3">
                 {p.days.map((d, i) => {
                   const tpl = templates.find(t => t.id === d.templateId);
+                  const name = d.templateId === 'rest' ? 'Rest' : tpl?.name ?? '?';
                   return (
                     <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full break-all ${d.templateId === 'rest' ? 'bg-secondary text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
-                      {d.label}: {d.templateId === 'rest' ? 'Rest' : tpl?.name ?? '?'}
+                      Day {i + 1}: {name}
                     </span>
                   );
                 })}
