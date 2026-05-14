@@ -5,7 +5,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ExerciseAnimation } from '@/components/ExerciseAnimation';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { formatWeightString } from '@/utils/weightConversion';
+import { formatWeightString, formatVolume, fromKg } from '@/utils/weightConversion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { parseLocalDate } from '@/utils/dateUtils';
 
@@ -37,10 +37,11 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
 
   const volumeData = useMemo(() => {
     return exerciseHistory.map(h => {
-      const volume = h.exerciseLog.sets.reduce((sum, set) => sum + (set.weight || 0) * set.reps, 0);
+      const volumeKg = h.exerciseLog.sets.reduce((sum, set) => sum + (set.weight || 0) * set.reps, 0);
+      const volume = Math.round(fromKg(volumeKg, weightUnit));
       return { date: h.date, volume };
     });
-  }, [exerciseHistory]);
+  }, [exerciseHistory, weightUnit]);
 
   if (!exercise) return null;
 
@@ -134,7 +135,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({ exerci
                         borderRadius: '8px',
                         color: 'hsl(var(--popover-foreground))',
                       }}
-                      formatter={(value: number) => [formatWeightString(value, weightUnit), 'Volume']}
+                      formatter={(value: number) => [formatVolume(value, weightUnit), 'Volume']}
                     />
                     <Line
                       type="monotone"

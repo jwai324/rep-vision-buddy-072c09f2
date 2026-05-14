@@ -5,7 +5,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { format, addDays, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
-import { fromKg } from '@/utils/weightConversion';
+import { fromKg, formatVolume } from '@/utils/weightConversion';
 
 const BODY_PART_COLORS: Record<string, string> = {
   Chest: '#ef4444', Back: '#3b82f6', Shoulders: '#f97316', Biceps: '#a855f7',
@@ -104,7 +104,7 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="week" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
               <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number) => [`${value.toLocaleString()} ${weightUnit}`, 'Volume']} />
+              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number) => [formatVolume(value, weightUnit), 'Volume']} />
               <Line type="monotone" dataKey="totalVolume" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--primary))' }} name="Total Volume" />
             </LineChart>
           </ResponsiveContainer>
@@ -131,7 +131,7 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="week" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
               <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number, name: string) => [`${value.toLocaleString()} ${weightUnit}`, name]} />
+              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number, name: string) => [formatVolume(value, weightUnit), name]} />
               {(selectedBodyParts.size > 0 ? bodyPartsWithData.filter(bp => selectedBodyParts.has(bp)) : bodyPartsWithData).map(bp => (
                 <Line key={bp} type="monotone" dataKey={bp} stroke={BODY_PART_COLORS[bp]} strokeWidth={selectedBodyParts.size > 0 ? 2 : 1.5} dot={selectedBodyParts.size > 0 ? { r: 3, fill: BODY_PART_COLORS[bp] } : false} name={bp} />
               ))}
