@@ -115,14 +115,17 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
           Volume by Body Part ({weightUnit})
         </p>
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <button onClick={() => setSelectedBodyParts(new Set())} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyParts.size === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>All</button>
+        <div
+          data-testid="body-part-chips"
+          className="flex flex-nowrap overflow-x-auto scrollbar-hide gap-1.5 mb-4"
+        >
+          <button onClick={() => setSelectedBodyParts(new Set())} className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyParts.size === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>All</button>
           {bodyPartsWithData.map(bp => (
             <button key={bp} onClick={() => setSelectedBodyParts(prev => {
               const next = new Set(prev);
               if (next.has(bp)) next.delete(bp); else next.add(bp);
               return next;
-            })} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyParts.has(bp) ? 'text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`} style={selectedBodyParts.has(bp) ? { backgroundColor: BODY_PART_COLORS[bp] || 'hsl(var(--primary))' } : undefined}>{bp}</button>
+            })} className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${selectedBodyParts.has(bp) ? 'text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`} style={selectedBodyParts.has(bp) ? { backgroundColor: BODY_PART_COLORS[bp] || 'hsl(var(--primary))' } : undefined}>{bp}</button>
           ))}
         </div>
         <div className="h-48">

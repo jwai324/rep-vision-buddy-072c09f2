@@ -61,7 +61,7 @@ export function useCustomExercises() {
       measurement_type: input.measurementType ?? null,
     } as any);
     if (error) { toast.error('Failed to save exercise'); return; }
-    toast.success('Exercise created');
+    toast.success(`Exercise "${input.name}" saved.`);
     fetchExercises();
   }, [user, fetchExercises]);
 
@@ -89,7 +89,7 @@ export function useCustomExercises() {
       measurement_type: input.measurementType ?? null,
     } as any).eq('id', dbId);
     if (error) { toast.error('Failed to update exercise'); return; }
-    toast.success('Exercise updated');
+    toast.success(`Exercise "${input.name}" updated.`);
     fetchExercises();
   }, [user, fetchExercises]);
 
