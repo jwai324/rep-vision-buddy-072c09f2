@@ -6,24 +6,42 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Dumbbell } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
+
+// Supabase returns code 'invalid_credentials' (and a 400) for both wrong email
+// and wrong password, so we collapse it to a single user-friendly message that
+// doesn't leak which field was wrong.
+function isCredentialError(error: { code?: string; message?: string; status?: number }): boolean {
+  if (error.code === 'invalid_credentials' || error.code === 'invalid_grant') return true;
+  const msg = (error.message ?? '').toLowerCase();
+  return msg.includes('invalid login credentials') || msg.includes('invalid email or password');
+}
 
 const Auth = () => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const switchMode = (next: AuthMode) => {
+    setFormError(null);
+    setMode(next);
+  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setFormError(null);
 
     if (mode === 'forgot') {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) {
+        setFormError(error.message);
         toast.error(error.message);
       } else {
         toast.success('Check your email for a password reset link!');
@@ -36,7 +54,11 @@ const Auth = () => {
     if (mode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        toast.error(error.message);
+        const message = isCredentialError(error)
+          ? 'Incorrect email or password.'
+          : error.message;
+        setFormError(message);
+        setPassword('');
       }
     } else {
       const { error } = await supabase.auth.signUp({
@@ -45,7 +67,7 @@ const Auth = () => {
         options: { emailRedirectTo: window.location.origin },
       });
       if (error) {
-        toast.error(error.message);
+        setFormError(error.message);
       } else {
         toast.success('Check your email for a verification link!');
       }
@@ -105,16 +127,18 @@ const Auth = () => {
             </>
           )}
 
-          <form onSubmit={handleEmailAuth} className="space-y-3">
+          <form onSubmit={handleEmailAuth} className="space-y-3" noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); if (formError) setFormError(null); }}
                 placeholder="you@example.com"
                 required
+                aria-invalid={!!formError}
+                className={cn(formError && 'border-destructive focus-visible:ring-destructive')}
               />
             </div>
             {mode !== 'forgot' && (
@@ -124,18 +148,31 @@ const Auth = () => {
                   id="password"
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); if (formError) setFormError(null); }}
                   placeholder="••••••••"
                   required
                   minLength={6}
+                  aria-invalid={!!formError}
+                  aria-describedby={formError ? 'auth-error' : undefined}
+                  className={cn(formError && 'border-destructive focus-visible:ring-destructive')}
                 />
+                {formError && (
+                  <p id="auth-error" role="alert" className="text-xs text-destructive">
+                    {formError}
+                  </p>
+                )}
               </div>
+            )}
+            {mode === 'forgot' && formError && (
+              <p id="auth-error" role="alert" className="text-xs text-destructive">
+                {formError}
+              </p>
             )}
             {mode === 'login' && (
               <div className="text-right">
                 <button
                   type="button"
-                  onClick={() => setMode('forgot')}
+                  onClick={() => switchMode('forgot')}
                   className="text-xs text-muted-foreground hover:text-primary hover:underline"
                 >
                   Forgot password?
@@ -150,7 +187,7 @@ const Auth = () => {
           <p className="text-center text-sm text-muted-foreground">
             {mode === 'forgot' ? (
               <button
-                onClick={() => setMode('login')}
+                onClick={() => switchMode('login')}
                 className="text-primary hover:underline font-medium"
               >
                 Back to sign in
@@ -159,7 +196,7 @@ const Auth = () => {
               <>
                 Don't have an account?{' '}
                 <button
-                  onClick={() => setMode('signup')}
+                  onClick={() => switchMode('signup')}
                   className="text-primary hover:underline font-medium"
                 >
                   Sign up
@@ -169,7 +206,7 @@ const Auth = () => {
               <>
                 Already have an account?{' '}
                 <button
-                  onClick={() => setMode('login')}
+                  onClick={() => switchMode('login')}
                   className="text-primary hover:underline font-medium"
                 >
                   Sign in
