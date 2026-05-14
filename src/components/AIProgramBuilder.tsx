@@ -440,7 +440,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     };
 
     onSaveProgram(program, templates);
-    toast.success("Your program is ready. Let's go. 💪");
+    toast.success(`Program "${program.name}" saved.`);
   };
 
   // ─── Render ─────────────────────────────────────────────────────

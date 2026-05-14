@@ -205,12 +205,15 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
           Filter by Body Part
         </p>
-        <div className="flex flex-wrap gap-1.5 mb-4">
+        <div
+          data-testid="body-part-chips"
+          className="flex flex-nowrap overflow-x-auto scrollbar-hide gap-1.5 mb-4"
+        >
           {availableBodyParts.map(bp => (
             <button
               key={bp}
               onClick={() => setBodyPartFilter(bp)}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
                 bodyPartFilter === bp
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-secondary text-muted-foreground hover:text-foreground'

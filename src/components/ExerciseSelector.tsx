@@ -231,12 +231,15 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
 
         {/* Quick body part chips (visible when filter panel is closed) */}
         {!showFilters && (
-          <div className="flex flex-wrap gap-1.5 pb-2">
+          <div
+            data-testid="body-part-chips"
+            className="flex flex-nowrap overflow-x-auto scrollbar-hide gap-1.5 pb-2"
+          >
             {BODY_PARTS.map(bp => (
               <button
                 key={bp}
                 onClick={() => setBodyPartFilter(bp)}
-                className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   bodyPartFilter === bp
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-secondary text-muted-foreground hover:text-foreground'
