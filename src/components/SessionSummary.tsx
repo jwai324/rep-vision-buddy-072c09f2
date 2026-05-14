@@ -4,7 +4,7 @@ import { SET_TYPE_CONFIG, EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { formatWeight, formatWeightString } from '@/utils/weightConversion';
+import { formatWeight, formatWeightString, formatVolumeFromKg } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
@@ -310,7 +310,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           { label: 'Duration', value: formatDuration(session.duration) },
           { label: 'Total Sets', value: session.totalSets },
           { label: 'Total Reps', value: session.totalReps },
-          { label: 'Volume', value: formatWeightString(session.totalVolume, weightUnit) },
+          { label: 'Volume', value: formatVolumeFromKg(session.totalVolume, weightUnit) },
         ].map(s => (
           <div key={s.label} className="bg-card rounded-xl p-4 border border-border text-center">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</p>

@@ -57,3 +57,45 @@ export function formatWeightString(
   const { display, unitLabel } = formatWeight(valueKg, unit);
   return `${display} ${unitLabel}`;
 }
+
+/**
+ * Format a workout volume for display.
+ *
+ * Volume = sum(reps × weight). Weights are stored as kg rounded to 0.01, so
+ * once the aggregate sum is converted back to lbs IEEE-754 drift sneaks in —
+ * 135 lbs × 10 reps can land at 1349.89 or 1350.11 instead of a clean 1350.
+ * Round at the display boundary: integer for values ≥ 10, one decimal for
+ * smaller values (so very light volumes like 4.5 still read sensibly).
+ *
+ * The caller passes the value already in `unit`. Use `fromKg(kg, unit)` once
+ * before calling — never chain kg → lbs → kg → lbs conversions.
+ */
+export function formatVolume(
+  value: number | undefined | null,
+  unit: WeightUnit,
+): string {
+  if (value == null || isNaN(value)) return `0 ${unit}`;
+
+  const rounded = Math.abs(value) >= 10
+    ? Math.round(value)
+    : Math.round(value * 10) / 10;
+
+  const raw = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  const parts = raw.split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${parts.join('.')} ${unit}`;
+}
+
+/**
+ * Convenience: format a kg-stored volume directly in the user's display unit.
+ * Performs a single kg → display conversion, then rounds + formats. Use this
+ * at every display site that has `totalVolume` (in kg) in hand.
+ */
+export function formatVolumeFromKg(
+  valueKg: number | undefined | null,
+  unit: WeightUnit,
+): string {
+  if (valueKg == null || isNaN(valueKg)) return `0 ${unit}`;
+  const inUnit = unit === 'kg' ? valueKg : valueKg * KG_TO_LBS;
+  return formatVolume(inUnit, unit);
+}
