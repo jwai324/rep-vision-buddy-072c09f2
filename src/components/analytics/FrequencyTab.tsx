@@ -52,10 +52,9 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
       const count = counts[bp] || 0;
       const perWeek = count / weeks;
       let color: string;
-      if (count === 0) color = '#ef4444'; // red - never trained
-      else if (perWeek < 1.5) color = '#eab308'; // yellow - under
-      else if (perWeek <= 3.5) color = '#10b981'; // green - optimal
-      else color = '#f97316'; // orange - high
+      if (perWeek <= 1) color = '#ef4444'; // red - undertrained (≤1×/wk)
+      else if (perWeek <= 3) color = '#10b981'; // green - optimal (1–3×/wk)
+      else color = '#ef4444'; // red - overtrained (>3×/wk)
       return { bodyPart: bp, sessions: count, perWeek: Math.round(perWeek * 10) / 10, color };
     })
       .filter(d => d.sessions > 0)
@@ -80,9 +79,8 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
             <PopoverContent className="w-72 text-xs normal-case tracking-normal" align="start">
               Shows how many sessions each muscle group was trained in the selected period.
               Color indicates weekly frequency:{' '}
-              <span className="text-[#10b981] font-semibold">green</span> = optimal (1.5–3.5×/wk),{' '}
-              <span className="text-[#eab308] font-semibold">yellow</span> = undertrained (&lt;1.5×/wk),{' '}
-              <span className="text-[#f97316] font-semibold">orange</span> = high frequency (&gt;3.5×/wk).
+              <span className="text-[#10b981] font-semibold">green</span> = optimal (1–3×/wk),{' '}
+              <span className="text-[#ef4444] font-semibold">red</span> = under (≤1×/wk) or over (&gt;3×/wk).
             </PopoverContent>
           </Popover>
           <div className="flex gap-1">
@@ -99,7 +97,7 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
               <YAxis type="category" dataKey="bodyPart" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} width={isMobile ? 60 : 65} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--popover-foreground))' }} formatter={(value: number, _: string, entry: any) => [`${value} sessions (${entry.payload.perWeek}/wk)`, 'Frequency']} />
+              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: '#ffffff' }} labelStyle={{ color: '#ffffff' }} itemStyle={{ color: '#ffffff' }} formatter={(value: number, _: string, entry: any) => [`${value} sessions (${entry.payload.perWeek}/wk)`, 'Frequency']} />
               <Bar dataKey="sessions" radius={[0, 4, 4, 0]}>
                 {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
               </Bar>
@@ -107,9 +105,9 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
           </ResponsiveContainer>
         </div>
         <div className="flex gap-3 mt-3 justify-center flex-wrap">
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#eab308]" /><span className="text-[10px] text-muted-foreground">&lt;1.5×/wk</span></div>
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#10b981]" /><span className="text-[10px] text-muted-foreground">1.5–3.5×/wk</span></div>
-          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#f97316]" /><span className="text-[10px] text-muted-foreground">&gt;3.5×/wk</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[10px] text-muted-foreground">≤1×/wk</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#10b981]" /><span className="text-[10px] text-muted-foreground">1–3×/wk</span></div>
+          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[10px] text-muted-foreground">&gt;3×/wk</span></div>
         </div>
       </div>
     </div>
