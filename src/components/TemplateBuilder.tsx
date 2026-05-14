@@ -314,9 +314,20 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
         <button onClick={handleCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
-        <Button variant="neon" size="sm" onClick={save} disabled={!name.trim() || blocks.length === 0}>
-          Save Template
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            variant="neon"
+            size="sm"
+            onClick={save}
+            disabled={!name.trim() || blocks.length === 0}
+            className="disabled:bg-muted disabled:bg-none disabled:text-muted-foreground disabled:shadow-none disabled:opacity-100"
+          >
+            Save Template
+          </Button>
+          {(!name.trim() || blocks.length === 0) && (
+            <p className="text-[10px] text-muted-foreground">Add a name and at least one exercise.</p>
+          )}
+        </div>
       </div>
 
       {/* Template Name */}
