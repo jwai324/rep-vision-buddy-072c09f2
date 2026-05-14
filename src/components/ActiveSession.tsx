@@ -3,7 +3,7 @@ import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, Temp
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, distanceUnitFromWeightUnit, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg } from '@/utils/weightConversion';
-import { validateWeight, validateReps, validateRpe, canCompleteSet } from '@/utils/setValidation';
+import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors, isBodyweightExercise } from '@/utils/setValidation';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -787,6 +787,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     if (!hasCompletedSet) {
       toast.error('Complete at least one set or Discard this workout.');
       return;
+    }
+
+    // Guard: any completed set with invalid field values blocks finishing.
+    for (const block of blocks) {
+      const mode = getExerciseInputMode(block.exerciseId, customExercises);
+      const isBw = isBodyweightExercise(block.exerciseName);
+      for (let si = 0; si < block.sets.length; si++) {
+        const s = block.sets[si];
+        if (!s.completed) continue;
+        const errs = getSetFieldErrors({ weight: s.weight, reps: s.reps, rpe: s.rpe }, weightUnit, mode, isBw);
+        const badField = errs.weight ? 'weight' : errs.reps ? 'reps' : errs.rpe ? 'RPE' : null;
+        if (badField) {
+          toast.error(`Fix invalid ${badField} in ${block.exerciseName}, Set ${s.setNumber}`);
+          return;
+        }
+      }
     }
 
     const exerciseLogs: ExerciseLog[] = normalizeBlocks(blocks)

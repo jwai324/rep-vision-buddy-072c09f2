@@ -7,6 +7,7 @@ import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer'
 import { BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { fromKg } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
+import { getSetFieldErrors, hasFieldErrors, isBodyweightExercise, type SetFieldErrors } from '@/utils/setValidation';
 import type { WeightUnit } from '@/hooks/useStorage';
 import type { ExerciseBlock, SetRow, DropRow, PersistedTimer, RunningSetState } from '@/types/activeSession';
 
@@ -465,11 +466,21 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
         const gridCols = getGridCols(inputMode);
         const setLabel = set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber;
         const setLabelClass = `text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`;
+        const isBw = isBodyweightExercise(block.exerciseName);
+        const setErrors = getSetFieldErrors({ weight: set.weight, reps: set.reps, rpe: set.rpe }, weightUnit, inputMode, isBw);
+        const setHasError = hasFieldErrors(setErrors);
+        const errorRingClass = (field: keyof SetFieldErrors) => setErrors[field]
+          ? 'ring-1 ring-destructive focus:ring-destructive'
+          : 'focus:ring-1 focus:ring-primary';
         const completeBtn = (
           <button
             id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
-            onClick={() => onToggleComplete(blockIdx, setIdx)}
+            onClick={() => { if (!setHasError) onToggleComplete(blockIdx, setIdx); }}
+            disabled={setHasError}
+            aria-disabled={setHasError}
+            data-testid={`set-complete-${blockIdx}-${setIdx}`}
             className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+              setHasError ? 'bg-secondary/30 text-muted-foreground/40 pointer-events-none opacity-50 cursor-not-allowed' :
               set.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -548,7 +559,8 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     type="number" inputMode="numeric" value={set.reps}
                     onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
                     onFocus={e => e.target.value && e.target.select()} placeholder="—"
-                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                    aria-invalid={!!setErrors.reps}
+                    className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${errorRingClass('reps')} [&::-webkit-inner-spin-button]:appearance-auto`}
                   />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} small />
@@ -590,14 +602,16 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                       onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
                       onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight')}
                       onFocus={e => e.target.value && e.target.select()} placeholder="—"
-                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                      aria-invalid={!!setErrors.weight}
+                      className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${errorRingClass('weight')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   )}
                   <input id={blockIdx === 0 && setIdx === 0 ? 'tutorial-reps-input' : buildInputId(blockIdx, setIdx, 'reps')}
                     type="number" inputMode="numeric" value={set.reps}
                     onChange={e => onUpdateSet(blockIdx, setIdx, 'reps', e.target.value)}
                     onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps')}
                     onFocus={e => e.target.value && e.target.select()} placeholder="—"
-                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    aria-invalid={!!setErrors.reps}
+                    className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${errorRingClass('reps')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   <RpePickerButton id={blockIdx === 0 && setIdx === 0 ? 'tutorial-rpe' : buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} small />
                   {completeBtn}
@@ -699,6 +713,17 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
             <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
               {renderSetRow()}
             </SwipeToDelete>
+
+            {setHasError && (
+              <div
+                data-testid={`set-errors-${blockIdx}-${setIdx}`}
+                className="px-2 pb-1 -mt-0.5 text-[11px] text-destructive flex flex-col gap-0.5"
+              >
+                {setErrors.weight && <span data-testid="weight-error">{setErrors.weight}</span>}
+                {setErrors.reps && <span data-testid="reps-error">{setErrors.reps}</span>}
+                {setErrors.rpe && <span data-testid="rpe-error">{setErrors.rpe}</span>}
+              </div>
+            )}
 
             {/* Drop rows */}
             {set.drops?.map((drop, dropIdx) => (
