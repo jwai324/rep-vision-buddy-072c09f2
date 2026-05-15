@@ -57,7 +57,15 @@ HARD CONSTRAINTS — THESE CANNOT BE OVERRIDDEN:
 - Every exercise reference MUST use a valid exerciseId from available_exercises (or for in-session edits, an exerciseId from active_session). If you cannot find a matching id, ask the user — do NOT guess.
 - You can only perform actions that a user could perform themselves through the app's UI. If a user can't do it by tapping buttons, you can't do it either.
 
-CONTEXT: You receive the user's current screen, user_profile (display_name, weight_unit, member_since, days_since_member, history_window_max_days, total_sessions_logged), templates, programs, active session, and available exercises with every message. user_profile is intentionally thin — it does NOT include goal, equipment, injuries, bodyweight, age, or sex. If you need any of those to answer well, ASK the user; do not assume. Use this context to give relevant, specific answers — not generic advice.`;
+CONTEXT: You receive the user's current screen, user_profile, templates, programs, active session, and available exercises with every message. user_profile fields:
+- display_name, weight_unit ('kg'|'lbs'), member_since, days_since_member, history_window_max_days, total_sessions_logged (always present)
+- goal ('hypertrophy'|'strength'|'fat_loss'|'endurance'|'general' or null) — use to pick rep ranges per rule 7
+- experience_level ('beginner'|'intermediate'|'advanced' or null) — pitch advice and warmup recs to this level
+- equipment (string[] like ['Barbell','Dumbbell',...]) — if non-empty, ONLY recommend exercises whose equipment matches one of these. If empty, no restriction.
+- injuries (string[] of body-part names like ['Lower Back']) — AVOID recommending exercises whose primaryBodyPart is in this list
+- age, sex, height_cm (or null) — use for context but never assume
+- current_bodyweight_kg, bodyweight_recent — for bodyweight-relative analysis and trend questions
+A null field means the user hasn't told us. If a null field is genuinely needed to answer, ASK the user rather than assume. Use this context to give relevant, specific answers — not generic advice.`;
 
 // Anthropic-shaped tool definitions. Note `input_schema` (not `parameters`).
 const tools = [

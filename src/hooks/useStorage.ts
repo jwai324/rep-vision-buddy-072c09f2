@@ -157,12 +157,38 @@ export interface UserPreferences {
   stickyNotes: Record<string, string>;
 }
 
+export type Goal = 'hypertrophy' | 'strength' | 'fat_loss' | 'endurance' | 'general';
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+export type Sex = 'male' | 'female' | 'other' | 'prefer_not_to_say';
+
 export interface UserProfile {
   displayName: string | null;
+  goal: Goal | null;
+  experienceLevel: ExperienceLevel | null;
+  equipment: string[];
+  injuries: string[];
+  age: number | null;
+  sex: Sex | null;
+  heightCm: number | null;
+}
+
+export interface BodyMeasurement {
+  id: string;
+  date: string;
+  weightKg: number;
 }
 
 const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'], stickyNotes: {} };
-const DEFAULT_PROFILE: UserProfile = { displayName: null };
+const DEFAULT_PROFILE: UserProfile = {
+  displayName: null,
+  goal: null,
+  experienceLevel: null,
+  equipment: [],
+  injuries: [],
+  age: null,
+  sex: null,
+  heightCm: null,
+};
 
 function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; preferences: UserPreferences } {
   return {
@@ -190,6 +216,7 @@ export function useStorage() {
   const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>([]);
   const [preferences, setPreferencesState] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [profile, setProfileState] = useState<UserProfile>(DEFAULT_PROFILE);
+  const [bodyMeasurements, setBodyMeasurements] = useState<BodyMeasurement[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Load all data from Supabase on mount / user change
@@ -200,6 +227,7 @@ export function useStorage() {
       setPrograms([]);
       setActiveProgramId(null);
       setFutureWorkouts([]);
+      setBodyMeasurements([]);
       setLoading(false);
       return;
     }
@@ -207,13 +235,14 @@ export function useStorage() {
     const load = async () => {
       setLoading(true);
       try {
-        const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes] = await Promise.all([
+        const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes, measurementsRes] = await Promise.all([
           supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
           supabase.from('workout_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
           supabase.from('workout_programs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
           supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
           supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
           supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
+          (supabase.from('body_measurements' as any).select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, 365) as any),
         ]);
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
@@ -226,9 +255,24 @@ export function useStorage() {
           setPreferencesState(mapped.preferences);
         }
         if (profileRes.data) {
+          const row = profileRes.data as any;
           setProfileState({
-            displayName: profileRes.data.display_name,
+            displayName: row.display_name ?? null,
+            goal: row.goal ?? null,
+            experienceLevel: row.experience_level ?? null,
+            equipment: (row.equipment as string[] | null) ?? [],
+            injuries: (row.injuries as string[] | null) ?? [],
+            age: row.age ?? null,
+            sex: row.sex ?? null,
+            heightCm: row.height_cm != null ? Number(row.height_cm) : null,
           });
+        }
+        if (measurementsRes && (measurementsRes as any).data) {
+          setBodyMeasurements(((measurementsRes as any).data as any[]).map(r => ({
+            id: r.id,
+            date: r.date,
+            weightKg: Number(r.weight_kg),
+          })));
         }
       } catch (e) {
         console.error('[useStorage] Failed to load data:', e);
@@ -544,7 +588,14 @@ export function useStorage() {
     const { error } = await supabase.from('profiles').upsert({
       user_id: user.id,
       display_name: updated.displayName,
-    }, { onConflict: 'user_id' });
+      goal: updated.goal,
+      experience_level: updated.experienceLevel,
+      equipment: updated.equipment,
+      injuries: updated.injuries,
+      age: updated.age,
+      sex: updated.sex,
+      height_cm: updated.heightCm,
+    } as any, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updateProfile error:', error);
       toast.error('Failed to save profile');
@@ -552,11 +603,44 @@ export function useStorage() {
     }
   }, [user, profile]);
 
+  const addBodyMeasurement = useCallback(async (weightKg: number, date?: string): Promise<boolean> => {
+    if (!user) return false;
+    const id = crypto.randomUUID();
+    const dateStr = date || format(new Date(), 'yyyy-MM-dd');
+    const newRow: BodyMeasurement = { id, date: dateStr, weightKg };
+    const previous = bodyMeasurements;
+    setBodyMeasurements(prev => [newRow, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    const { error } = await (supabase.from('body_measurements' as any).insert({
+      id, user_id: user.id, date: dateStr, weight_kg: weightKg,
+    } as any) as any);
+    if (error) {
+      console.error('[useStorage] addBodyMeasurement error:', error);
+      toast.error('Failed to log bodyweight');
+      setBodyMeasurements(previous);
+      return false;
+    }
+    return true;
+  }, [user, bodyMeasurements]);
+
+  const deleteBodyMeasurement = useCallback(async (id: string): Promise<boolean> => {
+    if (!user) return false;
+    const previous = bodyMeasurements;
+    setBodyMeasurements(prev => prev.filter(m => m.id !== id));
+    const { error } = await (supabase.from('body_measurements' as any).delete().eq('id', id) as any);
+    if (error) {
+      console.error('[useStorage] deleteBodyMeasurement error:', error);
+      toast.error('Failed to delete measurement');
+      setBodyMeasurements(previous);
+      return false;
+    }
+    return true;
+  }, [user, bodyMeasurements]);
+
   return {
-    history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, loading,
+    history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements, loading,
     saveSession, saveTemplate, deleteTemplate,
     saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
     deleteFutureWorkout, pushProgramBack, updatePreferences,
-    updateProfile,
+    updateProfile, addBodyMeasurement, deleteBodyMeasurement,
   };
 }

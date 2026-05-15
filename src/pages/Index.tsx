@@ -14,6 +14,7 @@ import { AnalyticsScreen } from '@/components/AnalyticsScreen';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 
 import { SettingsScreen } from '@/components/SettingsScreen';
+import { ProfileScreen } from '@/components/ProfileScreen';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
@@ -47,6 +48,7 @@ type Screen =
   | { type: 'programs' }
   | { type: 'programBuilder'; program?: WorkoutProgram }
   | { type: 'settings' }
+  | { type: 'profile' }
   | { type: 'analytics' }
   | { type: 'aiProgramBuilder' }
   | { type: 'customExercises' }
@@ -72,6 +74,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       summary: 'dashboard', sessionDetail: 'activity', activity: 'activity',
       futureWorkoutDetail: 'activity', templates: 'templates', templateBuilder: 'templates',
       programs: 'programs', programBuilder: 'programs', settings: 'settings',
+      profile: 'profile',
       analytics: 'analytics', aiProgramBuilder: 'programs',
     };
     registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
@@ -506,11 +509,24 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onUpdateProfile={storage.updateProfile}
           onBack={() => setScreen({ type: 'dashboard' })}
           onGoToCustomExercises={() => setScreen({ type: 'customExercises' })}
+          onGoToProfile={() => setScreen({ type: 'profile' })}
           onReplayTutorial={() => {
             setScreen({ type: 'dashboard' });
             // Defer to next tick so dashboard mounts before overlay measures
             setTimeout(() => tutorial.start(), 50);
           }}
+        />
+      )}
+
+      {screen.type === 'profile' && (
+        <ProfileScreen
+          profile={storage.profile}
+          bodyMeasurements={storage.bodyMeasurements}
+          weightUnit={storage.preferences.weightUnit}
+          onUpdateProfile={storage.updateProfile}
+          onAddBodyMeasurement={storage.addBodyMeasurement}
+          onDeleteBodyMeasurement={storage.deleteBodyMeasurement}
+          onBack={() => setScreen({ type: 'settings' })}
         />
       )}
 

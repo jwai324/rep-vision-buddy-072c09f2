@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload, Volume2 } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload, Volume2, Target, ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { exportUserData, importUserData, validateBackup, getBackupCounts, type RepVisionBackup } from '@/utils/dataPortability';
 import { useToast } from '@/hooks/use-toast';
@@ -18,6 +18,7 @@ interface SettingsScreenProps {
   onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onBack: () => void;
   onGoToCustomExercises?: () => void;
+  onGoToProfile?: () => void;
   onReplayTutorial?: () => void;
 }
 
@@ -133,7 +134,7 @@ const DataManagementSection: React.FC = () => {
 };
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
-  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onReplayTutorial,
+  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onGoToProfile, onReplayTutorial,
 }) => {
   const { user, signOut } = useAuth();
   const [editingName, setEditingName] = useState(false);
@@ -202,6 +203,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <p className="text-xs text-muted-foreground">{user?.email}</p>
         </div>
       </div>
+
+      {/* Coach Profile link */}
+      {onGoToProfile && (
+        <button
+          onClick={onGoToProfile}
+          className="bg-card rounded-xl border border-border overflow-hidden flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Target className="w-4 h-4 text-primary" />
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-foreground">Coach Profile</span>
+              <span className="text-[11px] text-muted-foreground">Goal, equipment, injuries, bodyweight</span>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </button>
+      )}
 
       {/* Weight Unit */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
