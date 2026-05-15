@@ -801,9 +801,19 @@ export const ChatProvider: React.FC<{
       });
 
       if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: "Unknown error" }));
+        const err = await resp.json().catch(() => ({ error: "" }));
         if (err.limit_reached) {
           setDailyUsage(prev => ({ ...prev, limitReached: true, count: prev.limit }));
+        }
+        // Gateway-level errors mean the function never ran. Surface a hint at
+        // the most common cause (function not deployed to this Supabase
+        // project, or anon-key env var mismatch) instead of a bare status code.
+        if (!err.error && (resp.status === 401 || resp.status === 404)) {
+          throw new Error(
+            resp.status === 404
+              ? "AI Coach endpoint not found on this Supabase project. Deploy the ai-coach edge function."
+              : "AI Coach is not reachable (401). The ai-coach function may not be deployed, or VITE_SUPABASE_PUBLISHABLE_KEY may not match this project."
+          );
         }
         throw new Error(err.error || `Error ${resp.status}`);
       }
