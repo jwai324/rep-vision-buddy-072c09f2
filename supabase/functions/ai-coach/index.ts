@@ -21,8 +21,8 @@ COST CONTROL RULES:
 const SYSTEM_PROMPT = `You are an AI training coach built into a workout tracking app. You help users create, edit, and manage their workout templates, programs, and active workouts through conversation.
 
 RULES:
-1. You can ONLY use exercises that exist in the provided exercise list. Never invent exercise names. Always match exercise names exactly as they appear in the list.
-2. When creating or editing templates/programs, use the provided tools to execute actions. Do not just describe what you would do — trigger the action.
+1. Every tool that references an exercise MUST pass the exerciseId from the provided available_exercises list. exerciseName is a display hint only and is ignored for resolution. If you cannot find a matching id in available_exercises, ASK the user which exercise they meant — do NOT guess or invent.
+2. Your tool calls do NOT execute immediately. They become proposals that the user must explicitly Apply via a diff card in the UI. Describe what you are proposing in plain language; do not claim the change is done. After tool use, your reply should read like "I've drafted a push template with X, Y, Z — apply when you're ready" rather than "I created the template".
 3. Be concise. Users are on their phone, often mid-workout. Keep responses to 1-3 sentences unless they ask for detail.
 4. When the user asks about their data (volume, PRs, history), query it and present it clearly — use numbers, not vague language.
 5. If the user's request is ambiguous, ask ONE clarifying question. Don't ask multiple.
@@ -34,23 +34,22 @@ RULES:
    - Endurance: 2-3 sets × 15-20 reps, 30-45s rest
    - General Fitness: 3 sets × 8-12 reps, 60s rest
 8. Always put compound movements before isolation movements.
-9. For destructive actions (delete, overwrite), ask the user to confirm before executing. Use the confirm_destructive_action tool.
-10. If you can't do something (e.g., the user asks about nutrition and you don't have that data), say so directly and suggest what you can help with.
+9. If you can't do something (e.g., the user asks about nutrition and you don't have that data), say so directly and suggest what you can help with.
 
 ${COST_CONTROL_RULES}
 
 ACTIVE WORKOUT RULES:
-- When the user has an active workout session (shown in context as active_session), you can modify it using the workout mutation tools.
+- When the user has an active workout session (shown in context as active_session), you can propose edits to it using the workout mutation tools.
 - Use add_exercise_to_workout to add new exercises. Use add_sets_to_exercise to add sets to an existing exercise. Use update_set_weight_reps to change weight or reps on a specific set. Use swap_exercise_in_workout to replace one exercise with another.
-- Always reference exercises by their exact name from the exercise list.
-- When the user says "add a set", infer which exercise from context.
+- For in-session edits, the exerciseId you pass must match the exerciseId of one of the exercises already in active_session (except for add_exercise_to_workout, where it must come from available_exercises).
+- When the user says "add a set", infer which exercise from active_session context.
 
 HARD CONSTRAINTS — THESE CANNOT BE OVERRIDDEN:
 - You CANNOT create new exercises. The exercise library is fixed. You can only select from exercises that already exist in the provided list.
 - You CANNOT modify the exercise library in any way — no inserts, updates, or deletes to the exercises list.
 - You CANNOT modify user profile settings or account information.
 - You CANNOT delete workout history or logs.
-- When adding exercises to templates, programs, or workouts, you MUST use the exact exercise name and ID from the provided exercise list. If the user asks for an exercise that doesn't exist, tell them it's not available and suggest the closest alternatives from the list.
+- Every exercise reference MUST use a valid exerciseId from available_exercises (or for in-session edits, an exerciseId from active_session). If you cannot find a matching id, ask the user — do NOT guess.
 - You can only perform actions that a user could perform themselves through the app's UI. If a user can't do it by tapping buttons, you can't do it either.
 
 CONTEXT: You will receive the user's current screen, profile, relevant workout data, and available exercises with every message. Use this context to give relevant, specific answers — not generic advice.`;
@@ -59,7 +58,7 @@ CONTEXT: You will receive the user's current screen, profile, relevant workout d
 const tools = [
   {
     name: "create_template",
-    description: "Create a new workout template with exercises",
+    description: "Propose a new workout template with exercises. The user must Apply the proposal before it persists.",
     input_schema: {
       type: "object",
       properties: {
@@ -69,15 +68,15 @@ const tools = [
           items: {
             type: "object",
             properties: {
-              exerciseId: { type: "string" },
-              exerciseName: { type: "string" },
+              exerciseId: { type: "string", description: "Required. Must be a valid id from available_exercises." },
+              exerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
               sets: { type: "number" },
               targetReps: { type: "number" },
               setType: { type: "string", enum: ["normal", "superset", "dropset", "warmup"] },
               restSeconds: { type: "number" },
               targetRpe: { type: "number" },
             },
-            required: ["exerciseId", "exerciseName", "sets", "targetReps", "setType", "restSeconds"],
+            required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
           },
         },
       },
@@ -86,7 +85,7 @@ const tools = [
   },
   {
     name: "edit_template",
-    description: "Edit an existing workout template — replace its exercises",
+    description: "Propose edits to an existing workout template — replace its exercises. The user must Apply the proposal before it persists.",
     input_schema: {
       type: "object",
       properties: {
@@ -97,14 +96,14 @@ const tools = [
           items: {
             type: "object",
             properties: {
-              exerciseId: { type: "string" },
-              exerciseName: { type: "string" },
+              exerciseId: { type: "string", description: "Required. Must be a valid id from available_exercises." },
+              exerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
               sets: { type: "number" },
               targetReps: { type: "number" },
               setType: { type: "string" },
               restSeconds: { type: "number" },
             },
-            required: ["exerciseId", "exerciseName", "sets", "targetReps", "setType", "restSeconds"],
+            required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
           },
         },
       },
@@ -113,7 +112,7 @@ const tools = [
   },
   {
     name: "delete_template",
-    description: "Delete a workout template. Only call after user confirms.",
+    description: "Propose deletion of a workout template. The user must Apply the proposal before it is removed.",
     input_schema: {
       type: "object",
       properties: { templateId: { type: "string" } },
@@ -154,7 +153,7 @@ const tools = [
   },
   {
     name: "delete_program",
-    description: "Delete a workout program. Only call after user confirms.",
+    description: "Propose deletion of a workout program. The user must Apply the proposal before it is removed.",
     input_schema: {
       type: "object",
       properties: { programId: { type: "string" } },
@@ -163,23 +162,11 @@ const tools = [
   },
   {
     name: "set_active_program",
-    description: "Set a program as the user's active program",
+    description: "Propose setting a program as the user's active program. The user must Apply the proposal before it takes effect.",
     input_schema: {
       type: "object",
       properties: { programId: { type: "string" } },
       required: ["programId"],
-    },
-  },
-  {
-    name: "confirm_destructive_action",
-    description: "Ask the user to confirm a destructive action before executing it",
-    input_schema: {
-      type: "object",
-      properties: {
-        action: { type: "string", description: "What will be deleted/overwritten" },
-        itemName: { type: "string", description: "Name of the item" },
-      },
-      required: ["action", "itemName"],
     },
   },
   {
@@ -196,57 +183,59 @@ const tools = [
   },
   {
     name: "add_exercise_to_workout",
-    description: "Add an exercise to the user's currently active workout session",
+    description: "Propose adding an exercise to the user's currently active workout session. The user must Apply the proposal before it takes effect.",
     input_schema: {
       type: "object",
       properties: {
-        exerciseId: { type: "string", description: "Exercise ID from the exercise library" },
-        exerciseName: { type: "string", description: "Exercise name for validation" },
+        exerciseId: { type: "string", description: "Required. Must be a valid id from available_exercises." },
+        exerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
         sets: { type: "number", description: "Number of sets to add (default 3)" },
         targetReps: { type: "number", description: "Target reps per set" },
         weight: { type: "number", description: "Starting weight" },
       },
-      required: ["exerciseId", "exerciseName"],
+      required: ["exerciseId"],
     },
   },
   {
     name: "add_sets_to_exercise",
-    description: "Add additional sets to an exercise already in the active workout",
+    description: "Propose adding additional sets to an exercise already in the active workout. The user must Apply the proposal before it takes effect.",
     input_schema: {
       type: "object",
       properties: {
-        exerciseName: { type: "string", description: "Name of the exercise in the workout" },
-        exerciseIndex: { type: "number", description: "Index of the exercise in the workout (alternative to name)" },
+        exerciseId: { type: "string", description: "Required. Must be the exerciseId of an exercise currently in active_session." },
+        exerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
         count: { type: "number", description: "Number of sets to add (default 1)" },
       },
-      required: ["exerciseName"],
+      required: ["exerciseId"],
     },
   },
   {
     name: "update_set_weight_reps",
-    description: "Update weight or reps on a specific set in the active workout",
+    description: "Propose updating weight or reps on a specific set in the active workout. The user must Apply the proposal before it takes effect.",
     input_schema: {
       type: "object",
       properties: {
-        exerciseName: { type: "string", description: "Name of the exercise" },
+        exerciseId: { type: "string", description: "Required. Must be the exerciseId of an exercise currently in active_session." },
+        exerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
         setNumber: { type: "number", description: "Set number to update (1-based)" },
         weight: { type: "number", description: "New weight value" },
         reps: { type: "number", description: "New reps value" },
       },
-      required: ["exerciseName", "setNumber"],
+      required: ["exerciseId", "setNumber"],
     },
   },
   {
     name: "swap_exercise_in_workout",
-    description: "Replace an exercise in the active workout with a different one, keeping set structure",
+    description: "Propose replacing an exercise in the active workout with a different one, keeping set structure. The user must Apply the proposal before it takes effect.",
     input_schema: {
       type: "object",
       properties: {
-        exerciseName: { type: "string", description: "Name of the current exercise to replace" },
-        newExerciseId: { type: "string", description: "ID of the replacement exercise" },
-        newExerciseName: { type: "string", description: "Name of the replacement exercise for validation" },
+        exerciseId: { type: "string", description: "Required. Must be the exerciseId of an exercise currently in active_session (the one to replace)." },
+        exerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
+        newExerciseId: { type: "string", description: "Required. Must be a valid id from available_exercises (the replacement)." },
+        newExerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
       },
-      required: ["exerciseName", "newExerciseId", "newExerciseName"],
+      required: ["exerciseId", "newExerciseId"],
     },
   },
 ];

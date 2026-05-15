@@ -581,7 +581,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
       <TutorialOverlay />
 
-      {/* <AIChatBubble /> — disabled for rework */}
+      <AIChatBubble templates={storage.templates} />
       </div>
     </div>
   );

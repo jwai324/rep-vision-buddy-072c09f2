@@ -22,18 +22,17 @@ interface ExerciseInput {
   targetRpe?: number;
 }
 
-interface ProgramDay {
-  day: string;
+interface ProgramDayInput {
+  label: string;
   templateId: string;
+  frequency?: { type: 'weekly'; weekday: number };
 }
 
 export interface ToolCallResult {
   success?: boolean;
   message?: string;
   error?: string;
-  needs_confirmation?: boolean;
-  action?: string;
-  itemName?: string;
+  proposalId?: string;
   templateId?: string;
   programId?: string;
   prs?: Record<string, { weight: number; reps: number }>;
@@ -50,7 +49,7 @@ export interface ToolCallResult {
   suggestions?: string[];
 }
 
-type ToolCallStatus = 'pending' | 'executing' | 'done' | 'error' | 'confirm';
+type ToolCallStatus = 'pending' | 'executing' | 'done' | 'error';
 
 type TC<N extends string, A> = {
   id: string;
@@ -64,15 +63,40 @@ export type ToolCall =
   | TC<'create_template', { name: string; exercises: ExerciseInput[] }>
   | TC<'edit_template', { templateId: string; name?: string; exercises?: ExerciseInput[] }>
   | TC<'delete_template', { templateId: string }>
-  | TC<'create_program', { name: string; days: ProgramDay[]; durationWeeks?: number; startDate?: string }>
+  | TC<'create_program', { name: string; days: ProgramDayInput[]; durationWeeks?: number; startDate?: string }>
   | TC<'delete_program', { programId: string }>
   | TC<'set_active_program', { programId: string }>
-  | TC<'confirm_destructive_action', { action: string; itemName: string }>
   | TC<'get_workout_history', { days?: number; analysisType?: 'summary' | 'prs' | 'frequency' | 'volume_by_muscle' }>
   | TC<'add_exercise_to_workout', { exerciseId: string; exerciseName?: string; sets?: number; targetReps?: number; weight?: number }>
-  | TC<'add_sets_to_exercise', { exerciseName?: string; exerciseIndex?: number; count?: number }>
-  | TC<'update_set_weight_reps', { exerciseName: string; setNumber: number; weight?: number; reps?: number }>
-  | TC<'swap_exercise_in_workout', { exerciseName: string; newExerciseId: string; newExerciseName?: string }>;
+  | TC<'add_sets_to_exercise', { exerciseId: string; exerciseName?: string; count?: number }>
+  | TC<'update_set_weight_reps', { exerciseId: string; exerciseName?: string; setNumber: number; weight?: number; reps?: number }>
+  | TC<'swap_exercise_in_workout', { exerciseId: string; exerciseName?: string; newExerciseId: string; newExerciseName?: string }>;
+
+export interface SessionExerciseRow {
+  exerciseId: string;
+  exerciseName: string;
+  sets: { setNumber: number; weight?: number; reps?: number; type?: string; completed?: boolean }[];
+}
+
+export type ProposalSnapshot =
+  | { kind: 'template'; template: { id: string; name: string; exercises: ExerciseInput[] } | null }
+  | { kind: 'program'; program: { id: string; name: string; days: ProgramDayInput[]; durationWeeks?: number } | null }
+  | { kind: 'active-program'; programId: string | null; programName: string | null }
+  | { kind: 'session'; rows: SessionExerciseRow[] };
+
+export interface Proposal {
+  id: string;
+  messageId: string;
+  toolName: ToolCall['name'];
+  arguments: any;
+  before: ProposalSnapshot;
+  after: ProposalSnapshot;
+  status: 'pending' | 'applied' | 'discarded' | 'invalid';
+  error?: string;
+  suggestions?: string[];
+  summary: string;
+  appliedAt?: number;
+}
 
 interface RawToolCallAccumulator {
   id: string;
@@ -94,11 +118,14 @@ interface ChatContextType {
   sendMessage: (text: string) => Promise<void>;
   clearChat: () => void;
   registerScreen: (ctx: ScreenContext) => void;
-  confirmAction: (toolCallId: string, confirmed: boolean) => void;
   quickChips: string[];
   dailyUsage: { count: number; limit: number; limitReached: boolean };
   consecutiveErrors: number;
   cooldownActive: boolean;
+  proposals: Record<string, Proposal>;
+  proposalIdsByMessage: Record<string, string[]>;
+  applyProposal: (id: string) => Promise<void>;
+  discardProposal: (id: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType>({
@@ -110,11 +137,14 @@ const ChatContext = createContext<ChatContextType>({
   sendMessage: async () => {},
   clearChat: () => {},
   registerScreen: () => {},
-  confirmAction: () => {},
   quickChips: [],
   dailyUsage: { count: 0, limit: 30, limitReached: false },
   consecutiveErrors: 0,
   cooldownActive: false,
+  proposals: {},
+  proposalIdsByMessage: {},
+  applyProposal: async () => {},
+  discardProposal: () => {},
 });
 
 export const useChatContext = () => useContext(ChatContext);
@@ -138,54 +168,46 @@ const EXERCISE_BY_NAME_LOWER = new Map(EXERCISE_DATABASE.map(e => [e.name.toLowe
 const AI_ALLOWED_ACTIONS = new Set([
   'create_template', 'edit_template', 'delete_template',
   'create_program', 'delete_program', 'set_active_program',
-  'confirm_destructive_action', 'get_workout_history',
+  'get_workout_history',
   'add_exercise_to_workout', 'add_sets_to_exercise',
   'update_set_weight_reps', 'swap_exercise_in_workout',
 ]);
 
-function validateExerciseReference(exerciseId: string, exerciseName?: string): { valid: boolean; resolvedId?: string; error?: string; suggestions?: string[] } {
-  // Check by ID first
-  if (EXERCISE_BY_ID.has(exerciseId)) return { valid: true, resolvedId: exerciseId };
+// Strict ID-only validation. The fuzzy match is kept ONLY as a suggestion
+// payload so Claude can self-correct on the next turn — it never resolves.
+function fuzzySuggestions(needle: string): string[] {
+  const term = needle.toLowerCase();
+  if (!term) return [];
+  return EXERCISE_DATABASE
+    .filter(e => e.name.toLowerCase().includes(term) || term.includes(e.name.toLowerCase()))
+    .slice(0, 5)
+    .map(e => e.name);
+}
 
-  // Check by name (exact, case-insensitive)
-  if (exerciseName) {
-    const byName = EXERCISE_BY_NAME_LOWER.get(exerciseName.toLowerCase());
-    if (byName) return { valid: true, resolvedId: byName.id };
-  }
-
-  // Fuzzy search by partial name match
-  const searchTerm = (exerciseName || exerciseId).toLowerCase();
-  const fuzzyMatches = EXERCISE_DATABASE
-    .filter(e => e.name.toLowerCase().includes(searchTerm) || searchTerm.includes(e.name.toLowerCase()))
-    .slice(0, 5);
-
-  if (fuzzyMatches.length > 0) {
-    return {
-      valid: false,
-      suggestions: fuzzyMatches.map(e => e.name),
-      error: `"${exerciseName || exerciseId}" is not in the exercise library. Did you mean: ${fuzzyMatches.map(e => e.name).join(', ')}?`,
-    };
-  }
-
+function validateExerciseReference(exerciseId: string, exerciseName?: string): { valid: boolean; error?: string; suggestions?: string[] } {
+  if (exerciseId && EXERCISE_BY_ID.has(exerciseId)) return { valid: true };
+  const suggestions = fuzzySuggestions(exerciseName || exerciseId || '');
   return {
     valid: false,
-    suggestions: [],
-    error: `"${exerciseName || exerciseId}" is not in the exercise library. Only existing exercises can be used.`,
+    suggestions,
+    error: `Missing or unknown exerciseId "${exerciseId || ''}". Use an id from available_exercises.${suggestions.length ? ' Did you mean: ' + suggestions.join(', ') + '?' : ''}`,
   };
 }
 
-function validateAllExercises(exercises: ExerciseInput[]): { valid: boolean; validated: ExerciseInput[]; errors: string[] } {
+function validateAllExercises(exercises: ExerciseInput[]): { valid: boolean; validated: ExerciseInput[]; errors: string[]; suggestions: string[] } {
   const errors: string[] = [];
-  const validated = exercises.map(e => {
+  const allSuggestions: string[] = [];
+  const validated: ExerciseInput[] = [];
+  for (const e of exercises) {
     const result = validateExerciseReference(e.exerciseId, e.exerciseName);
     if (!result.valid) {
       errors.push(result.error!);
-      return null;
+      if (result.suggestions) allSuggestions.push(...result.suggestions);
+      continue;
     }
-    return { ...e, exerciseId: result.resolvedId! };
-  }).filter((e): e is ExerciseInput => e !== null);
-
-  return { valid: errors.length === 0, validated, errors };
+    validated.push(e);
+  }
+  return { valid: errors.length === 0, validated, errors, suggestions: Array.from(new Set(allSuggestions)) };
 }
 
 const SCREEN_CHIPS: Record<string, string[]> = {
@@ -198,17 +220,6 @@ const SCREEN_CHIPS: Record<string, string[]> = {
 };
 
 const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I train today?"];
-
-// Actions that need the exercise list
-const EXERCISE_LIST_ACTIONS = ['create_template', 'edit_template', 'create_program', 'edit_program'];
-// Keywords that suggest exercise list is needed
-const EXERCISE_KEYWORDS = ['template', 'program', 'exercise', 'create', 'build', 'swap', 'add exercise', 'workout plan', 'add a', 'replace', 'switch'];
-
-function needsExerciseList(messageText: string, screen: string): boolean {
-  const lower = messageText.toLowerCase();
-  if (['templates', 'programs', 'active_workout'].includes(screen)) return true;
-  return EXERCISE_KEYWORDS.some(kw => lower.includes(kw));
-}
 
 const DAILY_LIMIT = 30;
 const COOLDOWN_MS = 2000;
@@ -229,6 +240,8 @@ export const ChatProvider: React.FC<{
   const [cooldownActive, setCooldownActive] = useState(false);
   const [disabledUntil, setDisabledUntil] = useState(0);
   const sendDisabledUntil = useRef(0);
+  const [proposals, setProposals] = useState<Record<string, Proposal>>({});
+  const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>({});
 
   const registerScreen = useCallback((ctx: ScreenContext) => {
     screenRef.current = ctx;
@@ -255,16 +268,12 @@ export const ChatProvider: React.FC<{
     fetchUsage();
   }, []);
 
-  const buildContext = useCallback((messageText: string) => {
+  const buildContext = useCallback(() => {
     const ctx: any = {
       current_screen: screenRef.current.screen,
       current_data: screenRef.current.data || {},
+      available_exercises: exerciseListLean,
     };
-
-    // Only include exercise list when needed
-    if (needsExerciseList(messageText, screenRef.current.screen)) {
-      ctx.available_exercises = exerciseListLean;
-    }
 
     if (storage.templates?.length > 0) {
       ctx.user_templates = storage.templates.map((t: any) => ({ id: t.id, name: t.name, exerciseCount: t.exercises?.length }));
@@ -301,125 +310,257 @@ export const ChatProvider: React.FC<{
     return ctx;
   }, [storage]);
 
-  const executeToolCall = useCallback(async (tc: ToolCall): Promise<ToolCallResult> => {
-    // Allowlist check — block any action not explicitly permitted
+  const getSessionRows = useCallback((): SessionExerciseRow[] => {
+    if (!isSessionActive()) return [];
+    const controller = getSessionController();
+    if (!controller) return [];
+    return controller.getBlocks().map(b => ({
+      exerciseId: b.exerciseId,
+      exerciseName: b.exerciseName,
+      sets: b.sets.map(s => ({ setNumber: s.setNumber, weight: s.weight, reps: s.reps, type: s.type, completed: s.completed })),
+    }));
+  }, []);
+
+  const proposeToolCall = useCallback(async (tc: ToolCall, messageId: string): Promise<{ result: ToolCallResult; proposal?: Proposal }> => {
     if (!AI_ALLOWED_ACTIONS.has(tc.name)) {
-      return { error: `Action "${tc.name}" is not allowed. I can only perform actions available through the app's UI.` };
+      return { result: { error: `Action "${tc.name}" is not allowed. I can only perform actions available through the app's UI.` } };
     }
+
+    const mkInvalid = (snapshot: ProposalSnapshot, error: string, suggestions: string[] = []): { result: ToolCallResult; proposal: Proposal } => {
+      const proposal: Proposal = {
+        id: tc.id,
+        messageId,
+        toolName: tc.name,
+        arguments: tc.arguments,
+        before: snapshot,
+        after: snapshot,
+        status: 'invalid',
+        error,
+        suggestions,
+        summary: `Invalid ${tc.name.replace(/_/g, ' ')} proposal`,
+      };
+      return { result: { success: false, message: error, validation_errors: [error], suggestions }, proposal };
+    };
 
     switch (tc.name) {
       case 'create_template': {
         const args = tc.arguments;
         if (!args.name || !Array.isArray(args.exercises) || args.exercises.length === 0) {
-          return { success: false, message: 'Template requires a name and at least one exercise.' };
+          return mkInvalid({ kind: 'template', template: null }, 'Template requires a name and at least one exercise.');
         }
-        const { valid, validated, errors } = validateAllExercises(args.exercises);
-        if (!valid) return { success: false, message: errors.join('\n'), validation_errors: errors };
-        const template = {
-          id: crypto.randomUUID(),
+        const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises);
+        if (!valid) return mkInvalid({ kind: 'template', template: null }, errors.join('\n'), suggestions);
+        const newId = crypto.randomUUID();
+        const after = {
+          id: newId,
           name: args.name,
           exercises: validated.map(e => ({
             exerciseId: e.exerciseId,
+            exerciseName: EXERCISE_BY_ID.get(e.exerciseId)?.name || e.exerciseId,
             sets: e.sets,
             targetReps: e.targetReps,
             setType: e.setType || 'normal',
-            restSeconds: e.restSeconds || 90,
+            restSeconds: e.restSeconds ?? 90,
             targetRpe: e.targetRpe,
           })),
         };
-        await storage.saveTemplate(template);
-        return { success: true, templateId: template.id, message: `Created template "${args.name}" with ${validated.length} exercises.` };
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before: { kind: 'template', template: null },
+          after: { kind: 'template', template: after },
+          status: 'pending',
+          summary: `Create template "${args.name}" with ${validated.length} exercise${validated.length === 1 ? '' : 's'}`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'edit_template': {
         const args = tc.arguments;
-        if (!args.templateId) return { success: false, message: 'Template ID is required.' };
+        if (!args.templateId) return mkInvalid({ kind: 'template', template: null }, 'Template ID is required.');
         const existing = storage.templates.find((t: any) => t.id === args.templateId);
-        if (!existing) return { success: false, message: "Template not found" };
-        let exercises = args.exercises || existing.exercises;
+        if (!existing) return mkInvalid({ kind: 'template', template: null }, `Template "${args.templateId}" not found.`);
+        const before = { kind: 'template' as const, template: { id: existing.id, name: existing.name, exercises: existing.exercises } };
+        let exercises = existing.exercises;
         if (args.exercises?.length) {
-          const { valid, validated, errors } = validateAllExercises(args.exercises);
-          if (!valid) return { success: false, message: errors.join('\n'), validation_errors: errors };
-          exercises = validated;
+          const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises);
+          if (!valid) return mkInvalid(before, errors.join('\n'), suggestions);
+          exercises = validated.map(e => ({
+            exerciseId: e.exerciseId,
+            exerciseName: EXERCISE_BY_ID.get(e.exerciseId)?.name || e.exerciseId,
+            sets: e.sets,
+            targetReps: e.targetReps,
+            setType: e.setType || 'normal',
+            restSeconds: e.restSeconds ?? 90,
+            targetRpe: e.targetRpe,
+          }));
         }
-        const updated = { ...existing, name: args.name || existing.name, exercises };
-        await storage.saveTemplate(updated);
-        return { success: true, message: `Updated template "${updated.name}".` };
+        const after = { ...existing, name: args.name || existing.name, exercises };
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before,
+          after: { kind: 'template', template: { id: after.id, name: after.name, exercises: after.exercises } },
+          status: 'pending',
+          summary: `Edit template "${after.name}"`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'delete_template': {
         const args = tc.arguments;
-        if (!args.templateId) return { success: false, message: 'Template ID is required.' };
-        await storage.deleteTemplate(args.templateId);
-        return { success: true, message: "Template deleted." };
+        if (!args.templateId) return mkInvalid({ kind: 'template', template: null }, 'Template ID is required.');
+        const existing = storage.templates.find((t: any) => t.id === args.templateId);
+        if (!existing) return mkInvalid({ kind: 'template', template: null }, `Template "${args.templateId}" not found.`);
+        const before = { kind: 'template' as const, template: { id: existing.id, name: existing.name, exercises: existing.exercises } };
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before,
+          after: { kind: 'template', template: null },
+          status: 'pending',
+          summary: `Delete template "${existing.name}"`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'create_program': {
         const args = tc.arguments;
-        if (!args.name || !Array.isArray(args.days)) {
-          return { success: false, message: 'Program requires a name and days.' };
+        if (!args.name || !Array.isArray(args.days) || args.days.length === 0) {
+          return mkInvalid({ kind: 'program', program: null }, 'Program requires a name and at least one day.');
         }
-        const programId = crypto.randomUUID();
-        const program = { id: programId, name: args.name, days: args.days, durationWeeks: args.durationWeeks || 8, startDate: args.startDate || formatLocalDate() };
-        await storage.saveProgram(program);
-        return { success: true, programId, message: `Created program "${args.name}".` };
+        const newId = crypto.randomUUID();
+        const after = { id: newId, name: args.name, days: args.days, durationWeeks: args.durationWeeks ?? 8 };
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before: { kind: 'program', program: null },
+          after: { kind: 'program', program: after },
+          status: 'pending',
+          summary: `Create program "${args.name}" (${args.days.length} days)`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'delete_program': {
         const args = tc.arguments;
-        if (!args.programId) return { success: false, message: 'Program ID is required.' };
-        await storage.deleteProgram(args.programId);
-        return { success: true, message: "Program deleted." };
+        if (!args.programId) return mkInvalid({ kind: 'program', program: null }, 'Program ID is required.');
+        const existing = storage.programs.find((p: any) => p.id === args.programId);
+        if (!existing) return mkInvalid({ kind: 'program', program: null }, `Program "${args.programId}" not found.`);
+        const before = { kind: 'program' as const, program: { id: existing.id, name: existing.name, days: existing.days, durationWeeks: existing.durationWeeks } };
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before,
+          after: { kind: 'program', program: null },
+          status: 'pending',
+          summary: `Delete program "${existing.name}"`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'set_active_program': {
         const args = tc.arguments;
-        if (!args.programId) return { success: false, message: 'Program ID is required.' };
-        await storage.setActiveProgram(args.programId);
-        return { success: true, message: "Active program updated." };
+        if (!args.programId) return mkInvalid({ kind: 'active-program', programId: null, programName: null }, 'Program ID is required.');
+        const target = storage.programs.find((p: any) => p.id === args.programId);
+        if (!target) return mkInvalid({ kind: 'active-program', programId: null, programName: null }, `Program "${args.programId}" not found.`);
+        const currentActiveId: string | null = storage.activeProgramId ?? null;
+        const currentActive = currentActiveId ? storage.programs.find((p: any) => p.id === currentActiveId) : null;
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before: { kind: 'active-program', programId: currentActiveId, programName: currentActive?.name ?? null },
+          after: { kind: 'active-program', programId: target.id, programName: target.name },
+          status: 'pending',
+          summary: `Set active program to "${target.name}"`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
-      case 'confirm_destructive_action': {
-        const args = tc.arguments;
-        return { needs_confirmation: true, action: args.action, itemName: args.itemName };
-      }
+
       case 'add_exercise_to_workout': {
         const args = tc.arguments;
-        if (!args.exerciseId) return { success: false, message: 'Exercise ID is required.' };
         const validation = validateExerciseReference(args.exerciseId, args.exerciseName);
-        if (!validation.valid) return { success: false, message: validation.error, suggestions: validation.suggestions };
-        const resolvedId = validation.resolvedId!;
-        const controller = getSessionController();
-        if (!controller) return { success: false, message: "No active workout session. Start a workout first." };
-        const ok = controller.addExercise(resolvedId, args.sets || 3, args.targetReps, args.weight);
-        if (!ok) return { success: false, message: "Exercise is already in the workout." };
-        const exName = EXERCISE_DATABASE.find(e => e.id === resolvedId)?.name || resolvedId;
-        return { success: true, message: `Added ${exName} to your workout.` };
+        if (!validation.valid) return mkInvalid({ kind: 'session', rows: getSessionRows() }, validation.error!, validation.suggestions);
+        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session. Start a workout first.');
+        const rows = getSessionRows();
+        if (rows.some(r => r.exerciseId === args.exerciseId)) {
+          return mkInvalid({ kind: 'session', rows }, 'Exercise is already in the workout.');
+        }
+        const exName = EXERCISE_BY_ID.get(args.exerciseId)!.name;
+        const sets = args.sets ?? 3;
+        const newRow: SessionExerciseRow = {
+          exerciseId: args.exerciseId,
+          exerciseName: exName,
+          sets: Array.from({ length: sets }, (_, i) => ({ setNumber: i + 1, weight: args.weight, reps: args.targetReps, type: 'normal', completed: false })),
+        };
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before: { kind: 'session', rows },
+          after: { kind: 'session', rows: [...rows, newRow] },
+          status: 'pending',
+          summary: `Add ${exName} to your workout`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'add_sets_to_exercise': {
         const args = tc.arguments;
-        const controller = getSessionController();
-        if (!controller) return { success: false, message: "No active workout session." };
-        const identifier = args.exerciseName || args.exerciseIndex?.toString();
-        const ok = controller.addSets(identifier, args.count || 1);
-        if (!ok) return { success: false, message: `Couldn't find "${args.exerciseName || args.exerciseIndex}" in the current workout.` };
-        return { success: true, message: `Added ${args.count || 1} set(s) to ${args.exerciseName || 'the exercise'}.` };
+        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
+        const rows = getSessionRows();
+        const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
+        if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
+        const count = args.count ?? 1;
+        const lastSetNumber = targetRow.sets.length;
+        const newSets = Array.from({ length: count }, (_, i) => ({ setNumber: lastSetNumber + i + 1, type: 'normal' as const, completed: false }));
+        const after = rows.map(r => r.exerciseId === args.exerciseId ? { ...r, sets: [...r.sets, ...newSets] } : r);
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before: { kind: 'session', rows },
+          after: { kind: 'session', rows: after },
+          status: 'pending',
+          summary: `Add ${count} set${count === 1 ? '' : 's'} to ${targetRow.exerciseName}`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'update_set_weight_reps': {
         const args = tc.arguments;
-        const controller = getSessionController();
-        if (!controller) return { success: false, message: "No active workout session." };
-        const ok = controller.updateSet(args.exerciseName, args.setNumber, { weight: args.weight, reps: args.reps });
-        if (!ok) return { success: false, message: `Couldn't find set ${args.setNumber} of "${args.exerciseName}" in the current workout.` };
-        return { success: true, message: `Updated set ${args.setNumber} of ${args.exerciseName}.` };
+        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
+        const rows = getSessionRows();
+        const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
+        if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
+        if (!targetRow.sets.some(s => s.setNumber === args.setNumber)) {
+          return mkInvalid({ kind: 'session', rows }, `Set ${args.setNumber} of ${targetRow.exerciseName} does not exist.`);
+        }
+        const after = rows.map(r => r.exerciseId === args.exerciseId
+          ? { ...r, sets: r.sets.map(s => s.setNumber === args.setNumber ? { ...s, weight: args.weight ?? s.weight, reps: args.reps ?? s.reps } : s) }
+          : r);
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before: { kind: 'session', rows },
+          after: { kind: 'session', rows: after },
+          status: 'pending',
+          summary: `Update set ${args.setNumber} of ${targetRow.exerciseName}`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'swap_exercise_in_workout': {
         const args = tc.arguments;
-        if (!args.newExerciseId) return { success: false, message: 'New exercise ID is required.' };
-        const validation = validateExerciseReference(args.newExerciseId, args.newExerciseName);
-        if (!validation.valid) return { success: false, message: validation.error, suggestions: validation.suggestions };
-        const resolvedId = validation.resolvedId!;
-        const controller = getSessionController();
-        if (!controller) return { success: false, message: "No active workout session." };
-        const ok = controller.swapExercise(args.exerciseName, resolvedId);
-        if (!ok) return { success: false, message: `Couldn't find "${args.exerciseName}" in the current workout.` };
-        const newName = EXERCISE_DATABASE.find(e => e.id === resolvedId)?.name || resolvedId;
-        return { success: true, message: `Swapped ${args.exerciseName} for ${newName}.` };
+        const newValidation = validateExerciseReference(args.newExerciseId, args.newExerciseName);
+        if (!newValidation.valid) return mkInvalid({ kind: 'session', rows: getSessionRows() }, newValidation.error!, newValidation.suggestions);
+        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
+        const rows = getSessionRows();
+        const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
+        if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
+        const newName = EXERCISE_BY_ID.get(args.newExerciseId)!.name;
+        const after = rows.map(r => r.exerciseId === args.exerciseId
+          ? { ...r, exerciseId: args.newExerciseId, exerciseName: newName }
+          : r);
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before: { kind: 'session', rows },
+          after: { kind: 'session', rows: after },
+          status: 'pending',
+          summary: `Swap ${targetRow.exerciseName} for ${newName}`,
+        };
+        return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
+
       case 'get_workout_history': {
         const args = tc.arguments;
         const days = args.days || 14;
@@ -429,13 +570,13 @@ export const ChatProvider: React.FC<{
         const recent = storage.history.filter((s: any) => s.date >= cutoffStr && !s.isRestDay);
 
         if (args.analysisType === 'summary') {
-          return {
+          return { result: {
             period_days: days, total_workouts: recent.length,
             total_volume: recent.reduce((s: number, w: any) => s + w.totalVolume, 0),
             total_sets: recent.reduce((s: number, w: any) => s + w.totalSets, 0),
             total_reps: recent.reduce((s: number, w: any) => s + w.totalReps, 0),
             avg_duration_min: recent.length ? Math.round(recent.reduce((s: number, w: any) => s + w.duration, 0) / recent.length / 60) : 0,
-          };
+          }};
         }
         if (args.analysisType === 'prs') {
           const prs: Record<string, { weight: number; reps: number }> = {};
@@ -447,7 +588,7 @@ export const ChatProvider: React.FC<{
               }
             }
           }
-          return { prs, period_days: days };
+          return { result: { prs, period_days: days } };
         }
         if (args.analysisType === 'frequency') {
           const freq: Record<string, number> = {};
@@ -457,7 +598,7 @@ export const ChatProvider: React.FC<{
               freq[bp] = (freq[bp] || 0) + 1;
             }
           }
-          return { frequency: freq, period_days: days };
+          return { result: { frequency: freq, period_days: days } };
         }
         if (args.analysisType === 'volume_by_muscle') {
           const vol: Record<string, number> = {};
@@ -467,14 +608,158 @@ export const ChatProvider: React.FC<{
               vol[bp] = (vol[bp] || 0) + ex.sets.length;
             }
           }
-          return { sets_by_muscle: vol, period_days: days };
+          return { result: { sets_by_muscle: vol, period_days: days } };
         }
-        return { workouts: recent.length };
+        return { result: { workouts: recent.length } };
       }
+
       default:
-        return { error: `Action is not allowed.` };
+        return { result: { error: `Action is not allowed.` } };
     }
-  }, [storage]);
+  }, [storage, getSessionRows]);
+
+  const applyProposal = useCallback(async (id: string) => {
+    const proposal = proposals[id];
+    if (!proposal || proposal.status !== 'pending') return;
+
+    try {
+      switch (proposal.toolName) {
+        case 'create_template':
+        case 'edit_template': {
+          if (proposal.after.kind !== 'template' || !proposal.after.template) return;
+          const t = proposal.after.template;
+          await storage.saveTemplate({
+            id: t.id,
+            name: t.name,
+            exercises: t.exercises.map(e => ({
+              exerciseId: e.exerciseId,
+              sets: e.sets,
+              targetReps: e.targetReps,
+              setType: e.setType || 'normal',
+              restSeconds: e.restSeconds ?? 90,
+              targetRpe: e.targetRpe,
+            })),
+          });
+          break;
+        }
+        case 'delete_template': {
+          if (proposal.before.kind !== 'template' || !proposal.before.template) return;
+          await storage.deleteTemplate(proposal.before.template.id);
+          break;
+        }
+        case 'create_program': {
+          if (proposal.after.kind !== 'program' || !proposal.after.program) return;
+          const p = proposal.after.program;
+          await storage.saveProgram({
+            id: p.id,
+            name: p.name,
+            days: p.days,
+            durationWeeks: p.durationWeeks ?? 8,
+            startDate: proposal.arguments?.startDate || formatLocalDate(),
+          });
+          break;
+        }
+        case 'delete_program': {
+          if (proposal.before.kind !== 'program' || !proposal.before.program) return;
+          await storage.deleteProgram(proposal.before.program.id);
+          break;
+        }
+        case 'set_active_program': {
+          if (proposal.after.kind !== 'active-program' || !proposal.after.programId) return;
+          await storage.setActiveProgram(proposal.after.programId);
+          break;
+        }
+        case 'add_exercise_to_workout': {
+          const args = proposal.arguments;
+          const controller = getSessionController();
+          if (!controller) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
+            return;
+          }
+          const ok = controller.addExercise(args.exerciseId, args.sets || 3, args.targetReps, args.weight);
+          if (!ok) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Exercise is already in the workout.' } }));
+            return;
+          }
+          break;
+        }
+        case 'add_sets_to_exercise': {
+          const args = proposal.arguments;
+          const controller = getSessionController();
+          if (!controller) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
+            return;
+          }
+          const blocks = controller.getBlocks();
+          const targetBlock = blocks.find(b => b.exerciseId === args.exerciseId);
+          if (!targetBlock) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Exercise is no longer in the session.' } }));
+            return;
+          }
+          const ok = controller.addSets(targetBlock.exerciseName, args.count || 1);
+          if (!ok) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Could not add sets.' } }));
+            return;
+          }
+          break;
+        }
+        case 'update_set_weight_reps': {
+          const args = proposal.arguments;
+          const controller = getSessionController();
+          if (!controller) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
+            return;
+          }
+          const blocks = controller.getBlocks();
+          const targetBlock = blocks.find(b => b.exerciseId === args.exerciseId);
+          if (!targetBlock) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Exercise is no longer in the session.' } }));
+            return;
+          }
+          const ok = controller.updateSet(targetBlock.exerciseName, args.setNumber, { weight: args.weight, reps: args.reps });
+          if (!ok) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Session changed since proposal — could not update set.' } }));
+            return;
+          }
+          break;
+        }
+        case 'swap_exercise_in_workout': {
+          const args = proposal.arguments;
+          const controller = getSessionController();
+          if (!controller) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
+            return;
+          }
+          const blocks = controller.getBlocks();
+          const targetBlock = blocks.find(b => b.exerciseId === args.exerciseId);
+          if (!targetBlock) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Exercise is no longer in the session.' } }));
+            return;
+          }
+          const ok = controller.swapExercise(targetBlock.exerciseName, args.newExerciseId);
+          if (!ok) {
+            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Session changed since proposal — could not swap.' } }));
+            return;
+          }
+          break;
+        }
+      }
+      setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'applied', appliedAt: Date.now() } }));
+      const note: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: `_Applied: ${proposal.summary}_` };
+      setMessages(prev => [...prev, note]);
+    } catch (err) {
+      console.error('applyProposal error:', err);
+      setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: String(err) } }));
+    }
+  }, [proposals, storage]);
+
+  const discardProposal = useCallback((id: string) => {
+    const proposal = proposals[id];
+    if (!proposal || proposal.status !== 'pending') return;
+    setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'discarded' } }));
+    const note: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: `_Discarded: ${proposal.summary}_` };
+    setMessages(prev => [...prev, note]);
+  }, [proposals]);
 
   const sendMessage = useCallback(async (text: string) => {
     // Cooldown check
@@ -496,11 +781,14 @@ export const ChatProvider: React.FC<{
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
 
-    const context = buildContext(cappedText);
+    const context = buildContext();
 
     // Window: only send last MESSAGE_WINDOW messages
     const allMessages = [...messages, userMsg];
     const windowedMessages = allMessages.slice(-MESSAGE_WINDOW).map(m => ({ role: m.role, content: m.content }));
+
+    // Allocate the assistant message id up front so we can associate proposals with it.
+    const assistantMessageId = crypto.randomUUID();
 
     try {
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
@@ -539,11 +827,11 @@ export const ChatProvider: React.FC<{
           if (last?.role === 'assistant' && last.isLoading) {
             return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
           }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: assistantContent, isLoading: true }];
+          return [...prev, { id: assistantMessageId, role: 'assistant', content: assistantContent, isLoading: true }];
         });
       };
 
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: '', isLoading: true }]);
+      setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: '', isLoading: true }]);
 
       let streamDone = false;
       while (!streamDone) {
@@ -600,13 +888,15 @@ export const ChatProvider: React.FC<{
           });
 
         const results: { tool_call_id: string; result: ToolCallResult }[] = [];
+        const newProposals: Proposal[] = [];
         for (const tc of parsedToolCalls) {
           tc.status = 'executing';
           try {
-            const result = await executeToolCall(tc);
+            const { result, proposal } = await proposeToolCall(tc, assistantMessageId);
             tc.result = result;
-            tc.status = result?.needs_confirmation ? 'confirm' : 'done';
+            tc.status = result?.error ? 'error' : 'done';
             results.push({ tool_call_id: tc.id, result });
+            if (proposal) newProposals.push(proposal);
           } catch (err) {
             tc.status = 'error';
             tc.result = { error: String(err) };
@@ -614,79 +904,81 @@ export const ChatProvider: React.FC<{
           }
         }
 
-        const needsConfirm = parsedToolCalls.some(tc => tc.status === 'confirm');
-        if (needsConfirm) {
-          const confirmTc = parsedToolCalls.find(tc => tc.status === 'confirm')!;
-          const confirmContent = confirmTc.name === 'confirm_destructive_action'
-            ? (assistantContent || `I'll ${confirmTc.arguments.action} "${confirmTc.arguments.itemName}". This can't be undone. Go ahead?`)
-            : (assistantContent || "This action requires confirmation. Go ahead?");
-          setMessages(prev => prev.map((m, i) =>
-            i === prev.length - 1 ? { ...m, content: confirmContent, isLoading: false, toolCalls: parsedToolCalls } : m
-          ));
-        } else {
-          const followUpMessages = [
-            ...windowedMessages,
-            {
-              role: 'assistant' as const,
-              content: assistantContent || null,
-              tool_calls: parsedToolCalls.map(tc => ({
-                id: tc.id, type: 'function',
-                function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
-              })),
-            },
-          ];
-
-          const followResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-            body: JSON.stringify({ messages: followUpMessages, context, action_results: results }),
+        // Commit proposals to state so the diff cards can render under this message.
+        if (newProposals.length) {
+          setProposals(prev => {
+            const next = { ...prev };
+            for (const p of newProposals) next[p.id] = p;
+            return next;
           });
+          setProposalIdsByMessage(prev => ({
+            ...prev,
+            [assistantMessageId]: [...(prev[assistantMessageId] || []), ...newProposals.map(p => p.id)],
+          }));
+        }
 
-          if (followResp.ok) {
-            const followReader = followResp.body!.getReader();
-            let followBuffer = "";
-            let followContent = "";
-            let done2 = false;
-            while (!done2) {
-              const { done, value } = await followReader.read();
-              if (done) break;
-              followBuffer += decoder.decode(value, { stream: true });
-              let nlIdx: number;
-              while ((nlIdx = followBuffer.indexOf("\n")) !== -1) {
-                let fLine = followBuffer.slice(0, nlIdx);
-                followBuffer = followBuffer.slice(nlIdx + 1);
-                if (fLine.endsWith("\r")) fLine = fLine.slice(0, -1);
-                if (!fLine.startsWith("data: ")) continue;
-                const fJson = fLine.slice(6).trim();
-                if (fJson === "[DONE]") { done2 = true; break; }
-                try {
-                  const fp = JSON.parse(fJson);
-                  const fc = fp.choices?.[0]?.delta?.content;
-                  if (fc) {
-                    followContent += fc;
-                    setMessages(prev => prev.map((m, i) =>
-                      i === prev.length - 1 ? { ...m, content: followContent, toolCalls: parsedToolCalls } : m
-                    ));
-                  }
-                } catch { break; }
-              }
-            }
+        const followUpMessages = [
+          ...windowedMessages,
+          {
+            role: 'assistant' as const,
+            content: assistantContent || null,
+            tool_calls: parsedToolCalls.map(tc => ({
+              id: tc.id, type: 'function',
+              function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+            })),
+          },
+        ];
 
-            if (followContent) {
-              setMessages(prev => prev.map((m, i) =>
-                i === prev.length - 1 ? { ...m, content: followContent, isLoading: false, toolCalls: parsedToolCalls } : m
-              ));
-            } else {
-              const summary = parsedToolCalls.map(tc => tc.result?.message || `${tc.name} completed`).join('. ');
-              setMessages(prev => prev.map((m, i) =>
-                i === prev.length - 1 ? { ...m, content: summary, isLoading: false, toolCalls: parsedToolCalls } : m
-              ));
+        const followResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+          body: JSON.stringify({ messages: followUpMessages, context, action_results: results }),
+        });
+
+        if (followResp.ok) {
+          const followReader = followResp.body!.getReader();
+          let followBuffer = "";
+          let followContent = "";
+          let done2 = false;
+          while (!done2) {
+            const { done, value } = await followReader.read();
+            if (done) break;
+            followBuffer += decoder.decode(value, { stream: true });
+            let nlIdx: number;
+            while ((nlIdx = followBuffer.indexOf("\n")) !== -1) {
+              let fLine = followBuffer.slice(0, nlIdx);
+              followBuffer = followBuffer.slice(nlIdx + 1);
+              if (fLine.endsWith("\r")) fLine = fLine.slice(0, -1);
+              if (!fLine.startsWith("data: ")) continue;
+              const fJson = fLine.slice(6).trim();
+              if (fJson === "[DONE]") { done2 = true; break; }
+              try {
+                const fp = JSON.parse(fJson);
+                const fc = fp.choices?.[0]?.delta?.content;
+                if (fc) {
+                  followContent += fc;
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantMessageId ? { ...m, content: followContent, toolCalls: parsedToolCalls } : m
+                  ));
+                }
+              } catch { break; }
             }
+          }
+
+          if (followContent) {
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMessageId ? { ...m, content: followContent, isLoading: false, toolCalls: parsedToolCalls } : m
+            ));
+          } else {
+            const summary = parsedToolCalls.map(tc => tc.result?.message || `${tc.name} completed`).join('. ');
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMessageId ? { ...m, content: summary, isLoading: false, toolCalls: parsedToolCalls } : m
+            ));
           }
         }
       } else {
-        setMessages(prev => prev.map((m, i) =>
-          i === prev.length - 1 ? { ...m, content: assistantContent, isLoading: false } : m
+        setMessages(prev => prev.map(m =>
+          m.id === assistantMessageId ? { ...m, content: assistantContent, isLoading: false } : m
         ));
       }
     } catch (err) {
@@ -718,24 +1010,20 @@ export const ChatProvider: React.FC<{
     } finally {
       setIsLoading(false);
     }
-  }, [messages, buildContext, executeToolCall, dailyUsage, consecutiveErrors, disabledUntil]);
+  }, [messages, buildContext, proposeToolCall, dailyUsage, consecutiveErrors, disabledUntil]);
 
-  const confirmAction = useCallback(async (toolCallId: string, confirmed: boolean) => {
-    if (!confirmed) {
-      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: "No problem, cancelled.", isLoading: false }]);
-      return;
-    }
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', content: 'Yes, go ahead.' }]);
-    await sendMessage('Yes, go ahead.');
-  }, [messages, sendMessage]);
-
-  const clearChat = useCallback(() => setMessages([]), []);
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    setProposals({});
+    setProposalIdsByMessage({});
+  }, []);
 
   return (
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
-      setOpen, sendMessage, clearChat, registerScreen, confirmAction, quickChips,
+      setOpen, sendMessage, clearChat, registerScreen, quickChips,
       dailyUsage, consecutiveErrors, cooldownActive,
+      proposals, proposalIdsByMessage, applyProposal, discardProposal,
     }}>
       {children}
     </ChatContext.Provider>
