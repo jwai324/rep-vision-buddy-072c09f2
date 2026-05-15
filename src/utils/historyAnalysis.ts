@@ -9,6 +9,32 @@ export function weekStart(dateInput: Date | string): string {
   return format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function daysAgo(dateStr: string | null, now: number): number | null {
+  if (!dateStr) return null;
+  const t = parseLocalDate(dateStr).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor((now - t) / DAY_MS));
+}
+
+/**
+ * Max history-search lookback in days: capped at one year, but anchored to the
+ * EARLIER of account sign-up or the earliest logged workout. Imported/migrated
+ * history predates a freshly created account, so anchoring on account age alone
+ * would hide it. Falls back to 365 when neither anchor is known.
+ */
+export function historyHorizonDays(
+  memberSince: string | null,
+  earliestSessionDate: string | null,
+  now: number = Date.now(),
+): number {
+  const member = daysAgo(memberSince, now);
+  const earliest = daysAgo(earliestSessionDate, now);
+  if (member == null && earliest == null) return 365;
+  return Math.min(365, Math.max(member ?? 0, earliest ?? 0));
+}
+
 /** Filter sessions to those whose date is within the last `days` days. Rest days excluded by default. */
 export function sessionsInWindow(sessions: WorkoutSession[], days: number, includeRest = false): WorkoutSession[] {
   const cutoff = new Date();

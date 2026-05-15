@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
@@ -6,6 +6,7 @@ import { formatLocalDate } from '@/utils/dateUtils';
 import {
   weeklyRpeTrend, exerciseProgression, exerciseRpeTrend,
   weeklyVolumeByExercise, consistencyStats, recentNotes, recoverySummary,
+  historyHorizonDays,
 } from '@/utils/historyAnalysis';
 
 export interface ChatMessage {
@@ -307,9 +308,14 @@ export const ChatProvider: React.FC<{
     return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
   }, [memberSince]);
 
+  const earliestSessionDate = useMemo<string | null>(() => {
+    const dates = (storage.history ?? []).map(s => s.date).filter(Boolean);
+    return dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : null;
+  }, [storage.history]);
+
   const buildContext = useCallback(() => {
     const memberDays = daysSinceMember();
-    const historyMax = memberDays != null ? Math.min(365, memberDays) : 365;
+    const historyMax = historyHorizonDays(memberSince, earliestSessionDate);
 
     const measurements: { id: string; date: string; weightKg: number }[] = storage.bodyMeasurements ?? [];
     const latestBw = measurements[0];
@@ -323,6 +329,7 @@ export const ChatProvider: React.FC<{
         weight_unit: storage.preferences?.weightUnit ?? 'lbs',
         member_since: memberSince,
         days_since_member: memberDays,
+        earliest_logged_workout: earliestSessionDate,
         history_window_max_days: historyMax,
         total_sessions_logged: storage.history?.length ?? 0,
         goal: storage.profile?.goal ?? null,
@@ -370,7 +377,7 @@ export const ChatProvider: React.FC<{
     }
 
     return ctx;
-  }, [storage, memberSince, daysSinceMember]);
+  }, [storage, memberSince, daysSinceMember, earliestSessionDate]);
 
   const getSessionRows = useCallback((): SessionExerciseRow[] => {
     if (!isSessionActive()) return [];
@@ -626,12 +633,11 @@ export const ChatProvider: React.FC<{
       case 'get_workout_history': {
         const args = tc.arguments;
         const requestedDays = args.days ?? 14;
-        const memberDays = daysSinceMember();
-        const ceiling = Math.min(365, memberDays ?? 365);
+        const ceiling = historyHorizonDays(memberSince, earliestSessionDate);
         const days = Math.max(1, Math.min(requestedDays, ceiling));
         const clamped: 'membership' | 'max' | null =
           days < requestedDays
-            ? (memberDays != null && days === memberDays ? 'membership' : 'max')
+            ? (ceiling >= 365 ? 'max' : 'membership')
             : null;
 
         const meta = { period_days: days, requested_days: requestedDays, actual_days: days, clamped_to: clamped };
