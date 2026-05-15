@@ -3,6 +3,10 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
 import { formatLocalDate } from '@/utils/dateUtils';
+import {
+  weeklyRpeTrend, exerciseProgression, exerciseRpeTrend,
+  weeklyVolumeByExercise, consistencyStats, recentNotes, recoverySummary,
+} from '@/utils/historyAnalysis';
 
 export interface ChatMessage {
   id: string;
@@ -35,8 +39,11 @@ export interface ToolCallResult {
   proposalId?: string;
   templateId?: string;
   programId?: string;
-  prs?: Record<string, { weight: number; reps: number }>;
+  prs?: Record<string, { weight: number; reps: number; rpe?: number }>;
   period_days?: number;
+  requested_days?: number;
+  actual_days?: number;
+  clamped_to?: 'membership' | 'max' | null;
   total_workouts?: number;
   total_volume?: number;
   total_sets?: number;
@@ -47,6 +54,22 @@ export interface ToolCallResult {
   workouts?: number;
   validation_errors?: string[];
   suggestions?: string[];
+  // Expanded analyses (opaque to the server; consumed only by Claude)
+  weekly?: unknown;
+  overall_avg_rpe?: number | null;
+  exercise_id?: string;
+  exercise_name?: string;
+  sessions?: unknown;
+  workouts_per_week_avg?: number;
+  longest_streak?: number;
+  current_streak?: number;
+  streak_mode?: string;
+  training_days?: number;
+  rest_days?: number;
+  total_days?: number;
+  workout_notes?: { date: string; note: string }[];
+  exercise_notes?: { date: string; exercise_name: string; note: string }[];
+  activities?: { date: string; activity_id: string; duration_min?: number; notes?: string }[];
 }
 
 type ToolCallStatus = 'pending' | 'executing' | 'done' | 'error';
@@ -66,7 +89,13 @@ export type ToolCall =
   | TC<'create_program', { name: string; days: ProgramDayInput[]; durationWeeks?: number; startDate?: string }>
   | TC<'delete_program', { programId: string }>
   | TC<'set_active_program', { programId: string }>
-  | TC<'get_workout_history', { days?: number; analysisType?: 'summary' | 'prs' | 'frequency' | 'volume_by_muscle' }>
+  | TC<'get_workout_history', {
+      days?: number;
+      analysisType?: 'summary' | 'prs' | 'frequency' | 'volume_by_muscle'
+        | 'rpe_trend' | 'exercise_progression' | 'exercise_rpe'
+        | 'weekly_volume_by_exercise' | 'consistency' | 'notes' | 'recovery';
+      exerciseId?: string;
+    }>
   | TC<'add_exercise_to_workout', { exerciseId: string; exerciseName?: string; sets?: number; targetReps?: number; weight?: number }>
   | TC<'add_sets_to_exercise', { exerciseId: string; exerciseName?: string; count?: number }>
   | TC<'update_set_weight_reps', { exerciseId: string; exerciseName?: string; setNumber: number; weight?: number; reps?: number }>
@@ -242,6 +271,7 @@ export const ChatProvider: React.FC<{
   const sendDisabledUntil = useRef(0);
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
   const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>({});
+  const [memberSince, setMemberSince] = useState<string | null>(null);
 
   const registerScreen = useCallback((ctx: ScreenContext) => {
     screenRef.current = ctx;
@@ -250,11 +280,12 @@ export const ChatProvider: React.FC<{
 
   const quickChips = SCREEN_CHIPS[currentScreen] || DEFAULT_CHIPS;
 
-  // Fetch daily usage on mount
+  // Fetch daily usage + membership start on mount
   useEffect(() => {
     const fetchUsage = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      if (user.created_at) setMemberSince(user.created_at.substring(0, 10));
       const today = formatLocalDate();
       const { data } = await supabase
         .from('user_ai_usage')
@@ -268,11 +299,29 @@ export const ChatProvider: React.FC<{
     fetchUsage();
   }, []);
 
+  const daysSinceMember = useCallback((): number | null => {
+    if (!memberSince) return null;
+    const start = new Date(memberSince + 'T00:00:00');
+    const ms = Date.now() - start.getTime();
+    return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
+  }, [memberSince]);
+
   const buildContext = useCallback(() => {
+    const memberDays = daysSinceMember();
+    const historyMax = memberDays != null ? Math.min(365, memberDays) : 365;
+
     const ctx: any = {
       current_screen: screenRef.current.screen,
       current_data: screenRef.current.data || {},
       available_exercises: exerciseListLean,
+      user_profile: {
+        display_name: storage.profile?.displayName ?? null,
+        weight_unit: storage.preferences?.weightUnit ?? 'lbs',
+        member_since: memberSince,
+        days_since_member: memberDays,
+        history_window_max_days: historyMax,
+        total_sessions_logged: storage.history?.length ?? 0,
+      },
     };
 
     if (storage.templates?.length > 0) {
@@ -308,7 +357,7 @@ export const ChatProvider: React.FC<{
     }
 
     return ctx;
-  }, [storage]);
+  }, [storage, memberSince, daysSinceMember]);
 
   const getSessionRows = useCallback((): SessionExerciseRow[] => {
     if (!isSessionActive()) return [];
@@ -563,60 +612,132 @@ export const ChatProvider: React.FC<{
 
       case 'get_workout_history': {
         const args = tc.arguments;
-        const days = args.days || 14;
+        const requestedDays = args.days ?? 14;
+        const memberDays = daysSinceMember();
+        const ceiling = Math.min(365, memberDays ?? 365);
+        const days = Math.max(1, Math.min(requestedDays, ceiling));
+        const clamped: 'membership' | 'max' | null =
+          days < requestedDays
+            ? (memberDays != null && days === memberDays ? 'membership' : 'max')
+            : null;
+
+        const meta = { period_days: days, requested_days: requestedDays, actual_days: days, clamped_to: clamped };
+
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
         const cutoffStr = formatLocalDate(cutoff);
         const recent = storage.history.filter((s: any) => s.date >= cutoffStr && !s.isRestDay);
+        const allHistory = storage.history as any[];
 
-        if (args.analysisType === 'summary') {
-          return { result: {
-            period_days: days, total_workouts: recent.length,
-            total_volume: recent.reduce((s: number, w: any) => s + w.totalVolume, 0),
-            total_sets: recent.reduce((s: number, w: any) => s + w.totalSets, 0),
-            total_reps: recent.reduce((s: number, w: any) => s + w.totalReps, 0),
-            avg_duration_min: recent.length ? Math.round(recent.reduce((s: number, w: any) => s + w.duration, 0) / recent.length / 60) : 0,
-          }};
+        const needsExercise = (
+          args.analysisType === 'exercise_progression' ||
+          args.analysisType === 'exercise_rpe' ||
+          args.analysisType === 'weekly_volume_by_exercise'
+        );
+        if (needsExercise) {
+          const v = validateExerciseReference(args.exerciseId ?? '', undefined);
+          if (!v.valid) {
+            return { result: { ...meta, success: false, message: v.error, suggestions: v.suggestions } };
+          }
         }
-        if (args.analysisType === 'prs') {
-          const prs: Record<string, { weight: number; reps: number }> = {};
-          for (const session of recent) {
-            for (const ex of session.exercises) {
-              for (const set of ex.sets) {
-                const key = ex.exerciseName || ex.exerciseId;
-                if (!prs[key] || (set.weight || 0) > prs[key].weight) prs[key] = { weight: set.weight || 0, reps: set.reps };
+
+        switch (args.analysisType) {
+          case 'summary':
+            return { result: {
+              ...meta,
+              total_workouts: recent.length,
+              total_volume: recent.reduce((s: number, w: any) => s + w.totalVolume, 0),
+              total_sets: recent.reduce((s: number, w: any) => s + w.totalSets, 0),
+              total_reps: recent.reduce((s: number, w: any) => s + w.totalReps, 0),
+              avg_duration_min: recent.length ? Math.round(recent.reduce((s: number, w: any) => s + w.duration, 0) / recent.length / 60) : 0,
+            }};
+
+          case 'prs': {
+            const prs: Record<string, { weight: number; reps: number; rpe?: number }> = {};
+            for (const session of recent) {
+              for (const ex of session.exercises) {
+                for (const set of ex.sets) {
+                  if (set.type === 'warmup') continue;
+                  const key = ex.exerciseName || ex.exerciseId;
+                  if (!prs[key] || (set.weight || 0) > prs[key].weight) {
+                    prs[key] = { weight: set.weight || 0, reps: set.reps, ...(set.rpe ? { rpe: set.rpe } : {}) };
+                  }
+                }
               }
             }
+            return { result: { ...meta, prs } };
           }
-          return { result: { prs, period_days: days } };
-        }
-        if (args.analysisType === 'frequency') {
-          const freq: Record<string, number> = {};
-          for (const session of recent) {
-            for (const ex of session.exercises) {
-              const bp = EXERCISE_DATABASE.find(e => e.id === ex.exerciseId)?.primaryBodyPart || 'Other';
-              freq[bp] = (freq[bp] || 0) + 1;
+
+          case 'frequency': {
+            const freq: Record<string, number> = {};
+            for (const session of recent) {
+              for (const ex of session.exercises) {
+                const bp = EXERCISE_DATABASE.find(e => e.id === ex.exerciseId)?.primaryBodyPart || 'Other';
+                freq[bp] = (freq[bp] || 0) + 1;
+              }
             }
+            return { result: { ...meta, frequency: freq } };
           }
-          return { result: { frequency: freq, period_days: days } };
-        }
-        if (args.analysisType === 'volume_by_muscle') {
-          const vol: Record<string, number> = {};
-          for (const session of recent) {
-            for (const ex of session.exercises) {
-              const bp = EXERCISE_DATABASE.find(e => e.id === ex.exerciseId)?.primaryBodyPart || 'Other';
-              vol[bp] = (vol[bp] || 0) + ex.sets.length;
+
+          case 'volume_by_muscle': {
+            const vol: Record<string, number> = {};
+            for (const session of recent) {
+              for (const ex of session.exercises) {
+                const bp = EXERCISE_DATABASE.find(e => e.id === ex.exerciseId)?.primaryBodyPart || 'Other';
+                vol[bp] = (vol[bp] || 0) + ex.sets.length;
+              }
             }
+            return { result: { ...meta, sets_by_muscle: vol } };
           }
-          return { result: { sets_by_muscle: vol, period_days: days } };
+
+          case 'rpe_trend': {
+            const trend = weeklyRpeTrend(allHistory, days);
+            return { result: { ...meta, weekly: trend.weekly, overall_avg_rpe: trend.overall_avg_rpe, total_sets: trend.total_sets } };
+          }
+
+          case 'exercise_progression': {
+            const exName = EXERCISE_BY_ID.get(args.exerciseId!)?.name || args.exerciseId!;
+            const prog = exerciseProgression(allHistory, args.exerciseId!, exName, days);
+            return { result: { ...meta, exercise_id: prog.exercise_id, exercise_name: prog.exercise_name, sessions: prog.sessions } };
+          }
+
+          case 'exercise_rpe': {
+            const trend = exerciseRpeTrend(allHistory, args.exerciseId!, days);
+            return { result: { ...meta, exercise_id: trend.exercise_id, weekly: trend.weekly, overall_avg_rpe: trend.overall_avg_rpe, total_sets: trend.total_sets } };
+          }
+
+          case 'weekly_volume_by_exercise': {
+            const exName = EXERCISE_BY_ID.get(args.exerciseId!)?.name || args.exerciseId!;
+            const wv = weeklyVolumeByExercise(allHistory, args.exerciseId!, exName, days);
+            return { result: { ...meta, exercise_id: wv.exercise_id, exercise_name: wv.exercise_name, weekly: wv.weekly } };
+          }
+
+          case 'consistency': {
+            const mode = (storage.preferences?.streakMode as 'daily' | 'weekly') ?? 'daily';
+            const target = storage.preferences?.streakWeeklyTarget ?? 3;
+            const c = consistencyStats(allHistory, days, mode, target);
+            return { result: { ...meta, ...c } };
+          }
+
+          case 'notes': {
+            const n = recentNotes(allHistory, days, 20);
+            return { result: { ...meta, workout_notes: n.workout_notes, exercise_notes: n.exercise_notes } };
+          }
+
+          case 'recovery': {
+            const r = recoverySummary(allHistory, days);
+            return { result: { ...meta, rest_days: r.rest_days, activities: r.activities } };
+          }
+
+          default:
+            return { result: { ...meta, workouts: recent.length } };
         }
-        return { result: { workouts: recent.length } };
       }
 
       default:
         return { result: { error: `Action is not allowed.` } };
     }
-  }, [storage, getSessionRows]);
+  }, [storage, getSessionRows, daysSinceMember]);
 
   const applyProposal = useCallback(async (id: string) => {
     const proposal = proposals[id];
