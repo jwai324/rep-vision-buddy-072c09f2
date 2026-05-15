@@ -150,6 +150,7 @@ interface ChatContextType {
   registerScreen: (ctx: ScreenContext) => void;
   quickChips: string[];
   dailyUsage: { count: number; limit: number; limitReached: boolean };
+  godMode: boolean;
   consecutiveErrors: number;
   cooldownActive: boolean;
   proposals: Record<string, Proposal>;
@@ -169,6 +170,7 @@ const ChatContext = createContext<ChatContextType>({
   registerScreen: () => {},
   quickChips: [],
   dailyUsage: { count: 0, limit: 30, limitReached: false },
+  godMode: false,
   consecutiveErrors: 0,
   cooldownActive: false,
   proposals: {},
@@ -267,6 +269,8 @@ const SCREEN_CHIPS: Record<string, string[]> = {
 const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I train today?"];
 
 const DAILY_LIMIT = 30;
+export const GOD_MODE_PHRASE = 'god mode 3247';
+const GOD_MODE_REPLY = 'God mode activated — the daily message limit is lifted for this session.';
 const COOLDOWN_MS = 2000;
 const MESSAGE_WINDOW = 10;
 const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -281,6 +285,7 @@ export const ChatProvider: React.FC<{
   const screenRef = useRef<ScreenContext>({ screen: 'dashboard' });
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [dailyUsage, setDailyUsage] = useState({ count: 0, limit: DAILY_LIMIT, limitReached: false });
+  const [godMode, setGodMode] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [cooldownActive, setCooldownActive] = useState(false);
   const [disabledUntil, setDisabledUntil] = useState(0);
@@ -916,6 +921,19 @@ export const ChatProvider: React.FC<{
   }, [proposals]);
 
   const sendMessage = useCallback(async (text: string) => {
+    // Must run before the cooldown/limit gates below so the phrase still works
+    // once the daily limit is already reached. Intercepted as a command: no API
+    // call, no quota spent.
+    if (text.trim().toLowerCase() === GOD_MODE_PHRASE) {
+      setGodMode(true);
+      setDailyUsage(prev => ({ ...prev, limitReached: false }));
+      setMessages(prev => [...prev,
+        { id: crypto.randomUUID(), role: 'user', content: text.trim() },
+        { id: crypto.randomUUID(), role: 'assistant', content: GOD_MODE_REPLY },
+      ]);
+      return;
+    }
+
     // Cooldown check
     if (Date.now() < sendDisabledUntil.current) return;
     sendDisabledUntil.current = Date.now() + COOLDOWN_MS;
@@ -923,7 +941,7 @@ export const ChatProvider: React.FC<{
     setTimeout(() => setCooldownActive(false), COOLDOWN_MS);
 
     // Daily limit check (client-side, server also enforces)
-    if (dailyUsage.limitReached) return;
+    if (dailyUsage.limitReached && !godMode) return;
 
     // Disabled due to consecutive errors
     if (Date.now() < disabledUntil) return;
@@ -939,7 +957,10 @@ export const ChatProvider: React.FC<{
 
     // Window: only send last MESSAGE_WINDOW messages
     const allMessages = [...messages, userMsg];
-    const windowedMessages = allMessages.slice(-MESSAGE_WINDOW).map(m => ({ role: m.role, content: m.content }));
+    const windowedMessages = allMessages
+      .filter(m => m.content !== GOD_MODE_REPLY && m.content.trim().toLowerCase() !== GOD_MODE_PHRASE)
+      .slice(-MESSAGE_WINDOW)
+      .map(m => ({ role: m.role, content: m.content }));
 
     // Allocate the assistant message id up front so we can associate proposals with it.
     const assistantMessageId = crypto.randomUUID();
@@ -959,12 +980,12 @@ export const ChatProvider: React.FC<{
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ messages: windowedMessages, context }),
+        body: JSON.stringify({ messages: windowedMessages, context, god_mode: godMode }),
       });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "" }));
-        if (err.limit_reached) {
+        if (err.limit_reached && !godMode) {
           setDailyUsage(prev => ({ ...prev, limitReached: true, count: prev.limit }));
         }
         // Gateway-level errors mean the function never ran. Surface a hint at
@@ -983,8 +1004,10 @@ export const ChatProvider: React.FC<{
       // Reset consecutive errors on success
       setConsecutiveErrors(0);
 
-      // Update daily usage count
-      setDailyUsage(prev => ({ ...prev, count: prev.count + 1, limitReached: prev.count + 1 >= prev.limit }));
+      // Update daily usage count (skipped while god mode is active)
+      if (!godMode) {
+        setDailyUsage(prev => ({ ...prev, count: prev.count + 1, limitReached: prev.count + 1 >= prev.limit }));
+      }
 
       // Parse SSE stream
       const reader = resp.body!.getReader();
@@ -1132,7 +1155,7 @@ export const ChatProvider: React.FC<{
         const followResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({ messages: followUpMessages, context, action_results: results }),
+          body: JSON.stringify({ messages: followUpMessages, context, action_results: results, god_mode: godMode }),
         });
 
         if (followResp.ok) {
@@ -1210,7 +1233,7 @@ export const ChatProvider: React.FC<{
     } finally {
       setIsLoading(false);
     }
-  }, [messages, buildContext, proposeToolCall, dailyUsage, consecutiveErrors, disabledUntil]);
+  }, [messages, buildContext, proposeToolCall, dailyUsage, godMode, consecutiveErrors, disabledUntil]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -1222,7 +1245,7 @@ export const ChatProvider: React.FC<{
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
       setOpen, sendMessage, clearChat, registerScreen, quickChips,
-      dailyUsage, consecutiveErrors, cooldownActive,
+      dailyUsage, godMode, consecutiveErrors, cooldownActive,
       proposals, proposalIdsByMessage, applyProposal, discardProposal,
     }}>
       {children}
