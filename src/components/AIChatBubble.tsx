@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Sparkles, X, Send, Trash2 } from 'lucide-react';
-import { useChatContext } from '@/contexts/ChatContext';
+import { useChatContext, GOD_MODE_PHRASE } from '@/contexts/ChatContext';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
@@ -27,7 +27,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
     clearChat, quickChips,
-    dailyUsage, consecutiveErrors, cooldownActive,
+    dailyUsage, godMode, consecutiveErrors, cooldownActive,
     proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
 
@@ -54,7 +54,9 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
     }
   }, [isOpen]);
 
-  const isSendDisabled = !input.trim() || isLoading || dailyUsage.limitReached || cooldownActive || consecutiveErrors >= 2;
+  const isGodPhrase = input.trim().toLowerCase() === GOD_MODE_PHRASE;
+  const limitBlocks = dailyUsage.limitReached && !godMode && !isGodPhrase;
+  const isSendDisabled = !input.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
 
   const handleSend = () => {
     if (isSendDisabled) return;
@@ -113,7 +115,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
               <div>
                 <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
                 <p className="text-[10px] text-muted-foreground">
-                  {dailyUsage.count}/{dailyUsage.limit} messages today
+                  {godMode ? 'God mode — unlimited' : `${dailyUsage.count}/${dailyUsage.limit} messages today`}
                 </p>
               </div>
             </div>
@@ -194,7 +196,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
           </div>
 
           {/* Quick chips */}
-          {messages.length <= 2 && !dailyUsage.limitReached && (
+          {messages.length <= 2 && (!dailyUsage.limitReached || godMode) && (
             <div className="px-4 pb-2 flex-shrink-0">
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                 {quickChips.map(chip => (
@@ -211,7 +213,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
           )}
 
           {/* Status messages */}
-          {dailyUsage.limitReached && (
+          {dailyUsage.limitReached && !godMode && (
             <div className="px-4 pb-2 flex-shrink-0">
               <p className="text-xs text-center text-destructive font-medium">
                 You've hit your daily AI limit. Resets at midnight.
@@ -236,9 +238,9 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={dailyUsage.limitReached ? "Daily limit reached" : "Ask anything..."}
+                  placeholder={dailyUsage.limitReached && !godMode ? "Daily limit reached" : "Ask anything..."}
                   className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  disabled={isLoading || dailyUsage.limitReached || consecutiveErrors >= 2}
+                  disabled={isLoading || consecutiveErrors >= 2}
                   maxLength={MAX_CHAT_CHARS}
                 />
                 {input.length > 0 && (

@@ -10,6 +10,8 @@ const corsHeaders = {
 
 const MODEL = "claude-opus-4-7";
 
+const GOD_MODE_PHRASE = "god mode 3247";
+
 const COST_CONTROL_RULES = `
 COST CONTROL RULES:
 - Keep responses concise. Maximum 3 sentences for chat replies.
@@ -429,7 +431,12 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    if (userId) {
+    const { messages, context, action_results, god_mode } = await req.json();
+
+    const lastUser = [...(messages ?? [])].reverse().find((m: any) => m.role === "user");
+    const phraseInMsg = String(lastUser?.content ?? "").trim().toLowerCase() === GOD_MODE_PHRASE;
+
+    if (userId && god_mode !== true && !phraseInMsg) {
       const { allowed } = await checkAndIncrementUsage(supabase, userId);
       if (!allowed) {
         return new Response(JSON.stringify({
@@ -442,8 +449,6 @@ serve(async (req) => {
         });
       }
     }
-
-    const { messages, context, action_results } = await req.json();
 
     let contextContent = "";
     if (context) {
