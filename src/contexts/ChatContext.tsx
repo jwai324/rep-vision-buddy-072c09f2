@@ -224,6 +224,20 @@ function validateExerciseReference(exerciseId: string, exerciseName?: string): {
   };
 }
 
+// The AI sometimes emits the same add_exercise_to_workout call more than once
+// in one response. proposeToolCall is a pure projection (never mutates the
+// session), so each repeat would otherwise become its own pending tile.
+// Exported for unit testing — pure, no React/singleton deps.
+export function isDuplicateSessionAdd(
+  proposal: Pick<Proposal, 'toolName' | 'arguments' | 'status'>,
+  coveredExerciseIds: ReadonlySet<string>,
+): boolean {
+  if (proposal.toolName !== 'add_exercise_to_workout') return false;
+  if (proposal.status !== 'pending') return false;
+  const exId = proposal.arguments?.exerciseId;
+  return typeof exId === 'string' && coveredExerciseIds.has(exId);
+}
+
 function validateAllExercises(exercises: ExerciseInput[]): { valid: boolean; validated: ExerciseInput[]; errors: string[]; suggestions: string[] } {
   const errors: string[] = [];
   const allSuggestions: string[] = [];
@@ -1047,14 +1061,42 @@ export const ChatProvider: React.FC<{
 
         const results: { tool_call_id: string; result: ToolCallResult }[] = [];
         const newProposals: Proposal[] = [];
+        const coveredAddExerciseIds = new Set<string>();
         for (const tc of parsedToolCalls) {
           tc.status = 'executing';
           try {
             const { result, proposal } = await proposeToolCall(tc, assistantMessageId);
             tc.result = result;
             tc.status = result?.error ? 'error' : 'done';
+
+            if (proposal && isDuplicateSessionAdd(proposal, coveredAddExerciseIds)) {
+              const exId = proposal.arguments.exerciseId as string;
+              const exName = EXERCISE_BY_ID.get(exId)?.name || exId;
+              const msg = `${exName} is already in your workout.`;
+              newProposals.push({
+                id: tc.id,
+                messageId: assistantMessageId,
+                toolName: tc.name,
+                arguments: tc.arguments,
+                before: proposal.before,
+                after: proposal.before,
+                status: 'invalid',
+                error: msg,
+                suggestions: [],
+                summary: `Invalid ${tc.name.replace(/_/g, ' ')} proposal`,
+              });
+              results.push({ tool_call_id: tc.id, result: { success: false, message: msg } });
+              continue;
+            }
+
             results.push({ tool_call_id: tc.id, result });
-            if (proposal) newProposals.push(proposal);
+            if (proposal) {
+              newProposals.push(proposal);
+              if (proposal.toolName === 'add_exercise_to_workout' && proposal.status === 'pending') {
+                const exId = proposal.arguments?.exerciseId;
+                if (typeof exId === 'string') coveredAddExerciseIds.add(exId);
+              }
+            }
           } catch (err) {
             tc.status = 'error';
             tc.result = { error: String(err) };
