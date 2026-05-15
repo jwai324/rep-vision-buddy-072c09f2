@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Sparkles, X, Send, Trash2 } from 'lucide-react';
 import { useChatContext } from '@/contexts/ChatContext';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
 
 const MAX_CHAT_CHARS = 500;
 
@@ -18,12 +19,23 @@ const TypingIndicator = () => (
   </div>
 );
 
-export const AIChatBubble: React.FC = () => {
+interface AIChatBubbleProps {
+  templates?: { id: string; name: string }[];
+}
+
+export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
-    clearChat, quickChips, confirmAction,
+    clearChat, quickChips,
     dailyUsage, consecutiveErrors, cooldownActive,
+    proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
+
+  const templateNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of templates || []) map[t.id] = t.name;
+    return map;
+  }, [templates]);
 
   const [input, setInput] = useState('');
   const [hasSeenPulse, setHasSeenPulse] = useState(() =>
@@ -143,30 +155,21 @@ export const AIChatBubble: React.FC = () => {
                     <p className="whitespace-pre-wrap">{msg.content}</p>
                   )}
 
-                  {msg.toolCalls?.some(tc => tc.status === 'confirm') && (
-                    <div className="flex gap-2 mt-2 pt-2 border-t border-border">
-                      <button
-                        onClick={() => {
-                          const tc = msg.toolCalls!.find(t => t.status === 'confirm')!;
-                          confirmAction(tc.id, true);
-                        }}
-                        className="px-3 py-1 text-xs rounded-lg bg-destructive text-destructive-foreground font-medium"
-                      >
-                        Yes, delete
-                      </button>
-                      <button
-                        onClick={() => {
-                          const tc = msg.toolCalls!.find(t => t.status === 'confirm')!;
-                          confirmAction(tc.id, false);
-                        }}
-                        className="px-3 py-1 text-xs rounded-lg bg-secondary text-secondary-foreground font-medium"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
+                  {(proposalIdsByMessage[msg.id] || []).map(pid => {
+                    const proposal = proposals[pid];
+                    if (!proposal) return null;
+                    return (
+                      <ProposalDiffCard
+                        key={pid}
+                        proposal={proposal}
+                        templateNameById={templateNameById}
+                        onApply={applyProposal}
+                        onDiscard={discardProposal}
+                      />
+                    );
+                  })}
 
-                  {msg.toolCalls && msg.toolCalls.length > 0 && !msg.toolCalls.some(tc => tc.status === 'confirm') && (
+                  {msg.toolCalls && msg.toolCalls.length > 0 && !(proposalIdsByMessage[msg.id]?.length) && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {msg.toolCalls.map(tc => (
                         <span key={tc.id} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
