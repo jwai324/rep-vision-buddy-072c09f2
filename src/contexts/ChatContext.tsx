@@ -246,6 +246,7 @@ const SCREEN_CHIPS: Record<string, string[]> = {
   activity: ["Summarize my week", "Compare this week to last", "What are my PRs?"],
   dashboard: ["Build me a program", "Create a template", "What should I train today?"],
   analytics: ["Summarize my week", "Compare this week to last", "What are my PRs?"],
+  profile: ["Suggest a program for my goal", "What exercises can I do with my equipment?", "Am I on track for my goal?"],
 };
 
 const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I train today?"];
@@ -310,6 +311,9 @@ export const ChatProvider: React.FC<{
     const memberDays = daysSinceMember();
     const historyMax = memberDays != null ? Math.min(365, memberDays) : 365;
 
+    const measurements: { id: string; date: string; weightKg: number }[] = storage.bodyMeasurements ?? [];
+    const latestBw = measurements[0];
+
     const ctx: any = {
       current_screen: screenRef.current.screen,
       current_data: screenRef.current.data || {},
@@ -321,6 +325,15 @@ export const ChatProvider: React.FC<{
         days_since_member: memberDays,
         history_window_max_days: historyMax,
         total_sessions_logged: storage.history?.length ?? 0,
+        goal: storage.profile?.goal ?? null,
+        experience_level: storage.profile?.experienceLevel ?? null,
+        equipment: storage.profile?.equipment ?? [],
+        injuries: storage.profile?.injuries ?? [],
+        age: storage.profile?.age ?? null,
+        sex: storage.profile?.sex ?? null,
+        height_cm: storage.profile?.heightCm ?? null,
+        current_bodyweight_kg: latestBw?.weightKg ?? null,
+        bodyweight_recent: measurements.slice(0, 5).map(m => ({ date: m.date, weight_kg: m.weightKg })),
       },
     };
 
