@@ -364,10 +364,33 @@ export const ChatProvider: React.FC<{
     };
 
     if (storage.templates?.length > 0) {
-      ctx.user_templates = storage.templates.map((t: any) => ({ id: t.id, name: t.name, exerciseCount: t.exercises?.length }));
+      ctx.user_templates = storage.templates.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        exercises: (t.exercises ?? []).map((e: any) => ({
+          exerciseId: e.exerciseId,
+          exerciseName: EXERCISE_BY_ID.get(e.exerciseId)?.name || e.exerciseId,
+          sets: e.sets,
+          targetReps: e.targetReps,
+          setType: e.setType,
+          restSeconds: e.restSeconds,
+          ...(e.targetRpe != null ? { targetRpe: e.targetRpe } : {}),
+          ...(e.supersetGroup != null ? { supersetGroup: e.supersetGroup } : {}),
+        })),
+      }));
     }
     if (storage.programs?.length > 0) {
-      ctx.user_programs = storage.programs.map((p: any) => ({ id: p.id, name: p.name, days: p.days?.length }));
+      ctx.user_programs = storage.programs.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        ...(p.durationWeeks != null ? { durationWeeks: p.durationWeeks } : {}),
+        ...(p.startDate ? { startDate: p.startDate } : {}),
+        days: (p.days ?? []).map((d: any) => ({
+          label: d.label,
+          templateId: d.templateId,
+          ...(d.frequency ? { frequency: d.frequency } : {}),
+        })),
+      }));
     }
     if (storage.activeProgramId) {
       ctx.active_program_id = storage.activeProgramId;
