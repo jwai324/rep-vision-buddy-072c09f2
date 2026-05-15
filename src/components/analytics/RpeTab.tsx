@@ -2,32 +2,20 @@ import React, { useMemo } from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { format } from 'date-fns';
+import { rpePerSession } from '@/utils/historyAnalysis';
 
 interface RpeTabProps {
   history: WorkoutSession[];
 }
 
 export const RpeTab: React.FC<RpeTabProps> = ({ history }) => {
-  const data = useMemo(() => {
-    return history
-      .filter(s => !s.isRestDay)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(s => {
-        // Calculate average RPE from all sets that have RPE
-        const allRpes: number[] = [];
-        for (const ex of s.exercises) {
-          for (const set of ex.sets) {
-            if (set.rpe != null && set.rpe > 0 && set.type !== 'warmup') allRpes.push(set.rpe);
-          }
-        }
-        const avgRpe = allRpes.length > 0 ? Math.round((allRpes.reduce((a, b) => a + b, 0) / allRpes.length) * 10) / 10 : null;
-        return avgRpe !== null ? {
-          date: format(new Date(s.date.substring(0, 10) + 'T00:00:00'), 'MMM d'),
-          rpe: avgRpe,
-        } : null;
-      })
-      .filter(Boolean);
-  }, [history]);
+  const data = useMemo(
+    () => rpePerSession(history).map(p => ({
+      date: format(new Date(p.date + 'T00:00:00'), 'MMM d'),
+      rpe: p.avg_rpe,
+    })),
+    [history],
+  );
 
   if (data.length === 0) {
     return (
