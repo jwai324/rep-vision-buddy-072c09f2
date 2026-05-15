@@ -911,13 +911,21 @@ export const ChatProvider: React.FC<{
     // Allocate the assistant message id up front so we can associate proposals with it.
     const assistantMessageId = crypto.randomUUID();
 
+    // Mirror what supabase.functions.invoke sends: both `apikey` and a Bearer
+    // token, preferring the user's session JWT over the anon key when signed in.
+    const { data: { session } } = await supabase.auth.getSession();
+    const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const bearer = session?.access_token ?? anonKey;
+    const authHeaders = {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+      Authorization: `Bearer ${bearer}`,
+    };
+
     try {
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+        headers: authHeaders,
         body: JSON.stringify({ messages: windowedMessages, context }),
       });
 
@@ -1062,7 +1070,7 @@ export const ChatProvider: React.FC<{
 
         const followResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+          headers: authHeaders,
           body: JSON.stringify({ messages: followUpMessages, context, action_results: results }),
         });
 
