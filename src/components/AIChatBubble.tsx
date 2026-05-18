@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Sparkles, X, Send, Trash2 } from 'lucide-react';
+import { Sparkles, Send, Trash2 } from 'lucide-react';
 import { useChatContext, GOD_MODE_PHRASE } from '@/contexts/ChatContext';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -44,9 +44,21 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartY = useRef<number | null>(null);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDragOffset(0);
+      setIsDragging(false);
+      dragStartY.current = null;
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && inputRef.current) {
@@ -81,6 +93,28 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
     setOpen(!isOpen);
   };
 
+  const COLLAPSE_THRESHOLD = 120;
+
+  const handleDragStart = (e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    setIsDragging(true);
+  };
+
+  const handleDragMove = (e: React.TouchEvent) => {
+    if (dragStartY.current === null) return;
+    const delta = e.touches[0].clientY - dragStartY.current;
+    setDragOffset(Math.max(0, delta));
+  };
+
+  const handleDragEnd = () => {
+    if (dragOffset > COLLAPSE_THRESHOLD) {
+      setOpen(false);
+    }
+    setDragOffset(0);
+    setIsDragging(false);
+    dragStartY.current = null;
+  };
+
   const charsRemaining = MAX_CHAT_CHARS - input.length;
 
   return (
@@ -103,28 +137,39 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
 
       {/* Chat Panel */}
       {isOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-background border-t border-border rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom duration-300"
-          style={{ height: '75vh', maxHeight: '75vh' }}
+        <div
+          className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-background border-t border-border rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom duration-300"
+          style={{
+            height: '75vh',
+            maxHeight: '75vh',
+            transform: dragOffset ? `translateY(${dragOffset}px)` : undefined,
+            transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+          }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full gradient-green flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <div>
-                <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
-                <p className="text-[10px] text-muted-foreground">
-                  {godMode ? 'God mode — unlimited' : `${dailyUsage.count}/${dailyUsage.limit} messages today`}
-                </p>
-              </div>
+          {/* Drag handle + Header — swipe down to collapse */}
+          <div
+            onTouchStart={handleDragStart}
+            onTouchMove={handleDragMove}
+            onTouchEnd={handleDragEnd}
+            className="flex-shrink-0 touch-none"
+          >
+            <div className="flex justify-center pt-2 pb-1">
+              <div className="w-10 h-1.5 rounded-full bg-muted-foreground/30" />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between px-4 pb-3 pt-1 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full gradient-green flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-primary-foreground" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
+                  <p className="text-[10px] text-muted-foreground">
+                    {godMode ? 'God mode — unlimited' : `${dailyUsage.count}/${dailyUsage.limit} messages today`}
+                  </p>
+                </div>
+              </div>
               <button onClick={clearChat} className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-secondary">
                 <Trash2 className="w-4 h-4" />
-              </button>
-              <button onClick={() => setOpen(false)} className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-secondary">
-                <X className="w-5 h-5" />
               </button>
             </div>
           </div>
