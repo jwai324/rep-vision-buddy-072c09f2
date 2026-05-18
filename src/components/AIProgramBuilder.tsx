@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw, Check, ArrowRight, Sparkles, Loader2, Replace } from 'lucide-react';
 import { EXERCISE_DATABASE, EQUIPMENT_LIST, type Exercise } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
+import { useChatContext } from '@/contexts/ChatContext';
 import { cn } from '@/lib/utils';
 import type { WorkoutTemplate, WorkoutProgram, TemplateExercise, SetType } from '@/types/workout';
 import { formatLocalDate } from '@/utils/dateUtils';
@@ -95,6 +96,7 @@ interface AIProgramBuilderProps {
 }
 
 export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSaveProgram }) => {
+  const { refreshBalance } = useChatContext();
   const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>('chat');
   const [currentStep, setCurrentStep] = useState(0);
   const [inputs, setInputs] = useState<UserInputs>({
@@ -354,6 +356,10 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       console.error('Program generation failed:', e);
       toast.error(e.message || 'Failed to generate program. Please try again.');
       setPhase('chat');
+    } finally {
+      // The edge function meters credits server-side once it calls the model,
+      // so re-sync the displayed balance regardless of client-side outcome.
+      void refreshBalance();
     }
   };
 
