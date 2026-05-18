@@ -21,13 +21,14 @@ const TypingIndicator = () => (
 
 interface AIChatBubbleProps {
   templates?: { id: string; name: string }[];
+  onOpenCredits?: () => void;
 }
 
-export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
+export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCredits }) => {
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
     clearChat, quickChips,
-    dailyUsage, godMode, consecutiveErrors, cooldownActive,
+    creditsBalance, godMode, consecutiveErrors, cooldownActive,
     proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
 
@@ -67,7 +68,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
   }, [isOpen]);
 
   const isGodPhrase = input.trim().toLowerCase() === GOD_MODE_PHRASE;
-  const limitBlocks = dailyUsage.limitReached && !godMode && !isGodPhrase;
+  const limitBlocks = creditsBalance.exhausted && !godMode && !isGodPhrase;
   const isSendDisabled = !input.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
 
   const handleSend = () => {
@@ -164,7 +165,9 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
                 <div>
                   <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
                   <p className="text-[10px] text-muted-foreground">
-                    {godMode ? 'God mode — unlimited' : `${dailyUsage.count}/${dailyUsage.limit} messages today`}
+                    {godMode
+                      ? 'God mode — unlimited'
+                      : `~${creditsBalance.estMessagesLeft} msgs left · ${creditsBalance.credits} credits`}
                   </p>
                 </div>
               </div>
@@ -241,7 +244,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
           </div>
 
           {/* Quick chips */}
-          {messages.length <= 2 && (!dailyUsage.limitReached || godMode) && (
+          {messages.length <= 2 && (!creditsBalance.exhausted || godMode) && (
             <div className="px-4 pb-2 flex-shrink-0">
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                 {quickChips.map(chip => (
@@ -258,11 +261,34 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
           )}
 
           {/* Status messages */}
-          {dailyUsage.limitReached && !godMode && (
-            <div className="px-4 pb-2 flex-shrink-0">
+          {creditsBalance.exhausted && !godMode && (
+            <div className="px-4 pb-2 flex-shrink-0 flex flex-col items-center gap-2">
               <p className="text-xs text-center text-destructive font-medium">
-                You've hit your daily AI limit. Resets at midnight.
+                You're out of AI credits.
               </p>
+              {onOpenCredits && (
+                <button
+                  onClick={() => { setOpen(false); onOpenCredits(); }}
+                  className="text-xs font-semibold px-4 py-2 rounded-full gradient-green text-primary-foreground"
+                >
+                  Get more credits
+                </button>
+              )}
+            </div>
+          )}
+          {creditsBalance.lowBalance && !creditsBalance.exhausted && !godMode && (
+            <div className="px-4 pb-2 flex-shrink-0 flex items-center justify-center gap-2">
+              <p className="text-xs text-center text-muted-foreground">
+                Running low — ~{creditsBalance.estMessagesLeft} msgs left.
+              </p>
+              {onOpenCredits && (
+                <button
+                  onClick={() => { setOpen(false); onOpenCredits(); }}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  Get more
+                </button>
+              )}
             </div>
           )}
           {consecutiveErrors >= 2 && (
@@ -283,7 +309,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates }) => {
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={dailyUsage.limitReached && !godMode ? "Daily limit reached" : "Ask anything..."}
+                  placeholder={creditsBalance.exhausted && !godMode ? "Out of credits" : "Ask anything..."}
                   className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                   disabled={isLoading || consecutiveErrors >= 2}
                   maxLength={MAX_CHAT_CHARS}

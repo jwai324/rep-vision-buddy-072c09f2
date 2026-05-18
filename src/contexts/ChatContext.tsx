@@ -3,6 +3,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
 import { formatLocalDate } from '@/utils/dateUtils';
+import { deriveBalance, EMPTY_BALANCE, type CreditsBalance } from '@/utils/credits';
 import {
   weeklyRpeTrend, exerciseProgression, exerciseRpeTrend,
   weeklyVolumeByExercise, consistencyStats, recentNotes, recoverySummary,
@@ -149,7 +150,8 @@ interface ChatContextType {
   clearChat: () => void;
   registerScreen: (ctx: ScreenContext) => void;
   quickChips: string[];
-  dailyUsage: { count: number; limit: number; limitReached: boolean };
+  creditsBalance: CreditsBalance;
+  refreshBalance: () => Promise<void>;
   godMode: boolean;
   consecutiveErrors: number;
   cooldownActive: boolean;
@@ -169,7 +171,8 @@ const ChatContext = createContext<ChatContextType>({
   clearChat: () => {},
   registerScreen: () => {},
   quickChips: [],
-  dailyUsage: { count: 0, limit: 30, limitReached: false },
+  creditsBalance: EMPTY_BALANCE,
+  refreshBalance: async () => {},
   godMode: false,
   consecutiveErrors: 0,
   cooldownActive: false,
@@ -268,9 +271,8 @@ const SCREEN_CHIPS: Record<string, string[]> = {
 
 const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I train today?"];
 
-const DAILY_LIMIT = 30;
 export const GOD_MODE_PHRASE = 'god mode 3247';
-const GOD_MODE_REPLY = 'God mode activated — the daily message limit is lifted for this session.';
+const GOD_MODE_REPLY = 'God mode activated — credit limits are lifted for this session.';
 const COOLDOWN_MS = 2000;
 const MESSAGE_WINDOW = 10;
 const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -284,7 +286,7 @@ export const ChatProvider: React.FC<{
   const [isLoading, setIsLoading] = useState(false);
   const screenRef = useRef<ScreenContext>({ screen: 'dashboard' });
   const [currentScreen, setCurrentScreen] = useState('dashboard');
-  const [dailyUsage, setDailyUsage] = useState({ count: 0, limit: DAILY_LIMIT, limitReached: false });
+  const [creditsBalance, setCreditsBalance] = useState<CreditsBalance>(EMPTY_BALANCE);
   const [godMode, setGodMode] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [cooldownActive, setCooldownActive] = useState(false);
@@ -301,24 +303,26 @@ export const ChatProvider: React.FC<{
 
   const quickChips = SCREEN_CHIPS[currentScreen] || DEFAULT_CHIPS;
 
-  // Fetch daily usage + membership start on mount
-  useEffect(() => {
-    const fetchUsage = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      if (user.created_at) setMemberSince(user.created_at.substring(0, 10));
-      const today = formatLocalDate();
-      const { data } = await supabase
-        .from('user_ai_usage')
-        .select('message_count')
-        .eq('user_id', user.id)
-        .eq('date', today)
-        .maybeSingle();
-      const count = data?.message_count || 0;
-      setDailyUsage({ count, limit: DAILY_LIMIT, limitReached: count >= DAILY_LIMIT });
-    };
-    fetchUsage();
+  const refreshBalance = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from('user_token_balance')
+      .select('paid_balance_micros, free_used_micros, free_period')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    setCreditsBalance(deriveBalance(data ?? null));
   }, []);
+
+  // Fetch membership start + credit balance on mount
+  useEffect(() => {
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.created_at) setMemberSince(user.created_at.substring(0, 10));
+      await refreshBalance();
+    };
+    init();
+  }, [refreshBalance]);
 
   const daysSinceMember = useCallback((): number | null => {
     if (!memberSince) return null;
@@ -945,11 +949,10 @@ export const ChatProvider: React.FC<{
 
   const sendMessage = useCallback(async (text: string) => {
     // Must run before the cooldown/limit gates below so the phrase still works
-    // once the daily limit is already reached. Intercepted as a command: no API
-    // call, no quota spent.
+    // once credits are exhausted. Intercepted as a command: no API call, no
+    // credits spent.
     if (text.trim().toLowerCase() === GOD_MODE_PHRASE) {
       setGodMode(true);
-      setDailyUsage(prev => ({ ...prev, limitReached: false }));
       setMessages(prev => [...prev,
         { id: crypto.randomUUID(), role: 'user', content: text.trim() },
         { id: crypto.randomUUID(), role: 'assistant', content: GOD_MODE_REPLY },
@@ -963,8 +966,8 @@ export const ChatProvider: React.FC<{
     setCooldownActive(true);
     setTimeout(() => setCooldownActive(false), COOLDOWN_MS);
 
-    // Daily limit check (client-side, server also enforces)
-    if (dailyUsage.limitReached && !godMode) return;
+    // Credit balance check (client-side, server also enforces)
+    if (creditsBalance.exhausted && !godMode) return;
 
     // Disabled due to consecutive errors
     if (Date.now() < disabledUntil) return;
@@ -1008,8 +1011,8 @@ export const ChatProvider: React.FC<{
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "" }));
-        if (err.limit_reached && !godMode) {
-          setDailyUsage(prev => ({ ...prev, limitReached: true, count: prev.limit }));
+        if (err.balance_exhausted && !godMode) {
+          setCreditsBalance(prev => ({ ...prev, exhausted: true, availableMicros: 0, credits: 0, estMessagesLeft: 0 }));
         }
         // Gateway-level errors mean the function never ran. Surface a hint at
         // the most common cause (function not deployed to this Supabase
@@ -1026,11 +1029,6 @@ export const ChatProvider: React.FC<{
 
       // Reset consecutive errors on success
       setConsecutiveErrors(0);
-
-      // Update daily usage count (skipped while god mode is active)
-      if (!godMode) {
-        setDailyUsage(prev => ({ ...prev, count: prev.count + 1, limitReached: prev.count + 1 >= prev.limit }));
-      }
 
       // Parse SSE stream
       const reader = resp.body!.getReader();
@@ -1255,8 +1253,11 @@ export const ChatProvider: React.FC<{
       }
     } finally {
       setIsLoading(false);
+      // Re-sync the authoritative balance after the turn (cost is metered
+      // server-side and unknown to the client). god-mode does not deduct.
+      if (!godMode) void refreshBalance();
     }
-  }, [messages, buildContext, proposeToolCall, dailyUsage, godMode, consecutiveErrors, disabledUntil]);
+  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, consecutiveErrors, disabledUntil, refreshBalance]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -1268,7 +1269,7 @@ export const ChatProvider: React.FC<{
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
       setOpen, sendMessage, clearChat, registerScreen, quickChips,
-      dailyUsage, godMode, consecutiveErrors, cooldownActive,
+      creditsBalance, refreshBalance, godMode, consecutiveErrors, cooldownActive,
       proposals, proposalIdsByMessage, applyProposal, discardProposal,
     }}>
       {children}
