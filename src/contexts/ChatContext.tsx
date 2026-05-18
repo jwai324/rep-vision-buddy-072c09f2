@@ -152,6 +152,7 @@ interface ChatContextType {
   quickChips: string[];
   creditsBalance: CreditsBalance;
   refreshBalance: () => Promise<void>;
+  isPremium: boolean;
   godMode: boolean;
   consecutiveErrors: number;
   cooldownActive: boolean;
@@ -173,6 +174,7 @@ const ChatContext = createContext<ChatContextType>({
   quickChips: [],
   creditsBalance: EMPTY_BALANCE,
   refreshBalance: async () => {},
+  isPremium: true,
   godMode: false,
   consecutiveErrors: 0,
   cooldownActive: false,
@@ -295,6 +297,9 @@ export const ChatProvider: React.FC<{
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
   const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>({});
   const [memberSince, setMemberSince] = useState<string | null>(null);
+
+  // Premium tier bypasses the credit gate (default while the app is in testing).
+  const isPremium = storage?.profile?.subscriptionTier !== 'free';
 
   const registerScreen = useCallback((ctx: ScreenContext) => {
     screenRef.current = ctx;
@@ -966,8 +971,9 @@ export const ChatProvider: React.FC<{
     setCooldownActive(true);
     setTimeout(() => setCooldownActive(false), COOLDOWN_MS);
 
-    // Credit balance check (client-side, server also enforces)
-    if (creditsBalance.exhausted && !godMode) return;
+    // Credit balance check (client-side, server also enforces). Premium tier
+    // bypasses the gate.
+    if (creditsBalance.exhausted && !godMode && !isPremium) return;
 
     // Disabled due to consecutive errors
     if (Date.now() < disabledUntil) return;
@@ -1006,12 +1012,12 @@ export const ChatProvider: React.FC<{
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ messages: windowedMessages, context, god_mode: godMode }),
+        body: JSON.stringify({ messages: windowedMessages, context, god_mode: godMode, premium: isPremium }),
       });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "" }));
-        if (err.balance_exhausted && !godMode) {
+        if (err.balance_exhausted && !godMode && !isPremium) {
           setCreditsBalance(prev => ({ ...prev, exhausted: true, availableMicros: 0, credits: 0, estMessagesLeft: 0 }));
         }
         // Gateway-level errors mean the function never ran. Surface a hint at
@@ -1257,7 +1263,7 @@ export const ChatProvider: React.FC<{
       // server-side and unknown to the client). god-mode does not deduct.
       if (!godMode) void refreshBalance();
     }
-  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, consecutiveErrors, disabledUntil, refreshBalance]);
+  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, isPremium, consecutiveErrors, disabledUntil, refreshBalance]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -1269,7 +1275,7 @@ export const ChatProvider: React.FC<{
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
       setOpen, sendMessage, clearChat, registerScreen, quickChips,
-      creditsBalance, refreshBalance, godMode, consecutiveErrors, cooldownActive,
+      creditsBalance, refreshBalance, isPremium, godMode, consecutiveErrors, cooldownActive,
       proposals, proposalIdsByMessage, applyProposal, discardProposal,
     }}>
       {children}

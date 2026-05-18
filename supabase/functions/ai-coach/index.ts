@@ -403,11 +403,11 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    const { messages, context, action_results, god_mode } = await req.json();
+    const { messages, context, action_results, god_mode, premium } = await req.json();
 
     const lastUser = [...(messages ?? [])].reverse().find((m: any) => m.role === "user");
     const phraseInMsg = String(lastUser?.content ?? "").trim().toLowerCase() === GOD_MODE_PHRASE;
-    const bypassMetering = god_mode === true || phraseInMsg;
+    const bypassMetering = god_mode === true || phraseInMsg || premium === true;
 
     // Pre-call gate. Exact cost is unknowable before the call, so we require a
     // small reserve and deduct the real cost afterward (bounded ~1-turn

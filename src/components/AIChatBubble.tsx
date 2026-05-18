@@ -28,7 +28,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
     clearChat, quickChips,
-    creditsBalance, godMode, consecutiveErrors, cooldownActive,
+    creditsBalance, isPremium, godMode, consecutiveErrors, cooldownActive,
     proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
 
@@ -68,7 +68,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   }, [isOpen]);
 
   const isGodPhrase = input.trim().toLowerCase() === GOD_MODE_PHRASE;
-  const limitBlocks = creditsBalance.exhausted && !godMode && !isGodPhrase;
+  const limitBlocks = creditsBalance.exhausted && !godMode && !isGodPhrase && !isPremium;
   const isSendDisabled = !input.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
 
   const handleSend = () => {
@@ -244,7 +244,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
           </div>
 
           {/* Quick chips */}
-          {messages.length <= 2 && (!creditsBalance.exhausted || godMode) && (
+          {messages.length <= 2 && (!creditsBalance.exhausted || godMode || isPremium) && (
             <div className="px-4 pb-2 flex-shrink-0">
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                 {quickChips.map(chip => (
@@ -261,22 +261,22 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
           )}
 
           {/* Status messages */}
-          {creditsBalance.exhausted && !godMode && (
+          {creditsBalance.exhausted && !godMode && !isPremium && (
             <div className="px-4 pb-2 flex-shrink-0 flex flex-col items-center gap-2">
               <p className="text-xs text-center text-destructive font-medium">
-                You're out of AI credits.
+                You're out of AI credits. Top up or upgrade to Premium to keep chatting.
               </p>
               {onOpenCredits && (
                 <button
                   onClick={() => { setOpen(false); onOpenCredits(); }}
                   className="text-xs font-semibold px-4 py-2 rounded-full gradient-green text-primary-foreground"
                 >
-                  Get more credits
+                  Top up or upgrade
                 </button>
               )}
             </div>
           )}
-          {creditsBalance.lowBalance && !creditsBalance.exhausted && !godMode && (
+          {creditsBalance.lowBalance && !creditsBalance.exhausted && !godMode && !isPremium && (
             <div className="px-4 pb-2 flex-shrink-0 flex items-center justify-center gap-2">
               <p className="text-xs text-center text-muted-foreground">
                 Running low — ~{creditsBalance.estMessagesLeft} msgs left.
@@ -309,7 +309,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={creditsBalance.exhausted && !godMode ? "Out of credits" : "Ask anything..."}
+                  placeholder={creditsBalance.exhausted && !godMode && !isPremium ? "Out of credits" : "Ask anything..."}
                   className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                   disabled={isLoading || consecutiveErrors >= 2}
                   maxLength={MAX_CHAT_CHARS}

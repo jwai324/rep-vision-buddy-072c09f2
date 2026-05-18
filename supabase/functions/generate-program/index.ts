@@ -86,8 +86,11 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    // Pre-call balance gate. Real cost is deducted after the call.
-    if (userId) {
+    const { userInputs, exercises, premium } = await req.json();
+
+    // Pre-call balance gate. Real cost is deducted after the call. Premium tier
+    // bypasses the gate (default while the app is in testing).
+    if (userId && premium !== true) {
       const balance = applyLazyMonthlyReset(await getOrInitBalance(supabase, userId));
       if (!gate(balance).allowed) {
         return new Response(JSON.stringify({
@@ -99,8 +102,6 @@ serve(async (req) => {
         });
       }
     }
-
-    const { userInputs, exercises } = await req.json();
 
     const customNotes = userInputs.custom_notes ? `\n- Additional notes from user: ${userInputs.custom_notes}` : '';
     const programWeeks = parseInt(String(userInputs.programDuration)) || 4;

@@ -231,8 +231,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <div className="flex items-center gap-3">
             <Sparkles className="w-4 h-4 text-primary" />
             <div className="flex flex-col">
-              <span className="text-sm font-semibold text-foreground">AI Credits</span>
-              <span className="text-[11px] text-muted-foreground">Balance, usage, top-ups</span>
+              <span className="text-sm font-semibold text-foreground">Subscription & Credits</span>
+              <span className="text-[11px] text-muted-foreground">Plan, balance, top-ups</span>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-muted-foreground" />
