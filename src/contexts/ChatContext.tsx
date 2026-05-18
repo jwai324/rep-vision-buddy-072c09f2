@@ -292,6 +292,7 @@ export const ChatProvider: React.FC<{
   const [cooldownActive, setCooldownActive] = useState(false);
   const [disabledUntil, setDisabledUntil] = useState(0);
   const sendDisabledUntil = useRef(0);
+  const balanceResyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
   const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>({});
   const [memberSince, setMemberSince] = useState<string | null>(null);
@@ -319,6 +320,19 @@ export const ChatProvider: React.FC<{
       .maybeSingle();
     setCreditsBalance(deriveBalance(data ?? null, tierRef.current));
   }, []);
+
+  // The edge function meters credits in a background EdgeRuntime.waitUntil task
+  // that commits AFTER the response stream closes, so an immediate refresh
+  // races (and loses to) the server deduction. Refresh now for snappy feedback,
+  // then again shortly after to pick up the just-committed cost.
+  const resyncBalanceSoon = useCallback(() => {
+    if (balanceResyncTimer.current) clearTimeout(balanceResyncTimer.current);
+    void refreshBalance();
+    balanceResyncTimer.current = setTimeout(() => {
+      balanceResyncTimer.current = null;
+      void refreshBalance();
+    }, 2000);
+  }, [refreshBalance]);
 
   // Fetch membership start + credit balance on mount
   useEffect(() => {
@@ -1262,9 +1276,9 @@ export const ChatProvider: React.FC<{
       setIsLoading(false);
       // Re-sync the authoritative balance after the turn (cost is metered
       // server-side and unknown to the client). god-mode does not deduct.
-      if (!godMode) void refreshBalance();
+      if (!godMode) resyncBalanceSoon();
     }
-  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, consecutiveErrors, disabledUntil, refreshBalance]);
+  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, consecutiveErrors, disabledUntil, resyncBalanceSoon]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
