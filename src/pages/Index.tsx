@@ -560,7 +560,6 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
       {screen.type === 'aiProgramBuilder' && (
         <AIProgramBuilder
-          isPremium={storage.profile?.subscriptionTier !== 'free'}
           onBack={() => setScreen({ type: 'dashboard' })}
           onSaveProgram={async (program, templates) => {
             for (const t of templates) {

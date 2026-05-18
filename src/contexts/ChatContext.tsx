@@ -152,7 +152,6 @@ interface ChatContextType {
   quickChips: string[];
   creditsBalance: CreditsBalance;
   refreshBalance: () => Promise<void>;
-  isPremium: boolean;
   godMode: boolean;
   consecutiveErrors: number;
   cooldownActive: boolean;
@@ -174,7 +173,6 @@ const ChatContext = createContext<ChatContextType>({
   quickChips: [],
   creditsBalance: EMPTY_BALANCE,
   refreshBalance: async () => {},
-  isPremium: true,
   godMode: false,
   consecutiveErrors: 0,
   cooldownActive: false,
@@ -298,8 +296,11 @@ export const ChatProvider: React.FC<{
   const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>({});
   const [memberSince, setMemberSince] = useState<string | null>(null);
 
-  // Premium tier bypasses the credit gate (default while the app is in testing).
-  const isPremium = storage?.profile?.subscriptionTier !== 'free';
+  // Subscription tier only affects the size of the monthly metered allowance
+  // (premium gets a larger bucket); it is no longer a gate bypass. Tracked via
+  // a ref so the []-dep refreshBalance callback always reads the current value.
+  const tierRef = useRef<string | null | undefined>(undefined);
+  tierRef.current = storage?.profile?.subscriptionTier;
 
   const registerScreen = useCallback((ctx: ScreenContext) => {
     screenRef.current = ctx;
@@ -316,7 +317,7 @@ export const ChatProvider: React.FC<{
       .select('paid_balance_micros, free_used_micros, free_period')
       .eq('user_id', user.id)
       .maybeSingle();
-    setCreditsBalance(deriveBalance(data ?? null));
+    setCreditsBalance(deriveBalance(data ?? null, tierRef.current));
   }, []);
 
   // Fetch membership start + credit balance on mount
@@ -973,7 +974,7 @@ export const ChatProvider: React.FC<{
 
     // Credit balance check (client-side, server also enforces). Premium tier
     // bypasses the gate.
-    if (creditsBalance.exhausted && !godMode && !isPremium) return;
+    if (creditsBalance.exhausted && !godMode) return;
 
     // Disabled due to consecutive errors
     if (Date.now() < disabledUntil) return;
@@ -1012,12 +1013,12 @@ export const ChatProvider: React.FC<{
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ messages: windowedMessages, context, god_mode: godMode, premium: isPremium }),
+        body: JSON.stringify({ messages: windowedMessages, context, god_mode: godMode }),
       });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "" }));
-        if (err.balance_exhausted && !godMode && !isPremium) {
+        if (err.balance_exhausted && !godMode) {
           setCreditsBalance(prev => ({ ...prev, exhausted: true, availableMicros: 0, credits: 0, estMessagesLeft: 0 }));
         }
         // Gateway-level errors mean the function never ran. Surface a hint at
@@ -1263,7 +1264,7 @@ export const ChatProvider: React.FC<{
       // server-side and unknown to the client). god-mode does not deduct.
       if (!godMode) void refreshBalance();
     }
-  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, isPremium, consecutiveErrors, disabledUntil, refreshBalance]);
+  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, consecutiveErrors, disabledUntil, refreshBalance]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -1275,7 +1276,7 @@ export const ChatProvider: React.FC<{
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
       setOpen, sendMessage, clearChat, registerScreen, quickChips,
-      creditsBalance, refreshBalance, isPremium, godMode, consecutiveErrors, cooldownActive,
+      creditsBalance, refreshBalance, godMode, consecutiveErrors, cooldownActive,
       proposals, proposalIdsByMessage, applyProposal, discardProposal,
     }}>
       {children}
