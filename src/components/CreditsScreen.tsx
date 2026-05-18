@@ -15,8 +15,8 @@ interface CreditsScreenProps {
 }
 
 const TIERS: { value: SubscriptionTier; label: string; blurb: string }[] = [
-  { value: 'free', label: 'Free', blurb: '~$0.50 of AI usage each month (≈500 credits). Top up or upgrade for more.' },
-  { value: 'premium', label: 'Premium', blurb: '~$7 of AI usage each month (≈7,000 credits). Resets monthly; top up if you run out early.' },
+  { value: 'free', label: 'Free', blurb: '500 credits each month. Top up or upgrade for more.' },
+  { value: 'premium', label: 'Premium', blurb: '7,000 credits each month. Resets monthly; top up if you run out early.' },
 ];
 
 interface LedgerRow {
@@ -165,7 +165,7 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
 
       {isPremium && (
         <p className="text-[11px] text-muted-foreground -mt-2 px-1">
-          You're on Premium — about $7 of AI usage included each month (the balance below). It resets monthly; top up if you run out early.
+          You're on Premium — 7,000 credits included each month (the balance below). It resets monthly; top up if you run out early.
         </p>
       )}
 
