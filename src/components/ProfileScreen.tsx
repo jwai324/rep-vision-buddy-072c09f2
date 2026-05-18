@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronLeft, Target, GraduationCap, Dumbbell, AlertTriangle, Scale, Ruler, User, Cake, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { EQUIPMENT_LIST, BODY_PARTS } from '@/data/exercises';
+import { EQUIPMENT_LIST } from '@/data/exercises';
 import { fromKg, toKg } from '@/utils/weightConversion';
 import { format } from 'date-fns';
 import type { UserProfile, BodyMeasurement, WeightUnit, Goal, ExperienceLevel, Sex } from '@/hooks/useStorage';
@@ -38,6 +38,9 @@ const SEX_OPTIONS: { value: Sex; label: string }[] = [
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
 
+const MAX_INJURIES = 10;
+const MAX_INJURY_LENGTH = 100;
+
 const CM_PER_IN = 2.54;
 const toCm = (inches: number) => Math.round(inches * CM_PER_IN * 10) / 10;
 const fromCm = (cm: number, unit: WeightUnit) => unit === 'kg' ? Math.round(cm * 10) / 10 : Math.round((cm / CM_PER_IN) * 10) / 10;
@@ -69,6 +72,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 }) => {
   const [bwDraft, setBwDraft] = useState('');
   const [bwSaving, setBwSaving] = useState(false);
+  const [injuryDraft, setInjuryDraft] = useState('');
 
   const heightUnit = weightUnit === 'kg' ? 'cm' : 'in';
   const heightDisplay = profile.heightCm != null ? String(fromCm(profile.heightCm, weightUnit)) : '';
@@ -76,7 +80,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [ageDraft, setAgeDraft] = useState(profile.age != null ? String(profile.age) : '');
 
   const equipmentOptions = useMemo(() => EQUIPMENT_LIST.filter(e => e !== 'All'), []);
-  const bodyPartOptions = useMemo(() => BODY_PARTS.filter(b => b !== 'All'), []);
 
   const toggleEquipment = (item: string) => {
     const set = new Set(profile.equipment);
@@ -85,11 +88,21 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     onUpdateProfile({ equipment: Array.from(set) });
   };
 
-  const toggleInjury = (item: string) => {
-    const set = new Set(profile.injuries);
-    if (set.has(item)) set.delete(item);
-    else set.add(item);
-    onUpdateProfile({ injuries: Array.from(set) });
+  const injuriesFull = profile.injuries.length >= MAX_INJURIES;
+
+  const addInjury = () => {
+    const text = injuryDraft.trim();
+    if (!text || injuriesFull) return;
+    if (profile.injuries.some(i => i.toLowerCase() === text.toLowerCase())) {
+      setInjuryDraft('');
+      return;
+    }
+    onUpdateProfile({ injuries: [...profile.injuries, text] });
+    setInjuryDraft('');
+  };
+
+  const removeInjury = (index: number) => {
+    onUpdateProfile({ injuries: profile.injuries.filter((_, i) => i !== index) });
   };
 
   const saveAge = () => {
@@ -167,13 +180,54 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         </div>
       </Section>
 
-      <Section icon={<AlertTriangle className="w-4 h-4 text-amber-500" />} title="Injuries / Body Parts to Avoid">
-        <div className="flex flex-wrap gap-2">
-          {bodyPartOptions.map(item => (
-            <Chip key={item} active={profile.injuries.includes(item)} onClick={() => toggleInjury(item)}>
-              {item}
-            </Chip>
-          ))}
+      <Section icon={<AlertTriangle className="w-4 h-4 text-amber-500" />} title="Injuries">
+        <div className="flex flex-col gap-3">
+          <p className="text-[11px] text-muted-foreground">
+            Add any injuries or movements to work around. The AI coach steers its recommendations away from these.
+          </p>
+          <div className="flex items-center gap-2">
+            <Input
+              value={injuryDraft}
+              onChange={e => setInjuryDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addInjury(); } }}
+              placeholder="e.g. Left shoulder impingement"
+              maxLength={MAX_INJURY_LENGTH}
+              disabled={injuriesFull}
+              className="h-9 flex-1"
+            />
+            <Button
+              onClick={addInjury}
+              disabled={!injuryDraft.trim() || injuriesFull}
+              size="sm"
+              className="gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add
+            </Button>
+          </div>
+
+          {profile.injuries.length > 0 && (
+            <div className="border-t border-border pt-2 flex flex-col gap-1">
+              {profile.injuries.map((injury, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-foreground font-medium break-words min-w-0">{injury}</span>
+                  <button
+                    onClick={() => removeInjury(i)}
+                    className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors shrink-0"
+                    aria-label={`Remove ${injury}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground italic">
+            {injuriesFull
+              ? `Maximum ${MAX_INJURIES} injuries reached.`
+              : `${profile.injuries.length}/${MAX_INJURIES} added.`}
+          </p>
         </div>
       </Section>
 
