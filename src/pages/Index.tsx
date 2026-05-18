@@ -15,6 +15,7 @@ import { DesktopSidebar } from '@/components/DesktopSidebar';
 
 import { SettingsScreen } from '@/components/SettingsScreen';
 import { ProfileScreen } from '@/components/ProfileScreen';
+import { CreditsScreen } from '@/components/CreditsScreen';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
@@ -49,6 +50,7 @@ type Screen =
   | { type: 'programBuilder'; program?: WorkoutProgram }
   | { type: 'settings' }
   | { type: 'profile' }
+  | { type: 'credits' }
   | { type: 'analytics' }
   | { type: 'aiProgramBuilder' }
   | { type: 'customExercises' }
@@ -518,6 +520,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onBack={() => setScreen({ type: 'dashboard' })}
           onGoToCustomExercises={() => setScreen({ type: 'customExercises' })}
           onGoToProfile={() => setScreen({ type: 'profile' })}
+          onGoToCredits={() => setScreen({ type: 'credits' })}
           onReplayTutorial={() => {
             setScreen({ type: 'dashboard' });
             // Defer to next tick so dashboard mounts before overlay measures
@@ -536,6 +539,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onDeleteBodyMeasurement={storage.deleteBodyMeasurement}
           onBack={() => setScreen({ type: 'settings' })}
         />
+      )}
+
+      {screen.type === 'credits' && (
+        <CreditsScreen onBack={() => setScreen({ type: 'settings' })} />
       )}
 
       {screen.type === 'analytics' && (
@@ -605,7 +612,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
       <TutorialOverlay />
 
-      <AIChatBubble templates={storage.templates} />
+      <AIChatBubble
+        templates={storage.templates}
+        onOpenCredits={() => setScreen({ type: 'credits' })}
+      />
       </div>
     </div>
   );

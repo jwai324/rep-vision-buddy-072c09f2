@@ -41,6 +41,114 @@ export type Database = {
         }
         Relationships: []
       }
+      iap_purchases: {
+        Row: {
+          created_at: string
+          granted_micros: number
+          id: string
+          original_transaction_id: string | null
+          platform: string
+          product_id: string
+          raw: Json | null
+          status: string
+          transaction_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          granted_micros?: number
+          id?: string
+          original_transaction_id?: string | null
+          platform: string
+          product_id: string
+          raw?: Json | null
+          status?: string
+          transaction_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          granted_micros?: number
+          id?: string
+          original_transaction_id?: string | null
+          platform?: string
+          product_id?: string
+          raw?: Json | null
+          status?: string
+          transaction_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      token_ledger: {
+        Row: {
+          balance_after_micros: number
+          created_at: string
+          delta_micros: number
+          id: string
+          reason: string
+          reference: string | null
+          user_id: string
+        }
+        Insert: {
+          balance_after_micros: number
+          created_at?: string
+          delta_micros: number
+          id?: string
+          reason: string
+          reference?: string | null
+          user_id: string
+        }
+        Update: {
+          balance_after_micros?: number
+          created_at?: string
+          delta_micros?: number
+          id?: string
+          reason?: string
+          reference?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_token_balance: {
+        Row: {
+          created_at: string
+          free_period: string
+          free_used_micros: number
+          id: string
+          lifetime_purchased_micros: number
+          lifetime_spent_micros: number
+          paid_balance_micros: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          free_period?: string
+          free_used_micros?: number
+          id?: string
+          lifetime_purchased_micros?: number
+          lifetime_spent_micros?: number
+          paid_balance_micros?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          free_period?: string
+          free_used_micros?: number
+          id?: string
+          lifetime_purchased_micros?: number
+          lifetime_spent_micros?: number
+          paid_balance_micros?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       custom_exercises: {
         Row: {
           created_at: string
@@ -161,6 +269,9 @@ export type Database = {
           date: string
           id: string
           message_count: number
+          total_cache_creation_tokens: number
+          total_cache_read_tokens: number
+          total_cost_micros: number
           total_input_tokens: number
           total_output_tokens: number
           updated_at: string
@@ -171,6 +282,9 @@ export type Database = {
           date?: string
           id?: string
           message_count?: number
+          total_cache_creation_tokens?: number
+          total_cache_read_tokens?: number
+          total_cost_micros?: number
           total_input_tokens?: number
           total_output_tokens?: number
           updated_at?: string
@@ -181,6 +295,9 @@ export type Database = {
           date?: string
           id?: string
           message_count?: number
+          total_cache_creation_tokens?: number
+          total_cache_read_tokens?: number
+          total_cost_micros?: number
           total_input_tokens?: number
           total_output_tokens?: number
           updated_at?: string
@@ -363,11 +480,13 @@ export type Database = {
     Views: {
       ai_usage_daily_summary: {
         Row: {
-          avg_input_tokens: number | null
-          avg_output_tokens: number | null
+          cost_usd: number | null
           date: string | null
-          estimated_cost_usd: number | null
+          total_cache_creation_tokens: number | null
+          total_cache_read_tokens: number | null
           total_calls: number | null
+          total_input_tokens: number | null
+          total_output_tokens: number | null
           total_users: number | null
         }
         Relationships: []
