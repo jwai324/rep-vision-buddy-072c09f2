@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
+import { costMicros } from "../_shared/pricing.ts";
+import { consume, gate, getOrInitBalance, applyLazyMonthlyReset, recordUsageAggregate } from "../_shared/balance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,33 +86,17 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
+    // Pre-call balance gate. Real cost is deducted after the call.
     if (userId) {
-      const today = new Date().toISOString().split('T')[0];
-      const DAILY_LIMIT = 30;
-      const COST = 3;
-
-      const { data: existing } = await supabase
-        .from('user_ai_usage')
-        .select('message_count')
-        .eq('user_id', userId)
-        .eq('date', today)
-        .maybeSingle();
-
-      const currentCount = existing?.message_count || 0;
-      if (currentCount + COST > DAILY_LIMIT) {
+      const balance = applyLazyMonthlyReset(await getOrInitBalance(supabase, userId));
+      if (!gate(balance).allowed) {
         return new Response(JSON.stringify({
-          error: "You've hit your daily AI limit (30 messages). Program generation costs 3. Resets at midnight.",
-          limit_reached: true,
+          error: "You're out of AI credits.",
+          balance_exhausted: true,
         }), {
-          status: 429,
+          status: 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-      }
-
-      if (existing) {
-        await supabase.from('user_ai_usage').update({ message_count: currentCount + COST }).eq('user_id', userId).eq('date', today);
-      } else {
-        await supabase.from('user_ai_usage').insert({ user_id: userId, date: today, message_count: COST });
       }
     }
 
@@ -166,6 +152,19 @@ ${exercises.map((e: any) => `- ${e.name} (${e.primaryBodyPart}, ${e.equipment}, 
       return new Response(JSON.stringify({ error: "AI generation failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Meter real token usage. The call succeeded and Anthropic billed us, so we
+    // consume even if the JSON later fails to parse (deters abuse via repeated
+    // failing prompts). Never let a metering failure break the response.
+    if (userId) {
+      try {
+        const cost = costMicros(message.usage);
+        await consume(supabase, userId, cost, "generate_program", `generate-program:${userId}:${Date.now()}`);
+        await recordUsageAggregate(supabase, userId, message.usage, cost);
+      } catch (e) {
+        console.error("generate-program metering failed:", e);
+      }
     }
 
     if (message.stop_reason === "max_tokens") {

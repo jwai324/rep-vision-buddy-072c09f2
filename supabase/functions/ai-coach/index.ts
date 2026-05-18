@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
+import { costMicros } from "../_shared/pricing.ts";
+import { consume, gate, getOrInitBalance, applyLazyMonthlyReset, recordUsageAggregate } from "../_shared/balance.ts";
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -273,38 +277,6 @@ const tools = [
   },
 ];
 
-async function checkAndIncrementUsage(supabase: any, userId: string, cost: number = 1): Promise<{ allowed: boolean; remaining: number }> {
-  const today = new Date().toISOString().split('T')[0];
-  const DAILY_LIMIT = 30;
-
-  const { data: existing } = await supabase
-    .from('user_ai_usage')
-    .select('message_count')
-    .eq('user_id', userId)
-    .eq('date', today)
-    .maybeSingle();
-
-  const currentCount = existing?.message_count || 0;
-
-  if (currentCount + cost > DAILY_LIMIT) {
-    return { allowed: false, remaining: Math.max(0, DAILY_LIMIT - currentCount) };
-  }
-
-  if (existing) {
-    await supabase
-      .from('user_ai_usage')
-      .update({ message_count: currentCount + cost })
-      .eq('user_id', userId)
-      .eq('date', today);
-  } else {
-    await supabase
-      .from('user_ai_usage')
-      .insert({ user_id: userId, date: today, message_count: cost });
-  }
-
-  return { allowed: true, remaining: DAILY_LIMIT - currentCount - cost };
-}
-
 async function logError(supabase: any, userId: string | null, errorType: string, errorMessage: string, requestTokens: number = 0) {
   try {
     await supabase.from('ai_error_log').insert({
@@ -435,16 +407,19 @@ serve(async (req) => {
 
     const lastUser = [...(messages ?? [])].reverse().find((m: any) => m.role === "user");
     const phraseInMsg = String(lastUser?.content ?? "").trim().toLowerCase() === GOD_MODE_PHRASE;
+    const bypassMetering = god_mode === true || phraseInMsg;
 
-    if (userId && god_mode !== true && !phraseInMsg) {
-      const { allowed } = await checkAndIncrementUsage(supabase, userId);
-      if (!allowed) {
+    // Pre-call gate. Exact cost is unknowable before the call, so we require a
+    // small reserve and deduct the real cost afterward (bounded ~1-turn
+    // overshoot). god-mode bypasses the gate but its usage is still logged.
+    if (userId && !bypassMetering) {
+      const balance = applyLazyMonthlyReset(await getOrInitBalance(supabase, userId));
+      if (!gate(balance).allowed) {
         return new Response(JSON.stringify({
-          error: "You've hit your daily AI limit (30 messages). Resets at midnight.",
-          limit_reached: true,
-          remaining: 0,
+          error: "You're out of AI credits.",
+          balance_exhausted: true,
         }), {
-          status: 429,
+          status: 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -502,6 +477,42 @@ serve(async (req) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "stream failed" })}\n\n`));
         } finally {
           controller.close();
+
+          // Meter real token usage AFTER the response is fully streamed. Wrap
+          // in EdgeRuntime.waitUntil so the isolate isn't reclaimed before the
+          // DB write finishes once the response body ends. A metering failure
+          // must never break the user's reply.
+          const meter = (async () => {
+            try {
+              if (!userId) return;
+              const finalMsg = await stream.finalMessage();
+              const usage = finalMsg?.usage;
+              if (!usage) return;
+              const cost = costMicros(usage);
+              if (bypassMetering) {
+                // god-mode: log usage for audit, but do not deduct.
+                await recordUsageAggregate(supabase, userId, usage, cost);
+                await supabase.from("token_ledger").insert({
+                  user_id: userId,
+                  delta_micros: 0,
+                  reason: "ai_coach",
+                  reference: "god_mode",
+                  balance_after_micros: 0,
+                });
+              } else {
+                await consume(supabase, userId, cost, "ai_coach", `ai-coach:${userId}:${Date.now()}`);
+                await recordUsageAggregate(supabase, userId, usage, cost);
+              }
+            } catch (e) {
+              console.error("ai-coach metering failed:", e);
+            }
+          })();
+
+          if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+            EdgeRuntime.waitUntil(meter);
+          } else {
+            await meter;
+          }
         }
       },
     });
