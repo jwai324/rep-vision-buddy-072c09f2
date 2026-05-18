@@ -160,6 +160,7 @@ export interface UserPreferences {
 export type Goal = 'hypertrophy' | 'strength' | 'fat_loss' | 'endurance' | 'general';
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
 export type Sex = 'male' | 'female' | 'other' | 'prefer_not_to_say';
+export type SubscriptionTier = 'free' | 'premium';
 
 export interface UserProfile {
   displayName: string | null;
@@ -170,6 +171,7 @@ export interface UserProfile {
   age: number | null;
   sex: Sex | null;
   heightCm: number | null;
+  subscriptionTier: SubscriptionTier;
 }
 
 export interface BodyMeasurement {
@@ -188,6 +190,7 @@ const DEFAULT_PROFILE: UserProfile = {
   age: null,
   sex: null,
   heightCm: null,
+  subscriptionTier: 'premium',
 };
 
 function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; preferences: UserPreferences } {
@@ -265,6 +268,7 @@ export function useStorage() {
             age: row.age ?? null,
             sex: row.sex ?? null,
             heightCm: row.height_cm != null ? Number(row.height_cm) : null,
+            subscriptionTier: (row.subscription_tier as SubscriptionTier) ?? 'premium',
           });
         }
         if (measurementsRes && (measurementsRes as any).data) {
@@ -595,6 +599,7 @@ export function useStorage() {
       age: updated.age,
       sex: updated.sex,
       height_cm: updated.heightCm,
+      subscription_tier: updated.subscriptionTier,
     } as any, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updateProfile error:', error);

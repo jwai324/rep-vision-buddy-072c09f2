@@ -1,15 +1,23 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, Sparkles } from 'lucide-react';
+import { ChevronLeft, Sparkles, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChatContext } from '@/contexts/ChatContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { creditsFromMicros, MICROS_PER_CREDIT } from '@/utils/credits';
+import type { UserProfile, SubscriptionTier } from '@/hooks/useStorage';
 
 interface CreditsScreenProps {
+  profile: UserProfile;
+  onUpdateProfile: (updates: Partial<UserProfile>) => void;
   onBack: () => void;
 }
+
+const TIERS: { value: SubscriptionTier; label: string; blurb: string }[] = [
+  { value: 'free', label: 'Free', blurb: '500 AI credits each month. Top up for more, or upgrade any time.' },
+  { value: 'premium', label: 'Premium', blurb: 'Unlimited AI coach access. (Test mode — no charge while the app is in testing.)' },
+];
 
 interface LedgerRow {
   id: string;
@@ -39,12 +47,26 @@ const signedCredits = (micros: number): string => {
   return c > 0 ? `+${c}` : `${c}`;
 };
 
-export const CreditsScreen: React.FC<CreditsScreenProps> = ({ onBack }) => {
+export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateProfile, onBack }) => {
   const { user } = useAuth();
   const { creditsBalance, refreshBalance } = useChatContext();
   const { toast } = useToast();
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [granting, setGranting] = useState<string | null>(null);
+
+  const tier = profile.subscriptionTier;
+  const isPremium = tier === 'premium';
+
+  const selectTier = (next: SubscriptionTier) => {
+    if (next === tier) return;
+    onUpdateProfile({ subscriptionTier: next });
+    toast({
+      title: next === 'premium' ? 'Premium enabled' : 'Switched to Free',
+      description: next === 'premium'
+        ? 'Unlimited AI coach access (test mode).'
+        : 'You now use the monthly free credit allowance.',
+    });
+  };
 
   const stubSecret = import.meta.env.VITE_GRANT_TOKENS_SECRET as string | undefined;
 
@@ -108,8 +130,44 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ onBack }) => {
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-xl font-extrabold text-foreground">AI Credits</h1>
+        <h1 className="text-xl font-extrabold text-foreground">Subscription</h1>
       </div>
+
+      {/* Plan */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Plan</p>
+        </div>
+        <div className="p-4 grid grid-cols-2 gap-3">
+          {TIERS.map(t => {
+            const active = t.value === tier;
+            return (
+              <button
+                key={t.value}
+                onClick={() => selectTier(t.value)}
+                aria-pressed={active}
+                className={`text-left rounded-xl border p-3 transition-colors ${
+                  active
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-muted-foreground/40'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-bold text-foreground">{t.label}</span>
+                  {active && <Check className="w-4 h-4 text-primary" />}
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">{t.blurb}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {isPremium && (
+        <p className="text-[11px] text-muted-foreground -mt-2 px-1">
+          You're on Premium — the AI coach is unlimited and the credit balance below isn't enforced. Switch to Free to test the metered experience.
+        </p>
+      )}
 
       {/* Balance */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">

@@ -542,7 +542,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       )}
 
       {screen.type === 'credits' && (
-        <CreditsScreen onBack={() => setScreen({ type: 'settings' })} />
+        <CreditsScreen
+          profile={storage.profile}
+          onUpdateProfile={storage.updateProfile}
+          onBack={() => setScreen({ type: 'settings' })}
+        />
       )}
 
       {screen.type === 'analytics' && (
@@ -556,6 +560,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
       {screen.type === 'aiProgramBuilder' && (
         <AIProgramBuilder
+          isPremium={storage.profile?.subscriptionTier !== 'free'}
           onBack={() => setScreen({ type: 'dashboard' })}
           onSaveProgram={async (program, templates) => {
             for (const t of templates) {
