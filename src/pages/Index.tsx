@@ -54,6 +54,10 @@ type Screen =
   | { type: 'customExercises' }
   | { type: 'monthlyCalendar' };
 
+// Clearance for the fixed AI chat FAB (bottom-6 = 24px + h-14 = 56px, plus breathing room)
+// so page content is never hidden behind the bubble.
+const CHAT_BUBBLE_GUTTER = 88;
+
 const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => {
   const { registerScreen } = useChatContext();
   const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise, updateExercise: updateCustomExercise } = useCustomExercisesContext();
@@ -183,7 +187,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       <DesktopSidebar activeScreen={screen.type} onNavigate={handleDesktopNav} />
       <div
         className="flex-1 max-w-3xl mx-auto min-h-screen overflow-x-hidden transition-[padding-bottom] duration-150"
-        style={showMinimizedBar ? { paddingBottom: `calc(${MINIMIZED_BAR_HEIGHT}px + env(safe-area-inset-bottom))` } : undefined}
+        style={{
+          paddingBottom: `calc(${
+            showMinimizedBar ? Math.max(MINIMIZED_BAR_HEIGHT, CHAT_BUBBLE_GUTTER) : CHAT_BUBBLE_GUTTER
+          }px + env(safe-area-inset-bottom))`,
+        }}
       >
       {screen.type === 'dashboard' && (
         <ErrorBoundary fallbackTitle="Dashboard error" onReset={() => setScreen({ type: 'dashboard' })}>
