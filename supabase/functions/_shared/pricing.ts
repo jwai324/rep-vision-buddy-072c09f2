@@ -51,8 +51,17 @@ export function costMicros(usage: AnthropicUsage | null | undefined): number {
 // friendly 3-4 digit number rather than a fractional cent value.
 export const MICROS_PER_CREDIT = 1000;
 
-// Free allowance: ~$0.50 per calendar month, lazily reset.
+// Tier-based monthly metered allowance, lazily reset each calendar month.
+// MUST match the CASE in the consume_tokens / grant_tokens RPCs and the
+// client mirror in src/utils/credits.ts.
+//   free    -> ~$0.50 / month
+//   premium -> ~$7.00 / month
 export const FREE_MONTHLY_MICROS = 500_000;
+export const PREMIUM_MONTHLY_MICROS = 7_000_000;
+
+export function monthlyAllowanceMicros(tier: string | null | undefined): number {
+  return tier === "premium" ? PREMIUM_MONTHLY_MICROS : FREE_MONTHLY_MICROS;
+}
 
 // Paid subscription monthly grant — roughly "30 messages/day for a month".
 // 30 turns/day * 30 days * ~$0.05/turn. TUNE from real token_ledger data once

@@ -92,10 +92,9 @@ const ALL_EQUIPMENT = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 
 interface AIProgramBuilderProps {
   onBack: () => void;
   onSaveProgram: (program: WorkoutProgram, templates: WorkoutTemplate[]) => void;
-  isPremium?: boolean;
 }
 
-export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSaveProgram, isPremium }) => {
+export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSaveProgram }) => {
   const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>('chat');
   const [currentStep, setCurrentStep] = useState(0);
   const [inputs, setInputs] = useState<UserInputs>({
@@ -315,7 +314,6 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     try {
       const { data, error } = await supabase.functions.invoke('generate-program', {
         body: {
-          premium: isPremium === true,
           userInputs: { ...inputs, custom_notes: inputs.additionalNotes },
           exercises: filtered.map(ex => ({
             name: ex.name,

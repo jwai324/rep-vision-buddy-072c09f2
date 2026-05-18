@@ -3,13 +3,14 @@
 // (FOR UPDATE) so concurrent calls (e.g. a turn's initial + follow-up ai-coach
 // invocations) serialize correctly — no read-modify-write race in TS.
 
-import { FREE_MONTHLY_MICROS, RESERVE_MICROS } from "./pricing.ts";
+import { monthlyAllowanceMicros, RESERVE_MICROS } from "./pricing.ts";
 
 export interface BalanceRow {
   user_id: string;
   paid_balance_micros: number;
   free_used_micros: number;
   free_period: string;
+  tier: string | null;
 }
 
 // UTC YYYY-MM. UTC is chosen to match the existing server UTC date convention;
@@ -24,22 +25,42 @@ export async function getOrInitBalance(
   supabase: any,
   userId: string,
 ): Promise<BalanceRow> {
-  const { data } = await supabase
-    .from("user_token_balance")
-    .select("user_id, paid_balance_micros, free_used_micros, free_period")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const [{ data }, { data: profile }] = await Promise.all([
+    supabase
+      .from("user_token_balance")
+      .select("user_id, paid_balance_micros, free_used_micros, free_period")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("subscription_tier")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
 
-  if (data) return data as BalanceRow;
+  const tier: string | null = profile?.subscription_tier ?? null;
+
+  if (data) return { ...(data as Omit<BalanceRow, "tier">), tier };
 
   const fresh: BalanceRow = {
     user_id: userId,
     paid_balance_micros: 0,
     free_used_micros: 0,
     free_period: currentPeriod(),
+    tier,
   };
   // Best-effort lazy insert; ignore conflicts (consume_tokens also self-inits).
-  await supabase.from("user_token_balance").insert(fresh).select().maybeSingle();
+  // tier is derived from profiles, not a column on user_token_balance.
+  await supabase
+    .from("user_token_balance")
+    .insert({
+      user_id: fresh.user_id,
+      paid_balance_micros: fresh.paid_balance_micros,
+      free_used_micros: fresh.free_used_micros,
+      free_period: fresh.free_period,
+    })
+    .select()
+    .maybeSingle();
   return fresh;
 }
 
@@ -53,7 +74,8 @@ export function applyLazyMonthlyReset(row: BalanceRow): BalanceRow {
 }
 
 export function availableMicros(row: BalanceRow): number {
-  const freeRemaining = Math.max(0, FREE_MONTHLY_MICROS - row.free_used_micros);
+  const cap = monthlyAllowanceMicros(row.tier);
+  const freeRemaining = Math.max(0, cap - row.free_used_micros);
   return freeRemaining + row.paid_balance_micros;
 }
 

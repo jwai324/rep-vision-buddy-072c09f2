@@ -15,8 +15,8 @@ interface CreditsScreenProps {
 }
 
 const TIERS: { value: SubscriptionTier; label: string; blurb: string }[] = [
-  { value: 'free', label: 'Free', blurb: '500 AI credits each month. Top up for more, or upgrade any time.' },
-  { value: 'premium', label: 'Premium', blurb: 'Unlimited AI coach access. (Test mode — no charge while the app is in testing.)' },
+  { value: 'free', label: 'Free', blurb: '~$0.50 of AI usage each month (≈500 credits). Top up or upgrade for more.' },
+  { value: 'premium', label: 'Premium', blurb: '~$7 of AI usage each month (≈7,000 credits). Resets monthly; top up if you run out early.' },
 ];
 
 interface LedgerRow {
@@ -165,7 +165,7 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
 
       {isPremium && (
         <p className="text-[11px] text-muted-foreground -mt-2 px-1">
-          You're on Premium — the AI coach is unlimited and the credit balance below isn't enforced. Switch to Free to test the metered experience.
+          You're on Premium — about $7 of AI usage included each month (the balance below). It resets monthly; top up if you run out early.
         </p>
       )}
 
@@ -183,7 +183,7 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
         </div>
         <div className="grid grid-cols-2 border-t border-border">
           <div className="px-4 py-3 border-r border-border">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Free this month</p>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Monthly allowance</p>
             <p className="text-sm font-semibold text-foreground">
               {creditsFromMicros(creditsBalance.freeRemainingMicros)} credits
             </p>

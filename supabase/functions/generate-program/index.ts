@@ -86,11 +86,11 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    const { userInputs, exercises, premium } = await req.json();
+    const { userInputs, exercises } = await req.json();
 
-    // Pre-call balance gate. Real cost is deducted after the call. Premium tier
-    // bypasses the gate (default while the app is in testing).
-    if (userId && premium !== true) {
+    // Pre-call balance gate. Real cost is deducted after the call. The monthly
+    // allowance is tier-based (premium gets a larger bucket; see balance.ts).
+    if (userId) {
       const balance = applyLazyMonthlyReset(await getOrInitBalance(supabase, userId));
       if (!gate(balance).allowed) {
         return new Response(JSON.stringify({
