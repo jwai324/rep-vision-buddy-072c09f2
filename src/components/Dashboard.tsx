@@ -267,8 +267,12 @@ const WeeklyProgramCalendar: React.FC<{
           const hasCompletedWorkout = completedSessions.some(s => !s.isRestDay);
           const hasCompletedRest = completedSessions.some(s => s.isRestDay);
 
-          // Check future workouts for this day
-          const dayFutureWorkouts = futureWorkouts.filter(f => f.date === dayStr);
+          // Check future workouts for this day — only show ones tied to the
+          // active program (or manually scheduled), so disabled programs don't
+          // leak onto the dashboard.
+          const dayFutureWorkouts = futureWorkouts.filter(f =>
+            f.date === dayStr && (f.programId === program?.id || f.programId === 'manual')
+          );
           const hasScheduledWorkout = dayFutureWorkouts.some(f => f.templateId !== 'rest');
           const hasScheduledRest = dayFutureWorkouts.some(f => f.templateId === 'rest');
 
