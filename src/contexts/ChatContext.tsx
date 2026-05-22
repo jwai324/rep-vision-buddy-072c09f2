@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { EXERCISE_DATABASE } from '@/data/exercises';
+import { EXERCISE_DATABASE, type Exercise } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
 import { formatLocalDate } from '@/utils/dateUtils';
 import { deriveBalance, EMPTY_BALANCE, type CreditsBalance } from '@/utils/credits';
@@ -184,20 +185,20 @@ const ChatContext = createContext<ChatContextType>({
 
 export const useChatContext = () => useContext(ChatContext);
 
-// Lean exercise list for context (no secondary muscles)
-const exerciseListLean = EXERCISE_DATABASE.map(e => ({
-  exercise: e.name,
-  id: e.id,
-  primary_body_part: e.primaryBodyPart,
-  equipment: e.equipment,
-  exercise_type: e.exerciseType,
-  movement_pattern: e.movementPattern,
-  difficulty: e.difficulty,
-}));
+type ExerciseLike = Exercise & { isCustom?: boolean };
 
-// Build lookup maps for fast validation
-const EXERCISE_BY_ID = new Map(EXERCISE_DATABASE.map(e => [e.id, e]));
-const EXERCISE_BY_NAME_LOWER = new Map(EXERCISE_DATABASE.map(e => [e.name.toLowerCase(), e]));
+function buildExerciseListLean(list: ExerciseLike[]) {
+  return list.map(e => ({
+    exercise: e.name,
+    id: e.id,
+    primary_body_part: e.primaryBodyPart,
+    equipment: e.equipment,
+    exercise_type: e.exerciseType,
+    movement_pattern: e.movementPattern,
+    difficulty: e.difficulty,
+    ...(e.isCustom ? { is_custom: true } : {}),
+  }));
+}
 
 // Allowed AI actions — anything not here is blocked
 const AI_ALLOWED_ACTIONS = new Set([
@@ -210,18 +211,23 @@ const AI_ALLOWED_ACTIONS = new Set([
 
 // Strict ID-only validation. The fuzzy match is kept ONLY as a suggestion
 // payload so Claude can self-correct on the next turn — it never resolves.
-function fuzzySuggestions(needle: string): string[] {
+function fuzzySuggestions(needle: string, list: ExerciseLike[]): string[] {
   const term = needle.toLowerCase();
   if (!term) return [];
-  return EXERCISE_DATABASE
+  return list
     .filter(e => e.name.toLowerCase().includes(term) || term.includes(e.name.toLowerCase()))
     .slice(0, 5)
     .map(e => e.name);
 }
 
-function validateExerciseReference(exerciseId: string, exerciseName?: string): { valid: boolean; error?: string; suggestions?: string[] } {
-  if (exerciseId && EXERCISE_BY_ID.has(exerciseId)) return { valid: true };
-  const suggestions = fuzzySuggestions(exerciseName || exerciseId || '');
+function validateExerciseReference(
+  exerciseId: string,
+  exerciseName: string | undefined,
+  byId: Map<string, ExerciseLike>,
+  list: ExerciseLike[],
+): { valid: boolean; error?: string; suggestions?: string[] } {
+  if (exerciseId && byId.has(exerciseId)) return { valid: true };
+  const suggestions = fuzzySuggestions(exerciseName || exerciseId || '', list);
   return {
     valid: false,
     suggestions,
@@ -243,12 +249,16 @@ export function isDuplicateSessionAdd(
   return typeof exId === 'string' && coveredExerciseIds.has(exId);
 }
 
-function validateAllExercises(exercises: ExerciseInput[]): { valid: boolean; validated: ExerciseInput[]; errors: string[]; suggestions: string[] } {
+function validateAllExercises(
+  exercises: ExerciseInput[],
+  byId: Map<string, ExerciseLike>,
+  list: ExerciseLike[],
+): { valid: boolean; validated: ExerciseInput[]; errors: string[]; suggestions: string[] } {
   const errors: string[] = [];
   const allSuggestions: string[] = [];
   const validated: ExerciseInput[] = [];
   for (const e of exercises) {
-    const result = validateExerciseReference(e.exerciseId, e.exerciseName);
+    const result = validateExerciseReference(e.exerciseId, e.exerciseName, byId, list);
     if (!result.valid) {
       errors.push(result.error!);
       if (result.suggestions) allSuggestions.push(...result.suggestions);
@@ -302,6 +312,16 @@ export const ChatProvider: React.FC<{
   // a ref so the []-dep refreshBalance callback always reads the current value.
   const tierRef = useRef<string | null | undefined>(undefined);
   tierRef.current = storage?.profile?.subscriptionTier;
+
+  // Merge the user's custom exercises into the resolver so the AI can reference
+  // them in tools (view + swap), even though it cannot create new ones.
+  const { exercises: customExercises } = useCustomExercisesContext();
+  const mergedExercises = useMemo<ExerciseLike[]>(
+    () => [...EXERCISE_DATABASE, ...customExercises.map(e => ({ ...e, isCustom: true as const }))],
+    [customExercises]
+  );
+  const exerciseById = useMemo(() => new Map(mergedExercises.map(e => [e.id, e])), [mergedExercises]);
+  const exerciseListLean = useMemo(() => buildExerciseListLean(mergedExercises), [mergedExercises]);
 
   const registerScreen = useCallback((ctx: ScreenContext) => {
     screenRef.current = ctx;
@@ -393,7 +413,7 @@ export const ChatProvider: React.FC<{
         name: t.name,
         exercises: (t.exercises ?? []).map((e: any) => ({
           exerciseId: e.exerciseId,
-          exerciseName: EXERCISE_BY_ID.get(e.exerciseId)?.name || e.exerciseId,
+          exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
           sets: e.sets,
           targetReps: e.targetReps,
           setType: e.setType,
@@ -443,7 +463,7 @@ export const ChatProvider: React.FC<{
     }
 
     return ctx;
-  }, [storage, memberSince, daysSinceMember, earliestSessionDate]);
+  }, [storage, memberSince, daysSinceMember, earliestSessionDate, exerciseById, exerciseListLean]);
 
   const getSessionRows = useCallback((): SessionExerciseRow[] => {
     if (!isSessionActive()) return [];
@@ -483,7 +503,7 @@ export const ChatProvider: React.FC<{
         if (!args.name || !Array.isArray(args.exercises) || args.exercises.length === 0) {
           return mkInvalid({ kind: 'template', template: null }, 'Template requires a name and at least one exercise.');
         }
-        const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises);
+        const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises, exerciseById, mergedExercises);
         if (!valid) return mkInvalid({ kind: 'template', template: null }, errors.join('\n'), suggestions);
         const newId = crypto.randomUUID();
         const after = {
@@ -491,7 +511,7 @@ export const ChatProvider: React.FC<{
           name: args.name,
           exercises: validated.map(e => ({
             exerciseId: e.exerciseId,
-            exerciseName: EXERCISE_BY_ID.get(e.exerciseId)?.name || e.exerciseId,
+            exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
             sets: e.sets,
             targetReps: e.targetReps,
             setType: e.setType || 'normal',
@@ -517,11 +537,11 @@ export const ChatProvider: React.FC<{
         const before = { kind: 'template' as const, template: { id: existing.id, name: existing.name, exercises: existing.exercises } };
         let exercises = existing.exercises;
         if (args.exercises?.length) {
-          const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises);
+          const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises, exerciseById, mergedExercises);
           if (!valid) return mkInvalid(before, errors.join('\n'), suggestions);
           exercises = validated.map(e => ({
             exerciseId: e.exerciseId,
-            exerciseName: EXERCISE_BY_ID.get(e.exerciseId)?.name || e.exerciseId,
+            exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
             sets: e.sets,
             targetReps: e.targetReps,
             setType: e.setType || 'normal',
@@ -608,14 +628,14 @@ export const ChatProvider: React.FC<{
 
       case 'add_exercise_to_workout': {
         const args = tc.arguments;
-        const validation = validateExerciseReference(args.exerciseId, args.exerciseName);
+        const validation = validateExerciseReference(args.exerciseId, args.exerciseName, exerciseById, mergedExercises);
         if (!validation.valid) return mkInvalid({ kind: 'session', rows: getSessionRows() }, validation.error!, validation.suggestions);
         if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session. Start a workout first.');
         const rows = getSessionRows();
         if (rows.some(r => r.exerciseId === args.exerciseId)) {
           return mkInvalid({ kind: 'session', rows }, 'Exercise is already in the workout.');
         }
-        const exName = EXERCISE_BY_ID.get(args.exerciseId)!.name;
+        const exName = exerciseById.get(args.exerciseId)!.name;
         const sets = args.sets ?? 3;
         const newRow: SessionExerciseRow = {
           exerciseId: args.exerciseId,
@@ -676,13 +696,13 @@ export const ChatProvider: React.FC<{
 
       case 'swap_exercise_in_workout': {
         const args = tc.arguments;
-        const newValidation = validateExerciseReference(args.newExerciseId, args.newExerciseName);
+        const newValidation = validateExerciseReference(args.newExerciseId, args.newExerciseName, exerciseById, mergedExercises);
         if (!newValidation.valid) return mkInvalid({ kind: 'session', rows: getSessionRows() }, newValidation.error!, newValidation.suggestions);
         if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
         const rows = getSessionRows();
         const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
         if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
-        const newName = EXERCISE_BY_ID.get(args.newExerciseId)!.name;
+        const newName = exerciseById.get(args.newExerciseId)!.name;
         const after = rows.map(r => r.exerciseId === args.exerciseId
           ? { ...r, exerciseId: args.newExerciseId, exerciseName: newName }
           : r);
@@ -720,7 +740,7 @@ export const ChatProvider: React.FC<{
           args.analysisType === 'weekly_volume_by_exercise'
         );
         if (needsExercise) {
-          const v = validateExerciseReference(args.exerciseId ?? '', undefined);
+          const v = validateExerciseReference(args.exerciseId ?? '', undefined, exerciseById, mergedExercises);
           if (!v.valid) {
             return { result: { ...meta, success: false, message: v.error, suggestions: v.suggestions } };
           }
@@ -757,7 +777,7 @@ export const ChatProvider: React.FC<{
             const freq: Record<string, number> = {};
             for (const session of recent) {
               for (const ex of session.exercises) {
-                const bp = EXERCISE_DATABASE.find(e => e.id === ex.exerciseId)?.primaryBodyPart || 'Other';
+                const bp = exerciseById.get(ex.exerciseId)?.primaryBodyPart || 'Other';
                 freq[bp] = (freq[bp] || 0) + 1;
               }
             }
@@ -768,7 +788,7 @@ export const ChatProvider: React.FC<{
             const vol: Record<string, number> = {};
             for (const session of recent) {
               for (const ex of session.exercises) {
-                const bp = EXERCISE_DATABASE.find(e => e.id === ex.exerciseId)?.primaryBodyPart || 'Other';
+                const bp = exerciseById.get(ex.exerciseId)?.primaryBodyPart || 'Other';
                 vol[bp] = (vol[bp] || 0) + ex.sets.length;
               }
             }
@@ -781,7 +801,7 @@ export const ChatProvider: React.FC<{
           }
 
           case 'exercise_progression': {
-            const exName = EXERCISE_BY_ID.get(args.exerciseId!)?.name || args.exerciseId!;
+            const exName = exerciseById.get(args.exerciseId!)?.name || args.exerciseId!;
             const prog = exerciseProgression(allHistory, args.exerciseId!, exName, days);
             return { result: { ...meta, exercise_id: prog.exercise_id, exercise_name: prog.exercise_name, sessions: prog.sessions } };
           }
@@ -792,7 +812,7 @@ export const ChatProvider: React.FC<{
           }
 
           case 'weekly_volume_by_exercise': {
-            const exName = EXERCISE_BY_ID.get(args.exerciseId!)?.name || args.exerciseId!;
+            const exName = exerciseById.get(args.exerciseId!)?.name || args.exerciseId!;
             const wv = weeklyVolumeByExercise(allHistory, args.exerciseId!, exName, days);
             return { result: { ...meta, exercise_id: wv.exercise_id, exercise_name: wv.exercise_name, weekly: wv.weekly } };
           }
@@ -822,7 +842,7 @@ export const ChatProvider: React.FC<{
       default:
         return { result: { error: `Action is not allowed.` } };
     }
-  }, [storage, getSessionRows, daysSinceMember]);
+  }, [storage, getSessionRows, daysSinceMember, exerciseById, mergedExercises, memberSince, earliestSessionDate]);
 
   const applyProposal = useCallback(async (id: string) => {
     const proposal = proposals[id];
@@ -1136,7 +1156,7 @@ export const ChatProvider: React.FC<{
 
             if (proposal && isDuplicateSessionAdd(proposal, coveredAddExerciseIds)) {
               const exId = proposal.arguments.exerciseId as string;
-              const exName = EXERCISE_BY_ID.get(exId)?.name || exId;
+              const exName = exerciseById.get(exId)?.name || exId;
               const msg = `${exName} is already in your workout.`;
               newProposals.push({
                 id: tc.id,
