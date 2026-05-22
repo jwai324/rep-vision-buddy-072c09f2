@@ -83,6 +83,13 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
   const [month, setMonth] = useState<Date>(new Date());
   const lookup = useExerciseLookup();
 
+  // Only show future workouts tied to the active program (or manually
+  // scheduled), so disabled/previous programs don't leak onto the calendar.
+  const visibleFutureWorkouts = useMemo(
+    () => futureWorkouts.filter(f => f.programId === activeProgram?.id || f.programId === 'manual'),
+    [futureWorkouts, activeProgram?.id]
+  );
+
   // Build modifier date sets
   const { completedWorkout, completedRest, scheduledWorkout, scheduledRest } = useMemo(() => {
     const cw: Date[] = [];
@@ -94,11 +101,11 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
       const d = parseLocalDate(s.date.length >= 10 ? s.date.substring(0, 10) : s.date);
       (s.isRestDay ? cr : cw).push(d);
     }
-    for (const f of futureWorkouts) {
+    for (const f of visibleFutureWorkouts) {
       const d = parseLocalDate(f.date);
       (f.templateId === 'rest' ? sr : sw).push(d);
     }
-    const hasProgramFutureWorkouts = activeProgram && futureWorkouts.some(f => f.programId === activeProgram.id);
+    const hasProgramFutureWorkouts = activeProgram && visibleFutureWorkouts.some(f => f.programId === activeProgram.id);
     if (activeProgram && !hasProgramFutureWorkouts) {
       const start = activeProgram.startDate ? parseLocalDate(activeProgram.startDate) : new Date();
       const end = addWeeks(start, activeProgram.durationWeeks ?? 8);
@@ -106,7 +113,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
       while (cur < end) {
         const dateStr = format(cur, 'yyyy-MM-dd');
         const hasCompleted = history.some(s => (s.date.length >= 10 ? s.date.substring(0, 10) : s.date) === dateStr);
-        const hasStored = futureWorkouts.some(f => f.date === dateStr);
+        const hasStored = visibleFutureWorkouts.some(f => f.date === dateStr);
         if (!hasCompleted && !hasStored) {
           const ps = getProgramScheduled(cur, activeProgram);
           if (ps) (ps.templateId === 'rest' ? sr : sw).push(new Date(cur));
@@ -115,7 +122,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
       }
     }
     return { completedWorkout: cw, completedRest: cr, scheduledWorkout: sw, scheduledRest: sr };
-  }, [history, futureWorkouts, activeProgram]);
+  }, [history, visibleFutureWorkouts, activeProgram]);
 
   // Compute selected day content
   const dayDetail = useMemo(() => {
@@ -124,10 +131,10 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
       const sd = s.date.length >= 10 ? s.date.substring(0, 10) : s.date;
       return sd === dateStr;
     });
-    const stored = futureWorkouts.find(f => f.date === dateStr);
+    const stored = visibleFutureWorkouts.find(f => f.date === dateStr);
     const programDay = !sessions.length && !stored ? getProgramScheduled(selected, activeProgram) : null;
     return { dateStr, sessions, stored, programDay };
-  }, [selected, history, futureWorkouts, activeProgram]);
+  }, [selected, history, visibleFutureWorkouts, activeProgram]);
 
   const selectedTemplate = useMemo(() => {
     if (dayDetail.stored) return templates.find(t => t.id === dayDetail.stored!.templateId) ?? null;
