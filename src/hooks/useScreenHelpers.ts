@@ -45,7 +45,12 @@ export function useDayClickHandler(
     const todayStr = formatLocalDate();
     const isPast = dateStr < todayStr;
     const hasCompleted = history.some(s => s.date === dateStr);
-    const hasStoredScheduled = futureWorkouts.some(f => f.date === dateStr);
+    // Ignore future workouts left over from previously-active programs — only
+    // the active program's rows (and manually scheduled ones) belong here.
+    const visibleFutureWorkouts = futureWorkouts.filter(
+      f => f.programId === activeProgramId || f.programId === 'manual',
+    );
+    const hasStoredScheduled = visibleFutureWorkouts.some(f => f.date === dateStr);
 
     // Check if active program defines a scheduled day for this date
     let programScheduled: { label: string; templateId: string } | null = null;
@@ -90,7 +95,7 @@ export function useDayClickHandler(
 
     // If a scheduled item exists for this date and nothing is completed → open detail
     if (!hasCompleted) {
-      const stored = futureWorkouts.find(f => f.date === dateStr);
+      const stored = visibleFutureWorkouts.find(f => f.date === dateStr);
       if (stored) {
         setScreen({ type: 'futureWorkoutDetail', futureWorkout: stored });
         return;

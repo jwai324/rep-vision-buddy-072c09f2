@@ -219,7 +219,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onBuildAIProgram={() => setScreen({ type: 'aiProgramBuilder' })}
             onGoToMonthlyCalendar={() => setScreen({ type: 'monthlyCalendar' })}
             onOpenTodayWorkout={(template, dateStr) => {
-              const stored = storage.futureWorkouts.find(f => f.date === dateStr && f.templateId === template.id);
+              const stored = storage.futureWorkouts.find(f =>
+                f.date === dateStr &&
+                f.templateId === template.id &&
+                (f.programId === storage.activeProgramId || f.programId === 'manual'),
+              );
               if (stored) {
                 setScreen({ type: 'futureWorkoutDetail', futureWorkout: stored });
                 return;
