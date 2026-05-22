@@ -1,6 +1,15 @@
-import React, { useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTutorial } from '@/contexts/TutorialContext';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const PAD = 8;
 const TOOLTIP_GAP = 12;
@@ -10,6 +19,12 @@ export const TutorialOverlay: React.FC = () => {
   const { active, steps, index, next, prev, skip } = useTutorial();
   const step = active ? steps[index] : null;
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const [skipNoticeOpen, setSkipNoticeOpen] = useState(false);
+
+  const handleSkip = useCallback(() => {
+    skip();
+    setSkipNoticeOpen(true);
+  }, [skip]);
 
   // Track viewport size to recompute tooltip placement
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
@@ -105,18 +120,34 @@ export const TutorialOverlay: React.FC = () => {
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') skip();
+      if (e.key === 'Escape') handleSkip();
       else if (e.key === 'ArrowRight' || e.key === 'Enter') next();
       else if (e.key === 'ArrowLeft') prev();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, skip, next, prev]);
+  }, [active, handleSkip, next, prev]);
 
-  if (!step) return null;
+  const skipNotice = (
+    <AlertDialog open={skipNoticeOpen} onOpenChange={setSkipNoticeOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Tutorial dismissed</AlertDialogTitle>
+          <AlertDialogDescription>
+            You can replay the tour anytime from <span className="font-semibold text-foreground">Settings → Replay Tutorial</span>.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction onClick={() => setSkipNoticeOpen(false)}>Got it</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  if (!step) return skipNotice;
 
   // If picker (or other blocking modal not containing target) is open, render nothing — let user interact freely
-  if (modalBlocking) return null;
+  if (modalBlocking) return skipNotice;
 
   const isLast = index === steps.length - 1;
   const isFirst = index === 0;
@@ -154,6 +185,8 @@ export const TutorialOverlay: React.FC = () => {
   }
 
   return (
+    <>
+    {skipNotice}
     <div className="fixed inset-0 z-[100] pointer-events-none animate-fade-in">
       {/* Backdrop with spotlight — 4 dim panels around the target so the target stays clickable */}
       {spotlight ? (
@@ -221,7 +254,7 @@ export const TutorialOverlay: React.FC = () => {
         <div className="flex items-start justify-between gap-3 mb-2">
           <h3 className="text-sm font-bold text-foreground leading-tight">{step.title}</h3>
           <button
-            onClick={skip}
+            onClick={handleSkip}
             aria-label="Skip tutorial"
             className="text-muted-foreground hover:text-foreground p-1 -m-1 rounded-md transition-colors"
           >
@@ -244,7 +277,7 @@ export const TutorialOverlay: React.FC = () => {
 
         <div className="flex items-center justify-between gap-2">
           <button
-            onClick={skip}
+            onClick={handleSkip}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5"
           >
             Skip
@@ -270,5 +303,6 @@ export const TutorialOverlay: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
