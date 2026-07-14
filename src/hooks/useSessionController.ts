@@ -49,8 +49,44 @@ type UnregisterFn = () => void;
 let registeredMutations: SessionMutations | null = null;
 const listeners: Set<() => void> = new Set();
 
+// The diff card's Apply button (routed through ChatContext.applyProposal)
+// is the ONLY sanctioned writer to session state via the singleton. If
+// something else reaches these methods in dev, warn loudly so we catch it.
+function assertAllowedSessionWriter(method: string) {
+  const stack = new Error().stack ?? '';
+  if (!stack.includes('applyProposal')) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[session-controller] ${method} called outside applyProposal — this should never happen; the diff card's Apply button is the only sanctioned writer.`,
+      { stack },
+    );
+  }
+}
+
 export function registerSession(mutations: SessionMutations) {
-  registeredMutations = mutations;
+  if (import.meta.env.DEV) {
+    registeredMutations = {
+      ...mutations,
+      addExercise: (...args) => {
+        assertAllowedSessionWriter('addExercise');
+        return mutations.addExercise(...args);
+      },
+      addSets: (...args) => {
+        assertAllowedSessionWriter('addSets');
+        return mutations.addSets(...args);
+      },
+      updateSet: (...args) => {
+        assertAllowedSessionWriter('updateSet');
+        return mutations.updateSet(...args);
+      },
+      swapExercise: (...args) => {
+        assertAllowedSessionWriter('swapExercise');
+        return mutations.swapExercise(...args);
+      },
+    };
+  } else {
+    registeredMutations = mutations;
+  }
   listeners.forEach(fn => fn());
 }
 
