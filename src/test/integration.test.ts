@@ -92,8 +92,8 @@ describe('Invalid input blocking', () => {
     expect(canCompleteSet('135', '10', 'kg')).toBe(true);
   });
 
-  it('canCompleteSet accepts bodyweight 0 weight', () => {
-    expect(canCompleteSet('0', '10', 'kg', true)).toBe(true);
+  it('canCompleteSet accepts 0 weight (bodyweight, empty bar)', () => {
+    expect(canCompleteSet('0', '10', 'kg')).toBe(true);
   });
 });
 

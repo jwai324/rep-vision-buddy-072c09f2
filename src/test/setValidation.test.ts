@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors, hasFieldErrors, isBodyweightExercise } from '@/utils/setValidation';
+import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors, hasFieldErrors } from '@/utils/setValidation';
 
 describe('validateWeight', () => {
   it('rejects empty', () => {
@@ -11,12 +11,8 @@ describe('validateWeight', () => {
     expect(validateWeight('-50', 'kg').error).toMatch(/0.*900.*kg/);
   });
 
-  it('rejects 0 for non-bodyweight', () => {
-    expect(validateWeight('0', 'kg', false).valid).toBe(false);
-  });
-
-  it('allows 0 for bodyweight', () => {
-    expect(validateWeight('0', 'kg', true).valid).toBe(true);
+  it('allows 0 (bodyweight, empty bar, unloaded machine)', () => {
+    expect(validateWeight('0', 'kg').valid).toBe(true);
   });
 
   it('rejects over max kg', () => {
@@ -196,25 +192,14 @@ describe('getSetFieldErrors', () => {
     expect(errs.reps).toBeUndefined();
   });
 
-  it('allows 0 weight for bodyweight exercises', () => {
-    const errs = getSetFieldErrors({ weight: '0', reps: '10', rpe: '' }, 'lbs', 'reps-weight', true);
+  it('allows 0 weight', () => {
+    const errs = getSetFieldErrors({ weight: '0', reps: '10', rpe: '' }, 'lbs', 'reps-weight');
     expect(errs.weight).toBeUndefined();
   });
 
   it('hasFieldErrors returns true when any field invalid', () => {
     expect(hasFieldErrors({ weight: 'bad' })).toBe(true);
     expect(hasFieldErrors({})).toBe(false);
-  });
-});
-
-describe('isBodyweightExercise', () => {
-  it('detects "Bodyweight" in name', () => {
-    expect(isBodyweightExercise('Pull-up (Bodyweight)')).toBe(true);
-    expect(isBodyweightExercise('bodyweight squat')).toBe(true);
-  });
-
-  it('returns false for normal names', () => {
-    expect(isBodyweightExercise('Bench Press')).toBe(false);
   });
 });
 
@@ -236,10 +221,14 @@ describe('canCompleteSet', () => {
   });
 
   it('allows cardio with time only', () => {
-    expect(canCompleteSet('', '', 'kg', false, true, '30')).toBe(true);
+    expect(canCompleteSet('', '', 'kg', true, '30')).toBe(true);
   });
 
   it('blocks cardio with empty time', () => {
-    expect(canCompleteSet('', '', 'kg', false, true, '')).toBe(false);
+    expect(canCompleteSet('', '', 'kg', true, '')).toBe(false);
+  });
+
+  it('allows 0 weight', () => {
+    expect(canCompleteSet('0', '10', 'kg')).toBe(true);
   });
 });
