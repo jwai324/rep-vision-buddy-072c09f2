@@ -22,12 +22,24 @@ interface ExerciseBlock {
   supersetGroup?: number;
 }
 
+export interface ActiveRestTimerSnapshot {
+  status: 'running' | 'paused' | 'completed';
+  exerciseIndex: number;
+  setIndex?: number;
+  durationSeconds: number;
+  originalDurationSeconds: number;
+  elapsedSeconds: number;
+  remainingSeconds: number;
+}
+
 export interface SessionMutations {
   addExercise: (exerciseId: ExerciseId, sets?: number, targetReps?: number, weight?: number) => boolean;
   addSets: (exerciseIdentifier: string, count: number) => boolean;
   updateSet: (exerciseName: string, setNumber: number, updates: { weight?: number; reps?: number }) => boolean;
   swapExercise: (currentExerciseName: string, newExerciseId: ExerciseId) => boolean;
   getBlocks: () => ExerciseBlock[];
+  getStartTime: () => number;
+  getActiveRestTimer: () => ActiveRestTimerSnapshot | null;
 }
 
 type RegisterFn = (mutations: SessionMutations) => void;

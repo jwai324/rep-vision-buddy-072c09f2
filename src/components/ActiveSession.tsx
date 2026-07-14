@@ -729,9 +729,32 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         return found;
       },
       getBlocks: () => blocks,
+      getStartTime: () => startTime.current,
+      getActiveRestTimer: () => {
+        if (!activeTimer) return null;
+        const now = Date.now();
+        let elapsed: number;
+        if (activeTimer.status === 'paused') {
+          elapsed = activeTimer.elapsedAtPause ?? 0;
+        } else if (activeTimer.status === 'running') {
+          elapsed = Math.floor((now - activeTimer.startedAtEpoch) / 1000);
+        } else {
+          elapsed = activeTimer.originalDuration;
+        }
+        const cappedElapsed = Math.min(Math.max(0, elapsed), activeTimer.originalDuration);
+        return {
+          status: activeTimer.status,
+          exerciseIndex: activeTimer.id.blockIdx,
+          setIndex: activeTimer.id.setIdx,
+          durationSeconds: activeTimer.duration,
+          originalDurationSeconds: activeTimer.originalDuration,
+          elapsedSeconds: cappedElapsed,
+          remainingSeconds: Math.max(0, activeTimer.originalDuration - cappedElapsed),
+        };
+      },
     });
     return () => unregisterSession();
-  }, [blocks, defaultDropSetsEnabled]);
+  }, [blocks, defaultDropSetsEnabled, activeTimer]);
 
   // toggleDropSets and addWarmupSet are provided by useBlockMutations hook
 

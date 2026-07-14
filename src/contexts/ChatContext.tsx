@@ -445,19 +445,30 @@ export const ChatProvider: React.FC<{
       const controller = getSessionController();
       if (controller) {
         const blocks = controller.getBlocks();
+        const startTime = controller.getStartTime();
         ctx.active_session = {
-          exercises: blocks.map((b, i) => ({
-            index: i,
-            exerciseId: b.exerciseId,
-            exerciseName: b.exerciseName,
-            sets: b.sets.map(s => ({
-              setNumber: s.setNumber,
-              weight: s.weight,
-              reps: s.reps,
-              completed: s.completed,
-              type: s.type,
-            })),
-          })),
+          started_at: new Date(startTime).toISOString(),
+          elapsed_seconds: Math.max(0, Math.floor((Date.now() - startTime) / 1000)),
+          active_rest_timer: controller.getActiveRestTimer(),
+          exercises: blocks.map((b, i) => {
+            const completedSets = b.sets.filter(s => s.completed).length;
+            return {
+              index: i,
+              exerciseId: b.exerciseId,
+              exerciseName: b.exerciseName,
+              rest_seconds: b.restSeconds,
+              completed_sets: completedSets,
+              total_sets: b.sets.length,
+              fully_completed: completedSets > 0 && completedSets === b.sets.length,
+              sets: b.sets.map(s => ({
+                setNumber: s.setNumber,
+                weight: s.weight,
+                reps: s.reps,
+                completed: s.completed,
+                type: s.type,
+              })),
+            };
+          }),
         };
       }
     }
