@@ -33,6 +33,11 @@ function hasDataForMode(set: WorkoutSet, mode: ExerciseInputMode): boolean {
 
 const COLORS = ['hsl(var(--primary))', '#ef4444', '#3b82f6', '#10b981', '#f97316', '#a855f7'];
 
+// Cardio exercises are plotted as time in minutes regardless of whether the
+// underlying mode is 'time' (elliptical, jump rope) or 'time-distance'
+// (running, rowing) — cardio users think in minutes-per-session.
+type PanelKey = ExerciseInputMode | 'cardio-time';
+
 interface MetricConfig {
   label: string;
   getValue: (set: WorkoutSet) => number | null;
@@ -40,9 +45,9 @@ interface MetricConfig {
   formatTick: (value: number) => string;
 }
 
-function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): MetricConfig {
+function getMetricForKey(key: PanelKey, weightUnit: WeightUnit): MetricConfig {
   const distUnit = distanceUnitFromWeightUnit(weightUnit);
-  switch (mode) {
+  switch (key) {
     case 'reps-weight':
       return {
         label: `Top Working Weight (${weightUnit})`,
@@ -71,6 +76,13 @@ function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): Metr
         formatValue: v => formatMmSs(v),
         formatTick: v => formatMmSs(v),
       };
+    case 'cardio-time':
+      return {
+        label: 'Longest Time (min)',
+        getValue: s => (s.time && s.time > 0 ? s.time / 60 : null),
+        formatValue: v => `${v.toFixed(1)} min`,
+        formatTick: v => `${Math.round(v)}`,
+      };
     case 'distance':
       return {
         label: `Longest Distance (${distUnit})`,
@@ -89,7 +101,7 @@ function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): Metr
 }
 
 interface ChartPanel {
-  mode: ExerciseInputMode;
+  key: PanelKey;
   exIds: string[];
   label: string;
   formatValue: (value: number) => string;
@@ -148,18 +160,26 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
     );
   };
 
-  // Group selected exercises by their input mode so the chart can plot each
-  // mode against the metric that actually has data (#21: non-weight custom
+  // Group selected exercises by their panel key so the chart can plot each
+  // group against the metric that actually has data (#21: non-weight custom
   // exercises produced an empty chart when forced through a weight-only path).
+  // Cardio exercises are pulled onto a dedicated 'cardio-time' panel so their
+  // Y-axis reads in minutes rather than m:ss or km/mi.
   const chartPanels = useMemo<ChartPanel[]>(() => {
     if (selectedExercises.length === 0) return [];
 
-    const groups = new Map<ExerciseInputMode, string[]>();
+    const groups = new Map<PanelKey, string[]>();
     for (const exId of selectedExercises) {
       const mode = getExerciseInputMode(exId, customExercises);
-      const arr = groups.get(mode) ?? [];
+      const isCardio =
+        allExercises.find(e => e.id === exId)?.primaryBodyPart === 'Cardio';
+      const key: PanelKey =
+        isCardio && (mode === 'time' || mode === 'time-distance')
+          ? 'cardio-time'
+          : mode;
+      const arr = groups.get(key) ?? [];
       arr.push(exId);
-      groups.set(mode, arr);
+      groups.set(key, arr);
     }
 
     const sorted = [...history]
@@ -167,8 +187,8 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
       .sort((a, b) => a.date.localeCompare(b.date));
 
     const panels: ChartPanel[] = [];
-    for (const [mode, exIds] of groups) {
-      const metric = getMetricForMode(mode, weightUnit);
+    for (const [key, exIds] of groups) {
+      const metric = getMetricForKey(key, weightUnit);
       const data = sorted
         .map(session => {
           const point: Record<string, unknown> = {
@@ -190,7 +210,7 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
 
       if (data.length > 0) {
         panels.push({
-          mode,
+          key,
           exIds,
           label: metric.label,
           formatValue: metric.formatValue,
@@ -200,7 +220,7 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
       }
     }
     return panels;
-  }, [history, selectedExercises, customExercises, weightUnit]);
+  }, [history, selectedExercises, customExercises, allExercises, weightUnit]);
 
   const getExerciseName = (id: string) => allExercises.find(e => e.id === id)?.name || id;
 
@@ -266,7 +286,7 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
         <div className="text-center py-8 text-muted-foreground text-sm">No data for selected exercises.</div>
       ) : (
         chartPanels.map(panel => (
-          <div key={panel.mode} className="bg-card rounded-xl border border-border p-4">
+          <div key={panel.key} className="bg-card rounded-xl border border-border p-4">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">
               {panel.label}
             </p>
@@ -278,7 +298,7 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
                   <YAxis
                     tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                     tickFormatter={panel.formatTick}
-                    width={panel.mode === 'time' ? 44 : panel.mode === 'band' ? 44 : 40}
+                    width={panel.key === 'time' ? 44 : panel.key === 'band' ? 44 : 40}
                   />
                   <Tooltip
                     contentStyle={{
