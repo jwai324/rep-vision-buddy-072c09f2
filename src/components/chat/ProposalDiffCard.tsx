@@ -168,18 +168,18 @@ const SessionDiff: React.FC<{ proposal: Proposal }> = ({ proposal }) => {
 
   for (const r of before) {
     if (!afterMap.has(r.exerciseId)) {
-      lines.push({ mark: 'remove', text: `${r.exerciseName} (${formatSetSummary(r.sets)})` });
+      lines.push({ mark: 'remove', text: `Remove: ${r.exerciseName} (${formatSetSummary(r.sets)})` });
     }
   }
   for (const r of after) {
     const prev = beforeMap.get(r.exerciseId);
     if (!prev) {
-      lines.push({ mark: 'add', text: `${r.exerciseName} (${formatSetSummary(r.sets)})` });
+      lines.push({ mark: 'add', text: `Add: ${r.exerciseName} (${formatSetSummary(r.sets)})` });
       continue;
     }
     const setsChanged = JSON.stringify(prev.sets) !== JSON.stringify(r.sets);
     if (setsChanged) {
-      lines.push({ mark: 'change', text: `${r.exerciseName}: ${formatSetSummary(prev.sets)} → ${formatSetSummary(r.sets)}` });
+      lines.push({ mark: 'change', text: `Change ${r.exerciseName}: ${formatSetSummary(prev.sets)} → ${formatSetSummary(r.sets)}` });
     }
   }
 
@@ -189,10 +189,15 @@ const SessionDiff: React.FC<{ proposal: Proposal }> = ({ proposal }) => {
 
   return (
     <div className="space-y-1">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Active session</div>
+      {proposal.status === 'pending' && (
+        <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 border border-amber-500/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-500">
+          <AlertTriangle className="w-3 h-3" />
+          Proposed — not yet in your workout
+        </div>
+      )}
       {lines.map((line, i) => (
         <div key={i} className={cn('text-xs py-0.5', markClass[line.mark])}>
-          {line.mark === 'add' ? '+ ' : line.mark === 'remove' ? '− ' : '~ '}{line.text}
+          {line.text}
         </div>
       ))}
     </div>
@@ -224,9 +229,16 @@ export const ProposalDiffCard: React.FC<Props> = ({ proposal, templateNameById, 
     proposal.before.kind === 'session' ? <SessionDiff proposal={proposal} /> :
     null;
 
+  const isPendingSession = proposal.before.kind === 'session' && proposal.status === 'pending';
+
   return (
     <div className="mt-2 pt-2 border-t border-border">
-      <div className="rounded-lg bg-background/40 border border-border px-3 py-2 space-y-2">
+      <div className={cn(
+        'rounded-lg px-3 py-2 space-y-2',
+        isPendingSession
+          ? 'bg-amber-500/5 border border-dashed border-amber-500/50'
+          : 'bg-background/40 border border-border',
+      )}>
         <div className="text-xs font-medium text-foreground">{proposal.summary}</div>
         {body}
         {proposal.status === 'pending' && (
