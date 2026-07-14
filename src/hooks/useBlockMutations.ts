@@ -78,9 +78,8 @@ export function useBlockMutations(
 
       if (!wasCompleted) {
         const mode = getExerciseInputMode(block.exerciseId, customExercises);
-        const isBodyweight = block.exerciseName.toLowerCase().includes('bodyweight') || (EXERCISES[block.exerciseId]?.name ?? '').toLowerCase().includes('bodyweight');
         const isCardio = isTimeBased(mode);
-        if (!canCompleteSet(set.weight, set.reps, weightUnit, isBodyweight, isCardio, set.time, mode, set.distance)) {
+        if (!canCompleteSet(set.weight, set.reps, weightUnit, isCardio, set.time, mode, set.distance)) {
           const errorMsg = isTimeBased(mode) ? 'Enter a time before completing this set.'
             : isDistanceBased(mode) ? 'Enter a distance before completing this set.'
             : mode === 'reps' ? 'Enter reps before completing this set.'

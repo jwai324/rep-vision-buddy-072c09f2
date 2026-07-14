@@ -7,7 +7,7 @@ import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer'
 import { BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { fromKg } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
-import { getSetFieldErrors, hasFieldErrors, isBodyweightExercise, type SetFieldErrors } from '@/utils/setValidation';
+import { getSetFieldErrors, hasFieldErrors, type SetFieldErrors } from '@/utils/setValidation';
 import type { WeightUnit } from '@/hooks/useStorage';
 import type { ExerciseBlock, SetRow, DropRow, PersistedTimer, RunningSetState } from '@/types/activeSession';
 
@@ -466,8 +466,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
         const gridCols = getGridCols(inputMode);
         const setLabel = set.type === 'warmup' ? `W${set.setNumber}` : set.setNumber;
         const setLabelClass = `text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`;
-        const isBw = isBodyweightExercise(block.exerciseName);
-        const setErrors = getSetFieldErrors({ weight: set.weight, reps: set.reps, rpe: set.rpe }, weightUnit, inputMode, isBw);
+        const setErrors = getSetFieldErrors({ weight: set.weight, reps: set.reps, rpe: set.rpe }, weightUnit, inputMode);
         const setHasError = hasFieldErrors(setErrors);
         const errorRingClass = (field: keyof SetFieldErrors) => setErrors[field]
           ? 'ring-1 ring-destructive focus:ring-destructive'

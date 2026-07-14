@@ -20,16 +20,10 @@ export function weightRangeMessage(unit: WeightUnit): string {
 }
 
 /**
- * Validate a weight value in the user's display unit.
- * @param value - raw input string
- * @param unit - user's weight unit
- * @param isBodyweight - if true, 0 is allowed
+ * Validate a weight value in the user's display unit. 0 is allowed —
+ * bodyweight movements, unloaded bar warmups, and bar-only sets all log as 0.
  */
-export function validateWeight(
-  value: string,
-  unit: WeightUnit,
-  isBodyweight = false,
-): ValidationResult {
+export function validateWeight(value: string, unit: WeightUnit): ValidationResult {
   if (value === '' || value === undefined) return { valid: false, error: 'Required' };
 
   const num = parseFloat(value);
@@ -40,7 +34,6 @@ export function validateWeight(
   const rangeMsg = weightRangeMessage(unit);
 
   if (num < 0) return { valid: false, error: rangeMsg };
-  if (num === 0 && !isBodyweight) return { valid: false, error: 'Weight required' };
   if (num > max) return { valid: false, error: rangeMsg };
   if (num > warn) return { valid: true, warning: `That's very heavy (${num} ${unit})` };
 
@@ -85,7 +78,6 @@ export function canCompleteSet(
   weight: string,
   reps: string,
   unit: WeightUnit,
-  isBodyweight = false,
   isCardio = false,
   time = '',
   mode?: ExerciseInputMode,
@@ -118,7 +110,7 @@ export function canCompleteSet(
       }
       case 'reps-weight':
       default: {
-        const weightResult = validateWeight(weight, unit, isBodyweight);
+        const weightResult = validateWeight(weight, unit);
         const repsResult = validateReps(reps);
         return weightResult.valid && repsResult.valid;
       }
@@ -130,8 +122,8 @@ export function canCompleteSet(
     const timeVal = parseFloat(time);
     return !isNaN(timeVal) && timeVal > 0;
   }
-  
-  const weightResult = validateWeight(weight, unit, isBodyweight);
+
+  const weightResult = validateWeight(weight, unit);
   const repsResult = validateReps(reps);
   return weightResult.valid && repsResult.valid;
 }
@@ -151,7 +143,6 @@ export function getSetFieldErrors(
   fields: { weight?: string; reps?: string; rpe?: string },
   unit: WeightUnit,
   mode: ExerciseInputMode | undefined,
-  isBodyweight = false,
 ): SetFieldErrors {
   const errors: SetFieldErrors = {};
 
@@ -159,7 +150,7 @@ export function getSetFieldErrors(
   const repsApplies = mode === undefined || mode === 'reps-weight' || mode === 'reps' || mode === 'band';
 
   if (weightApplies && fields.weight && fields.weight !== '') {
-    const r = validateWeight(fields.weight, unit, isBodyweight);
+    const r = validateWeight(fields.weight, unit);
     if (!r.valid) errors.weight = r.error;
   }
   if (repsApplies && fields.reps && fields.reps !== '') {
@@ -175,8 +166,4 @@ export function getSetFieldErrors(
 
 export function hasFieldErrors(errors: SetFieldErrors): boolean {
   return !!(errors.weight || errors.reps || errors.rpe);
-}
-
-export function isBodyweightExercise(exerciseName: string): boolean {
-  return exerciseName.toLowerCase().includes('bodyweight');
 }
