@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, distanceUnitFromWeightUnit, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
@@ -651,81 +652,95 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // Register session controller for AI chat mutations
   useEffect(() => {
     registerSession({
+      // Each writer wraps setBlocks in flushSync so the functional updater
+      // runs and commits before the outer function returns. Without flushSync,
+      // React 18 batches the update inside the AI-chat Apply event handler;
+      // the updater fires during the next render, so `added`/`found` are
+      // still false when we return, and applyProposal mis-marks the proposal
+      // as "rejected — already in workout" even though the exercise was added.
       addExercise: (exerciseId, sets = 3, targetReps, weight) => {
         let added = false;
-        setBlocks(prev => {
-          if (prev.some(b => b.exerciseId === exerciseId)) return prev;
-          added = true;
-          return [...prev, {
-            exerciseId,
-            exerciseName: exerciseLookup[exerciseId] ?? exerciseId,
-            restSeconds: 90,
-            dropSetsEnabled: defaultDropSetsEnabled,
-            sets: Array.from({ length: sets }, (_, i) => ({
-              setNumber: i + 1,
-              weight: weight?.toString() ?? '',
-              reps: targetReps?.toString() ?? '',
-              completed: false,
-              type: 'normal' as SetType,
-              rpe: '',
-              time: '',
-            })),
-          }];
+        flushSync(() => {
+          setBlocks(prev => {
+            if (prev.some(b => b.exerciseId === exerciseId)) return prev;
+            added = true;
+            return [...prev, {
+              exerciseId,
+              exerciseName: exerciseLookup[exerciseId] ?? exerciseId,
+              restSeconds: 90,
+              dropSetsEnabled: defaultDropSetsEnabled,
+              sets: Array.from({ length: sets }, (_, i) => ({
+                setNumber: i + 1,
+                weight: weight?.toString() ?? '',
+                reps: targetReps?.toString() ?? '',
+                completed: false,
+                type: 'normal' as SetType,
+                rpe: '',
+                time: '',
+              })),
+            }];
+          });
         });
         return added;
       },
       addSets: (identifier, count) => {
         let found = false;
-        setBlocks(prev => prev.map((block, idx) => {
-          const match = block.exerciseName.toLowerCase() === identifier.toLowerCase()
-            || idx.toString() === identifier;
-          if (!match) return block;
-          found = true;
-          const lastSet = block.sets[block.sets.length - 1];
-          const normalCount = block.sets.filter(s => s.type !== 'warmup').length;
-          const newSets = Array.from({ length: count }, (_, i) => ({
-            setNumber: normalCount + i + 1,
-            weight: lastSet?.weight ?? '',
-            reps: lastSet?.reps ?? '',
-            completed: false,
-            type: (lastSet?.type === 'warmup' ? 'normal' : lastSet?.type ?? 'normal') as SetType,
-            rpe: '',
-            time: '',
+        flushSync(() => {
+          setBlocks(prev => prev.map((block, idx) => {
+            const match = block.exerciseName.toLowerCase() === identifier.toLowerCase()
+              || idx.toString() === identifier;
+            if (!match) return block;
+            found = true;
+            const lastSet = block.sets[block.sets.length - 1];
+            const normalCount = block.sets.filter(s => s.type !== 'warmup').length;
+            const newSets = Array.from({ length: count }, (_, i) => ({
+              setNumber: normalCount + i + 1,
+              weight: lastSet?.weight ?? '',
+              reps: lastSet?.reps ?? '',
+              completed: false,
+              type: (lastSet?.type === 'warmup' ? 'normal' : lastSet?.type ?? 'normal') as SetType,
+              rpe: '',
+              time: '',
+            }));
+            return { ...block, sets: [...block.sets, ...newSets] };
           }));
-          return { ...block, sets: [...block.sets, ...newSets] };
-        }));
+        });
         return found;
       },
       updateSet: (exerciseName, setNumber, updates) => {
         let found = false;
-        setBlocks(prev => prev.map(block => {
-          if (block.exerciseName.toLowerCase() !== exerciseName.toLowerCase()) return block;
-          return {
-            ...block,
-            sets: block.sets.map(set => {
-              if (set.setNumber !== setNumber) return set;
-              found = true;
-              return {
-                ...set,
-                ...(updates.weight !== undefined ? { weight: updates.weight.toString() } : {}),
-                ...(updates.reps !== undefined ? { reps: updates.reps.toString() } : {}),
-              };
-            }),
-          };
-        }));
+        flushSync(() => {
+          setBlocks(prev => prev.map(block => {
+            if (block.exerciseName.toLowerCase() !== exerciseName.toLowerCase()) return block;
+            return {
+              ...block,
+              sets: block.sets.map(set => {
+                if (set.setNumber !== setNumber) return set;
+                found = true;
+                return {
+                  ...set,
+                  ...(updates.weight !== undefined ? { weight: updates.weight.toString() } : {}),
+                  ...(updates.reps !== undefined ? { reps: updates.reps.toString() } : {}),
+                };
+              }),
+            };
+          }));
+        });
         return found;
       },
       swapExercise: (currentName, newExerciseId) => {
         let found = false;
-        setBlocks(prev => prev.map(block => {
-          if (block.exerciseName.toLowerCase() !== currentName.toLowerCase()) return block;
-          found = true;
-          return {
-            ...block,
-            exerciseId: newExerciseId,
-            exerciseName: exerciseLookup[newExerciseId] ?? newExerciseId,
-          };
-        }));
+        flushSync(() => {
+          setBlocks(prev => prev.map(block => {
+            if (block.exerciseName.toLowerCase() !== currentName.toLowerCase()) return block;
+            found = true;
+            return {
+              ...block,
+              exerciseId: newExerciseId,
+              exerciseName: exerciseLookup[newExerciseId] ?? newExerciseId,
+            };
+          }));
+        });
         return found;
       },
       getBlocks: () => blocks,
