@@ -8,8 +8,8 @@ import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import {
   getExerciseInputMode,
   type ExerciseInputMode,
-  formatDistance,
   distanceUnitFromWeightUnit,
+  fromMeters,
   getBandLevelShortLabel,
 } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
@@ -37,6 +37,7 @@ interface MetricConfig {
   label: string;
   getValue: (set: WorkoutSet) => number | null;
   formatValue: (value: number) => string;
+  formatTick: (value: number) => string;
 }
 
 function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): MetricConfig {
@@ -47,36 +48,42 @@ function getMetricForMode(mode: ExerciseInputMode, weightUnit: WeightUnit): Metr
         label: `Top Working Weight (${weightUnit})`,
         getValue: s => (s.weight && s.weight > 0 ? fromKg(s.weight, weightUnit) : null),
         formatValue: v => `${v} ${weightUnit}`,
+        formatTick: v => `${v}`,
       };
     case 'band':
       return {
         label: 'Top Band Level',
         getValue: s => (s.weight && s.weight > 0 ? s.weight : null),
         formatValue: v => `Lv ${v} · ${getBandLevelShortLabel(v)}`,
+        formatTick: v => `Lv ${v}`,
       };
     case 'reps':
       return {
         label: 'Top Reps',
         getValue: s => (s.reps > 0 ? s.reps : null),
         formatValue: v => `${v} reps`,
+        formatTick: v => `${v}`,
       };
     case 'time':
       return {
         label: 'Longest Time',
         getValue: s => (s.time && s.time > 0 ? s.time : null),
         formatValue: v => formatMmSs(v),
+        formatTick: v => formatMmSs(v),
       };
     case 'distance':
       return {
-        label: 'Longest Distance',
-        getValue: s => (s.distance && s.distance > 0 ? s.distance : null),
-        formatValue: v => formatDistance(v, distUnit),
+        label: `Longest Distance (${distUnit})`,
+        getValue: s => (s.distance && s.distance > 0 ? fromMeters(s.distance, distUnit) : null),
+        formatValue: v => `${v.toFixed(2)} ${distUnit}`,
+        formatTick: v => v.toFixed(1),
       };
     case 'time-distance':
       return {
-        label: 'Longest Distance',
-        getValue: s => (s.distance && s.distance > 0 ? s.distance : null),
-        formatValue: v => formatDistance(v, distUnit),
+        label: `Longest Distance (${distUnit})`,
+        getValue: s => (s.distance && s.distance > 0 ? fromMeters(s.distance, distUnit) : null),
+        formatValue: v => `${v.toFixed(2)} ${distUnit}`,
+        formatTick: v => v.toFixed(1),
       };
   }
 }
@@ -86,6 +93,7 @@ interface ChartPanel {
   exIds: string[];
   label: string;
   formatValue: (value: number) => string;
+  formatTick: (value: number) => string;
   data: Array<Record<string, unknown>>;
 }
 
@@ -181,7 +189,14 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
         .filter((p): p is Record<string, unknown> => p !== null);
 
       if (data.length > 0) {
-        panels.push({ mode, exIds, label: metric.label, formatValue: metric.formatValue, data });
+        panels.push({
+          mode,
+          exIds,
+          label: metric.label,
+          formatValue: metric.formatValue,
+          formatTick: metric.formatTick,
+          data,
+        });
       }
     }
     return panels;
@@ -260,7 +275,11 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
                 <LineChart data={panel.data}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-                  <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    tickFormatter={panel.formatTick}
+                    width={panel.mode === 'time' ? 44 : panel.mode === 'band' ? 44 : 40}
+                  />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: 'hsl(var(--popover))',
