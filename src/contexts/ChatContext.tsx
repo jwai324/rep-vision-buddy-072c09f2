@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { EXERCISE_DATABASE, type Exercise } from '@/data/exercises';
+import type { WorkoutSession } from '@/types/workout';
 import { supabase } from '@/integrations/supabase/client';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
@@ -19,7 +20,7 @@ export interface ChatMessage {
   isLoading?: boolean;
 }
 
-interface ExerciseInput {
+export interface ExerciseInput {
   exerciseId: string;
   exerciseName?: string;
   sets?: number;
@@ -29,7 +30,7 @@ interface ExerciseInput {
   targetRpe?: number;
 }
 
-interface ProgramDayInput {
+export interface ProgramDayInput {
   label: string;
   templateId: string;
   frequency?: { type: 'weekly'; weekday: number };
@@ -120,6 +121,11 @@ export interface Proposal {
   id: string;
   messageId: string;
   toolName: ToolCall['name'];
+  // Tool args flow in from Anthropic's streamed JSON — the shape depends on
+  // toolName. Narrowing this into a discriminated union across every tool is
+  // a bigger refactor than this cleanup pass; callers already switch on
+  // toolName and read known fields, so we accept the loose typing here.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   arguments: any;
   before: ProposalSnapshot;
   after: ProposalSnapshot;
@@ -138,7 +144,7 @@ interface RawToolCallAccumulator {
 
 interface ScreenContext {
   screen: string;
-  data?: any;
+  data?: unknown;
 }
 
 interface ChatContextType {
@@ -300,6 +306,13 @@ class BalanceExhaustedError extends Error {
 
 export const ChatProvider: React.FC<{
   children: React.ReactNode;
+  // storage is useStorage()'s return value. Typing this as
+  // ReturnType<typeof useStorage> exposes latent shape mismatches between
+  // Proposal.ExerciseInput/ProgramDayInput (narrow, tool-side) and
+  // WorkoutTemplate/WorkoutProgram (wide, storage-side) — resolving them
+  // is a real refactor, not a lint pass, so we keep `any` here with an
+  // explicit disable so it's flagged rather than hidden.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   storage: any;
 }> = ({ children, storage }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -394,7 +407,10 @@ export const ChatProvider: React.FC<{
     const measurements: { id: string; date: string; weightKg: number }[] = storage.bodyMeasurements ?? [];
     const latestBw = measurements[0];
 
-    const ctx: any = {
+    // Serialized as JSON into the AI's system prompt. The concrete keys depend
+    // on user state (only include user_templates when non-empty, etc.) so the
+    // record is dynamic — `unknown` values are fine here.
+    const ctx: Record<string, unknown> = {
       current_screen: screenRef.current.screen,
       current_data: screenRef.current.data || {},
       available_exercises: exerciseListLean,
@@ -419,6 +435,7 @@ export const ChatProvider: React.FC<{
     };
 
     if (storage.templates?.length > 0) {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
       ctx.user_templates = storage.templates.map((t: any) => ({
         id: t.id,
         name: t.name,
@@ -433,8 +450,10 @@ export const ChatProvider: React.FC<{
           ...(e.supersetGroup != null ? { supersetGroup: e.supersetGroup } : {}),
         })),
       }));
+      /* eslint-enable @typescript-eslint/no-explicit-any */
     }
     if (storage.programs?.length > 0) {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
       ctx.user_programs = storage.programs.map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -446,6 +465,7 @@ export const ChatProvider: React.FC<{
           ...(d.frequency ? { frequency: d.frequency } : {}),
         })),
       }));
+      /* eslint-enable @typescript-eslint/no-explicit-any */
     }
     if (storage.activeProgramId) {
       ctx.active_program_id = storage.activeProgramId;
@@ -569,6 +589,7 @@ export const ChatProvider: React.FC<{
       case 'edit_template': {
         const args = tc.arguments;
         if (!args.templateId) return mkInvalid({ kind: 'template', template: null }, 'Template ID is required.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existing = storage.templates.find((t: any) => t.id === args.templateId);
         if (!existing) return mkInvalid({ kind: 'template', template: null }, `Template "${args.templateId}" not found.`);
         const before = { kind: 'template' as const, template: { id: existing.id, name: existing.name, exercises: existing.exercises } };
@@ -600,6 +621,7 @@ export const ChatProvider: React.FC<{
       case 'delete_template': {
         const args = tc.arguments;
         if (!args.templateId) return mkInvalid({ kind: 'template', template: null }, 'Template ID is required.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existing = storage.templates.find((t: any) => t.id === args.templateId);
         if (!existing) return mkInvalid({ kind: 'template', template: null }, `Template "${args.templateId}" not found.`);
         const before = { kind: 'template' as const, template: { id: existing.id, name: existing.name, exercises: existing.exercises } };
@@ -633,6 +655,7 @@ export const ChatProvider: React.FC<{
       case 'delete_program': {
         const args = tc.arguments;
         if (!args.programId) return mkInvalid({ kind: 'program', program: null }, 'Program ID is required.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existing = storage.programs.find((p: any) => p.id === args.programId);
         if (!existing) return mkInvalid({ kind: 'program', program: null }, `Program "${args.programId}" not found.`);
         const before = { kind: 'program' as const, program: { id: existing.id, name: existing.name, days: existing.days, durationWeeks: existing.durationWeeks } };
@@ -649,9 +672,11 @@ export const ChatProvider: React.FC<{
       case 'set_active_program': {
         const args = tc.arguments;
         if (!args.programId) return mkInvalid({ kind: 'active-program', programId: null, programName: null }, 'Program ID is required.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const target = storage.programs.find((p: any) => p.id === args.programId);
         if (!target) return mkInvalid({ kind: 'active-program', programId: null, programName: null }, `Program "${args.programId}" not found.`);
         const currentActiveId: string | null = storage.activeProgramId ?? null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const currentActive = currentActiveId ? storage.programs.find((p: any) => p.id === currentActiveId) : null;
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
@@ -768,8 +793,8 @@ export const ChatProvider: React.FC<{
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
         const cutoffStr = formatLocalDate(cutoff);
-        const recent = storage.history.filter((s: any) => s.date >= cutoffStr && !s.isRestDay);
-        const allHistory = storage.history as any[];
+        const allHistory: WorkoutSession[] = storage.history;
+        const recent = allHistory.filter((s) => s.date >= cutoffStr && !s.isRestDay);
 
         const needsExercise = (
           args.analysisType === 'exercise_progression' ||
@@ -788,10 +813,10 @@ export const ChatProvider: React.FC<{
             return { result: {
               ...meta,
               total_workouts: recent.length,
-              total_volume: recent.reduce((s: number, w: any) => s + w.totalVolume, 0),
-              total_sets: recent.reduce((s: number, w: any) => s + w.totalSets, 0),
-              total_reps: recent.reduce((s: number, w: any) => s + w.totalReps, 0),
-              avg_duration_min: recent.length ? Math.round(recent.reduce((s: number, w: any) => s + w.duration, 0) / recent.length / 60) : 0,
+              total_volume: recent.reduce((s, w) => s + w.totalVolume, 0),
+              total_sets: recent.reduce((s, w) => s + w.totalSets, 0),
+              total_reps: recent.reduce((s, w) => s + w.totalReps, 0),
+              avg_duration_min: recent.length ? Math.round(recent.reduce((s, w) => s + w.duration, 0) / recent.length / 60) : 0,
             }};
 
           case 'prs': {
@@ -1116,7 +1141,7 @@ export const ChatProvider: React.FC<{
       const decoder = new TextDecoder();
       let textBuffer = "";
       let assistantContent = "";
-      let toolCalls: RawToolCallAccumulator[] = [];
+      const toolCalls: RawToolCallAccumulator[] = [];
 
       const updateAssistant = () => {
         setMessages(prev => {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, X, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import type { Proposal, ProposalSnapshot, SessionExerciseRow } from '@/contexts/ChatContext';
+import type { Proposal, ProposalSnapshot, SessionExerciseRow, ExerciseInput, ProgramDayInput } from '@/contexts/ChatContext';
 
 const EX_BY_ID = new Map(EXERCISE_DATABASE.map(e => [e.id, e]));
 
@@ -52,29 +52,29 @@ const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot
     return (
       <div className="space-y-1">
         <div className="text-[11px] uppercase tracking-wide text-destructive">Delete "{before.template.name}"</div>
-        {beforeEx.map((e: any, i: number) => (
+        {beforeEx.map((e: ExerciseInput, i: number) => (
           <div key={i} className={cn('text-xs py-0.5', markClass.remove)}>− {formatExerciseRow(e)}</div>
         ))}
       </div>
     );
   }
 
-  const beforeIds = new Set(beforeEx.map((e: any) => e.exerciseId));
-  const afterIds = new Set(afterEx.map((e: any) => e.exerciseId));
+  const beforeIds = new Set(beforeEx.map((e: ExerciseInput) => e.exerciseId));
+  const afterIds = new Set(afterEx.map((e: ExerciseInput) => e.exerciseId));
 
   return (
     <div className="space-y-1">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Edit "{after.template?.name}"</div>
-      {beforeEx.map((e: any, i: number) =>
+      {beforeEx.map((e: ExerciseInput, i: number) =>
         !afterIds.has(e.exerciseId)
           ? <div key={'r-' + i} className={cn('text-xs py-0.5', markClass.remove)}>− {formatExerciseRow(e)}</div>
           : null
       )}
-      {afterEx.map((e: any, i: number) => {
+      {afterEx.map((e: ExerciseInput, i: number) => {
         if (!beforeIds.has(e.exerciseId)) {
           return <div key={'a-' + i} className={cn('text-xs py-0.5', markClass.add)}>+ {formatExerciseRow(e)}</div>;
         }
-        const matching = beforeEx.find((b: any) => b.exerciseId === e.exerciseId);
+        const matching = beforeEx.find((b: ExerciseInput) => b.exerciseId === e.exerciseId);
         const changed = matching && (matching.sets !== e.sets || matching.targetReps !== e.targetReps || matching.restSeconds !== e.restSeconds);
         return (
           <div key={'k-' + i} className={cn('text-xs py-0.5', changed ? markClass.change : markClass.same)}>
@@ -87,28 +87,31 @@ const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot
 };
 
 const ProgramDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot; templateNameById: Record<string, string> }> = ({ before, after, templateNameById }) => {
-  if (before.kind !== 'program' || after.kind !== 'program') return null;
+  // useState MUST come before the early return below — calling it after a
+  // conditional return violates the rules-of-hooks (order-of-calls must be
+  // stable across renders). The value is only read when the branch is taken.
   const [expanded, setExpanded] = useState(false);
+  if (before.kind !== 'program' || after.kind !== 'program') return null;
   const beforeDays = before.program?.days || [];
   const afterDays = after.program?.days || [];
 
-  const renderDay = (d: any, mark: DiffMark) => {
+  const renderDay = (d: ProgramDayInput) => {
     const templateName = d.templateId === 'rest' ? 'rest' : (templateNameById[d.templateId] || d.templateId);
     return `${d.label || '—'} → ${templateName}`;
   };
 
   let header: React.ReactNode;
-  let body: { day: any; mark: DiffMark }[] = [];
+  let body: { day: ProgramDayInput; mark: DiffMark }[] = [];
 
   if (!before.program && after.program) {
     header = <div className="text-[11px] uppercase tracking-wide text-muted-foreground">New program "{after.program.name}" ({afterDays.length} days)</div>;
-    body = afterDays.map((d: any) => ({ day: d, mark: 'add' }));
+    body = afterDays.map((d: ProgramDayInput) => ({ day: d, mark: 'add' }));
   } else if (before.program && !after.program) {
     header = <div className="text-[11px] uppercase tracking-wide text-destructive">Delete "{before.program.name}"</div>;
-    body = beforeDays.map((d: any) => ({ day: d, mark: 'remove' }));
+    body = beforeDays.map((d: ProgramDayInput) => ({ day: d, mark: 'remove' }));
   } else {
     header = <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Edit program</div>;
-    body = afterDays.map((d: any) => ({ day: d, mark: 'same' as DiffMark }));
+    body = afterDays.map((d: ProgramDayInput) => ({ day: d, mark: 'same' as DiffMark }));
   }
 
   const collapsed = body.length > 4 && !expanded;
@@ -119,7 +122,7 @@ const ProgramDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot;
       {header}
       {visible.map((row, i) => (
         <div key={i} className={cn('text-xs py-0.5', markClass[row.mark])}>
-          {row.mark === 'add' ? '+ ' : row.mark === 'remove' ? '− ' : '  '}{renderDay(row.day, row.mark)}
+          {row.mark === 'add' ? '+ ' : row.mark === 'remove' ? '− ' : '  '}{renderDay(row.day)}
         </div>
       ))}
       {body.length > 4 && (

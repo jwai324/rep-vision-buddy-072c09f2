@@ -5,6 +5,17 @@
 
 import { monthlyAllowanceMicros, RESERVE_MICROS } from "./pricing.ts";
 
+// Minimal structural type for the subset of the Supabase client the helpers
+// in this file touch. We can't import SupabaseClient from esm.sh at type-check
+// time (Deno-first), so this stays a duck-typed contract — enough to catch
+// callsite typos without pulling in the full generated Database type.
+export interface SupabaseLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  from(table: string): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: any }>;
+}
+
 export interface BalanceRow {
   user_id: string;
   paid_balance_micros: number;
@@ -22,7 +33,7 @@ export function currentPeriod(): string {
 // Reads the balance row, lazily creating a zeroed row if absent (mirrors how
 // user_ai_usage rows are created lazily — no auth.users trigger change needed).
 export async function getOrInitBalance(
-  supabase: any,
+  supabase: SupabaseLike,
   userId: string,
 ): Promise<BalanceRow> {
   const [{ data }, { data: profile }] = await Promise.all([
@@ -86,7 +97,7 @@ export function gate(row: BalanceRow): { allowed: boolean; available: number } {
 
 // Atomic free-then-paid deduction + ledger insert (Postgres RPC, FOR UPDATE).
 export async function consume(
-  supabase: any,
+  supabase: SupabaseLike,
   userId: string,
   cost: number,
   reason: string,
@@ -103,7 +114,7 @@ export async function consume(
 
 // Atomic paid grant + ledger insert (Postgres RPC, FOR UPDATE).
 export async function grantPaid(
-  supabase: any,
+  supabase: SupabaseLike,
   userId: string,
   micros: number,
   reason: string,
@@ -124,7 +135,7 @@ export async function grantPaid(
 // Upsert the daily analytics aggregate in user_ai_usage (UTC date key, kept for
 // continuity with historical rows and the ai_usage_daily_summary view).
 export async function recordUsageAggregate(
-  supabase: any,
+  supabase: SupabaseLike,
   userId: string,
   usage: {
     input_tokens?: number | null;

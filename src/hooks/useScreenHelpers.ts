@@ -28,7 +28,10 @@ interface DayClickDeps {
   activeProgramId: string | null;
 }
 
-type ScreenSetter = (screen: any) => void;
+// Kept as an opaque callback because Index.tsx owns the Screen union — we
+// can't import that type here without a circular dep. unknown is a safer
+// escape hatch than any (callers still have to narrow at the boundary).
+type ScreenSetter = (screen: unknown) => void;
 
 /**
  * Returns a stable handler for calendar day clicks.

@@ -101,7 +101,7 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
               <YAxis type="category" dataKey="bodyPart" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} width={isMobile ? 78 : 80} />
-              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: '#ffffff' }} labelStyle={{ color: '#ffffff' }} itemStyle={{ color: '#ffffff' }} formatter={(value: number, _: string, entry: any) => [`${value} sessions (${entry.payload.perWeek}/wk)`, 'Frequency']} />
+              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: '#ffffff' }} labelStyle={{ color: '#ffffff' }} itemStyle={{ color: '#ffffff' }} formatter={(value: number, _: string, entry: { payload?: { perWeek?: number } }) => [`${value} sessions (${entry.payload?.perWeek}/wk)`, 'Frequency']} />
               <Bar dataKey="sessions" radius={[0, 4, 4, 0]}>
                 {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
               </Bar>

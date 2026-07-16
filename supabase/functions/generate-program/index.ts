@@ -11,6 +11,17 @@ const corsHeaders = {
 
 const MODEL = "claude-opus-4-7";
 
+// Minimum fields we consume from each exercise in the payload sent by the
+// client. Keeps the map() lambda typed without pulling in the full Exercise
+// definition (which lives in the client bundle).
+interface ExerciseSummary {
+  name: string;
+  primaryBodyPart: string;
+  equipment: string;
+  exerciseType: string;
+  movementPattern: string;
+}
+
 const SYSTEM_PROMPT = `You are a certified strength and conditioning coach building a workout program.
 
 RULES:
@@ -127,7 +138,7 @@ serve(async (req) => {
 - Split preference: ${userInputs.splitPreference || 'No preference'}${customNotes}
 
 Available exercises (use ONLY from this list, names must match exactly):
-${exercises.map((e: any) => `- ${e.name} (${e.primaryBodyPart}, ${e.equipment}, ${e.exerciseType}, ${e.movementPattern})`).join('\n')}`;
+${exercises.map((e: ExerciseSummary) => `- ${e.name} (${e.primaryBodyPart}, ${e.equipment}, ${e.exerciseType}, ${e.movementPattern})`).join('\n')}`;
 
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
@@ -145,13 +156,14 @@ ${exercises.map((e: any) => `- ${e.name} (${e.primaryBodyPart}, ${e.equipment}, 
         ],
         messages: [{ role: "user", content: userPrompt }],
       });
-    } catch (err: any) {
-      const status = err?.status ?? 500;
+    } catch (err) {
+      const errObj = err as { status?: number; message?: string } | undefined;
+      const status = errObj?.status ?? 500;
       if (userId) {
         await supabase.from('ai_error_log').insert({
           user_id: userId,
           error_type: `anthropic_${status}`,
-          error_message: String(err?.message ?? err),
+          error_message: String(errObj?.message ?? err),
         });
       }
       if (status === 429) {
@@ -185,7 +197,7 @@ ${exercises.map((e: any) => `- ${e.name} (${e.primaryBodyPart}, ${e.equipment}, 
       });
     }
 
-    const textBlock = message.content.find((b: any) => b.type === "text");
+    const textBlock = message.content.find((b: { type: string }) => b.type === "text");
     let content = textBlock && "text" in textBlock ? textBlock.text : "";
     content = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
 

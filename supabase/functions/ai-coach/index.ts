@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
 import { costMicros } from "../_shared/pricing.ts";
-import { consume, gate, getOrInitBalance, applyLazyMonthlyReset, recordUsageAggregate } from "../_shared/balance.ts";
+import { consume, gate, getOrInitBalance, applyLazyMonthlyReset, recordUsageAggregate, type SupabaseLike } from "../_shared/balance.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -287,7 +287,30 @@ const tools = [
   },
 ];
 
-async function logError(supabase: any, userId: string | null, errorType: string, errorMessage: string, requestTokens: number = 0) {
+// OpenAI-shaped message payloads the client sends up. The `any` shape below
+// covered these implicit unions; keeping a real interface catches typos and
+// documents the wire format.
+interface OpenAIToolCall {
+  id: string;
+  type?: "function";
+  function: { name: string; arguments: string };
+}
+type OpenAIMessage =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: OpenAIToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string | unknown };
+
+// Anthropic content-block shapes we build up in toAnthropicMessages.
+type AnthropicBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; tool_use_id: string; content: string };
+interface AnthropicMessage {
+  role: "user" | "assistant";
+  content: string | AnthropicBlock[];
+}
+
+async function logError(supabase: SupabaseLike, userId: string | null, errorType: string, errorMessage: string, requestTokens: number = 0) {
   try {
     await supabase.from('ai_error_log').insert({
       user_id: userId,
@@ -306,17 +329,17 @@ async function logError(supabase: any, userId: string | null, errorType: string,
 //   { role: 'assistant', content: string|null, tool_calls: [{id, function:{name, arguments}}] }
 //   { role: 'tool', tool_call_id, content }
 // Anthropic expects user/assistant only, with structured content blocks for tool_use / tool_result.
-function toAnthropicMessages(openaiMessages: any[]): any[] {
-  const out: any[] = [];
+function toAnthropicMessages(openaiMessages: OpenAIMessage[]): AnthropicMessage[] {
+  const out: AnthropicMessage[] = [];
   for (const m of openaiMessages) {
     if (m.role === "user") {
       out.push({ role: "user", content: m.content });
     } else if (m.role === "assistant") {
-      const blocks: any[] = [];
+      const blocks: AnthropicBlock[] = [];
       if (m.content) blocks.push({ type: "text", text: m.content });
       if (m.tool_calls?.length) {
         for (const tc of m.tool_calls) {
-          let input: any = {};
+          let input: Record<string, unknown> = {};
           try { input = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {}; } catch { /* keep {} */ }
           blocks.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
         }
@@ -324,7 +347,7 @@ function toAnthropicMessages(openaiMessages: any[]): any[] {
       out.push({ role: "assistant", content: blocks.length ? blocks : (m.content ?? "") });
     } else if (m.role === "tool") {
       // Merge consecutive tool results into a single user message of tool_result blocks.
-      const block = {
+      const block: AnthropicBlock = {
         type: "tool_result",
         tool_use_id: m.tool_call_id,
         content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
@@ -340,9 +363,17 @@ function toAnthropicMessages(openaiMessages: any[]): any[] {
   return out;
 }
 
+// Minimal shape for the Anthropic stream events we actually consume.
+interface AnthropicStreamEvent {
+  type: string;
+  index?: number;
+  content_block?: { type: string; id?: string; name?: string };
+  delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
+}
+
 // Translate Anthropic's stream events into the OpenAI-shaped SSE chunks that
 // ChatContext.tsx already parses (data: { choices: [{ delta: {...}, finish_reason }] }).
-async function* translateStream(stream: AsyncIterable<any>): AsyncGenerator<string> {
+async function* translateStream(stream: AsyncIterable<AnthropicStreamEvent>): AsyncGenerator<string> {
   // Anthropic content blocks are indexed by position in the response.
   // OpenAI tool_calls are indexed separately (one index per tool call).
   // We track which Anthropic block index corresponds to which OpenAI tool_call index.
@@ -350,13 +381,13 @@ async function* translateStream(stream: AsyncIterable<any>): AsyncGenerator<stri
   let nextToolIndex = 0;
   let finishReason: "stop" | "tool_calls" = "stop";
 
-  const emit = (delta: any, finish: string | null = null) =>
+  const emit = (delta: Record<string, unknown>, finish: string | null = null) =>
     `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 
   for await (const event of stream) {
     if (event.type === "content_block_start") {
       const block = event.content_block;
-      if (block.type === "tool_use") {
+      if (block && block.type === "tool_use" && event.index !== undefined) {
         const toolIndex = nextToolIndex++;
         blockToToolIndex[event.index] = toolIndex;
         finishReason = "tool_calls";
@@ -369,11 +400,11 @@ async function* translateStream(stream: AsyncIterable<any>): AsyncGenerator<stri
           }],
         });
       }
-    } else if (event.type === "content_block_delta") {
+    } else if (event.type === "content_block_delta" && event.delta) {
       const d = event.delta;
       if (d.type === "text_delta") {
         yield emit({ content: d.text });
-      } else if (d.type === "input_json_delta") {
+      } else if (d.type === "input_json_delta" && event.index !== undefined) {
         const toolIndex = blockToToolIndex[event.index];
         if (toolIndex !== undefined) {
           yield emit({
@@ -425,7 +456,7 @@ serve(async (req) => {
 
     const { messages, context, action_results, god_mode } = await req.json();
 
-    const lastUser = [...(messages ?? [])].reverse().find((m: any) => m.role === "user");
+    const lastUser = [...(messages ?? [])].reverse().find((m: OpenAIMessage) => m.role === "user");
     const phraseInMsg = String(lastUser?.content ?? "").trim().toLowerCase() === GOD_MODE_PHRASE;
     const bypassMetering = god_mode === true || phraseInMsg;
 
@@ -540,9 +571,9 @@ serve(async (req) => {
     return new Response(body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error("ai-coach error:", e);
-    const status = e?.status ?? 500;
+    const status = (e as { status?: number } | undefined)?.status ?? 500;
     if (status === 429) {
       return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }), {
         status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },

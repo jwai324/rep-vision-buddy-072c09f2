@@ -4,6 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import type { Database } from '@/integrations/supabase/types';
+import type {
+  BodyMeasurementRow,
+  BodyMeasurementInsert,
+  ProfileRowExtended,
+  ProfileInsertExtended,
+} from '@/integrations/supabase/extended-types';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
 
@@ -271,7 +277,10 @@ export function useStorage() {
           // Uses MAX_ROWS like the other paginated tables so a daily
           // bodyweight logger keeps more than a year of history. Previously
           // capped at 366 rows which silently truncated after ~1 year.
-          (supabase.from('body_measurements' as any).select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_ROWS - 1) as any),
+          // body_measurements isn't in the generated Database type yet, so
+          // the query itself is untyped and the response is asserted to
+          // BodyMeasurementRow[] via unknown (see extended-types.ts).
+          supabase.from('body_measurements' as never).select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_ROWS - 1) as unknown as Promise<{ data: BodyMeasurementRow[] | null; error: unknown }>,
         ]);
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
@@ -284,21 +293,21 @@ export function useStorage() {
           setPreferencesState(mapped.preferences);
         }
         if (profileRes.data) {
-          const row = profileRes.data as any;
+          const row = profileRes.data as ProfileRowExtended;
           setProfileState({
             displayName: row.display_name ?? null,
-            goal: row.goal ?? null,
-            experienceLevel: row.experience_level ?? null,
-            equipment: (row.equipment as string[] | null) ?? [],
-            injuries: (row.injuries as string[] | null) ?? [],
+            goal: (row.goal as Goal | null) ?? null,
+            experienceLevel: (row.experience_level as ExperienceLevel | null) ?? null,
+            equipment: row.equipment ?? [],
+            injuries: row.injuries ?? [],
             age: row.age ?? null,
-            sex: row.sex ?? null,
+            sex: (row.sex as Sex | null) ?? null,
             heightCm: row.height_cm != null ? Number(row.height_cm) : null,
             subscriptionTier: (row.subscription_tier as SubscriptionTier) ?? 'premium',
           });
         }
-        if (measurementsRes && (measurementsRes as any).data) {
-          setBodyMeasurements(((measurementsRes as any).data as any[]).map(r => ({
+        if (measurementsRes?.data) {
+          setBodyMeasurements(measurementsRes.data.map(r => ({
             id: r.id,
             date: r.date,
             weightKg: Number(r.weight_kg),
@@ -637,7 +646,10 @@ export function useStorage() {
     const updated = { ...profile, ...updates };
     const previous = profile;
     setProfileState(updated);
-    const { error } = await supabase.from('profiles').upsert({
+    // ProfileInsertExtended includes the columns missing from the generated
+    // types (goal, experience_level, equipment, etc.). Casting via unknown
+    // keeps this readable and avoids `any`.
+    const profilePayload: ProfileInsertExtended = {
       user_id: user.id,
       display_name: updated.displayName,
       goal: updated.goal,
@@ -648,7 +660,10 @@ export function useStorage() {
       sex: updated.sex,
       height_cm: updated.heightCm,
       subscription_tier: updated.subscriptionTier,
-    } as any, { onConflict: 'user_id' });
+    };
+    const { error } = await supabase
+      .from('profiles')
+      .upsert(profilePayload as unknown as Database['public']['Tables']['profiles']['Insert'], { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] updateProfile error:', error);
       toast.error('Failed to save profile');
@@ -663,9 +678,10 @@ export function useStorage() {
     const newRow: BodyMeasurement = { id, date: dateStr, weightKg };
     const previous = bodyMeasurements;
     setBodyMeasurements(prev => [newRow, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
-    const { error } = await (supabase.from('body_measurements' as any).insert({
-      id, user_id: user.id, date: dateStr, weight_kg: weightKg,
-    } as any) as any);
+    const payload: BodyMeasurementInsert = { id, user_id: user.id, date: dateStr, weight_kg: weightKg };
+    const { error } = await (supabase
+      .from('body_measurements' as never)
+      .insert(payload as never) as unknown as Promise<{ error: unknown }>);
     if (error) {
       console.error('[useStorage] addBodyMeasurement error:', error);
       toast.error('Failed to log bodyweight');
@@ -679,7 +695,10 @@ export function useStorage() {
     if (!user) return false;
     const previous = bodyMeasurements;
     setBodyMeasurements(prev => prev.filter(m => m.id !== id));
-    const { error } = await (supabase.from('body_measurements' as any).delete().eq('id', id) as any);
+    const { error } = await (supabase
+      .from('body_measurements' as never)
+      .delete()
+      .eq('id', id) as unknown as Promise<{ error: unknown }>);
     if (error) {
       console.error('[useStorage] deleteBodyMeasurement error:', error);
       toast.error('Failed to delete measurement');
