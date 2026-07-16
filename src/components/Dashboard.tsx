@@ -89,20 +89,35 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       }
     }
 
-    const displayedSets = ALL_BODY_PARTS.reduce((sum, bp) => sum + (counts[bp] || 0), 0);
+    // Sets in body parts hidden from the grid (Cardio, Neck, Forearms, Full
+    // Body). Surfaced separately so the header can show the honest total
+    // without pretending the hidden work never happened.
+    const hiddenSets = totalSets - ALL_BODY_PARTS.reduce((sum, bp) => sum + (counts[bp] || 0), 0);
 
     const label = weekStart.getMonth() === weekEnd.getMonth()
       ? `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'd')}`
       : `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d')}`;
 
-    return { weeklyData: { counts, totalSets, displayedSets }, weekLabel: label };
+    return { weeklyData: { counts, totalSets, hiddenSets }, weekLabel: label };
   }, [history, weekOffset]);
 
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
       <div className="flex items-center justify-between mb-1">
         <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Weekly Sets</p>
-        <span className="text-xs font-bold text-primary">{weeklyData.displayedSets} total</span>
+        <span
+          className="text-xs font-bold text-primary"
+          title={weeklyData.hiddenSets > 0
+            ? `Includes ${weeklyData.hiddenSets} set${weeklyData.hiddenSets === 1 ? '' : 's'} in categories not shown below (cardio, neck, forearms)`
+            : undefined}
+        >
+          {weeklyData.totalSets} total
+          {weeklyData.hiddenSets > 0 && (
+            <span className="text-muted-foreground/70 font-normal ml-1">
+              ({weeklyData.hiddenSets} not shown)
+            </span>
+          )}
+        </span>
       </div>
       <div className="flex items-center justify-between mb-3">
         <button
