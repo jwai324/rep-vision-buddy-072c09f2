@@ -287,6 +287,17 @@ const COOLDOWN_MS = 2000;
 const MESSAGE_WINDOW = 10;
 const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
+// Sentinel thrown when the server reports balance_exhausted (HTTP 402). Caught
+// separately from real transport/AI errors — running out of credits is an
+// expected end state, not a fault, so it must NOT increment the consecutive
+// error counter that trips a 5-minute chat lockout.
+class BalanceExhaustedError extends Error {
+  constructor() {
+    super('AI credits exhausted');
+    this.name = 'BalanceExhaustedError';
+  }
+}
+
 export const ChatProvider: React.FC<{
   children: React.ReactNode;
   storage: any;
@@ -1065,6 +1076,9 @@ export const ChatProvider: React.FC<{
         const err = await resp.json().catch(() => ({ error: "" }));
         if (err.balance_exhausted && !godMode) {
           setCreditsBalance(prev => ({ ...prev, exhausted: true, availableMicros: 0, credits: 0, estMessagesLeft: 0 }));
+          // Signalled distinctly so the catch block below doesn't tick the
+          // consecutive-error counter — running out of credits is not a fault.
+          throw new BalanceExhaustedError();
         }
         // Gateway-level errors mean the function never ran. Surface a hint at
         // the most common cause (function not deployed to this Supabase
@@ -1279,6 +1293,23 @@ export const ChatProvider: React.FC<{
       }
     } catch (err) {
       console.error('Chat error:', err);
+
+      // Balance-exhausted is a normal terminal state, not a fault. Show the
+      // out-of-credits message and stop — don't tick the consecutive error
+      // counter that would trip the 5-minute lockout on someone who just
+      // needs to top up.
+      if (err instanceof BalanceExhaustedError) {
+        setMessages(prev => {
+          const errMsg = "You're out of AI credits. Top up or check your plan to keep chatting.";
+          const last = prev[prev.length - 1];
+          if (last?.role === 'assistant') {
+            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
+          }
+          return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errMsg, isLoading: false }];
+        });
+        return;
+      }
+
       const newErrorCount = consecutiveErrors + 1;
       setConsecutiveErrors(newErrorCount);
 

@@ -413,6 +413,16 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
+    // Require a signed-in user. Without this the anon key (public in the
+    // client bundle) is enough to hit the endpoint and burn Anthropic tokens
+    // unmetered, since the balance gate below is guarded by `if (userId)`.
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Authentication required." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { messages, context, action_results, god_mode } = await req.json();
 
     const lastUser = [...(messages ?? [])].reverse().find((m: any) => m.role === "user");

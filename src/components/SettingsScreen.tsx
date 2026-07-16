@@ -115,6 +115,7 @@ const DataManagementSection: React.FC = () => {
               {counts.programs > 0 && <li>• {counts.programs} programs</li>}
               {counts.futureWorkouts > 0 && <li>• {counts.futureWorkouts} future workouts</li>}
               {counts.customExercises > 0 && <li>• {counts.customExercises} custom exercises</li>}
+              {counts.bodyMeasurements > 0 && <li>• {counts.bodyMeasurements} bodyweight entries</li>}
               {counts.hasSettings && <li>• Settings & preferences</li>}
               {counts.hasProfile && <li>• Profile info</li>}
             </ul>

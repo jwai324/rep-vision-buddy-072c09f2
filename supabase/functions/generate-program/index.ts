@@ -86,6 +86,16 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
+    // Require a signed-in user. Without this the anon key (public in the
+    // client bundle) is enough to trigger an expensive one-shot generation
+    // with no per-user metering.
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Authentication required." }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { userInputs, exercises } = await req.json();
 
     // Pre-call balance gate. Real cost is deducted after the call. The monthly

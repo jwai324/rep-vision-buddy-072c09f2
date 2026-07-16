@@ -129,6 +129,29 @@ function mapProgram(row: ProgramRow): WorkoutProgram {
   };
 }
 
+// Returns true when nothing that would change which future_workouts exist
+// (or when they should land) has changed between two program states. Renaming
+// the program, editing days that already match, or resaving with identical
+// contents all return true — the caller can then skip the destructive
+// delete-and-regenerate cycle that would otherwise wipe user tweaks
+// (labels edits, recovery activities, manually-shifted dates) on
+// program-linked future_workouts.
+function isProgramScheduleEqual(a: WorkoutProgram, b: WorkoutProgram): boolean {
+  if ((a.durationWeeks ?? 8) !== (b.durationWeeks ?? 8)) return false;
+  if ((a.startDate ?? null) !== (b.startDate ?? null)) return false;
+  if (a.days.length !== b.days.length) return false;
+  for (let i = 0; i < a.days.length; i++) {
+    const da = a.days[i];
+    const db = b.days[i];
+    if (da.templateId !== db.templateId) return false;
+    if (da.label !== db.label) return false;
+    // frequency is a small structured object; JSON equality is sufficient
+    // and avoids threading a per-variant comparator through this hook.
+    if (JSON.stringify(da.frequency ?? null) !== JSON.stringify(db.frequency ?? null)) return false;
+  }
+  return true;
+}
+
 function mapFutureWorkout(row: FutureWorkoutRow): FutureWorkout {
   return {
     id: row.id,
@@ -374,6 +397,14 @@ export function useStorage() {
 
   const saveProgram = useCallback(async (program: WorkoutProgram) => {
     if (!user) return;
+    // Snapshot the pre-save version so we can decide whether the schedule
+    // shape (days, frequencies, duration, startDate) actually changed. A pure
+    // rename or metadata-only edit should NOT wipe program-linked
+    // future_workouts, which carry per-workout state (recovery activities,
+    // completed flags, manually-shifted dates).
+    const existing = programs.find(p => p.id === program.id);
+    const scheduleChanged = !existing || !isProgramScheduleEqual(existing, program);
+
     const { error } = await supabase.from('workout_programs').upsert({
       id: program.id,
       user_id: user.id,
@@ -394,14 +425,28 @@ export function useStorage() {
       return [...prev, program];
     });
 
-    // Regenerate future workouts for this program
-    // Delete old ones for this program
-    await supabase.from('future_workouts').delete().eq('program_id', program.id).eq('user_id', user.id);
-    
+    // Only regenerate future_workouts when the schedule shape actually
+    // changed. Pure renames / metadata edits skip the destructive path.
+    if (!scheduleChanged) return;
+
+    // Regenerate future workouts for this program.
+    // Delete old ones for this program — check for errors so a failed delete
+    // doesn't leave orphaned rows alongside the fresh insert.
+    const { error: deleteError } = await supabase
+      .from('future_workouts')
+      .delete()
+      .eq('program_id', program.id)
+      .eq('user_id', user.id);
+    if (deleteError) {
+      console.error('[useStorage] future workouts delete error:', deleteError);
+      toast.error('Could not refresh program schedule');
+      return;
+    }
+
     const newFws = generateFutureWorkouts(program);
     const today = format(new Date(), 'yyyy-MM-dd');
     const futureFws = newFws.filter(fw => fw.date >= today);
-    
+
     if (futureFws.length > 0) {
       const rows = futureFws.map(fw => ({
         user_id: user.id,
@@ -424,7 +469,7 @@ export function useStorage() {
     } else {
       setFutureWorkouts(prev => prev.filter(fw => fw.programId !== program.id));
     }
-  }, [user]);
+  }, [user, programs]);
 
   const deleteProgram = useCallback(async (id: string) => {
     if (!user) return;
