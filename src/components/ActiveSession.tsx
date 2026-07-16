@@ -243,7 +243,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [newLocationInput, setNewLocationInput] = useState('');
   const [deleteLocationConfirm, setDeleteLocationConfirm] = useState<string | null>(null);
   const [pendingRemoveIdx, setPendingRemoveIdx] = useState<number | null>(null);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(cachedSession?.showExercisePicker ?? false);
   const [pendingExerciseIds, setPendingExerciseIds] = useState<ExerciseId[]>(cachedSession?.pendingExerciseIds ?? []);
   // Transient — not persisted to ActiveSessionCache. A cold reload that resumes the
@@ -252,13 +251,22 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  // Pending session held while we ask the user whether to save a <30s workout.
+  // Replaces the old window.confirm(), which is suppressed by some mobile
+  // WebViews so the guardrail silently defaulted through.
+  const [pendingShortWorkout, setPendingShortWorkout] = useState<WorkoutSession | null>(null);
+  const [discardConfirmInput, setDiscardConfirmInput] = useState('');
   const [showFocusMode, setShowFocusMode] = useState(cachedSession?.showFocusMode ?? false);
   const [hideTimers, setHideTimers] = useState(hideTimersPref);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
-  const [timerPaused, setTimerPaused] = useState(false);
+  const [timerPaused, setTimerPaused] = useState(cachedSession?.timerPaused ?? false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
-  const pausedElapsed = useRef<number | null>(null);
+  // Restore paused elapsed so a mid-pause reload keeps the frozen counter
+  // instead of jumping when the user resumes.
+  const pausedElapsed = useRef<number | null>(
+    cachedSession?.timerPaused ? (cachedSession.pausedElapsedSec ?? cachedSession.elapsedAtCache) : null
+  );
   const updateStickyNotesFn = onUpdateStickyNotes ?? (async () => {});
   const { getStickyNote, setStickyNote } = useStickyNotes(propStickyNotes, updateStickyNotesFn);
 
@@ -347,7 +355,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const cacheStateRef = useRef({
     blocks, workoutName, location, workoutNote, activeTimer,
     restRecords, runningSet, showFocusMode, showExercisePicker,
-    pendingExerciseIds, isEditMode,
+    pendingExerciseIds, isEditMode, timerPaused,
   });
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -358,11 +366,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
     const s = cacheStateRef.current;
     if (s.isEditMode) return;
+    // While paused, pausedElapsed.current holds the frozen elapsed time and
+    // startTime.current is NOT advanced. Persist that snapshot so the
+    // MinimizedSessionBar can display a frozen counter instead of ticking
+    // against the stale startTime.
+    const pausedSec = s.timerPaused ? pausedElapsed.current : null;
     safeWriteCache({
       blocks: s.blocks,
       workoutName: s.workoutName,
       startTimestamp: startTime.current,
-      elapsedAtCache: Math.floor((Date.now() - startTime.current) / 1000),
+      elapsedAtCache: s.timerPaused && pausedSec != null
+        ? pausedSec
+        : Math.floor((Date.now() - startTime.current) / 1000),
       location: s.location,
       workoutNote: s.workoutNote,
       activeTimer: s.activeTimer,
@@ -371,6 +386,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       showFocusMode: s.showFocusMode,
       showExercisePicker: s.showExercisePicker,
       pendingExerciseIds: s.pendingExerciseIds,
+      timerPaused: s.timerPaused,
+      pausedElapsedSec: pausedSec,
     });
   }, []);
 
@@ -381,12 +398,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     cacheStateRef.current = {
       blocks, workoutName, location, workoutNote, activeTimer,
       restRecords, runningSet, showFocusMode, showExercisePicker,
-      pendingExerciseIds, isEditMode,
+      pendingExerciseIds, isEditMode, timerPaused,
     };
     if (isEditMode) return;
     if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
     writeTimerRef.current = setTimeout(flushCache, 500);
-  }, [blocks, workoutName, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds, isEditMode, flushCache]);
+  }, [blocks, workoutName, location, workoutNote, activeTimer, restRecords, runningSet, showFocusMode, showExercisePicker, pendingExerciseIds, isEditMode, timerPaused, flushCache]);
 
   // Flush immediately on page hide / tab switch to background (mobile Safari).
   // flushCache is stable, so listeners are attached once for the session lifetime.
@@ -909,11 +926,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       startedAt = new Date(startTime.current).toISOString();
     }
 
-    // Duration < 30s prompt
-    if (!isEditMode && duration < 30) {
-      if (!confirm('This workout was less than 30 seconds. Save anyway?')) return;
-    }
-
     const finalSession: WorkoutSession = {
       id: isEditMode && editSession ? editSession.id : crypto.randomUUID(),
       date: sessionDate,
@@ -927,6 +939,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       note: workoutNote.trim() || undefined,
       location: location || undefined,
     };
+
+    // Duration < 30s prompt — defer to an AlertDialog instead of the old
+    // window.confirm(), which is suppressed by some mobile in-app WebViews
+    // and returns false (silently blocking the save) on others.
+    if (!isEditMode && duration < 30) {
+      setPendingShortWorkout(finalSession);
+      return;
+    }
 
     // Check whether to prompt user about updating the source template
     const shouldCheckTemplate =
@@ -1087,27 +1107,30 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           {showLocationDropdown && (
             <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg min-w-[180px] py-1">
               {locations.map(loc => (
-                <button
-                  key={loc}
-                  onClick={() => { if (!longPressTimer.current) return; setLocation(loc); setShowLocationDropdown(false); }}
-                  onPointerDown={() => {
-                    longPressTimer.current = setTimeout(() => {
-                      longPressTimer.current = null;
-                      if (loc !== DEFAULT_LOCATION) setDeleteLocationConfirm(loc);
-                    }, 500);
-                  }}
-                  onPointerUp={() => {
-                    if (longPressTimer.current) {
-                      clearTimeout(longPressTimer.current);
-                      setLocation(loc);
-                      setShowLocationDropdown(false);
-                    }
-                  }}
-                  onPointerLeave={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors select-none ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
-                >
-                  {loc}
-                </button>
+                // A row is a select-button plus (for non-default locations) a
+                // trash button. The old design gated onClick on a long-press
+                // timer that only pointer events could set — keyboard users
+                // hit Enter and nothing happened. Now onClick selects, and
+                // delete is a distinct visible affordance.
+                <div key={loc} className="flex items-stretch group">
+                  <button
+                    type="button"
+                    onClick={() => { setLocation(loc); setShowLocationDropdown(false); }}
+                    className={`flex-1 text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors ${loc === location ? 'text-primary font-medium' : 'text-foreground'}`}
+                  >
+                    {loc}
+                  </button>
+                  {loc !== DEFAULT_LOCATION && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setDeleteLocationConfirm(loc); }}
+                      aria-label={`Delete location ${loc}`}
+                      className="px-2 text-muted-foreground/60 hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
               <div className="border-t border-border mt-1 pt-1 px-2 pb-1">
                 <div className="flex items-center gap-1">
@@ -1357,22 +1380,65 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Discard confirmation dialog */}
-      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+      {/* Discard confirmation dialog — requires typing DISCARD so a stray
+          tap on an in-progress workout can't destroy an hour of logging. */}
+      <AlertDialog
+        open={showDiscardConfirm}
+        onOpenChange={(open) => {
+          setShowDiscardConfirm(open);
+          if (!open) setDiscardConfirmInput('');
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard Workout</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to discard this workout? All progress will be lost.
+              All progress will be lost. Type <span className="font-semibold text-foreground">DISCARD</span> to confirm.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <input
+            type="text"
+            value={discardConfirmInput}
+            onChange={(e) => setDiscardConfirmInput(e.target.value)}
+            placeholder="Type DISCARD"
+            autoFocus
+            className="w-full bg-secondary/60 border border-border rounded-md px-3 py-2 text-base text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-destructive"
+          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={onCancel}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={discardConfirmInput.trim().toUpperCase() !== 'DISCARD'}
+              onClick={() => { setDiscardConfirmInput(''); onCancel(); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40 disabled:pointer-events-none"
             >
               Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Short-workout confirm (replaces window.confirm) */}
+      <AlertDialog
+        open={!!pendingShortWorkout}
+        onOpenChange={(open) => { if (!open) setPendingShortWorkout(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save short workout?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This workout was less than 30 seconds. Save it anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingShortWorkout(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const session = pendingShortWorkout;
+                setPendingShortWorkout(null);
+                if (session) onFinish(session);
+              }}
+            >
+              Save
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
