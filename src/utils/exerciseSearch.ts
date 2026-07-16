@@ -1,5 +1,22 @@
 import type { Exercise } from '@/data/exercises';
 
+// Common gym shorthand. Expanded per-token AFTER normalization so a search for
+// "db curl" becomes "dumbbell curl" and can rank against real exercise names.
+// Multi-word expansions are allowed — the tokenizer re-splits after replace.
+const TOKEN_SHORTHAND: Record<string, string> = {
+  db: 'dumbbell',
+  bb: 'barbell',
+  kb: 'kettlebell',
+  sm: 'smith',
+  ez: 'ezbar',
+  ohp: 'overhead press',
+  rdl: 'romanian deadlift',
+};
+
+function expandShorthand(token: string): string {
+  return TOKEN_SHORTHAND[token] ?? token;
+}
+
 /**
  * Normalize a string for search comparison:
  * lowercase, strip punctuation, collapse whitespace, strip trailing "s" (words > 3 chars)
@@ -172,9 +189,13 @@ export function tokenize(query: string): string[] {
 export function searchExercises(exercises: Exercise[], query: string): Exercise[] {
   if (!query.trim()) return exercises;
 
-  const normalized = normalizeSearch(query);
-  const searchWords = normalized.split(/\s+/).filter(Boolean);
-  if (searchWords.length === 0) return exercises;
+  const rawNormalized = normalizeSearch(query);
+  const rawWords = rawNormalized.split(/\s+/).filter(Boolean);
+  if (rawWords.length === 0) return exercises;
+  // Expand common gym shorthand (db → dumbbell, bb → barbell, etc.)
+  // A multi-word expansion re-splits so "ohp" becomes ["overhead", "press"].
+  const searchWords = rawWords.flatMap(t => expandShorthand(t).split(/\s+/)).filter(Boolean);
+  const normalized = searchWords.join(' ');
 
   // Primary: multi-word AND matching with ranking
   const scored: SearchMatch[] = [];

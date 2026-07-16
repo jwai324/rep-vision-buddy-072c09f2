@@ -1,6 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const EXPORT_VERSION = 1;
+// v1 backups (pre-body_measurements) still import cleanly — the field is
+// treated as empty when missing. Bumped to 2 so we can distinguish shapes.
+const EXPORT_VERSION = 2;
+
+// PostgREST default cap per request is 1000 rows; loop with .range() so users
+// with many years of history get a complete backup instead of silent truncation.
+const PAGE_SIZE = 1000;
 
 export interface RepVisionBackup {
   version: number;
@@ -11,9 +17,30 @@ export interface RepVisionBackup {
     workout_programs: any[];
     future_workouts: any[];
     custom_exercises: any[];
+    body_measurements: any[];
     user_settings: any | null;
     profile: any | null;
   };
+}
+
+async function fetchAllRows(
+  supabase: SupabaseClient,
+  table: string,
+  userId: string,
+): Promise<any[]> {
+  const rows: any[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('user_id', userId)
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+  }
+  return rows;
 }
 
 export function getBackupCounts(backup: RepVisionBackup) {
@@ -24,6 +51,7 @@ export function getBackupCounts(backup: RepVisionBackup) {
     programs: d.workout_programs?.length ?? 0,
     futureWorkouts: d.future_workouts?.length ?? 0,
     customExercises: d.custom_exercises?.length ?? 0,
+    bodyMeasurements: d.body_measurements?.length ?? 0,
     hasSettings: !!d.user_settings,
     hasProfile: !!d.profile,
   };
@@ -33,26 +61,28 @@ export async function exportUserData(
   supabase: SupabaseClient,
   userId: string
 ): Promise<void> {
-  const [sessions, templates, programs, futureWorkouts, settings, profile, customExercises] =
+  const [sessions, templates, programs, futureWorkouts, settings, profile, customExercises, bodyMeasurements] =
     await Promise.all([
-      supabase.from('workout_sessions').select('*').eq('user_id', userId),
-      supabase.from('workout_templates').select('*').eq('user_id', userId),
-      supabase.from('workout_programs').select('*').eq('user_id', userId),
-      supabase.from('future_workouts').select('*').eq('user_id', userId),
+      fetchAllRows(supabase, 'workout_sessions', userId),
+      fetchAllRows(supabase, 'workout_templates', userId),
+      fetchAllRows(supabase, 'workout_programs', userId),
+      fetchAllRows(supabase, 'future_workouts', userId),
       supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
       supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
-      supabase.from('custom_exercises').select('*').eq('user_id', userId),
+      fetchAllRows(supabase, 'custom_exercises', userId),
+      fetchAllRows(supabase, 'body_measurements', userId).catch(() => [] as any[]),
     ]);
 
   const backup: RepVisionBackup = {
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     data: {
-      workout_sessions: sessions.data ?? [],
-      workout_templates: templates.data ?? [],
-      workout_programs: programs.data ?? [],
-      future_workouts: futureWorkouts.data ?? [],
-      custom_exercises: customExercises.data ?? [],
+      workout_sessions: sessions,
+      workout_templates: templates,
+      workout_programs: programs,
+      future_workouts: futureWorkouts,
+      custom_exercises: customExercises,
+      body_measurements: bodyMeasurements,
       user_settings: settings.data ?? null,
       profile: profile.data ?? null,
     },
@@ -71,15 +101,19 @@ export async function exportUserData(
 export function validateBackup(data: unknown): data is RepVisionBackup {
   if (!data || typeof data !== 'object') return false;
   const d = data as any;
-  return (
-    typeof d.version === 'number' &&
-    d.data &&
+  if (typeof d.version !== 'number' || !d.data) return false;
+  const ok = (
     Array.isArray(d.data.workout_sessions) &&
     Array.isArray(d.data.workout_templates) &&
     Array.isArray(d.data.workout_programs) &&
     Array.isArray(d.data.future_workouts) &&
     Array.isArray(d.data.custom_exercises)
   );
+  if (!ok) return false;
+  // v1 backups don't include body_measurements — normalize to empty so the
+  // importer and downstream typing can treat every backup uniformly.
+  if (!Array.isArray(d.data.body_measurements)) d.data.body_measurements = [];
+  return true;
 }
 
 function stampUserId<T extends Record<string, any>>(rows: T[], userId: string): T[] {
@@ -157,6 +191,17 @@ export async function importUserData(
         delete row.created_at;
         delete row.updated_at;
         await supabase.from('custom_exercises').upsert(row, { onConflict: 'id' });
+      }
+    }
+
+    // Body measurements (v2+ backups; v1 backups have this normalized to []
+    // by validateBackup, so this block is a no-op for old files).
+    if (backup.data.body_measurements.length > 0) {
+      const rows = stampUserId(backup.data.body_measurements, userId);
+      for (const row of rows) {
+        delete row.created_at;
+        delete row.updated_at;
+        await supabase.from('body_measurements').upsert(row, { onConflict: 'id' });
       }
     }
 
