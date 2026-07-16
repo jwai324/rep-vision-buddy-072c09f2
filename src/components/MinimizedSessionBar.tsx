@@ -20,6 +20,11 @@ export const MINIMIZED_BAR_HEIGHT = 64;
 interface MinimizedSessionBarProps {
   workoutName: string;
   startTimestamp?: number | null;
+  // When the user paused the workout timer before minimizing, the bar shows
+  // a frozen elapsed value with a ⏸ marker instead of ticking against a
+  // stale startTimestamp.
+  timerPaused?: boolean;
+  pausedElapsedSec?: number | null;
   onExpand: () => void;
   onDiscard: () => void;
 }
@@ -34,18 +39,23 @@ function formatElapsed(seconds: number): string {
 }
 
 export const MinimizedSessionBar: React.FC<MinimizedSessionBarProps> = ({
-  workoutName, startTimestamp, onExpand, onDiscard,
+  workoutName, startTimestamp, timerPaused, pausedElapsedSec, onExpand, onDiscard,
 }) => {
   const [now, setNow] = useState(() => Date.now());
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
-    if (!startTimestamp) return;
+    // No point ticking while paused — the displayed value is frozen.
+    if (!startTimestamp || timerPaused) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [startTimestamp]);
+  }, [startTimestamp, timerPaused]);
 
-  const elapsed = startTimestamp ? formatElapsed((now - startTimestamp) / 1000) : null;
+  const elapsed = timerPaused && pausedElapsedSec != null
+    ? formatElapsed(pausedElapsedSec)
+    : startTimestamp
+      ? formatElapsed((now - startTimestamp) / 1000)
+      : null;
 
   return (
     <>
@@ -65,7 +75,9 @@ export const MinimizedSessionBar: React.FC<MinimizedSessionBarProps> = ({
               {workoutName || 'Workout'} in progress
             </span>
             {elapsed && (
-              <span className="font-mono text-xs opacity-80">{elapsed}</span>
+              <span className="font-mono text-xs opacity-80">
+                {timerPaused ? '⏸ ' : ''}{elapsed}
+              </span>
             )}
           </div>
         </button>

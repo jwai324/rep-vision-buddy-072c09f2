@@ -68,6 +68,11 @@ export interface ActiveSessionCache {
   showFocusMode?: boolean;
   showExercisePicker?: boolean;
   pendingExerciseIds?: ExerciseId[];
+  // Workout-timer pause state so the MinimizedSessionBar can freeze its
+  // elapsed display instead of ticking against a stale startTimestamp when
+  // the user paused the session and then minimized.
+  timerPaused?: boolean;
+  pausedElapsedSec?: number | null;
 }
 
 export const SUPERSET_COLORS = [

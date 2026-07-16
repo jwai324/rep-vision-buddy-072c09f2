@@ -609,14 +609,21 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
-      {showMinimizedBar && (
-        <MinimizedSessionBar
-          workoutName={getSessionCache()?.workoutName ?? 'Workout'}
-          startTimestamp={getSessionCache()?.startTimestamp ?? null}
-          onExpand={handleExpand}
-          onDiscard={handleDiscardMinimized}
-        />
-      )}
+      {showMinimizedBar && (() => {
+        // Read cache once so timerPaused / pausedElapsedSec stay consistent
+        // with the workoutName/startTimestamp we display alongside.
+        const cache = getSessionCache();
+        return (
+          <MinimizedSessionBar
+            workoutName={cache?.workoutName ?? 'Workout'}
+            startTimestamp={cache?.startTimestamp ?? null}
+            timerPaused={cache?.timerPaused}
+            pausedElapsedSec={cache?.pausedElapsedSec ?? null}
+            onExpand={handleExpand}
+            onDiscard={handleDiscardMinimized}
+          />
+        );
+      })()}
 
       <TutorialOverlay />
 

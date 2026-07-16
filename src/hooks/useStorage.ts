@@ -268,7 +268,10 @@ export function useStorage() {
           supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
           supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
           supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
-          (supabase.from('body_measurements' as any).select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, 365) as any),
+          // Uses MAX_ROWS like the other paginated tables so a daily
+          // bodyweight logger keeps more than a year of history. Previously
+          // capped at 366 rows which silently truncated after ~1 year.
+          (supabase.from('body_measurements' as any).select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_ROWS - 1) as any),
         ]);
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));

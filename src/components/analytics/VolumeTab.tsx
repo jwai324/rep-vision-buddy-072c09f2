@@ -75,8 +75,13 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
   const bodyPartsWithData = useMemo(() => {
     const parts = new Set<string>();
     for (const week of weeklyData) {
+      // week has a `week: string` label plus dynamic body-part numeric keys
+      // spread in via `...convertedBodyPartVolumes`. TS can't narrow the
+      // union so we index through a numeric record view; the body-part
+      // names never collide with the string 'week' / 'totalVolume' keys.
+      const numericView = week as unknown as Record<string, number>;
       for (const bp of VISIBLE_BODY_PARTS) {
-        if (((week as Record<string, number>)[bp] ?? 0) > 0) parts.add(bp);
+        if ((numericView[bp] ?? 0) > 0) parts.add(bp);
       }
     }
     return VISIBLE_BODY_PARTS.filter(bp => parts.has(bp));

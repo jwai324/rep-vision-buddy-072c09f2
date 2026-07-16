@@ -141,8 +141,13 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
         <div
           className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-background border-t border-border rounded-t-2xl shadow-2xl animate-in slide-in-from-bottom duration-300"
           style={{
-            height: '75vh',
-            maxHeight: '75vh',
+            // dvh (dynamic viewport height) shrinks as mobile browser chrome
+            // (URL bar / on-screen keyboard) expands, so the chat input stays
+            // above the keyboard instead of getting shoved off-screen. vh
+            // treats the viewport as the largest possible size and doesn't
+            // react to the keyboard at all.
+            height: '75dvh',
+            maxHeight: '75dvh',
             transform: dragOffset ? `translateY(${dragOffset}px)` : undefined,
             transition: isDragging ? 'none' : 'transform 0.2s ease-out',
           }}

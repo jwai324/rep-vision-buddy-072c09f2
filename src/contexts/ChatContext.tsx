@@ -491,10 +491,25 @@ export const ChatProvider: React.FC<{
     if (!isSessionActive()) return [];
     const controller = getSessionController();
     if (!controller) return [];
+    // Block sets carry weight/reps as strings (they come straight from the
+    // DOM input values). SessionExerciseRow.sets is typed as numbers so the
+    // AI, diff card, and validation code can treat them uniformly. Parse
+    // once here; empty strings drop to undefined rather than NaN.
+    const parseNum = (v: string | undefined): number | undefined => {
+      if (v == null || v === '') return undefined;
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
     return controller.getBlocks().map(b => ({
       exerciseId: b.exerciseId,
       exerciseName: b.exerciseName,
-      sets: b.sets.map(s => ({ setNumber: s.setNumber, weight: s.weight, reps: s.reps, type: s.type, completed: s.completed })),
+      sets: b.sets.map(s => ({
+        setNumber: s.setNumber,
+        weight: parseNum(s.weight),
+        reps: parseNum(s.reps),
+        type: s.type,
+        completed: s.completed,
+      })),
     }));
   }, []);
 
