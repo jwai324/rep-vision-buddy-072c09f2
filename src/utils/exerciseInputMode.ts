@@ -1,4 +1,4 @@
-import { EXERCISE_DATABASE, type MeasurementType } from '@/data/exercises';
+import { EXERCISE_DATABASE, type Exercise, type MeasurementType } from '@/data/exercises';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatMmSs } from '@/utils/timeFormat';
 
@@ -24,7 +24,10 @@ export function getExerciseInputMode(
   if (!exercise && customExercises) {
     const custom = customExercises.find(e => e.id === exerciseId);
     if (custom) {
-      exercise = custom as any;
+      // The passed-in shape is a narrow subset of Exercise (only the fields
+      // needed to decide the input mode); the rest of the Exercise object
+      // isn't accessed further down. Cast via unknown to bridge the two.
+      exercise = custom as unknown as Exercise;
     }
   }
   if (!exercise) return 'reps-weight';

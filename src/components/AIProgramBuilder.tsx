@@ -352,9 +352,10 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       setGeneratedProgram(program);
       setExpandedDays(new Set([0]));
       setPhase('review');
-    } catch (e: any) {
+    } catch (e) {
       console.error('Program generation failed:', e);
-      toast.error(e.message || 'Failed to generate program. Please try again.');
+      const message = e instanceof Error ? e.message : 'Failed to generate program. Please try again.';
+      toast.error(message);
       setPhase('chat');
     } finally {
       // The edge function meters credits server-side once it calls the model,
@@ -488,7 +489,8 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
               <button
                 onClick={() => setExpandedDays(prev => {
                   const next = new Set(prev);
-                  next.has(dayIdx) ? next.delete(dayIdx) : next.add(dayIdx);
+                  if (next.has(dayIdx)) next.delete(dayIdx);
+                  else next.add(dayIdx);
                   return next;
                 })}
                 className="w-full flex items-center justify-between p-4"

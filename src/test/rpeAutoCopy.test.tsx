@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBlockMutations } from '@/hooks/useBlockMutations';
@@ -23,12 +24,12 @@ function makeBlock(): ExerciseBlock {
 describe('RPE auto-copy on set complete', () => {
   it("copies the completed set's RPE into the next set's empty RPE field", () => {
     let blocks: ExerciseBlock[] = [makeBlock()];
-    const setBlocks = (updater: (prev: ExerciseBlock[]) => ExerciseBlock[]) => {
-      blocks = typeof updater === 'function' ? (updater as any)(blocks) : updater;
+    const setBlocks = (updater: React.SetStateAction<ExerciseBlock[]>) => {
+      blocks = typeof updater === 'function' ? updater(blocks) : updater;
     };
 
     const { result } = renderHook(() =>
-      useBlockMutations(blocks, setBlocks as any, {
+      useBlockMutations(blocks, setBlocks, {
         weightUnit: 'lbs',
         defaultDropSetsEnabled: false,
         customExercises: [],
@@ -49,12 +50,12 @@ describe('RPE auto-copy on set complete', () => {
     const block = makeBlock();
     block.sets[1].rpe = '9'; // user already set RPE for set 2
     let blocks: ExerciseBlock[] = [block];
-    const setBlocks = (updater: (prev: ExerciseBlock[]) => ExerciseBlock[]) => {
-      blocks = typeof updater === 'function' ? (updater as any)(blocks) : updater;
+    const setBlocks = (updater: React.SetStateAction<ExerciseBlock[]>) => {
+      blocks = typeof updater === 'function' ? updater(blocks) : updater;
     };
 
     const { result } = renderHook(() =>
-      useBlockMutations(blocks, setBlocks as any, {
+      useBlockMutations(blocks, setBlocks, {
         weightUnit: 'lbs',
         defaultDropSetsEnabled: false,
         customExercises: [],

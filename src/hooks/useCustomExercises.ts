@@ -3,6 +3,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import type { Exercise, MeasurementType } from '@/data/exercises';
+import type { Database } from '@/integrations/supabase/types';
+
+// measurement_type is a column that exists in the DB but isn't in the
+// current generated types. Extend the Insert/Update shapes locally so
+// callers don't need `as any`.
+type CustomExerciseInsertExtended =
+  Database['public']['Tables']['custom_exercises']['Insert'] & { measurement_type?: MeasurementType | null };
+type CustomExerciseUpdateExtended =
+  Database['public']['Tables']['custom_exercises']['Update'] & { measurement_type?: MeasurementType | null };
 
 export interface CustomExerciseInput {
   name: string;
@@ -37,7 +46,9 @@ export function useCustomExercises() {
       exerciseType: row.exercise_type as Exercise['exerciseType'],
       movementPattern: row.movement_pattern,
       secondaryMuscles: (row.secondary_muscles as string[]) ?? [],
-      measurementType: (row as any).measurement_type as MeasurementType | undefined,
+      // measurement_type isn't in the generated Database Row type yet; read
+      // it via a narrowed access instead of an `as any` cast.
+      measurementType: (row as { measurement_type?: MeasurementType | null }).measurement_type ?? undefined,
       isCustom: true as const,
       isRecovery: row.is_recovery,
     })));
@@ -48,7 +59,7 @@ export function useCustomExercises() {
 
   const addExercise = useCallback(async (input: CustomExerciseInput) => {
     if (!user) return;
-    const { error } = await supabase.from('custom_exercises').insert({
+    const payload: CustomExerciseInsertExtended = {
       user_id: user.id,
       name: input.name,
       primary_body_part: input.primaryBodyPart,
@@ -56,10 +67,13 @@ export function useCustomExercises() {
       difficulty: input.difficulty,
       exercise_type: input.exerciseType,
       movement_pattern: input.movementPattern,
-      secondary_muscles: input.secondaryMuscles as any,
+      secondary_muscles: input.secondaryMuscles,
       is_recovery: input.isRecovery,
       measurement_type: input.measurementType ?? null,
-    } as any);
+    };
+    const { error } = await supabase
+      .from('custom_exercises')
+      .insert(payload as Database['public']['Tables']['custom_exercises']['Insert']);
     if (error) { toast.error('Failed to save exercise'); return; }
     toast.success(`Exercise "${input.name}" saved.`);
     fetchExercises();
@@ -77,17 +91,21 @@ export function useCustomExercises() {
   const updateExercise = useCallback(async (customId: string, input: CustomExerciseInput) => {
     if (!user) return;
     const dbId = customId.replace('custom-', '');
-    const { error } = await supabase.from('custom_exercises').update({
+    const patch: CustomExerciseUpdateExtended = {
       name: input.name,
       primary_body_part: input.primaryBodyPart,
       equipment: input.equipment,
       difficulty: input.difficulty,
       exercise_type: input.exerciseType,
       movement_pattern: input.movementPattern,
-      secondary_muscles: input.secondaryMuscles as any,
+      secondary_muscles: input.secondaryMuscles,
       is_recovery: input.isRecovery,
       measurement_type: input.measurementType ?? null,
-    } as any).eq('id', dbId);
+    };
+    const { error } = await supabase
+      .from('custom_exercises')
+      .update(patch as Database['public']['Tables']['custom_exercises']['Update'])
+      .eq('id', dbId);
     if (error) { toast.error('Failed to update exercise'); return; }
     toast.success(`Exercise "${input.name}" updated.`);
     fetchExercises();

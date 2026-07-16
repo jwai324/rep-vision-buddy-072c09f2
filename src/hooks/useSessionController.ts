@@ -55,7 +55,6 @@ const listeners: Set<() => void> = new Set();
 function assertAllowedSessionWriter(method: string) {
   const stack = new Error().stack ?? '';
   if (!stack.includes('applyProposal')) {
-    // eslint-disable-next-line no-console
     console.warn(
       `[session-controller] ${method} called outside applyProposal — this should never happen; the diff card's Apply button is the only sanctioned writer.`,
       { stack },

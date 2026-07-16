@@ -28,10 +28,10 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
   const [bodyPart, setBodyPart] = useState<string | null>(editingExercise?.primaryBodyPart || null);
   const [equipment, setEquipment] = useState<string | null>(editingExercise?.equipment || null);
   const [difficulty, setDifficulty] = useState<'Beginner' | 'Intermediate' | 'Advanced' | null>(
-    (editingExercise?.difficulty as any) || null
+    (editingExercise?.difficulty as 'Beginner' | 'Intermediate' | 'Advanced' | undefined) || null
   );
   const [exerciseType, setExerciseType] = useState<'Compound' | 'Isolation'>(
-    (editingExercise?.exerciseType as any) || 'Isolation'
+    (editingExercise?.exerciseType as 'Compound' | 'Isolation' | undefined) || 'Isolation'
   );
   const [isRecovery, setIsRecovery] = useState(editingExercise?.isRecovery || false);
   const [measurementType, setMeasurementType] = useState<MeasurementType | null>(
