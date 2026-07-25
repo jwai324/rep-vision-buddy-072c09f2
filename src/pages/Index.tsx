@@ -280,6 +280,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
+            defaultRestSeconds={storage.preferences.defaultRestSeconds}
             cachedSession={getSessionCache()}
             onFinish={(session) => { setPendingSummary(session); }}
             onCancel={() => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); }}
@@ -311,7 +312,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onSaveAsTemplate={() => {
               storage.saveSession(pendingSummary);
               clearSessionCache();
-              storage.saveTemplate(templateFromSession(pendingSummary));
+              storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds));
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
@@ -334,6 +335,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             history={storage.history}
             weightUnit={storage.preferences.weightUnit}
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
+            defaultRestSeconds={storage.preferences.defaultRestSeconds}
             editSession={screen.session}
             onFinish={(session) => {
               storage.saveSession(session);
@@ -359,7 +361,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onSaveAsTemplate={() => {
             storage.saveSession(screen.session);
             clearSessionCache();
-            storage.saveTemplate(templateFromSession(screen.session));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
             setScreen({ type: 'dashboard' });
           }}
           onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
@@ -443,12 +445,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           isViewMode
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => {
-            storage.saveTemplate(templateFromSession(screen.session));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
             toast.success('Template saved');
           }}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onReperform={(session) => {
-            startFromTemplate(templateFromSession(session));
+            startFromTemplate(templateFromSession(session, undefined, storage.preferences.defaultRestSeconds));
           }}
           onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {
@@ -481,6 +483,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <TemplateBuilder
           initial={screen.template}
           weightUnit={storage.preferences.weightUnit}
+          defaultRestSeconds={storage.preferences.defaultRestSeconds}
           onSave={(t) => {
             storage.saveTemplate(t);
             setScreen({ type: 'templates' });

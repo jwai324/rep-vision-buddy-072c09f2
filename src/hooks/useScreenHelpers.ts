@@ -7,7 +7,7 @@ import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } f
  * Build a WorkoutTemplate from a finished or viewed WorkoutSession.
  * Centralises the pattern repeated in summary, sessionDetail, and reperform flows.
  */
-export function templateFromSession(session: WorkoutSession, nameOverride?: string): WorkoutTemplate {
+export function templateFromSession(session: WorkoutSession, nameOverride?: string, defaultRestSeconds: number = 90): WorkoutTemplate {
   return {
     id: crypto.randomUUID(),
     name: nameOverride ?? `Workout ${parseLocalDate(session.date).toLocaleDateString()}`,
@@ -16,7 +16,7 @@ export function templateFromSession(session: WorkoutSession, nameOverride?: stri
       sets: ex.sets.length,
       targetReps: ex.sets[0]?.reps ?? 10,
       setType: ex.sets[0]?.type ?? 'normal',
-      restSeconds: 90,
+      restSeconds: defaultRestSeconds,
     })),
   };
 }

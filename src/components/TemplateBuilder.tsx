@@ -21,6 +21,7 @@ import { SUPERSET_COLORS } from '@/types/activeSession';
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
   weightUnit?: WeightUnit;
+  defaultRestSeconds?: number;
   onSave: (template: WorkoutTemplate) => void;
   onCancel: () => void;
 }
@@ -98,7 +99,7 @@ function loadDraft(initialTemplate?: WorkoutTemplate): { name: string; blocks: T
   };
 }
 
-export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', onSave, onCancel }) => {
+export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', defaultRestSeconds = 90, onSave, onCancel }) => {
   const { exercises: customExercises } = useCustomExercisesContext();
   const exerciseLookup = useMemo(() => {
     const lookup: Record<string, string> = {};
@@ -203,7 +204,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
           exerciseId: id,
           exerciseName: exerciseLookup[id] ?? id,
           setType: 'normal' as SetType,
-          restSeconds: 90,
+          restSeconds: defaultRestSeconds,
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
             targetWeight: '',
@@ -214,7 +215,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
       return [...prev, ...newBlocks];
     });
     setShowExercisePicker(false);
-  }, [exerciseLookup]);
+  }, [exerciseLookup, defaultRestSeconds]);
 
   const swapExercise = useCallback((blockIdx: number, newId: ExerciseId) => {
     setBlocks(prev => prev.map((b, i) => {
