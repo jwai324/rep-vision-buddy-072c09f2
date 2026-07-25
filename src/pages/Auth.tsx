@@ -23,11 +23,13 @@ const Auth = () => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const switchMode = (next: AuthMode) => {
     setFormError(null);
+    setConfirmPassword('');
     setMode(next);
   };
 
@@ -61,6 +63,11 @@ const Auth = () => {
         setPassword('');
       }
     } else {
+      if (password !== confirmPassword) {
+        setFormError('Passwords do not match.');
+        setLoading(false);
+        return;
+      }
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -149,6 +156,28 @@ const Auth = () => {
                   type="password"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); if (formError) setFormError(null); }}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                  aria-invalid={!!formError}
+                  aria-describedby={formError ? 'auth-error' : undefined}
+                  className={cn(formError && 'border-destructive focus-visible:ring-destructive')}
+                />
+                {mode !== 'signup' && formError && (
+                  <p id="auth-error" role="alert" className="text-xs text-destructive">
+                    {formError}
+                  </p>
+                )}
+              </div>
+            )}
+            {mode === 'signup' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="confirm-password">Confirm password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); if (formError) setFormError(null); }}
                   placeholder="••••••••"
                   required
                   minLength={6}
