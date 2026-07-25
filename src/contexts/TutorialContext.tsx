@@ -9,6 +9,8 @@ export interface TutorialStep {
   screen?: 'dashboard' | 'startWorkout' | 'activeSession';
   /** If true, skip this step automatically when no target exists. */
   skipIfMissing?: boolean;
+  /** Hide the "Next" button — the step advances when the user interacts with the highlighted target. */
+  hideNext?: boolean;
 }
 
 export const DASHBOARD_STEPS: TutorialStep[] = [
@@ -43,6 +45,7 @@ export const DASHBOARD_STEPS: TutorialStep[] = [
     title: 'Start a Workout',
     body: 'Tap here to begin. We\'ll continue the tour on the next screen.',
     screen: 'dashboard',
+    hideNext: true,
   },
 ];
 
@@ -53,6 +56,7 @@ export const START_WORKOUT_STEPS: TutorialStep[] = [
     body: 'Tap here to start an empty session — we\'ll add exercises next.',
     screen: 'startWorkout',
     skipIfMissing: true,
+    hideNext: true,
   },
 ];
 
@@ -68,6 +72,7 @@ export const SESSION_STEPS: TutorialStep[] = [
     body: 'Tap to browse the library and add an exercise to your session.',
     screen: 'activeSession',
     skipIfMissing: true,
+    hideNext: true,
   },
   {
     title: 'Pick an Exercise',
@@ -79,7 +84,6 @@ export const SESSION_STEPS: TutorialStep[] = [
     title: 'Log a Set',
     body: 'Each row is a set. Below we\'ll cover weight, reps, and effort.',
     screen: 'activeSession',
-    skipIfMissing: true,
   },
   {
     targetId: 'tutorial-weight-input',
@@ -87,6 +91,7 @@ export const SESSION_STEPS: TutorialStep[] = [
     body: 'Tap the weight cell and use the keypad to log the load you lifted.',
     screen: 'activeSession',
     skipIfMissing: true,
+    hideNext: true,
   },
   {
     targetId: 'tutorial-reps-input',
@@ -94,6 +99,7 @@ export const SESSION_STEPS: TutorialStep[] = [
     body: 'Then enter how many reps you completed for the set.',
     screen: 'activeSession',
     skipIfMissing: true,
+    hideNext: true,
   },
   {
     targetId: 'tutorial-rpe',
@@ -108,6 +114,7 @@ export const SESSION_STEPS: TutorialStep[] = [
     body: 'Tap ✓ to log the set and start your rest timer automatically.',
     screen: 'activeSession',
     skipIfMissing: true,
+    hideNext: true,
   },
   {
     targetId: 'tutorial-finish-btn',
@@ -115,6 +122,7 @@ export const SESSION_STEPS: TutorialStep[] = [
     body: 'When you\'re done, tap Finish to review your workout.',
     screen: 'activeSession',
     skipIfMissing: true,
+    hideNext: true,
   },
   {
     targetId: 'tutorial-save-workout',
@@ -122,6 +130,7 @@ export const SESSION_STEPS: TutorialStep[] = [
     body: 'Review your stats, then tap Save Workout to log this session.',
     screen: 'activeSession',
     skipIfMissing: true,
+    hideNext: true,
   },
   {
     targetId: 'tutorial-discard-workout',
