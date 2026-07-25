@@ -31,6 +31,7 @@ export function normalizeBlocks(blocks: ExerciseBlock[]): ExerciseBlock[] {
 interface UseBlockMutationsOptions {
   weightUnit: WeightUnit;
   defaultDropSetsEnabled: boolean;
+  defaultRestSeconds: number;
   customExercises: (Exercise & { isCustom: true; isRecovery: boolean })[];
   startTimer: (id: TimerId, duration: number) => void;
 }
@@ -38,7 +39,7 @@ interface UseBlockMutationsOptions {
 export function useBlockMutations(
   blocks: ExerciseBlock[],
   setBlocks: React.Dispatch<React.SetStateAction<ExerciseBlock[]>>,
-  { weightUnit, defaultDropSetsEnabled, customExercises, startTimer }: UseBlockMutationsOptions,
+  { weightUnit, defaultDropSetsEnabled, defaultRestSeconds, customExercises, startTimer }: UseBlockMutationsOptions,
 ) {
   const exerciseLookup = useMemo(() => {
     const lookup: Record<string, string> = {};
@@ -239,7 +240,7 @@ export function useBlockMutations(
         .map(id => ({
           exerciseId: id,
           exerciseName: exerciseLookup[id] ?? id,
-          restSeconds: 90,
+          restSeconds: defaultRestSeconds,
           dropSetsEnabled: defaultDropSetsEnabled,
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
@@ -253,7 +254,7 @@ export function useBlockMutations(
         }));
       return [...prev, ...newBlocks];
     });
-  }, [setBlocks, defaultDropSetsEnabled, exerciseLookup]);
+  }, [setBlocks, defaultDropSetsEnabled, defaultRestSeconds, exerciseLookup]);
 
   const removeExercise = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));

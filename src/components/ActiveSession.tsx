@@ -101,6 +101,7 @@ interface ActiveSessionProps {
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
   defaultDropSetsEnabled?: boolean;
+  defaultRestSeconds?: number;
   cachedSession?: ActiveSessionCache | null;
   editSession?: WorkoutSession | null;
   onFinish: (session: WorkoutSession) => void;
@@ -123,7 +124,7 @@ function getPreviousExerciseData(history: WorkoutSession[], exerciseId: Exercise
 }
 // normalizeBlocks is imported from useBlockMutations
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const { exercises: customExercises } = useCustomExercisesContext();
@@ -175,14 +176,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       return {
         exerciseId: ex.exerciseId,
         exerciseName: ex.exerciseName,
-        restSeconds: 90,
+        restSeconds: defaultRestSeconds,
         supersetGroup: ex.supersetGroup,
         sets: rows,
         dropSetsEnabled: rows.some(r => (r.drops?.length ?? 0) > 0),
         note: ex.note,
       };
     });
-  }, [editSession, weightUnit]);
+  }, [editSession, weightUnit, defaultRestSeconds]);
 
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
     if (editBlocks) return normalizeBlocks(editBlocks);
@@ -190,7 +191,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return initialExercises.map((id, idx) => {
       const tpl = templateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
-      const restSec = tpl?.restSeconds ?? 90;
+      const restSec = tpl?.restSeconds ?? defaultRestSeconds;
       return {
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? customExercises.find(c => c.id === id)?.name ?? id,
@@ -217,6 +218,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const blockOps = useBlockMutations(blocks, setBlocks, {
     weightUnit,
     defaultDropSetsEnabled,
+    defaultRestSeconds,
     customExercises,
     startTimer,
   });
@@ -684,7 +686,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             return [...prev, {
               exerciseId,
               exerciseName: exerciseLookup[exerciseId] ?? exerciseId,
-              restSeconds: 90,
+              restSeconds: defaultRestSeconds,
               dropSetsEnabled: defaultDropSetsEnabled,
               sets: Array.from({ length: sets }, (_, i) => ({
                 setNumber: i + 1,
@@ -786,7 +788,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       },
     });
     return () => unregisterSession();
-  }, [blocks, defaultDropSetsEnabled, activeTimer]);
+  }, [blocks, defaultDropSetsEnabled, defaultRestSeconds, activeTimer]);
 
   // toggleDropSets and addWarmupSet are provided by useBlockMutations hook
 
