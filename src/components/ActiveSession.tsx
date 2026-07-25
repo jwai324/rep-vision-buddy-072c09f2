@@ -13,6 +13,7 @@ import { useBlockMutations, normalizeBlocks } from '@/hooks/useBlockMutations';
 import { CameraFeed } from '@/components/CameraFeed';
 import { cn } from '@/lib/utils';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
+import { useTutorial } from '@/contexts/TutorialContext';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { Button } from '@/components/ui/button';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
@@ -127,6 +128,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const isEditMode = !!editSession;
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const { exercises: customExercises } = useCustomExercisesContext();
+  const { active: tutorialActive } = useTutorial();
   // Convert saved session exercises back to blocks for editing.
   // Rebuilds nested `drops` from flat saved WorkoutSet[] (consecutive 'dropset'
   // rows attach to the most recent non-dropset parent of the same setNumber).
@@ -1007,7 +1009,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         </div>
         <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <ExerciseSelector
-            multiSelect={!isReplaceMode}
+            multiSelect={!isReplaceMode && !tutorialActive}
             onSelect={(id) => {
               if (isReplaceMode) {
                 replaceExercise(replaceIdx!, id);
@@ -1018,7 +1020,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               }
               setShowExercisePicker(false);
             }}
-            onSelectMultiple={isReplaceMode ? undefined : (ids) => { setPendingExerciseIds([]); addMultipleExercises(ids); setShowExercisePicker(false); }}
+            onSelectMultiple={isReplaceMode || tutorialActive ? undefined : (ids) => { setPendingExerciseIds([]); addMultipleExercises(ids); setShowExercisePicker(false); }}
             initialSelected={isReplaceMode ? [] : pendingExerciseIds}
             onSelectionChange={isReplaceMode ? undefined : setPendingExerciseIds}
           />

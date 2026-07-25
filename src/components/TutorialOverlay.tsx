@@ -91,7 +91,7 @@ export const TutorialOverlay: React.FC = () => {
       if (step.skipIfMissing) {
         skipTimer = window.setTimeout(() => {
           if (!document.getElementById(step.targetId!)) next();
-        }, 4000);
+        }, 15000);
       }
     }
 
@@ -121,12 +121,50 @@ export const TutorialOverlay: React.FC = () => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') handleSkip();
-      else if (e.key === 'ArrowRight' || e.key === 'Enter') next();
+      else if (e.key === 'ArrowRight' || e.key === 'Enter') { if (!step?.hideNext) next(); }
       else if (e.key === 'ArrowLeft') prev();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, handleSkip, next, prev]);
+  }, [active, handleSkip, next, prev, step]);
+
+  // When the current step's Next button is hidden, listen for the user actually
+  // interacting with the highlighted target and advance from there. Buttons
+  // advance on click; text inputs advance when a value is entered.
+  useEffect(() => {
+    if (!active || !step?.hideNext || !step.targetId) return;
+    let cleanupTimer: number | undefined;
+    let cleanupEl: HTMLElement | null = null;
+    let cleanupHandler: ((e: Event) => void) | null = null;
+    let cleanupEvent: 'click' | 'input' | null = null;
+
+    const attach = () => {
+      const el = document.getElementById(step.targetId!);
+      if (!el) return false;
+      const isTextInput = el.tagName === 'INPUT' && (el as HTMLInputElement).type !== 'button' && (el as HTMLInputElement).type !== 'checkbox';
+      const evt: 'click' | 'input' = isTextInput ? 'input' : 'click';
+      const handler = () => {
+        // Defer so the target's own click handler runs first (e.g. opens a keypad
+        // or picker, or navigates), then we advance the tutorial to the next step.
+        setTimeout(() => next(), 50);
+      };
+      el.addEventListener(evt, handler, { once: true });
+      cleanupEl = el;
+      cleanupHandler = handler;
+      cleanupEvent = evt;
+      return true;
+    };
+
+    if (!attach()) {
+      // Target not present yet — poll briefly until it appears.
+      cleanupTimer = window.setInterval(() => { if (attach()) { if (cleanupTimer) clearInterval(cleanupTimer); } }, 200);
+    }
+
+    return () => {
+      if (cleanupTimer) clearInterval(cleanupTimer);
+      if (cleanupEl && cleanupHandler && cleanupEvent) cleanupEl.removeEventListener(cleanupEvent, cleanupHandler);
+    };
+  }, [active, step, next]);
 
   const skipNotice = (
     <AlertDialog open={skipNoticeOpen} onOpenChange={setSkipNoticeOpen}>
@@ -292,13 +330,15 @@ export const TutorialOverlay: React.FC = () => {
                 Back
               </button>
             )}
-            <button
-              onClick={next}
-              className="flex items-center gap-1 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 rounded-md transition-colors"
-            >
-              {isLast ? 'Got it' : 'Next'}
-              {!isLast && <ChevronRight className="w-3.5 h-3.5" />}
-            </button>
+            {(!step.hideNext || isLast) && (
+              <button
+                onClick={next}
+                className="flex items-center gap-1 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 rounded-md transition-colors"
+              >
+                {isLast ? 'Got it' : 'Next'}
+                {!isLast && <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+            )}
           </div>
         </div>
       </div>

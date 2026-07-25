@@ -491,7 +491,8 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
           switch (inputMode) {
             case 'time':
               return (
-                <div className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                <div id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
+                  className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
                   <span className={setLabelClass}>{setLabel}</span>
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
@@ -501,7 +502,8 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
               );
             case 'time-distance':
               return (
-                <div className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                <div id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
+                  className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
                   <span className={setLabelClass}>{setLabel}</span>
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} />
                   <input
@@ -520,7 +522,8 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
               );
             case 'distance':
               return (
-                <div className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                <div id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
+                  className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
                   <span className={setLabelClass}>{setLabel}</span>
                   <input
                     id={buildInputId(blockIdx, setIdx, 'distance')}
