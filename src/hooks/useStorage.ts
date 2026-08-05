@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,27 +27,22 @@ const MAX_ROWS = 5000;
 // without the memory/startup cost of a 5000-row fetch on mobile.
 const MAX_SESSIONS = 500;
 
-// Exported for unit testing — pure, no React/singleton deps.
-export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
-  const workouts: Omit<FutureWorkout, 'id'>[] = [];
-  const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
-  const endDate = addWeeks(start, program.durationWeeks ?? 8);
-  const scheduledDates = new Set<string>();
-
-  // Guard against invalid or colliding weekday assignments (mainly a defense
-  // against AI-generated programs that duplicate a weekday across two days
-  // — e.g. Day 3 and Day 4 both land on Wednesday, silently dropping Day 4
-  // from the calendar).
-  //
-  // Two passes so an earlier duplicate can't steal a slot from a later day
-  // that had a valid non-colliding request:
-  //   Pass 1 honors every valid, unclaimed weekday exactly as requested.
-  //   Pass 2 fills in the days whose weekday was out-of-range or already
-  //          taken, walking Sun→Sat and assigning the first unused slot.
+// Guard against invalid or colliding weekday assignments (mainly a defense
+// against AI-generated programs that duplicate a weekday across two days
+// — e.g. Day 3 and Day 4 both land on Wednesday, silently dropping Day 4
+// from the calendar).
+//
+// Two passes so an earlier duplicate can't steal a slot from a later day
+// that had a valid non-colliding request:
+//   Pass 1 honors every valid, unclaimed weekday exactly as requested.
+//   Pass 2 fills in the days whose weekday was out-of-range or already
+//          taken, walking Sun→Sat and assigning the first unused slot.
+// Exported for unit testing and for the load-time auto-repair pass.
+export function normalizeProgramDays(days: WorkoutProgram['days']): { days: WorkoutProgram['days']; changed: boolean } {
   const claimedWeekdays = new Set<number>();
-  const assignedWeekday: (number | null)[] = program.days.map(() => null);
+  const assignedWeekday: (number | null)[] = days.map(() => null);
 
-  program.days.forEach((day, i) => {
+  days.forEach((day, i) => {
     if (!day.frequency || day.frequency.type !== 'weekly') return;
     const w = day.frequency.weekday;
     if (Number.isInteger(w) && w >= 0 && w <= 6 && !claimedWeekdays.has(w)) {
@@ -55,7 +50,7 @@ export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWork
       claimedWeekdays.add(w);
     }
   });
-  program.days.forEach((day, i) => {
+  days.forEach((day, i) => {
     if (!day.frequency || day.frequency.type !== 'weekly') return;
     if (assignedWeekday[i] !== null) return;
     for (let candidate = 0; candidate < 7; candidate++) {
@@ -67,12 +62,25 @@ export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWork
     }
   });
 
-  const normalizedDays: typeof program.days = program.days.map((day, i) => {
+  let changed = false;
+  const normalized = days.map((day, i) => {
     if (!day.frequency || day.frequency.type !== 'weekly') return day;
     const w = assignedWeekday[i];
     if (w === null || w === day.frequency.weekday) return day;
+    changed = true;
     return { ...day, frequency: { ...day.frequency, weekday: w } };
   });
+  return { days: normalized, changed };
+}
+
+// Exported for unit testing — pure, no React/singleton deps.
+export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
+  const workouts: Omit<FutureWorkout, 'id'>[] = [];
+  const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
+  const endDate = addWeeks(start, program.durationWeeks ?? 8);
+  const scheduledDates = new Set<string>();
+
+  const { days: normalizedDays } = normalizeProgramDays(program.days);
 
   normalizedDays.forEach((day) => {
     if (!day.frequency) return;
@@ -523,6 +531,24 @@ export function useStorage() {
       setFutureWorkouts(prev => prev.filter(fw => fw.programId !== program.id));
     }
   }, [user, programs]);
+
+  // Auto-heal previously-saved programs whose stored day.frequency values
+  // collide on the same weekday (a bug in older AI Coach output that
+  // silently dropped a day from the calendar). On first load after this
+  // ships, saveProgram gets called with the normalized days — that both
+  // rewrites program.days in the DB and regenerates future_workouts. The
+  // ref keeps us from re-firing for the same program id if state churns.
+  const repairedProgramIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!user || loading) return;
+    for (const p of programs) {
+      if (repairedProgramIds.current.has(p.id)) continue;
+      const { days, changed } = normalizeProgramDays(p.days);
+      if (!changed) continue;
+      repairedProgramIds.current.add(p.id);
+      saveProgram({ ...p, days });
+    }
+  }, [user, loading, programs, saveProgram]);
 
   const deleteProgram = useCallback(async (id: string) => {
     if (!user) return;
