@@ -73,6 +73,14 @@ CUSTOM EXERCISES:
 - Entries in available_exercises with "is_custom": true are exercises the user created themselves. Treat them as first-class — you may include them in new templates, edit_template proposals, add_exercise_to_workout, and swap_exercise_in_workout, just like built-in exercises.
 - Custom exercises are still subject to the rules above: you cannot create, rename, or delete them. If the user asks you to add a brand-new exercise that isn't in available_exercises, direct them to the Custom Exercises screen.
 
+PROGRAM CREATION (create_program):
+- The days array is the entire week's plan and drives the calendar. Every calendar day the user should see comes from an entry in days — training days AND rest days.
+- Weekday numbering is Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6. Read it carefully — Thursday is 4, not 3 or 5. An off-by-one here silently drops a workout from the calendar.
+- Every day in the array MUST have a UNIQUE frequency.weekday. Never assign two days to the same weekday — the second one gets overwritten and disappears from the calendar. Before you emit the tool call, mentally walk Sun→Sat and confirm each weekday appears at most once.
+- For a 7-day program, cover every weekday exactly once — use rest entries (templateId: "rest") for any day the user isn't training so the calendar shows a rest badge instead of a blank cell.
+- Order the days array in the SAME order as the weekdays you assign, so Day 1 corresponds to the earliest weekday, Day 2 to the next, and so on. The label field is just what shows on the calendar tile — use a short label like "Day 1", "Push A", or "Rest".
+- templateId must be an existing template id from the user's `templates` context, or the literal string "rest". Do not invent template ids. If you need a template that doesn't exist yet, propose create_template first, then reference the id the user's tool_result gives back in a follow-up create_program call.
+
 CONTEXT: You receive the user's current screen, user_profile, templates, programs, active session, and available exercises with every message. user_profile fields:
 - display_name, weight_unit ('kg'|'lbs'), member_since, days_since_member, earliest_logged_workout (date of the oldest logged workout, or null if none), history_window_max_days, total_sessions_logged (always present)
 - goal ('hypertrophy'|'strength'|'fat_loss'|'endurance'|'general' or null) — use to pick rep ranges per rule 7
@@ -150,25 +158,30 @@ const tools = [
   },
   {
     name: "create_program",
-    description: "Create a multi-day workout program with training days linked to templates",
+    description: "Propose a multi-day workout program. The days array is the full weekly plan — include one entry per calendar day the user should see, using templateId 'rest' for rest days. Every day MUST have a unique frequency.weekday; duplicates silently drop days from the calendar.",
     input_schema: {
       type: "object",
       properties: {
         name: { type: "string" },
         durationWeeks: { type: "number" },
-        startDate: { type: "string", description: "ISO date string" },
+        startDate: { type: "string", description: "ISO date string (yyyy-MM-dd). Defaults to today if omitted." },
         days: {
           type: "array",
           items: {
             type: "object",
             properties: {
-              label: { type: "string" },
-              templateId: { type: "string", description: "Template ID or 'rest'" },
+              label: { type: "string", description: "Short tile label shown on the calendar, e.g. 'Day 1', 'Push A', 'Rest'." },
+              templateId: { type: "string", description: "Existing template id, or the literal 'rest' for a rest day. Do not invent ids." },
               frequency: {
                 type: "object",
                 properties: {
                   type: { type: "string", enum: ["weekly"] },
-                  weekday: { type: "number", description: "0=Sun, 1=Mon...6=Sat" },
+                  weekday: {
+                    type: "integer",
+                    minimum: 0,
+                    maximum: 6,
+                    description: "0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat. Thursday is 4. Each day in the days array MUST use a different weekday — never reuse the same number across days.",
+                  },
                 },
                 required: ["type", "weekday"],
               },

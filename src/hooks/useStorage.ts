@@ -27,13 +27,54 @@ const MAX_ROWS = 5000;
 // without the memory/startup cost of a 5000-row fetch on mobile.
 const MAX_SESSIONS = 500;
 
-function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
+// Exported for unit testing — pure, no React/singleton deps.
+export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
   const workouts: Omit<FutureWorkout, 'id'>[] = [];
   const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
   const endDate = addWeeks(start, program.durationWeeks ?? 8);
   const scheduledDates = new Set<string>();
 
-  program.days.forEach((day) => {
+  // Guard against invalid or colliding weekday assignments (mainly a defense
+  // against AI-generated programs that duplicate a weekday across two days
+  // — e.g. Day 3 and Day 4 both land on Wednesday, silently dropping Day 4
+  // from the calendar).
+  //
+  // Two passes so an earlier duplicate can't steal a slot from a later day
+  // that had a valid non-colliding request:
+  //   Pass 1 honors every valid, unclaimed weekday exactly as requested.
+  //   Pass 2 fills in the days whose weekday was out-of-range or already
+  //          taken, walking Sun→Sat and assigning the first unused slot.
+  const claimedWeekdays = new Set<number>();
+  const assignedWeekday: (number | null)[] = program.days.map(() => null);
+
+  program.days.forEach((day, i) => {
+    if (!day.frequency || day.frequency.type !== 'weekly') return;
+    const w = day.frequency.weekday;
+    if (Number.isInteger(w) && w >= 0 && w <= 6 && !claimedWeekdays.has(w)) {
+      assignedWeekday[i] = w;
+      claimedWeekdays.add(w);
+    }
+  });
+  program.days.forEach((day, i) => {
+    if (!day.frequency || day.frequency.type !== 'weekly') return;
+    if (assignedWeekday[i] !== null) return;
+    for (let candidate = 0; candidate < 7; candidate++) {
+      if (!claimedWeekdays.has(candidate)) {
+        assignedWeekday[i] = candidate;
+        claimedWeekdays.add(candidate);
+        return;
+      }
+    }
+  });
+
+  const normalizedDays: typeof program.days = program.days.map((day, i) => {
+    if (!day.frequency || day.frequency.type !== 'weekly') return day;
+    const w = assignedWeekday[i];
+    if (w === null || w === day.frequency.weekday) return day;
+    return { ...day, frequency: { ...day.frequency, weekday: w } };
+  });
+
+  normalizedDays.forEach((day) => {
     if (!day.frequency) return;
     const freq = day.frequency;
 
