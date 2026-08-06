@@ -5,6 +5,7 @@ import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/wor
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { formatMmSs } from '@/utils/timeFormat';
 
 interface ActivityScreenProps {
   history: WorkoutSession[];
@@ -198,7 +199,7 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                           const totalTime = e.sets.reduce((acc, set) => acc + (set.time ?? 0), 0);
                           const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);
                           const distStr = isDistanceBased(mode) && totalDist > 0 ? ` · ${formatDistance(totalDist)}` : '';
-                          return `${e.exerciseName} (${totalTime} min${distStr})`;
+                          return `${e.exerciseName} (${formatMmSs(totalTime)}${distStr})`;
                         }
                         if (mode === 'distance') {
                           const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);

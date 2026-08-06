@@ -8,6 +8,7 @@ import { formatWeight, formatWeightString, formatVolumeFromKg } from '@/utils/we
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { formatMmSs } from '@/utils/timeFormat';
 import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -408,11 +409,11 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                 const renderCells = () => {
                   switch (mode) {
                     case 'time':
-                      return <span className="text-center">{set.time ?? 0} min</span>;
+                      return <span className="text-center">{formatMmSs(set.time ?? 0)}</span>;
                     case 'time-distance':
                       return (
                         <>
-                          <span className="text-center">{set.time ?? 0} min</span>
+                          <span className="text-center">{formatMmSs(set.time ?? 0)}</span>
                           <span className="text-center">{set.distance ? formatDistance(set.distance, distanceUnit) : '—'}</span>
                         </>
                       );
