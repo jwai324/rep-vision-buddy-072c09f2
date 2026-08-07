@@ -27,48 +27,18 @@ const MAX_ROWS = 5000;
 // without the memory/startup cost of a 5000-row fetch on mobile.
 const MAX_SESSIONS = 500;
 
-// Guard against invalid or colliding weekday assignments (mainly a defense
-// against AI-generated programs that duplicate a weekday across two days
-// — e.g. Day 3 and Day 4 both land on Wednesday, silently dropping Day 4
-// from the calendar).
-//
-// Two passes so an earlier duplicate can't steal a slot from a later day
-// that had a valid non-colliding request:
-//   Pass 1 honors every valid, unclaimed weekday exactly as requested.
-//   Pass 2 fills in the days whose weekday was out-of-range or already
-//          taken, walking Sun→Sat and assigning the first unused slot.
+// Clamp out-of-range or non-integer weekday values into 0-6. Duplicate
+// weekday assignments are intentional (a program can schedule two
+// workouts on the same day) and pass through untouched.
 // Exported for unit testing and for the load-time auto-repair pass.
 export function normalizeProgramDays(days: WorkoutProgram['days']): { days: WorkoutProgram['days']; changed: boolean } {
-  const claimedWeekdays = new Set<number>();
-  const assignedWeekday: (number | null)[] = days.map(() => null);
-
-  days.forEach((day, i) => {
-    if (!day.frequency || day.frequency.type !== 'weekly') return;
-    const w = day.frequency.weekday;
-    if (Number.isInteger(w) && w >= 0 && w <= 6 && !claimedWeekdays.has(w)) {
-      assignedWeekday[i] = w;
-      claimedWeekdays.add(w);
-    }
-  });
-  days.forEach((day, i) => {
-    if (!day.frequency || day.frequency.type !== 'weekly') return;
-    if (assignedWeekday[i] !== null) return;
-    for (let candidate = 0; candidate < 7; candidate++) {
-      if (!claimedWeekdays.has(candidate)) {
-        assignedWeekday[i] = candidate;
-        claimedWeekdays.add(candidate);
-        return;
-      }
-    }
-  });
-
   let changed = false;
-  const normalized = days.map((day, i) => {
+  const normalized = days.map((day) => {
     if (!day.frequency || day.frequency.type !== 'weekly') return day;
-    const w = assignedWeekday[i];
-    if (w === null || w === day.frequency.weekday) return day;
+    const w = day.frequency.weekday;
+    if (Number.isInteger(w) && w >= 0 && w <= 6) return day;
     changed = true;
-    return { ...day, frequency: { ...day.frequency, weekday: w } };
+    return { ...day, frequency: { ...day.frequency, weekday: 0 } };
   });
   return { days: normalized, changed };
 }

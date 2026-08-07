@@ -17,37 +17,28 @@ function scheduleFor(fws: { date: string; templateId: string; label: string }[],
   return fws.filter(f => f.date === date);
 }
 
-describe('generateFutureWorkouts weekday collision handling', () => {
-  it('places every day on a unique weekday when the AI duplicates a weekday assignment', () => {
-    // Reproduces the "Day 4 got weekday=3, colliding with Day 3" bug: without
-    // normalization, Thursday silently becomes a rest day and Day 4 vanishes.
+describe('generateFutureWorkouts multi-workout scheduling', () => {
+  it('keeps every workout when two ProgramDays share the same weekday', () => {
+    // Two entries on Wednesday (weekday 3) — the user wants both scheduled
+    // on the same date, not silently spread apart.
     const program = baseProgram({
       days: [
-        { label: 'Day 1', templateId: 'tpl-mon', frequency: { type: 'weekly', weekday: 1 } },
-        { label: 'Day 2', templateId: 'tpl-tue', frequency: { type: 'weekly', weekday: 2 } },
-        { label: 'Day 3', templateId: 'tpl-wed', frequency: { type: 'weekly', weekday: 3 } },
-        { label: 'Day 4', templateId: 'tpl-thu', frequency: { type: 'weekly', weekday: 3 } },
-        { label: 'Day 5', templateId: 'rest', frequency: { type: 'weekly', weekday: 5 } },
-        { label: 'Day 6', templateId: 'tpl-sat', frequency: { type: 'weekly', weekday: 6 } },
-        { label: 'Day 7', templateId: 'rest', frequency: { type: 'weekly', weekday: 0 } },
+        { label: 'Wed AM', templateId: 'tpl-am', frequency: { type: 'weekly', weekday: 3 } },
+        { label: 'Wed PM', templateId: 'tpl-pm', frequency: { type: 'weekly', weekday: 3 } },
       ],
     });
 
     const fws = generateFutureWorkouts(program);
     const training = fws.filter(f => f.templateId !== 'rest');
-    const rest = fws.filter(f => f.templateId === 'rest');
 
-    expect(training).toHaveLength(5);
-    expect(rest).toHaveLength(2);
-
-    // Aug 6 2026 is a Thursday — Day 4 must land here, not become rest.
-    expect(scheduleFor(fws, '2026-08-06')).toEqual([
-      expect.objectContaining({ templateId: 'tpl-thu', label: 'Day 4' }),
+    expect(training).toHaveLength(2);
+    // Aug 5 2026 is Wednesday — both workouts land here.
+    expect(scheduleFor(fws, '2026-08-05')).toEqual([
+      expect.objectContaining({ templateId: 'tpl-am', label: 'Wed AM' }),
+      expect.objectContaining({ templateId: 'tpl-pm', label: 'Wed PM' }),
     ]);
-
-    // Every training day of the week should be represented exactly once.
-    const dates = training.map(f => f.date).sort();
-    expect(new Set(dates).size).toBe(5);
+    // Aug 5 shouldn't also generate a rest-day entry.
+    expect(fws.filter(f => f.date === '2026-08-05' && f.templateId === 'rest')).toHaveLength(0);
   });
 
   it('leaves valid, unique weekday assignments untouched', () => {
@@ -76,11 +67,11 @@ describe('generateFutureWorkouts weekday collision handling', () => {
     ]);
   });
 
-  it('reassigns out-of-range weekdays to the first unused weekday', () => {
+  it('clamps out-of-range weekdays to Sunday (weekday 0)', () => {
     const program = baseProgram({
       days: [
         { label: 'Day 1', templateId: 'tpl-a', frequency: { type: 'weekly', weekday: 1 } },
-        // 99 is nonsense — should be reassigned to the first still-open weekday (0 = Sun).
+        // 99 is nonsense — clamped to weekday 0 (Sunday).
         { label: 'Day 2', templateId: 'tpl-b', frequency: { type: 'weekly', weekday: 99 } },
       ],
     });
