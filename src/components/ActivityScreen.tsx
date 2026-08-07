@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { ArrowLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Eye, EyeOff, Play } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance } from '@/utils/exerciseInputMode';
@@ -12,6 +12,7 @@ interface ActivityScreenProps {
   templates: WorkoutTemplate[];
   onSelectSession: (session: WorkoutSession) => void;
   onSelectFutureWorkout: (fw: FutureWorkout) => void;
+  onStartTemplate?: (template: WorkoutTemplate) => void;
   onBack: () => void;
   initialTab?: 'history' | 'future';
   filterDate?: string;
@@ -23,7 +24,7 @@ function formatDuration(s: number) {
 }
 
 export const ActivityScreen: React.FC<ActivityScreenProps> = ({
-  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onBack, initialTab = 'future', filterDate,
+  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onStartTemplate, onBack, initialTab = 'future', filterDate,
 }) => {
   const exerciseLookup = useExerciseLookup();
   const [tab, setTab] = useState<'history' | 'future'>(initialTab);
@@ -109,28 +110,43 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
             {filteredFuture.map(fw => {
               const isRest = fw.templateId === 'rest';
               const template = !isRest ? templates.find(t => t.id === fw.templateId) : null;
+              const canStart = !!(template && onStartTemplate);
               return (
-                <button
+                <div
                   key={fw.id}
-                  onClick={() => onSelectFutureWorkout(fw)}
-                  className={`w-full bg-card rounded-xl p-4 border transition-colors text-left flex items-center gap-3 ${
+                  className={`w-full bg-card rounded-xl border transition-colors flex items-stretch ${
                     isRest ? 'border-border/50 opacity-70' : 'border-border hover:border-primary/30'
                   }`}
                 >
-                  <span className="text-xl">{isRest ? '😴' : '🏋️'}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{fw.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                    </p>
-                    {template && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {template.exercises.map(e => exerciseLookup[e.exerciseId] ?? e.exerciseId).join(' → ')}
+                  <button
+                    onClick={() => onSelectFutureWorkout(fw)}
+                    className="flex-1 min-w-0 p-4 text-left flex items-center gap-3"
+                  >
+                    <span className="text-xl">{isRest ? '😴' : '🏋️'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{fw.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                       </p>
-                    )}
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                </button>
+                      {template && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {template.exercises.map(e => exerciseLookup[e.exerciseId] ?? e.exerciseId).join(' → ')}
+                        </p>
+                      )}
+                    </div>
+                    {!canStart && <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+                  </button>
+                  {canStart && (
+                    <button
+                      onClick={() => onStartTemplate!(template!)}
+                      aria-label={`Perform ${fw.label}`}
+                      className="flex flex-col items-center justify-center gap-1 px-4 border-l border-border text-primary hover:bg-primary/10 transition-colors shrink-0"
+                    >
+                      <Play className="w-5 h-5 fill-current" />
+                      <span className="text-[10px] uppercase tracking-wider font-bold">Perform</span>
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
