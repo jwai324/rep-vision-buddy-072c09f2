@@ -4,7 +4,7 @@ import type { WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/wor
 import { EXERCISES } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { Dumbbell, ClipboardList, Calendar, ChevronRight } from 'lucide-react';
-import { getScheduledWorkoutForDate } from '@/utils/scheduledWorkout';
+import { getScheduledWorkoutsForDate } from '@/utils/scheduledWorkout';
 
 interface StartWorkoutScreenProps {
   templates: WorkoutTemplate[];
@@ -20,9 +20,13 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
   templates, activeProgram, futureWorkouts, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
 }) => {
   const lookup = useExerciseLookup();
-  const { template: todayTemplate, isRestDay } = getScheduledWorkoutForDate(
+  const todayScheduled = getScheduledWorkoutsForDate(
     format(new Date(), 'yyyy-MM-dd'), activeProgram, futureWorkouts, templates,
   );
+  const todayTemplates = todayScheduled
+    .map(s => s.template)
+    .filter((t): t is WorkoutTemplate => t !== null);
+  const isRestDay = todayScheduled.length > 0 && todayScheduled.every(s => s.isRestDay);
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
@@ -56,17 +60,24 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
             <Calendar className="w-3 h-3 inline mr-1" />
             Active Program — {activeProgram.name}
           </p>
-          {todayTemplate ? (
-            <button
-              onClick={() => onStartProgramDay(todayTemplate)}
-              className="w-full bg-card rounded-xl p-4 border border-primary/30 hover:border-primary/60 transition-colors text-left glow-green"
-            >
-              <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Today's Workout</p>
-              <h3 className="font-semibold text-foreground">{todayTemplate.name}</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {todayTemplate.exercises.map(e => lookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
-              </p>
-            </button>
+          {todayTemplates.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {todayTemplates.map((tpl, idx) => (
+                <button
+                  key={`${tpl.id}-${idx}`}
+                  onClick={() => onStartProgramDay(tpl)}
+                  className="w-full bg-card rounded-xl p-4 border border-primary/30 hover:border-primary/60 transition-colors text-left glow-green"
+                >
+                  <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">
+                    {todayTemplates.length > 1 ? `Today · ${idx + 1} of ${todayTemplates.length}` : "Today's Workout"}
+                  </p>
+                  <h3 className="font-semibold text-foreground">{tpl.name}</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {tpl.exercises.map(e => lookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
+                  </p>
+                </button>
+              ))}
+            </div>
           ) : isRestDay ? (
             <div className="bg-card rounded-xl p-4 border border-border text-center">
               <span className="text-2xl">🛏️</span>

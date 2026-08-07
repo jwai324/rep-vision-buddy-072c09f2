@@ -12,7 +12,7 @@ import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import type { UserPreferences } from '@/hooks/useStorage';
 import { getCurrentStreak } from '@/utils/streak';
-import { getScheduledWorkoutForDate } from '@/utils/scheduledWorkout';
+import { getScheduledWorkoutsForDate } from '@/utils/scheduledWorkout';
 
 interface DashboardProps {
   history: WorkoutSession[];
@@ -312,13 +312,13 @@ const WeeklyProgramCalendar: React.FC<{
             : hasScheduledRest || isRest ? '😴'
             : '—';
 
-          const label = hasCompletedWorkout
-            ? `${completedSessions.filter(s => !s.isRestDay).length} done`
+          const scheduledLabels: string[] = hasCompletedWorkout
+            ? [`${completedSessions.filter(s => !s.isRestDay).length} done`]
             : hasScheduledWorkout
-              ? dayFutureWorkouts.find(f => f.templateId !== 'rest')?.label
+              ? dayFutureWorkouts.filter(f => f.templateId !== 'rest').map(f => f.label)
               : hasWorkout
-                ? day.events.find(e => e.templateId !== 'rest')?.label
-                : null;
+                ? day.events.filter(e => e.templateId !== 'rest').map(e => e.label)
+                : [];
 
           return (
             <button
@@ -339,13 +339,16 @@ const WeeklyProgramCalendar: React.FC<{
                 {format(day.date, 'd')}
               </span>
               <span className="text-base mt-0.5">{icon}</span>
-              {label && (
-                <span className={`text-[8px] font-medium truncate max-w-full mt-0.5 ${
-                  hasCompletedWorkout ? 'text-green-400' : 'text-primary'
-                }`}>
-                  {label}
+              {scheduledLabels.map((l, li) => (
+                <span
+                  key={li}
+                  className={`text-[8px] font-medium truncate max-w-full mt-0.5 ${
+                    hasCompletedWorkout ? 'text-green-400' : 'text-primary'
+                  }`}
+                >
+                  {l}
                 </span>
-              )}
+              ))}
             </button>
           );
         })}
@@ -375,9 +378,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const lastSession = history[0];
 
   const todayDateStr = format(new Date(), 'yyyy-MM-dd');
-  const { template: todayTemplate, isRestDay: isTodayRestDay } = getScheduledWorkoutForDate(
+  const todayScheduled = getScheduledWorkoutsForDate(
     todayDateStr, activeProgram, futureWorkouts, templates,
   );
+  const todayTemplates = todayScheduled
+    .map(s => s.template)
+    .filter((t): t is WorkoutTemplate => t !== null);
+  const isTodayRestDay = todayScheduled.length > 0 && todayScheduled.every(s => s.isRestDay);
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
@@ -405,21 +412,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Active program today */}
-      {todayTemplate && (
-        <button
-          type="button"
-          onClick={() => onOpenTodayWorkout(todayTemplate, format(new Date(), 'yyyy-MM-dd'))}
-          className="bg-card rounded-xl p-4 border border-primary/30 glow-green text-left w-full hover:border-primary/50 transition-colors"
-        >
-          <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">Today's Workout</p>
-          <h3 className="font-semibold text-foreground mb-1">{todayTemplate.name}</h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            {todayTemplate.exercises.map(e => exerciseLookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
-          </p>
-          <Button variant="neon" size="sm" onClick={(e) => { e.stopPropagation(); onStartTemplate(todayTemplate); }}>
-            Start Today's Workout
-          </Button>
-        </button>
+      {todayTemplates.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {todayTemplates.map((tpl, idx) => (
+            <button
+              key={`${tpl.id}-${idx}`}
+              type="button"
+              onClick={() => onOpenTodayWorkout(tpl, todayDateStr)}
+              className="bg-card rounded-xl p-4 border border-primary/30 glow-green text-left w-full hover:border-primary/50 transition-colors"
+            >
+              <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">
+                {todayTemplates.length > 1 ? `Today · ${idx + 1} of ${todayTemplates.length}` : "Today's Workout"}
+              </p>
+              <h3 className="font-semibold text-foreground mb-1">{tpl.name}</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                {tpl.exercises.map(e => exerciseLookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
+              </p>
+              <Button variant="neon" size="sm" onClick={(e) => { e.stopPropagation(); onStartTemplate(tpl); }}>
+                {todayTemplates.length > 1 ? 'Start' : "Start Today's Workout"}
+              </Button>
+            </button>
+          ))}
+        </div>
       )}
 
       {isTodayRestDay && activeProgram && (
