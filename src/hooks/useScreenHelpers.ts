@@ -55,8 +55,11 @@ export function useDayClickHandler(
     );
     const hasStoredScheduled = visibleFutureWorkouts.some(f => f.date === dateStr);
 
-    // Check if active program defines a scheduled day for this date
-    let programScheduled: { label: string; templateId: string } | null = null;
+    // Collect every ProgramDay that matches this date. A program can schedule
+    // more than one workout on the same weekday, so keep going after the
+    // first match — we need the full list to decide between opening a
+    // single detail screen and routing to the day-filtered activity list.
+    const programScheduled: { label: string; templateId: string }[] = [];
     if (activeProgram && !hasStoredScheduled && !hasCompleted) {
       const start = activeProgram.startDate ? parseLocalDate(activeProgram.startDate) : new Date();
       const end = addWeeks(start, activeProgram.durationWeeks ?? 8);
@@ -88,28 +91,38 @@ export function useDayClickHandler(
               const nxt = new Date(cur); nxt.setMonth(nxt.getMonth() + 1); cur = nxt;
             }
           }
-          if (match) {
-            programScheduled = { label: day.label, templateId: day.templateId };
-            break;
-          }
+          if (match) programScheduled.push({ label: day.label, templateId: day.templateId });
         }
       }
     }
 
-    // If a scheduled item exists for this date and nothing is completed → open detail
+    // If a scheduled item exists for this date and nothing is completed → open detail.
+    // With multiple scheduled workouts, jump to the day-filtered activity list
+    // (which shows every one of them) instead of silently picking the first.
     if (!hasCompleted) {
-      const stored = visibleFutureWorkouts.find(f => f.date === dateStr);
-      if (stored) {
-        setScreen({ type: 'futureWorkoutDetail', futureWorkout: stored });
+      const storedForDate = visibleFutureWorkouts.filter(f => f.date === dateStr);
+      if (storedForDate.length === 1) {
+        setScreen({ type: 'futureWorkoutDetail', futureWorkout: storedForDate[0] });
         return;
       }
-      if (programScheduled) {
+      if (storedForDate.length > 1) {
+        setScreen({ type: 'activity', initialTab: 'future', filterDate: dateStr });
+        return;
+      }
+      if (programScheduled.length >= 1) {
+        // With multiple program-scheduled workouts on this date, open the
+        // first as a synthetic detail — the day-filtered activity list
+        // is empty here because no `future_workouts` rows exist yet, so
+        // we surface at least one workout rather than sending the user
+        // to a blank screen. Users hit "back" and can tap in again from
+        // the calendar's per-day detail panel to reach the others.
+        const first = programScheduled[0];
         const synthetic: FutureWorkout = {
           id: `synthetic-${dateStr}`,
           programId: activeProgramId ?? 'manual',
           date: dateStr,
-          templateId: programScheduled.templateId,
-          label: programScheduled.label,
+          templateId: first.templateId,
+          label: first.label,
         };
         setScreen({ type: 'futureWorkoutDetail', futureWorkout: synthetic });
         return;
