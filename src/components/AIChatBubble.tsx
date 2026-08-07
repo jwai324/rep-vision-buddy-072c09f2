@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
 
 const MAX_CHAT_CHARS = 500;
+const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
 
 const TypingIndicator = () => (
   <div className="flex items-center gap-1 px-3 py-2">
@@ -38,7 +39,26 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     return map;
   }, [templates]);
 
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(() => {
+    try {
+      return localStorage.getItem(DRAFT_STORAGE_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (input) {
+        localStorage.setItem(DRAFT_STORAGE_KEY, input);
+      } else {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+      }
+    } catch {
+      // storage unavailable (private mode, quota) — draft just won't persist
+    }
+  }, [input]);
+
   const [hasSeenPulse, setHasSeenPulse] = useState(() =>
     localStorage.getItem('ai-chat-pulse-seen') === 'true'
   );
