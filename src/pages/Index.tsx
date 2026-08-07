@@ -375,6 +375,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           templates={storage.templates}
           onSelectSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'activity' })}
           onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'activity' })}
+          onStartTemplate={startFromTemplate}
           onBack={() => setScreen({ type: 'dashboard' })}
           initialTab={screen.initialTab}
           filterDate={screen.filterDate}
