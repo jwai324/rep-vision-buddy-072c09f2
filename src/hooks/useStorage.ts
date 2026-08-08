@@ -6,6 +6,7 @@ import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } f
 import type { Database } from '@/integrations/supabase/types';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
 type TemplateRow = Database['public']['Tables']['workout_templates']['Row'];
@@ -196,6 +197,8 @@ export interface UserPreferences {
   defaultDropSetsEnabled: boolean;
   streakMode: StreakMode;
   streakWeeklyTarget: number;
+  streakAdjustment: number;
+  streakAdjustmentSetAt: string | null;
   tutorialCompleted: boolean;
   hideTimers: boolean;
   customLocations: string[];
@@ -231,7 +234,7 @@ export interface BodyMeasurement {
   weightKg: number;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'], stickyNotes: {} };
+const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, streakAdjustment: 0, streakAdjustmentSetAt: null, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'], stickyNotes: {} };
 const DEFAULT_PROFILE: UserProfile = {
   displayName: null,
   goal: null,
@@ -255,6 +258,8 @@ function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; pre
       defaultDropSetsEnabled: row.default_drop_sets_enabled ?? false,
       streakMode: (row.streak_mode ?? 'daily') as StreakMode,
       streakWeeklyTarget: row.streak_weekly_target ?? 3,
+      streakAdjustment: row.streak_adjustment ?? 0,
+      streakAdjustmentSetAt: row.streak_adjustment_set_at ?? null,
       tutorialCompleted: row.tutorial_completed ?? false,
       hideTimers: row.hide_timers ?? false,
       customLocations: (row.custom_locations as string[]) ?? ['Home Gym'],
@@ -524,6 +529,10 @@ export function useStorage() {
     }
   }, [user, loading, programs, saveProgram]);
 
+  // Auto-clear of the streak adjustment when the new mode has actually
+  // produced a break is set up further below, after updatePreferences is
+  // defined — see the "clearedAdjustmentAt" effect.
+
   const deleteProgram = useCallback(async (id: string) => {
     if (!user) return;
     await supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id);
@@ -659,8 +668,38 @@ export function useStorage() {
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
     if (!user) return;
-    const updated = { ...preferences, ...prefs };
     const previous = preferences;
+    let updated = { ...preferences, ...prefs };
+
+    // Streaks are forward-acting: a settings edit must not visibly change the
+    // number on the home page. When the mode or target moves, freeze whatever
+    // the user was seeing under the OLD settings as an offset, so raw + offset
+    // = old_displayed on the day of the change. The offset then decays
+    // naturally — see computeDisplayedStreak for the clear-on-break logic.
+    // Callers should not set streakAdjustment/streakAdjustmentSetAt directly;
+    // this branch reconciles them from the mode/target delta and any explicit
+    // caller-supplied override (e.g. the auto-clear effect) takes precedence.
+    const modeOrTargetChanging =
+      prefs.streakMode !== undefined && prefs.streakMode !== previous.streakMode
+      || prefs.streakWeeklyTarget !== undefined && prefs.streakWeeklyTarget !== previous.streakWeeklyTarget;
+    const callerSetAdjustment = prefs.streakAdjustment !== undefined || prefs.streakAdjustmentSetAt !== undefined;
+    if (modeOrTargetChanging && !callerSetAdjustment) {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const oldDisplayed = computeDisplayedStreak(
+        history,
+        previous.streakMode,
+        previous.streakWeeklyTarget,
+        previous.streakAdjustment,
+        previous.streakAdjustmentSetAt,
+      ).displayed;
+      const newRaw = getCurrentStreak(history, updated.streakMode, updated.streakWeeklyTarget);
+      updated = {
+        ...updated,
+        streakAdjustment: oldDisplayed - newRaw,
+        streakAdjustmentSetAt: today,
+      };
+    }
+
     setPreferencesState(updated);
     const { error } = await supabase.from('user_settings').upsert({
       user_id: user.id,
@@ -670,6 +709,8 @@ export function useStorage() {
       default_drop_sets_enabled: updated.defaultDropSetsEnabled,
       streak_mode: updated.streakMode,
       streak_weekly_target: updated.streakWeeklyTarget,
+      streak_adjustment: updated.streakAdjustment,
+      streak_adjustment_set_at: updated.streakAdjustmentSetAt,
       tutorial_completed: updated.tutorialCompleted,
       hide_timers: updated.hideTimers,
       custom_locations: updated.customLocations as unknown as Database['public']['Tables']['user_settings']['Insert']['custom_locations'],
@@ -680,7 +721,30 @@ export function useStorage() {
       toast.error('Failed to save preferences');
       setPreferencesState(previous); // rollback
     }
-  }, [user, preferences, activeProgramId]);
+  }, [user, preferences, activeProgramId, history]);
+
+  // Once the new streak mode has produced an actual break (raw=0 for at
+  // least one period past the day the adjustment was set), clear the
+  // adjustment so a future re-started streak doesn't inherit the frozen
+  // offset. The ref keeps us from re-firing while the write is in flight or
+  // if history/preferences churn without the underlying signal changing.
+  const clearedAdjustmentAt = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user || loading) return;
+    if (preferences.streakAdjustment === 0 && preferences.streakAdjustmentSetAt === null) return;
+    const { shouldClearAdjustment } = computeDisplayedStreak(
+      history,
+      preferences.streakMode,
+      preferences.streakWeeklyTarget,
+      preferences.streakAdjustment,
+      preferences.streakAdjustmentSetAt,
+    );
+    if (!shouldClearAdjustment) return;
+    const key = preferences.streakAdjustmentSetAt ?? 'null';
+    if (clearedAdjustmentAt.current === key) return;
+    clearedAdjustmentAt.current = key;
+    updatePreferences({ streakAdjustment: 0, streakAdjustmentSetAt: null });
+  }, [user, loading, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;

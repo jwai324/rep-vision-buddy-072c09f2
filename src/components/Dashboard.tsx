@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import type { UserPreferences } from '@/hooks/useStorage';
-import { getCurrentStreak } from '@/utils/streak';
+import { computeDisplayedStreak } from '@/utils/streak';
 import { getScheduledWorkoutsForDate } from '@/utils/scheduledWorkout';
 
 interface DashboardProps {
@@ -370,7 +370,13 @@ const WeeklyProgramCalendar: React.FC<{
 export const Dashboard: React.FC<DashboardProps> = ({
   history, activeProgram, templates, futureWorkouts, preferences, hasActiveWorkout = false, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar, onOpenTodayWorkout
 }) => {
-  const streak = getCurrentStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
+  const streak = computeDisplayedStreak(
+    history,
+    preferences.streakMode,
+    preferences.streakWeeklyTarget,
+    preferences.streakAdjustment,
+    preferences.streakAdjustmentSetAt,
+  ).displayed;
   const streakLabel = preferences.streakMode === 'weekly'
     ? `wk streak (${preferences.streakWeeklyTarget}/wk)`
     : 'day streak';

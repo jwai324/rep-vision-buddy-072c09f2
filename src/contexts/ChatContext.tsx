@@ -884,7 +884,9 @@ export const ChatProvider: React.FC<{
           case 'consistency': {
             const mode = (storage.preferences?.streakMode as 'daily' | 'weekly') ?? 'daily';
             const target = storage.preferences?.streakWeeklyTarget ?? 3;
-            const c = consistencyStats(allHistory, days, mode, target);
+            const adjustment = storage.preferences?.streakAdjustment ?? 0;
+            const setAt = storage.preferences?.streakAdjustmentSetAt ?? null;
+            const c = consistencyStats(allHistory, days, mode, target, adjustment, setAt);
             return { result: { ...meta, ...c } };
           }
 

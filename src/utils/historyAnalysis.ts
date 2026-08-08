@@ -1,7 +1,7 @@
 import { format, startOfWeek } from 'date-fns';
 import type { WorkoutSession } from '@/types/workout';
 import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
-import { getCurrentStreak, getLongestStreak, type StreakMode } from '@/utils/streak';
+import { getLongestStreak, computeDisplayedStreak, type StreakMode } from '@/utils/streak';
 
 /** Monday-of-week ISO date for the given date. */
 export function weekStart(dateInput: Date | string): string {
@@ -240,12 +240,18 @@ export interface ConsistencyStats {
   avg_duration_min: number;
 }
 
-/** Streak + training-vs-rest breakdown across the window. */
+/**
+ * Streak + training-vs-rest breakdown across the window. current_streak uses
+ * the same forward-acting display value the home page shows — a settings
+ * edit must not visibly change what the user (or the AI coach) reports.
+ */
 export function consistencyStats(
   sessions: WorkoutSession[],
   days: number,
   streakMode: StreakMode,
   streakTarget: number,
+  streakAdjustment: number = 0,
+  streakAdjustmentSetAt: string | null = null,
 ): ConsistencyStats {
   const windowed = sessionsInWindow(sessions, days, true);
   const training = windowed.filter(s => !s.isRestDay);
@@ -255,7 +261,7 @@ export function consistencyStats(
   return {
     workouts_per_week_avg: weeks > 0 ? Math.round((training.length / weeks) * 10) / 10 : 0,
     longest_streak: getLongestStreak(sessions, streakMode, streakTarget),
-    current_streak: getCurrentStreak(sessions, streakMode, streakTarget),
+    current_streak: computeDisplayedStreak(sessions, streakMode, streakTarget, streakAdjustment, streakAdjustmentSetAt).displayed,
     streak_mode: streakMode,
     training_days: training.length,
     rest_days: rest.length,
