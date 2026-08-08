@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Sparkles, Send, Trash2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Sparkles, Send, Trash2, Mic, MicOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { useChatContext, GOD_MODE_PHRASE } from '@/contexts/ChatContext';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
@@ -91,8 +93,35 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const limitBlocks = creditsBalance.exhausted && !godMode && !isGodPhrase;
   const isSendDisabled = !input.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
 
+  const handleSpeechFinal = useCallback((chunk: string) => {
+    setInput(prev => {
+      const joined = prev ? `${prev.trimEnd()} ${chunk}` : chunk;
+      return joined.slice(0, MAX_CHAT_CHARS);
+    });
+  }, []);
+  const handleSpeechError = useCallback((err: string) => {
+    if (err === 'not-allowed' || err === 'service-not-allowed') {
+      toast.error('Microphone access denied. Enable it in your browser settings.');
+    } else if (err === 'audio-capture') {
+      toast.error("Couldn't reach a microphone.");
+    } else {
+      toast.error(`Voice input failed: ${err}`);
+    }
+  }, []);
+  const speech = useSpeechRecognition({
+    onFinalResult: handleSpeechFinal,
+    onError: handleSpeechError,
+  });
+
+  const handleMicToggle = () => {
+    if (isLoading || limitBlocks || consecutiveErrors >= 2) return;
+    if (navigator.vibrate) navigator.vibrate(5);
+    speech.toggle();
+  };
+
   const handleSend = () => {
     if (isSendDisabled) return;
+    if (speech.isListening) speech.stop();
     const text = input.trim().slice(0, MAX_CHAT_CHARS);
     setInput('');
     if (navigator.vibrate) navigator.vibrate(10);
@@ -330,6 +359,17 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
 
           {/* Input */}
           <div className="px-4 pb-4 pt-2 border-t border-border flex-shrink-0">
+            {speech.isListening && (
+              <div className="flex items-center gap-2 mb-1.5 text-[11px] text-primary">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+                </span>
+                <span className="flex-1 truncate">
+                  {speech.interimTranscript || 'Listening…'}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <div className="flex-1 relative">
                 <input
@@ -338,7 +378,13 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={creditsBalance.exhausted && !godMode ? "Out of credits" : "Ask anything..."}
+                  placeholder={
+                    creditsBalance.exhausted && !godMode
+                      ? "Out of credits"
+                      : speech.isListening
+                        ? "Listening…"
+                        : "Ask anything…"
+                  }
                   className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                   disabled={isLoading || consecutiveErrors >= 2}
                   maxLength={MAX_CHAT_CHARS}
@@ -352,11 +398,30 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                   </span>
                 )}
               </div>
+              {speech.isSupported && (
+                <button
+                  onClick={handleMicToggle}
+                  disabled={isLoading || limitBlocks || consecutiveErrors >= 2}
+                  aria-label={speech.isListening ? 'Stop dictation' : 'Start dictation'}
+                  aria-pressed={speech.isListening}
+                  className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0",
+                    speech.isListening
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/40 animate-pulse"
+                      : (isLoading || limitBlocks || consecutiveErrors >= 2)
+                        ? "bg-secondary text-muted-foreground"
+                        : "bg-secondary text-foreground hover:bg-secondary/70 hover:text-primary"
+                  )}
+                >
+                  {speech.isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
               <button
                 onClick={handleSend}
                 disabled={isSendDisabled}
+                aria-label="Send message"
                 className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+                  "w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0",
                   !isSendDisabled
                     ? "gradient-green text-primary-foreground"
                     : "bg-secondary text-muted-foreground"
