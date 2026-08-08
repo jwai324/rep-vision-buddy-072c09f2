@@ -29,6 +29,8 @@ export interface BodyMeasurementInsert {
 // `as any` casts around every read.
 export type ProfileRowExtended = Database['public']['Tables']['profiles']['Row'] & {
   goal: string | null;
+  hybrid_goals: string[] | null;
+  coach_notes: string | null;
   experience_level: string | null;
   equipment: string[] | null;
   injuries: string[] | null;
@@ -40,6 +42,8 @@ export type ProfileRowExtended = Database['public']['Tables']['profiles']['Row']
 
 export type ProfileInsertExtended = Database['public']['Tables']['profiles']['Insert'] & {
   goal?: string | null;
+  hybrid_goals?: string[] | null;
+  coach_notes?: string | null;
   experience_level?: string | null;
   equipment?: string[] | null;
   injuries?: string[] | null;

@@ -423,6 +423,8 @@ export const ChatProvider: React.FC<{
         history_window_max_days: historyMax,
         total_sessions_logged: storage.history?.length ?? 0,
         goal: storage.profile?.goal ?? null,
+        hybrid_goals: storage.profile?.goal === 'hybrid' ? (storage.profile?.hybridGoals ?? []) : [],
+        coach_notes: storage.profile?.coachNotes ?? null,
         experience_level: storage.profile?.experienceLevel ?? null,
         equipment: storage.profile?.equipment ?? [],
         injuries: storage.profile?.injuries ?? [],
