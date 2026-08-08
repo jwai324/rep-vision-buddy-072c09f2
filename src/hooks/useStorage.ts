@@ -205,7 +205,11 @@ export interface UserPreferences {
   stickyNotes: Record<string, string>;
 }
 
-export type Goal = 'hypertrophy' | 'strength' | 'fat_loss' | 'endurance' | 'general';
+export type Goal = 'hypertrophy' | 'strength' | 'fat_loss' | 'endurance' | 'general' | 'hybrid';
+// Sub-goals blended when goal === 'hybrid'. Excludes 'hybrid' itself.
+export type HybridGoal = Exclude<Goal, 'hybrid'>;
+export const HYBRID_GOAL_VALUES: HybridGoal[] = ['hypertrophy', 'strength', 'fat_loss', 'endurance', 'general'];
+export const COACH_NOTES_MAX_LENGTH = 2000;
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
 export type Sex = 'male' | 'female' | 'other' | 'prefer_not_to_say';
 export type SubscriptionTier = 'free' | 'premium';
@@ -213,6 +217,8 @@ export type SubscriptionTier = 'free' | 'premium';
 export interface UserProfile {
   displayName: string | null;
   goal: Goal | null;
+  hybridGoals: HybridGoal[];
+  coachNotes: string | null;
   experienceLevel: ExperienceLevel | null;
   equipment: string[];
   injuries: string[];
@@ -232,6 +238,8 @@ const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSec
 const DEFAULT_PROFILE: UserProfile = {
   displayName: null,
   goal: null,
+  hybridGoals: [],
+  coachNotes: null,
   experienceLevel: null,
   equipment: [],
   injuries: [],
@@ -313,9 +321,12 @@ export function useStorage() {
         }
         if (profileRes.data) {
           const row = profileRes.data as ProfileRowExtended;
+          const rawHybrid = (row.hybrid_goals ?? []) as string[];
           setProfileState({
             displayName: row.display_name ?? null,
             goal: (row.goal as Goal | null) ?? null,
+            hybridGoals: rawHybrid.filter((g): g is HybridGoal => (HYBRID_GOAL_VALUES as string[]).includes(g)),
+            coachNotes: row.coach_notes ?? null,
             experienceLevel: (row.experience_level as ExperienceLevel | null) ?? null,
             equipment: row.equipment ?? [],
             injuries: row.injuries ?? [],
@@ -680,7 +691,12 @@ export function useStorage() {
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;
-    const updated = { ...profile, ...updates };
+    const merged = { ...profile, ...updates };
+    // Hybrid sub-goals only apply when goal === 'hybrid'; wipe them otherwise
+    // so a user toggling off hybrid doesn't leave a stale array behind.
+    const updated: UserProfile = merged.goal === 'hybrid'
+      ? merged
+      : { ...merged, hybridGoals: [] };
     const previous = profile;
     setProfileState(updated);
     // ProfileInsertExtended includes the columns missing from the generated
@@ -690,6 +706,8 @@ export function useStorage() {
       user_id: user.id,
       display_name: updated.displayName,
       goal: updated.goal,
+      hybrid_goals: updated.hybridGoals,
+      coach_notes: updated.coachNotes,
       experience_level: updated.experienceLevel,
       equipment: updated.equipment,
       injuries: updated.injuries,

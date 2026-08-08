@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, Target, GraduationCap, Dumbbell, AlertTriangle, Scale, Ruler, User, Cake, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, Target, GraduationCap, Dumbbell, AlertTriangle, Scale, Ruler, User, Cake, Plus, Trash2, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { EQUIPMENT_LIST } from '@/data/exercises';
 import { fromKg, toKg } from '@/utils/weightConversion';
 import { format } from 'date-fns';
-import type { UserProfile, BodyMeasurement, WeightUnit, Goal, ExperienceLevel, Sex } from '@/hooks/useStorage';
+import { COACH_NOTES_MAX_LENGTH } from '@/hooks/useStorage';
+import type { UserProfile, BodyMeasurement, WeightUnit, Goal, HybridGoal, ExperienceLevel, Sex } from '@/hooks/useStorage';
 
 interface ProfileScreenProps {
   profile: UserProfile;
@@ -18,6 +20,15 @@ interface ProfileScreenProps {
 }
 
 const GOAL_OPTIONS: { value: Goal; label: string }[] = [
+  { value: 'hypertrophy', label: 'Hypertrophy' },
+  { value: 'strength', label: 'Strength' },
+  { value: 'fat_loss', label: 'Fat Loss' },
+  { value: 'endurance', label: 'Endurance' },
+  { value: 'general', label: 'General Fitness' },
+  { value: 'hybrid', label: 'Hybrid Athlete' },
+];
+
+const HYBRID_SUB_GOAL_OPTIONS: { value: HybridGoal; label: string }[] = [
   { value: 'hypertrophy', label: 'Hypertrophy' },
   { value: 'strength', label: 'Strength' },
   { value: 'fat_loss', label: 'Fat Loss' },
@@ -73,6 +84,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [bwDraft, setBwDraft] = useState('');
   const [bwSaving, setBwSaving] = useState(false);
   const [injuryDraft, setInjuryDraft] = useState('');
+  const [coachNotesDraft, setCoachNotesDraft] = useState(profile.coachNotes ?? '');
 
   const heightUnit = weightUnit === 'kg' ? 'cm' : 'in';
   const heightDisplay = profile.heightCm != null ? String(fromCm(profile.heightCm, weightUnit)) : '';
@@ -86,6 +98,20 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     if (set.has(item)) set.delete(item);
     else set.add(item);
     onUpdateProfile({ equipment: Array.from(set) });
+  };
+
+  const toggleHybridGoal = (goal: HybridGoal) => {
+    const set = new Set(profile.hybridGoals);
+    if (set.has(goal)) set.delete(goal);
+    else set.add(goal);
+    onUpdateProfile({ hybridGoals: Array.from(set) });
+  };
+
+  const saveCoachNotes = () => {
+    const trimmed = coachNotesDraft.trim();
+    const next = trimmed.length === 0 ? null : trimmed.slice(0, COACH_NOTES_MAX_LENGTH);
+    if (next === (profile.coachNotes ?? null)) return;
+    onUpdateProfile({ coachNotes: next });
   };
 
   const injuriesFull = profile.injuries.length >= MAX_INJURIES;
@@ -151,12 +177,38 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       </p>
 
       <Section icon={<Target className="w-4 h-4 text-primary" />} title="Primary Goal">
-        <div className="flex flex-wrap gap-2">
-          {GOAL_OPTIONS.map(opt => (
-            <Chip key={opt.value} active={profile.goal === opt.value} onClick={() => onUpdateProfile({ goal: profile.goal === opt.value ? null : opt.value })}>
-              {opt.label}
-            </Chip>
-          ))}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2">
+            {GOAL_OPTIONS.map(opt => (
+              <Chip key={opt.value} active={profile.goal === opt.value} onClick={() => onUpdateProfile({ goal: profile.goal === opt.value ? null : opt.value })}>
+                {opt.label}
+              </Chip>
+            ))}
+          </div>
+
+          {profile.goal === 'hybrid' && (
+            <div className="border-t border-border pt-3 flex flex-col gap-2">
+              <p className="text-[11px] text-muted-foreground">
+                Pick every goal you're training for. The AI coach blends them when programming and reviewing your work.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {HYBRID_SUB_GOAL_OPTIONS.map(opt => (
+                  <Chip
+                    key={opt.value}
+                    active={profile.hybridGoals.includes(opt.value)}
+                    onClick={() => toggleHybridGoal(opt.value)}
+                  >
+                    {opt.label}
+                  </Chip>
+                ))}
+              </div>
+              {profile.hybridGoals.length === 0 && (
+                <p className="text-[10px] text-amber-500 italic">
+                  Select at least one focus so the coach knows how to blend.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </Section>
 
@@ -227,6 +279,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             {injuriesFull
               ? `Maximum ${MAX_INJURIES} injuries reached.`
               : `${profile.injuries.length}/${MAX_INJURIES} added.`}
+          </p>
+        </div>
+      </Section>
+
+      <Section icon={<MessageSquare className="w-4 h-4 text-primary" />} title="Notes for the AI Coach">
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] text-muted-foreground">
+            Anything else the coach should know — training schedule, sport, preferences, competitions, dietary context, whatever helps it plan for you.
+          </p>
+          <Textarea
+            value={coachNotesDraft}
+            onChange={e => setCoachNotesDraft(e.target.value.slice(0, COACH_NOTES_MAX_LENGTH))}
+            onBlur={saveCoachNotes}
+            placeholder="e.g. Training for a half-marathon in 12 weeks, want to keep upper body size. Prefer morning sessions, 3 kids so ≤45 min."
+            maxLength={COACH_NOTES_MAX_LENGTH}
+            rows={5}
+            className="resize-y text-sm"
+          />
+          <p className="text-[10px] text-muted-foreground italic text-right">
+            {coachNotesDraft.length}/{COACH_NOTES_MAX_LENGTH}
           </p>
         </div>
       </Section>
