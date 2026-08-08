@@ -274,11 +274,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const updateStickyNotesFn = onUpdateStickyNotes ?? (async () => {});
   const { getStickyNote, setStickyNote } = useStickyNotes(propStickyNotes, updateStickyNotesFn);
 
-  // Snapshot the original template structure (only when launched from a template, not edit mode, not resumed-from-cache)
+  // Snapshot the original template structure so the finish flow can diff
+  // against it. Prefer the cached snapshot when resuming from a minimize
+  // (or a cold reload) so we don't lose the "before" state; otherwise
+  // compute it fresh from templateExercises. Only null in edit mode or
+  // when the workout wasn't launched from a template at all.
   const originalTemplateSnapshot = useRef<TemplateSnapshot | null>(
-    !isEditMode && !cachedSession && templateExercises && templateId
-      ? snapshotFromTemplateExercises(templateExercises)
-      : null
+    isEditMode
+      ? null
+      : cachedSession?.templateSnapshot
+        ?? (templateExercises && templateId
+          ? snapshotFromTemplateExercises(templateExercises)
+          : null)
   );
 
   // Pending finished session — held while we ask the user about updating the template
@@ -392,6 +399,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       pendingExerciseIds: s.pendingExerciseIds,
       timerPaused: s.timerPaused,
       pausedElapsedSec: pausedSec,
+      templateSnapshot: originalTemplateSnapshot.current,
     });
   }, []);
 

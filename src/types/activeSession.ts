@@ -1,6 +1,7 @@
 import type { ExerciseId, SetType } from '@/types/workout';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 import type { WeightUnit } from '@/hooks/useStorage';
+import type { TemplateSnapshot } from '@/utils/templateDiff';
 
 export type TimerStatus = 'running' | 'paused' | 'completed';
 
@@ -73,6 +74,11 @@ export interface ActiveSessionCache {
   // the user paused the session and then minimized.
   timerPaused?: boolean;
   pausedElapsedSec?: number | null;
+  // Snapshot of the source template captured at session start. Persisted so
+  // the "Update template?" prompt can still fire after a minimize/resume or
+  // cold reload — without it the ref inside ActiveSession would be null on
+  // re-mount and the diff check would silently skip.
+  templateSnapshot?: TemplateSnapshot | null;
 }
 
 export const SUPERSET_COLORS = [
