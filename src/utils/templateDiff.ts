@@ -16,7 +16,7 @@ export function snapshotFromTemplateExercises(exs: TemplateExercise[], blocks?: 
     setCount: e.sets,
     targetReps: e.targetReps,
     setType: e.setType,
-    supersetGroup: blocks?.[i]?.supersetGroup,
+    supersetGroup: blocks?.[i]?.supersetGroup ?? e.supersetGroup,
   }));
 }
 
