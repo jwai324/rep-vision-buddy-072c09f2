@@ -3,7 +3,7 @@ import type { WorkoutSession } from '@/types/workout';
 import { format, subDays, startOfWeek, addDays } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
 import type { UserPreferences } from '@/hooks/useStorage';
-import { getCurrentStreak, getLongestStreak } from '@/utils/streak';
+import { computeDisplayedStreak, getLongestStreak } from '@/utils/streak';
 
 interface ConsistencyTabProps {
   history: WorkoutSession[];
@@ -44,11 +44,17 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, prefere
     }
     if (week.length > 0) weeks.push(week);
 
-    const current = getCurrentStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
+    const current = computeDisplayedStreak(
+      history,
+      preferences.streakMode,
+      preferences.streakWeeklyTarget,
+      preferences.streakAdjustment,
+      preferences.streakAdjustmentSetAt,
+    ).displayed;
     const longest = getLongestStreak(history, preferences.streakMode, preferences.streakWeeklyTarget);
 
     return { grid: weeks, maxVolume: maxVol, currentStreak: current, longestStreak: longest };
-  }, [history, preferences.streakMode, preferences.streakWeeklyTarget]);
+  }, [history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt]);
 
   const getIntensity = (volume: number) => {
     if (volume === 0) return 'bg-secondary';

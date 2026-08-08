@@ -333,6 +333,8 @@ export type Database = {
           hide_timers: boolean
           id: string
           sticky_notes: Json
+          streak_adjustment: number
+          streak_adjustment_set_at: string | null
           streak_mode: string
           streak_weekly_target: number
           tutorial_completed: boolean
@@ -349,6 +351,8 @@ export type Database = {
           hide_timers?: boolean
           id?: string
           sticky_notes?: Json
+          streak_adjustment?: number
+          streak_adjustment_set_at?: string | null
           streak_mode?: string
           streak_weekly_target?: number
           tutorial_completed?: boolean
@@ -365,6 +369,8 @@ export type Database = {
           hide_timers?: boolean
           id?: string
           sticky_notes?: Json
+          streak_adjustment?: number
+          streak_adjustment_set_at?: string | null
           streak_mode?: string
           streak_weekly_target?: number
           tutorial_completed?: boolean

@@ -91,3 +91,46 @@ export function getCurrentStreak(sessions: WorkoutSession[], mode: StreakMode, t
 export function getLongestStreak(sessions: WorkoutSession[], mode: StreakMode, target: number): number {
   return mode === 'weekly' ? getLongestWeeklyStreak(sessions, target) : getLongestDailyStreak(sessions);
 }
+
+/**
+ * Adjust the raw current streak by an offset that was locked in when the
+ * user last changed streak_mode or streak_weekly_target, so a settings edit
+ * doesn't visibly change the streak indicator. The offset survives as long
+ * as the new mode's raw streak is still >0. Once the raw streak breaks
+ * (raw === 0) AND at least one period has elapsed since the offset was set,
+ * the offset should be cleared — `shouldClearAdjustment` signals that.
+ *
+ * The one-period grace window matters right after a mode change: switching
+ * from daily to weekly on a mid-week day can leave raw = 0 for weekly (this
+ * week hasn't met the target yet), and we don't want to clear the offset
+ * before the new mode has had any chance to produce a positive raw value.
+ */
+export function computeDisplayedStreak(
+  sessions: WorkoutSession[],
+  mode: StreakMode,
+  target: number,
+  adjustment: number,
+  adjustmentSetAt: string | null,
+  today: Date = new Date(),
+): { displayed: number; shouldClearAdjustment: boolean } {
+  const raw = getCurrentStreak(sessions, mode, target);
+  if (adjustment === 0 || !adjustmentSetAt) {
+    return { displayed: raw, shouldClearAdjustment: false };
+  }
+
+  if (raw > 0) {
+    return { displayed: Math.max(0, raw + adjustment), shouldClearAdjustment: false };
+  }
+
+  const setAt = parseLocalDate(adjustmentSetAt);
+  const todayStart = new Date(format(today, 'yyyy-MM-dd') + 'T00:00:00');
+  const periodElapsed = mode === 'daily'
+    ? todayStart.getTime() - setAt.getTime() >= 2 * 86400000
+    : startOfWeek(todayStart, { weekStartsOn: 1 }).getTime()
+        > startOfWeek(setAt, { weekStartsOn: 1 }).getTime();
+
+  if (periodElapsed) {
+    return { displayed: 0, shouldClearAdjustment: true };
+  }
+  return { displayed: Math.max(0, adjustment), shouldClearAdjustment: false };
+}
