@@ -8,6 +8,10 @@ import ReactMarkdown from 'react-markdown';
 import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
 
 const MAX_CHAT_CHARS = 500;
+// Cap the auto-growing input at 3 visible lines; anything longer scrolls
+// internally. Chosen so drafting/editing a fuller message is comfortable
+// without letting the input consume too much of the chat panel.
+const MAX_INPUT_ROWS = 3;
 const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
 
 const TypingIndicator = () => (
@@ -65,7 +69,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     localStorage.getItem('ai-chat-pulse-seen') === 'true'
   );
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -128,12 +132,33 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     sendMessage(text);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     if (val.length <= MAX_CHAT_CHARS) {
       setInput(val);
     }
   };
+
+  // Auto-resize the message textarea from 1 row up to MAX_INPUT_ROWS,
+  // scrolling internally beyond that. Runs whenever the value changes (typing,
+  // paste, dictation) and when the panel first opens so the initial single-row
+  // height is applied deterministically. Falls back to a scrollHeight-only
+  // formula if the computed line-height parses as NaN (some test envs).
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const style = window.getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight);
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const paddingBottom = parseFloat(style.paddingBottom) || 0;
+    const cap = Number.isFinite(lineHeight)
+      ? lineHeight * MAX_INPUT_ROWS + paddingTop + paddingBottom
+      : el.scrollHeight;
+    const next = Math.min(el.scrollHeight, cap);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > cap ? 'auto' : 'hidden';
+  }, [input, isOpen]);
 
   const handleFabClick = () => {
     if (!hasSeenPulse) {
@@ -370,11 +395,11 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-end gap-2">
               <div className="flex-1 relative">
-                <input
+                <textarea
                   ref={inputRef}
-                  type="text"
+                  rows={1}
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
@@ -385,13 +410,16 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                         ? "Listening…"
                         : "Ask anything…"
                   }
-                  className="w-full bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  className="block w-full resize-none bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                   disabled={isLoading || consecutiveErrors >= 2}
                   maxLength={MAX_CHAT_CHARS}
                 />
                 {input.length > 0 && (
                   <span className={cn(
-                    "absolute right-3 top-1/2 -translate-y-1/2 text-[10px]",
+                    // Anchored to the bottom-right so the counter stays put as
+                    // the textarea grows from 1 to MAX_INPUT_ROWS. pointer-
+                    // events-none keeps it from stealing clicks near the edge.
+                    "pointer-events-none absolute right-3 bottom-2 text-[10px]",
                     charsRemaining <= 50 ? "text-destructive" : "text-muted-foreground"
                   )}>
                     {input.length}/{MAX_CHAT_CHARS}
