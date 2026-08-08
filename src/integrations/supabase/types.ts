@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -41,111 +41,27 @@ export type Database = {
         }
         Relationships: []
       }
-      iap_purchases: {
+      body_measurements: {
         Row: {
           created_at: string
-          granted_micros: number
+          date: string
           id: string
-          original_transaction_id: string | null
-          platform: string
-          product_id: string
-          raw: Json | null
-          status: string
-          transaction_id: string
-          updated_at: string
           user_id: string
+          weight_kg: number
         }
         Insert: {
           created_at?: string
-          granted_micros?: number
+          date: string
           id?: string
-          original_transaction_id?: string | null
-          platform: string
-          product_id: string
-          raw?: Json | null
-          status?: string
-          transaction_id: string
-          updated_at?: string
           user_id: string
+          weight_kg: number
         }
         Update: {
           created_at?: string
-          granted_micros?: number
+          date?: string
           id?: string
-          original_transaction_id?: string | null
-          platform?: string
-          product_id?: string
-          raw?: Json | null
-          status?: string
-          transaction_id?: string
-          updated_at?: string
           user_id?: string
-        }
-        Relationships: []
-      }
-      token_ledger: {
-        Row: {
-          balance_after_micros: number
-          created_at: string
-          delta_micros: number
-          id: string
-          reason: string
-          reference: string | null
-          user_id: string
-        }
-        Insert: {
-          balance_after_micros: number
-          created_at?: string
-          delta_micros: number
-          id?: string
-          reason: string
-          reference?: string | null
-          user_id: string
-        }
-        Update: {
-          balance_after_micros?: number
-          created_at?: string
-          delta_micros?: number
-          id?: string
-          reason?: string
-          reference?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      user_token_balance: {
-        Row: {
-          created_at: string
-          free_period: string
-          free_used_micros: number
-          id: string
-          lifetime_purchased_micros: number
-          lifetime_spent_micros: number
-          paid_balance_micros: number
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          free_period?: string
-          free_used_micros?: number
-          id?: string
-          lifetime_purchased_micros?: number
-          lifetime_spent_micros?: number
-          paid_balance_micros?: number
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          free_period?: string
-          free_used_micros?: number
-          id?: string
-          lifetime_purchased_micros?: number
-          lifetime_spent_micros?: number
-          paid_balance_micros?: number
-          updated_at?: string
-          user_id?: string
+          weight_kg?: number
         }
         Relationships: []
       }
@@ -236,29 +152,131 @@ export type Database = {
         }
         Relationships: []
       }
-      profiles: {
+      iap_purchases: {
         Row: {
-          avatar_url: string | null
           created_at: string
-          display_name: string | null
+          granted_micros: number
           id: string
+          original_transaction_id: string | null
+          platform: string
+          product_id: string
+          raw: Json | null
+          status: string
+          transaction_id: string
           updated_at: string
           user_id: string
         }
         Insert: {
-          avatar_url?: string | null
           created_at?: string
-          display_name?: string | null
+          granted_micros?: number
           id?: string
+          original_transaction_id?: string | null
+          platform: string
+          product_id: string
+          raw?: Json | null
+          status?: string
+          transaction_id: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          created_at?: string
+          granted_micros?: number
+          id?: string
+          original_transaction_id?: string | null
+          platform?: string
+          product_id?: string
+          raw?: Json | null
+          status?: string
+          transaction_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          age: number | null
+          avatar_url: string | null
+          coach_notes: string | null
+          created_at: string
+          display_name: string | null
+          equipment: string[]
+          experience_level: string | null
+          goal: string | null
+          height_cm: number | null
+          hybrid_goals: string[]
+          id: string
+          injuries: string[]
+          sex: string | null
+          subscription_tier: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          age?: number | null
           avatar_url?: string | null
+          coach_notes?: string | null
           created_at?: string
           display_name?: string | null
+          equipment?: string[]
+          experience_level?: string | null
+          goal?: string | null
+          height_cm?: number | null
+          hybrid_goals?: string[]
           id?: string
+          injuries?: string[]
+          sex?: string | null
+          subscription_tier?: string
           updated_at?: string
+          user_id: string
+        }
+        Update: {
+          age?: number | null
+          avatar_url?: string | null
+          coach_notes?: string | null
+          created_at?: string
+          display_name?: string | null
+          equipment?: string[]
+          experience_level?: string | null
+          goal?: string | null
+          height_cm?: number | null
+          hybrid_goals?: string[]
+          id?: string
+          injuries?: string[]
+          sex?: string | null
+          subscription_tier?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      token_ledger: {
+        Row: {
+          balance_after_micros: number
+          created_at: string
+          delta_micros: number
+          id: string
+          reason: string
+          reference: string | null
+          user_id: string
+        }
+        Insert: {
+          balance_after_micros: number
+          created_at?: string
+          delta_micros: number
+          id?: string
+          reason: string
+          reference?: string | null
+          user_id: string
+        }
+        Update: {
+          balance_after_micros?: number
+          created_at?: string
+          delta_micros?: number
+          id?: string
+          reason?: string
+          reference?: string | null
           user_id?: string
         }
         Relationships: []
@@ -353,6 +371,42 @@ export type Database = {
           updated_at?: string
           user_id?: string
           weight_unit?: string
+        }
+        Relationships: []
+      }
+      user_token_balance: {
+        Row: {
+          created_at: string
+          free_period: string
+          free_used_micros: number
+          id: string
+          lifetime_purchased_micros: number
+          lifetime_spent_micros: number
+          paid_balance_micros: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          free_period?: string
+          free_used_micros?: number
+          id?: string
+          lifetime_purchased_micros?: number
+          lifetime_spent_micros?: number
+          paid_balance_micros?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          free_period?: string
+          free_used_micros?: number
+          id?: string
+          lifetime_purchased_micros?: number
+          lifetime_spent_micros?: number
+          paid_balance_micros?: number
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -493,7 +547,30 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      consume_tokens: {
+        Args: {
+          p_cost_micros: number
+          p_reason: string
+          p_reference: string
+          p_user_id: string
+        }
+        Returns: {
+          free_used_micros: number
+          new_balance_micros: number
+          paid_balance_micros: number
+        }[]
+      }
+      grant_tokens: {
+        Args: {
+          p_micros: number
+          p_reason: string
+          p_reference: string
+          p_user_id: string
+        }
+        Returns: {
+          new_balance_micros: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
