@@ -82,7 +82,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       if (sessionDate < startStr || sessionDate > endStr) continue;
       for (const ex of session.exercises) {
         const bodyPart = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
-        const setCount = ex.sets.filter(s => s.type !== 'warmup').length;
+        const setCount = ex.sets.filter(s => s.type !== 'warmup' && (s.rpe === undefined || s.rpe >= 5)).length;
         if (setCount === 0) continue;
         counts[bodyPart] = (counts[bodyPart] || 0) + setCount;
         totalSets += setCount;
