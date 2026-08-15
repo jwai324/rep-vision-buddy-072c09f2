@@ -191,6 +191,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'kickstand-deadlift', name: 'Kickstand Deadlift', primaryBodyPart: 'Hamstrings', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Glutes', 'Lower Back', 'Core', 'Adductors', 'Forearms'] },
   { id: 'nordic-hamstring-curl', name: 'Nordic Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes'] },
   { id: 'swiss-ball-hamstring-curl', name: 'Swiss Ball Hamstring Curl', primaryBodyPart: 'Hamstrings', equipment: 'Swiss Ball', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes', 'Core'] },
+  { id: 'medicine-ball-leg-curl', name: 'Medicine Ball Leg Curls', primaryBodyPart: 'Hamstrings', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Glutes', 'Core'], aliases: ['medicine ball hamstring curl', 'med ball leg curl'] },
 
   // Glutes
   { id: 'barbell-hip-thrust', name: 'Barbell Hip Thrust', primaryBodyPart: 'Glutes', equipment: 'Barbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Hip Extension', secondaryMuscles: ['Hamstrings'] },
