@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw, Check, ArrowRight, Sparkles, Loader2, Replace } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw, Check, ArrowRight, Sparkles, Loader2, Replace, RotateCcw } from 'lucide-react';
 import { EXERCISE_DATABASE, EQUIPMENT_LIST, type Exercise } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
 import { useChatContext } from '@/contexts/ChatContext';
@@ -88,6 +88,74 @@ const STEP_CHIPS: Record<string, string[]> = {
 
 const ALL_EQUIPMENT = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 'Band', 'Kettlebell', 'EZ Bar', 'Trap Bar', 'Smith Machine', 'Landmine'];
 
+// ─── Draft Persistence ───────────────────────────────────────────────
+
+const DRAFT_KEY = 'ai_program_builder_draft';
+const DRAFT_VERSION = 1;
+
+const EMPTY_INPUTS: UserInputs = {
+  goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', programDuration: '4 weeks', equipment: [], injuries: '', splitPreference: '', additionalNotes: '',
+};
+
+interface BuilderDraft {
+  version: number;
+  phase: 'chat' | 'review';
+  currentStep: number;
+  inputs: UserInputs;
+  messages: ChatMessage[];
+  selectedEquipment: string[];
+  // Text the user has typed but not submitted yet — kept so leaving the page
+  // mid-answer doesn't throw it away.
+  injuryText: string;
+  additionalNotesText: string;
+  otherText: string;
+  showOtherInput: boolean;
+  customEquipmentText: string;
+  showEquipmentOther: boolean;
+  generatedProgram: AIProgram | null;
+}
+
+function loadBuilderDraft(): BuilderDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as Partial<BuilderDraft>;
+    if (draft?.version !== DRAFT_VERSION) return null;
+    if (!Array.isArray(draft.messages) || draft.messages.length === 0) return null;
+    if (typeof draft.currentStep !== 'number' || draft.currentStep < 0 || draft.currentStep >= STEPS.length) return null;
+    const phase = draft.phase === 'review' ? 'review' : 'chat';
+    // A review draft without its program has nothing to show; restart instead.
+    if (phase === 'review' && !draft.generatedProgram) return null;
+    return {
+      version: DRAFT_VERSION,
+      phase,
+      currentStep: draft.currentStep,
+      inputs: { ...EMPTY_INPUTS, ...draft.inputs },
+      messages: draft.messages,
+      selectedEquipment: draft.selectedEquipment ?? [],
+      injuryText: draft.injuryText ?? '',
+      additionalNotesText: draft.additionalNotesText ?? '',
+      otherText: draft.otherText ?? '',
+      showOtherInput: draft.showOtherInput ?? false,
+      customEquipmentText: draft.customEquipmentText ?? '',
+      showEquipmentOther: draft.showEquipmentOther ?? false,
+      generatedProgram: draft.generatedProgram ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveBuilderDraft(draft: Omit<BuilderDraft, 'version'>): void {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, version: DRAFT_VERSION }));
+  } catch { /* storage unavailable (private mode, quota) — draft just won't persist */ }
+}
+
+function clearBuilderDraft(): void {
+  try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+}
+
 // ─── Onboarding Chat ─────────────────────────────────────────────────
 
 interface AIProgramBuilderProps {
@@ -97,23 +165,22 @@ interface AIProgramBuilderProps {
 
 export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSaveProgram }) => {
   const { refreshBalance } = useChatContext();
-  const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>('chat');
-  const [currentStep, setCurrentStep] = useState(0);
-  const [inputs, setInputs] = useState<UserInputs>({
-    goal: '', experience: '', daysPerWeek: 0, sessionDuration: '', programDuration: '4 weeks', equipment: [], injuries: '', splitPreference: '', additionalNotes: '',
-  });
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [restored] = useState<BuilderDraft | null>(loadBuilderDraft);
+  const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>(restored?.phase ?? 'chat');
+  const [currentStep, setCurrentStep] = useState(restored?.currentStep ?? 0);
+  const [inputs, setInputs] = useState<UserInputs>(restored?.inputs ?? EMPTY_INPUTS);
+  const [messages, setMessages] = useState<ChatMessage[]>(restored?.messages ?? []);
   const [typingVisible, setTypingVisible] = useState(false);
-  const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
-  const [injuryText, setInjuryText] = useState('');
-  const [generatedProgram, setGeneratedProgram] = useState<AIProgram | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<string[]>(restored?.selectedEquipment ?? []);
+  const [injuryText, setInjuryText] = useState(restored?.injuryText ?? '');
+  const [generatedProgram, setGeneratedProgram] = useState<AIProgram | null>(restored?.generatedProgram ?? null);
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
   const [swappingExercise, setSwappingExercise] = useState<{ dayIdx: number; exIdx: number } | null>(null);
-  const [showOtherInput, setShowOtherInput] = useState(false);
-  const [otherText, setOtherText] = useState('');
-  const [customEquipmentText, setCustomEquipmentText] = useState('');
-  const [showEquipmentOther, setShowEquipmentOther] = useState(false);
-  const [additionalNotesText, setAdditionalNotesText] = useState('');
+  const [showOtherInput, setShowOtherInput] = useState(restored?.showOtherInput ?? false);
+  const [otherText, setOtherText] = useState(restored?.otherText ?? '');
+  const [customEquipmentText, setCustomEquipmentText] = useState(restored?.customEquipmentText ?? '');
+  const [showEquipmentOther, setShowEquipmentOther] = useState(restored?.showEquipmentOther ?? false);
+  const [additionalNotesText, setAdditionalNotesText] = useState(restored?.additionalNotesText ?? '');
   const [showFullNotes, setShowFullNotes] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const otherInputRef = useRef<HTMLInputElement>(null);
@@ -123,10 +190,36 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 50);
   }, []);
 
-  // Initialize first question
+  // Initialize first question — or pick up where a cached draft left off.
   useEffect(() => {
-    showAIMessage(0);
+    if (!restored) {
+      showAIMessage(0);
+      return;
+    }
+    // The next question is appended on a timer after an answer, so a draft
+    // captured in that window ends on the user's reply with no question after
+    // it. Re-ask rather than stranding the flow on an answered step.
+    const last = restored.messages[restored.messages.length - 1];
+    if (restored.phase === 'chat' && last?.role === 'user' && restored.currentStep + 1 < STEPS.length) {
+      showAIMessage(restored.currentStep + 1);
+    }
   }, []);
+
+  // Cache the whole flow (answers, transcript, unsent text, generated program)
+  // so navigating away mid-build doesn't start over. 'generating' is transient:
+  // the in-flight request dies with the unmount, so persist it as 'chat'.
+  useEffect(() => {
+    saveBuilderDraft({
+      phase: phase === 'generating' ? 'chat' : phase,
+      currentStep, inputs, messages, selectedEquipment,
+      injuryText, additionalNotesText, otherText, showOtherInput,
+      customEquipmentText, showEquipmentOther, generatedProgram,
+    });
+  }, [
+    phase, currentStep, inputs, messages, selectedEquipment,
+    injuryText, additionalNotesText, otherText, showOtherInput,
+    customEquipmentText, showEquipmentOther, generatedProgram,
+  ]);
 
   // Auto-focus other input when shown
   useEffect(() => {
@@ -259,6 +352,20 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     const userMsg: ChatMessage = { role: 'user', content: value || 'Skipped' };
     setMessages(prev => [...prev, userMsg]);
     advanceToNext({ ...inputs, additionalNotes: value || '' });
+  };
+
+  const startOver = () => {
+    clearBuilderDraft();
+    setPhase('chat');
+    setCurrentStep(0);
+    setInputs(EMPTY_INPUTS);
+    setMessages([]);
+    setSelectedEquipment([]);
+    setInjuryText('');
+    setAdditionalNotesText('');
+    setGeneratedProgram(null);
+    setShowFullNotes(false);
+    showAIMessage(0);
   };
 
   const goBack = () => {
@@ -446,6 +553,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       startDate: formatLocalDate(),
     };
 
+    clearBuilderDraft();
     onSaveProgram(program, templates);
     toast.success(`Program "${program.name}" saved.`);
   };
@@ -569,6 +677,16 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
           <h2 className="text-lg font-bold text-foreground">Build My Program</h2>
           <p className="text-xs text-muted-foreground">Step {Math.min(currentStep + 1, totalSteps)} of {totalSteps}</p>
         </div>
+        {currentStep > 0 && (
+          <button
+            onClick={startOver}
+            aria-label="Start over"
+            title="Start over"
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
+        )}
         <Sparkles className="w-5 h-5 text-primary" />
       </div>
 

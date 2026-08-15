@@ -7,6 +7,11 @@ import "@testing-library/jest-dom";
 import.meta.env.VITE_SUPABASE_URL ??= 'http://localhost:54321';
 import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??= 'test-anon-key';
 
+// jsdom doesn't implement scrolling; components that auto-scroll a container
+// would otherwise throw from deferred callbacks after a test finishes.
+Element.prototype.scrollTo ??= () => {};
+Element.prototype.scrollIntoView ??= () => {};
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({
