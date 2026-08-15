@@ -2,15 +2,17 @@ import React, { useState } from 'react';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
-import type { WeightUnit } from '@/hooks/useStorage';
+import type { UserPreferences, WeightUnit } from '@/hooks/useStorage';
 
 interface BrowseExercisesScreenProps {
   onBack: () => void;
   history: WorkoutSession[];
   weightUnit?: WeightUnit;
+  stickyNotes?: Record<string, string>;
+  onUpdateStickyNotes?: (prefs: Partial<UserPreferences>) => Promise<void>;
 }
 
-export const BrowseExercisesScreen: React.FC<BrowseExercisesScreenProps> = ({ onBack, history, weightUnit = 'kg' }) => {
+export const BrowseExercisesScreen: React.FC<BrowseExercisesScreenProps> = ({ onBack, history, weightUnit = 'kg', stickyNotes, onUpdateStickyNotes }) => {
   const [selectedExercise, setSelectedExercise] = useState<ExerciseId | null>(null);
 
   return (
@@ -29,6 +31,8 @@ export const BrowseExercisesScreen: React.FC<BrowseExercisesScreenProps> = ({ on
         onClose={() => setSelectedExercise(null)}
         history={history}
         weightUnit={weightUnit}
+        stickyNotes={stickyNotes}
+        onUpdateStickyNotes={onUpdateStickyNotes}
       />
     </div>
   );

@@ -1522,6 +1522,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         onClose={() => setDetailExerciseId(null)}
         history={history}
         weightUnit={weightUnit}
+        stickyNotes={propStickyNotes}
+        onUpdateStickyNotes={onUpdateStickyNotes}
       />
 
       {/* Update template prompt */}
