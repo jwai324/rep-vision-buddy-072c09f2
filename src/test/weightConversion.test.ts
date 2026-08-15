@@ -1,5 +1,35 @@
 import { describe, it, expect } from 'vitest';
-import { fromKg, toKg, formatWeight, formatWeightString, formatVolume, formatVolumeFromKg } from '@/utils/weightConversion';
+import { fromKg, toKg, formatWeight, formatWeightString, formatVolume, formatVolumeFromKg, targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
+
+describe('template target weight round-trip', () => {
+  it('shows a kg target unchanged in kg', () => {
+    expect(targetWeightToInput(60, 'kg', false)).toBe('60');
+  });
+
+  it('shows a kg target converted for an lbs user', () => {
+    expect(parseFloat(targetWeightToInput(61.23, 'lbs', false))).toBeCloseTo(135, 0);
+  });
+
+  it('stores an lbs entry back as kg', () => {
+    expect(inputToTargetWeight('135', 'lbs', false)).toBeCloseTo(61.23, 1);
+  });
+
+  it('survives a display → storage round-trip in lbs', () => {
+    const shown = targetWeightToInput(61.23, 'lbs', false);
+    expect(inputToTargetWeight(shown, 'lbs', false)).toBeCloseTo(61.23, 1);
+  });
+
+  it('passes band levels through untouched in both directions', () => {
+    expect(targetWeightToInput(3, 'lbs', true)).toBe('3');
+    expect(inputToTargetWeight('3', 'lbs', true)).toBe(3);
+  });
+
+  it('treats a missing or blank target as no target', () => {
+    expect(targetWeightToInput(undefined, 'kg', false)).toBe('');
+    expect(inputToTargetWeight('', 'kg', false)).toBeUndefined();
+    expect(inputToTargetWeight('abc', 'kg', false)).toBeUndefined();
+  });
+});
 
 describe('fromKg', () => {
   it('returns same value for kg', () => {

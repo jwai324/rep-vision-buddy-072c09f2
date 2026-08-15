@@ -11,6 +11,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, usesReps, usesWeight } from '@/utils/exerciseInputMode';
+import { targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
@@ -49,8 +50,20 @@ function getSupersetColorClass(group?: number): string {
   return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
 }
 
-function exerciseToBlock(ex: TemplateExercise, lookup?: Record<string, string>): TemplateBlock {
+type CustomExerciseLite = Parameters<typeof getExerciseInputMode>[1];
+
+function isBandExercise(exerciseId: ExerciseId, customExercises?: CustomExerciseLite): boolean {
+  return getExerciseInputMode(exerciseId, customExercises) === 'band';
+}
+
+function exerciseToBlock(
+  ex: TemplateExercise,
+  lookup?: Record<string, string>,
+  weightUnit: WeightUnit = 'kg',
+  customExercises?: CustomExerciseLite,
+): TemplateBlock {
   const name = lookup?.[ex.exerciseId] ?? EXERCISES[ex.exerciseId]?.name ?? ex.exerciseId;
+  const weightInput = targetWeightToInput(ex.targetWeight, weightUnit, isBandExercise(ex.exerciseId, customExercises));
   return {
     exerciseId: ex.exerciseId,
     exerciseName: name,
@@ -59,22 +72,32 @@ function exerciseToBlock(ex: TemplateExercise, lookup?: Record<string, string>):
     supersetGroup: ex.supersetGroup,
     sets: Array.from({ length: ex.sets }, (_, i) => ({
       setNumber: i + 1,
-      targetWeight: '',
+      targetWeight: weightInput,
       targetReps: ex.targetReps === 'failure' ? '' : ex.targetReps.toString(),
       targetRpe: ex.targetRpe?.toString() ?? '',
     })),
   };
 }
 
-function blockToExercise(block: TemplateBlock): TemplateExercise {
+function blockToExercise(
+  block: TemplateBlock,
+  weightUnit: WeightUnit = 'kg',
+  customExercises?: CustomExerciseLite,
+): TemplateExercise {
   const firstSet = block.sets[0];
   const reps = block.setType === 'failure' ? 'failure' as const : (parseInt(firstSet?.targetReps) || 10);
+  const mode = getExerciseInputMode(block.exerciseId, customExercises);
   return {
     exerciseId: block.exerciseId,
     sets: block.sets.length,
     targetReps: reps,
     setType: block.setType,
     restSeconds: block.restSeconds,
+    // Only weight-based modes put a load in this column — for distance work it
+    // holds km, which doesn't belong in targetWeight.
+    targetWeight: usesWeight(mode)
+      ? inputToTargetWeight(firstSet?.targetWeight, weightUnit, mode === 'band')
+      : undefined,
     targetRpe: firstSet?.targetRpe ? parseInt(firstSet.targetRpe) : undefined,
     supersetGroup: block.supersetGroup,
   };
@@ -82,7 +105,11 @@ function blockToExercise(block: TemplateBlock): TemplateExercise {
 
 const DRAFT_KEY = 'template_builder_draft';
 
-function loadDraft(initialTemplate?: WorkoutTemplate): { name: string; blocks: TemplateBlock[] } {
+function loadDraft(
+  initialTemplate?: WorkoutTemplate,
+  weightUnit: WeightUnit = 'kg',
+  customExercises?: CustomExerciseLite,
+): { name: string; blocks: TemplateBlock[] } {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (raw) {
@@ -95,7 +122,7 @@ function loadDraft(initialTemplate?: WorkoutTemplate): { name: string; blocks: T
   } catch { /* ignore corrupt data */ }
   return {
     name: initialTemplate?.name ?? '',
-    blocks: initialTemplate?.exercises.map(ex => exerciseToBlock(ex)) ?? [],
+    blocks: initialTemplate?.exercises.map(ex => exerciseToBlock(ex, undefined, weightUnit, customExercises)) ?? [],
   };
 }
 
@@ -112,8 +139,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     return lookup;
   }, [customExercises]);
 
-  const [name, setName] = useState(() => loadDraft(initial).name);
-  const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial).blocks);
+  const [name, setName] = useState(() => loadDraft(initial, weightUnit, customExercises).name);
+  const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial, weightUnit, customExercises).blocks);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [swapTarget, setSwapTarget] = useState<number | null>(null); // blockIdx being swapped
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
@@ -263,7 +290,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     onSave({
       id: initial?.id ?? crypto.randomUUID(),
       name: name.trim(),
-      exercises: blocks.map(blockToExercise),
+      exercises: blocks.map(b => blockToExercise(b, weightUnit, customExercises)),
     });
     toast.success(`Template "${name.trim()}" saved.`);
   };

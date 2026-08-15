@@ -25,6 +25,35 @@ export function toKg(valueDisplay: number, unit: WeightUnit): number {
 }
 
 /**
+ * Read a stored template target load into the string a weight input expects.
+ *
+ * Band exercises carry a level (1-5) rather than a mass, so they pass straight
+ * through; everything else converts kg → the user's display unit. Returns ''
+ * when there is no target, which leaves the input blank.
+ */
+export function targetWeightToInput(
+  targetWeight: number | undefined | null,
+  unit: WeightUnit,
+  isBand: boolean,
+): string {
+  if (targetWeight == null || isNaN(targetWeight)) return '';
+  if (isBand) return String(targetWeight);
+  return String(fromKg(targetWeight, unit));
+}
+
+/** Inverse of `targetWeightToInput`. Blank or unparseable input means no target. */
+export function inputToTargetWeight(
+  input: string | undefined | null,
+  unit: WeightUnit,
+  isBand: boolean,
+): number | undefined {
+  if (!input) return undefined;
+  const parsed = parseFloat(input);
+  if (isNaN(parsed)) return undefined;
+  return isBand ? parsed : toKg(parsed, unit);
+}
+
+/**
  * Format a weight (stored in kg) for display in the user's preferred unit.
  * Returns the formatted value and unit label.
  */
