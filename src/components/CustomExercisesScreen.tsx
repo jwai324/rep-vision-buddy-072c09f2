@@ -6,6 +6,9 @@ import { getBodyPartIcon } from '@/data/exercises';
 import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
 import type { Exercise } from '@/data/exercises';
 import { CreateExerciseForm } from '@/components/CreateExerciseForm';
+import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
+import type { ExerciseId, WorkoutSession } from '@/types/workout';
+import type { UserPreferences, WeightUnit } from '@/hooks/useStorage';
 
 interface CustomExercisesScreenProps {
   exercises: (Exercise & { isCustom: true; isRecovery: boolean })[];
@@ -13,14 +16,20 @@ interface CustomExercisesScreenProps {
   onUpdate: (id: string, input: CustomExerciseInput) => void;
   onDelete: (id: string) => void;
   onBack: () => void;
+  history?: WorkoutSession[];
+  weightUnit?: WeightUnit;
+  stickyNotes?: Record<string, string>;
+  onUpdateStickyNotes?: (prefs: Partial<UserPreferences>) => Promise<void>;
 }
 
 export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
   exercises, onAdd, onUpdate, onDelete, onBack,
+  history = [], weightUnit = 'kg', stickyNotes, onUpdateStickyNotes,
 }) => {
   const [editingExercise, setEditingExercise] = useState<(Exercise & { isCustom: true; isRecovery: boolean }) | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
 
   const handleSave = (input: CustomExerciseInput) => {
     if (editingExercise) {
@@ -77,7 +86,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
           {exercises.map(ex => (
             <button
               key={ex.id}
-              onClick={() => openEdit(ex)}
+              onClick={() => setDetailExerciseId(ex.id)}
               className="w-full bg-card rounded-xl border border-border p-3 flex items-center gap-3 text-left hover:border-primary/30 transition-colors"
             >
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -113,6 +122,15 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
           ))}
         </div>
       </ScrollArea>
+
+      <ExerciseDetailModal
+        exerciseId={detailExerciseId}
+        onClose={() => setDetailExerciseId(null)}
+        history={history}
+        weightUnit={weightUnit}
+        stickyNotes={stickyNotes}
+        onUpdateStickyNotes={onUpdateStickyNotes}
+      />
     </div>
   );
 };

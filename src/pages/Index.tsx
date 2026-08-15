@@ -266,7 +266,13 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       )}
 
       {screen.type === 'browseExercises' && (
-        <BrowseExercisesScreen onBack={() => setScreen({ type: 'dashboard' })} history={storage.history} weightUnit={storage.preferences.weightUnit} />
+        <BrowseExercisesScreen
+          onBack={() => setScreen({ type: 'dashboard' })}
+          history={storage.history}
+          weightUnit={storage.preferences.weightUnit}
+          stickyNotes={storage.preferences.stickyNotes}
+          onUpdateStickyNotes={storage.updatePreferences}
+        />
       )}
 
       {screen.type === 'activeSession' && (
@@ -587,6 +593,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onUpdate={updateCustomExercise}
           onDelete={deleteCustomExercise}
           onBack={() => setScreen({ type: 'settings' })}
+          history={storage.history}
+          weightUnit={storage.preferences.weightUnit}
+          stickyNotes={storage.preferences.stickyNotes}
+          onUpdateStickyNotes={storage.updatePreferences}
         />
       )}
 
