@@ -387,9 +387,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const todayScheduled = getScheduledWorkoutsForDate(
     todayDateStr, activeProgram, futureWorkouts, templates,
   );
-  const todayTemplates = todayScheduled
-    .map(s => s.template)
-    .filter((t): t is WorkoutTemplate => t !== null);
+  // Logging a workout marks the day's scheduled entry done but leaves it in
+  // place, so the card stays on the dashboard and can be started again.
+  const todayEntries = todayScheduled
+    .filter(s => s.template !== null)
+    .map(s => ({ template: s.template as WorkoutTemplate, completed: s.futureWorkout?.completed === true }));
   const isTodayRestDay = todayScheduled.length > 0 && todayScheduled.every(s => s.isRestDay);
 
   return (
@@ -418,24 +420,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Active program today */}
-      {todayTemplates.length > 0 && (
+      {todayEntries.length > 0 && (
         <div className="flex flex-col gap-2">
-          {todayTemplates.map((tpl, idx) => (
+          {todayEntries.map(({ template: tpl, completed }, idx) => (
             <button
               key={`${tpl.id}-${idx}`}
               type="button"
               onClick={() => onOpenTodayWorkout(tpl, todayDateStr)}
-              className="bg-card rounded-xl p-4 border border-primary/30 glow-green text-left w-full hover:border-primary/50 transition-colors"
+              className={`bg-card rounded-xl p-4 border text-left w-full transition-colors ${
+                completed
+                  ? 'border-green-500/30 hover:border-green-500/50'
+                  : 'border-primary/30 glow-green hover:border-primary/50'
+              }`}
             >
-              <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">
-                {todayTemplates.length > 1 ? `Today · ${idx + 1} of ${todayTemplates.length}` : "Today's Workout"}
+              <p className={`text-[10px] uppercase tracking-widest font-bold mb-1 ${completed ? 'text-green-400' : 'text-primary'}`}>
+                {todayEntries.length > 1 ? `Today · ${idx + 1} of ${todayEntries.length}` : "Today's Workout"}
+                {completed && ' · Done'}
               </p>
               <h3 className="font-semibold text-foreground mb-1">{tpl.name}</h3>
               <p className="text-xs text-muted-foreground mb-3">
                 {tpl.exercises.map(e => exerciseLookup[e.exerciseId] ?? EXERCISES[e.exerciseId]?.name ?? 'Exercise').join(' → ')}
               </p>
-              <Button variant="neon" size="sm" onClick={(e) => { e.stopPropagation(); onStartTemplate(tpl); }}>
-                {todayTemplates.length > 1 ? 'Start' : "Start Today's Workout"}
+              <Button
+                variant={completed ? 'outline' : 'neon'}
+                size="sm"
+                onClick={(e) => { e.stopPropagation(); onStartTemplate(tpl); }}
+              >
+                {completed ? 'Start again' : todayEntries.length > 1 ? 'Start' : "Start Today's Workout"}
               </Button>
             </button>
           ))}

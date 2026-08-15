@@ -23,9 +23,9 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
   const todayScheduled = getScheduledWorkoutsForDate(
     format(new Date(), 'yyyy-MM-dd'), activeProgram, futureWorkouts, templates,
   );
-  const todayTemplates = todayScheduled
-    .map(s => s.template)
-    .filter((t): t is WorkoutTemplate => t !== null);
+  const todayEntries = todayScheduled
+    .filter(s => s.template !== null)
+    .map(s => ({ template: s.template as WorkoutTemplate, completed: s.futureWorkout?.completed === true }));
   const isRestDay = todayScheduled.length > 0 && todayScheduled.every(s => s.isRestDay);
 
   return (
@@ -60,16 +60,21 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
             <Calendar className="w-3 h-3 inline mr-1" />
             Active Program — {activeProgram.name}
           </p>
-          {todayTemplates.length > 0 ? (
+          {todayEntries.length > 0 ? (
             <div className="flex flex-col gap-2">
-              {todayTemplates.map((tpl, idx) => (
+              {todayEntries.map(({ template: tpl, completed }, idx) => (
                 <button
                   key={`${tpl.id}-${idx}`}
                   onClick={() => onStartProgramDay(tpl)}
-                  className="w-full bg-card rounded-xl p-4 border border-primary/30 hover:border-primary/60 transition-colors text-left glow-green"
+                  className={`w-full bg-card rounded-xl p-4 border transition-colors text-left ${
+                    completed
+                      ? 'border-green-500/30 hover:border-green-500/60'
+                      : 'border-primary/30 hover:border-primary/60 glow-green'
+                  }`}
                 >
-                  <p className="text-[10px] uppercase tracking-widest text-primary font-bold mb-1">
-                    {todayTemplates.length > 1 ? `Today · ${idx + 1} of ${todayTemplates.length}` : "Today's Workout"}
+                  <p className={`text-[10px] uppercase tracking-widest font-bold mb-1 ${completed ? 'text-green-400' : 'text-primary'}`}>
+                    {todayEntries.length > 1 ? `Today · ${idx + 1} of ${todayEntries.length}` : "Today's Workout"}
+                    {completed && ' · Done'}
                   </p>
                   <h3 className="font-semibold text-foreground">{tpl.name}</h3>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -87,15 +92,16 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
         </div>
       )}
 
-      {/* Future Workouts */}
-      {futureWorkouts.filter(fw => fw.templateId !== 'rest').length > 0 && (
+      {/* Future Workouts — the quick pick list is what's still outstanding;
+          today's already-logged entry stays available in the card above. */}
+      {futureWorkouts.filter(fw => fw.templateId !== 'rest' && !fw.completed).length > 0 && (
         <div>
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2 px-1">
             🗓️ Future Workouts
           </p>
           <div className="flex flex-col gap-2">
             {futureWorkouts
-              .filter(fw => fw.templateId !== 'rest')
+              .filter(fw => fw.templateId !== 'rest' && !fw.completed)
               .slice(0, 5)
               .map(fw => {
                 const template = templates.find(t => t.id === fw.templateId);

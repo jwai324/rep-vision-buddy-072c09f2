@@ -1,5 +1,6 @@
 import type { WorkoutProgram, FutureWorkout, WorkoutTemplate } from '@/types/workout';
 import { format } from 'date-fns';
+import { parseLocalDate } from '@/utils/dateUtils';
 
 export interface ScheduledWorkoutResult {
   template: WorkoutTemplate | null;
@@ -57,6 +58,27 @@ export function getScheduledWorkoutsForDate(
       isRestDay: false,
       futureWorkout: null,
     };
+  });
+}
+
+/**
+ * Which scheduled entries a saved session marks as done.
+ *
+ * Logging a session never removes what was scheduled — the entry stays on the
+ * calendar (and stays startable) and is only flagged `completed`. A rest-day
+ * session only matches scheduled rest days, and a workout session only matches
+ * scheduled workouts, so logging one kind never marks the other as done.
+ */
+export function getFutureWorkoutsCompletedBySession(
+  session: { date: string; isRestDay?: boolean },
+  futureWorkouts: FutureWorkout[],
+): FutureWorkout[] {
+  const sessionDateStr = format(parseLocalDate(session.date), 'yyyy-MM-dd');
+  const wantsRest = session.isRestDay === true;
+  return futureWorkouts.filter(fw => {
+    if (fw.completed) return false;
+    if (format(parseLocalDate(fw.date), 'yyyy-MM-dd') !== sessionDateStr) return false;
+    return wantsRest ? fw.templateId === 'rest' : fw.templateId !== 'rest';
   });
 }
 

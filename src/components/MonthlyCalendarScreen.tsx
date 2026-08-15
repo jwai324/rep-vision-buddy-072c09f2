@@ -135,7 +135,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
       return sd === dateStr;
     });
     const stored = visibleFutureWorkouts.filter(f => f.date === dateStr);
-    const programDays = !sessions.length && stored.length === 0
+    const programDays = stored.length === 0
       ? getProgramScheduled(selected, activeProgram)
       : [];
     return { dateStr, sessions, stored, programDays };
@@ -146,6 +146,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
     label: string;
     templateId: string;
     template: WorkoutTemplate | null;
+    completed: boolean;
     openScheduled: () => void;
   }
 
@@ -156,6 +157,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
         label: fw.label,
         templateId: fw.templateId,
         template: fw.templateId === 'rest' ? null : templates.find(t => t.id === fw.templateId) ?? null,
+        completed: fw.completed === true,
         openScheduled: () => onOpenFutureWorkout(fw),
       }));
     }
@@ -172,6 +174,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
         label: pd.label,
         templateId: pd.templateId,
         template: pd.templateId === 'rest' ? null : templates.find(t => t.id === pd.templateId) ?? null,
+        completed: false,
         openScheduled: () => onOpenFutureWorkout(synthetic),
       };
     });
@@ -261,16 +264,18 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
           </div>
         )}
 
-        {dayDetail.sessions.length === 0 && scheduledEntries.length > 0 && (
-          <div className="space-y-3">
+        {/* Logging a session doesn't retire that day's plan — it stays listed
+            below whatever was completed, so it can be opened or run again. */}
+        {scheduledEntries.length > 0 && (
+          <div className={`space-y-3 ${dayDetail.sessions.length > 0 ? 'mt-3 pt-3 border-t border-border' : ''}`}>
             {scheduledEntries.map((entry, idx) => (
               <div key={entry.key} className={idx > 0 ? 'pt-3 border-t border-border' : undefined}>
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-foreground">
                     {entry.templateId === 'rest' ? '😴 Rest Day' : `🏋️ ${entry.label}`}
                   </span>
-                  <span className="text-[10px] uppercase tracking-widest text-primary font-bold">
-                    {scheduledEntries.length > 1 ? `Scheduled · ${idx + 1}/${scheduledEntries.length}` : 'Scheduled'}
+                  <span className={`text-[10px] uppercase tracking-widest font-bold ${entry.completed ? 'text-green-400' : 'text-primary'}`}>
+                    {entry.completed ? 'Scheduled · Done' : scheduledEntries.length > 1 ? `Scheduled · ${idx + 1}/${scheduledEntries.length}` : 'Scheduled'}
                   </span>
                 </div>
                 {entry.template && (
@@ -282,7 +287,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
                   {entry.template ? (
                     <>
                       <Button variant="neon" size="sm" onClick={() => onStartTemplate(entry.template!)}>
-                        Start
+                        {entry.completed ? 'Start again' : 'Start'}
                       </Button>
                       <Button variant="outline" size="sm" onClick={entry.openScheduled}>
                         Details

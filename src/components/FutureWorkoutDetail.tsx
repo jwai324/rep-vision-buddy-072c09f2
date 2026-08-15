@@ -155,6 +155,12 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                 Missed
               </span>
             )}
+            {futureWorkout.completed && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-green-500/15 text-green-400 text-[10px] font-bold uppercase tracking-wide shrink-0">
+                <Check className="w-3 h-3" />
+                Done
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">{dateStr}</p>
         </div>
@@ -461,7 +467,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
               onClick={() => onPerformWorkout(template)}
             >
               <Dumbbell className="w-5 h-5 mr-2" />
-              Perform Workout
+              {futureWorkout.completed ? 'Perform Again' : 'Perform Workout'}
             </Button>
           </div>
         </div>
