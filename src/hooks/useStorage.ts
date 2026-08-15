@@ -8,6 +8,7 @@ import { addDays, addWeeks, getDay, format } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
 import { getFutureWorkoutsCompletedBySession } from '@/utils/scheduledWorkout';
+import { readStorageCache, writeStorageCache, type CachedStorage } from '@/utils/storageCache';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
 type TemplateRow = Database['public']['Tables']['workout_templates']['Row'];
@@ -271,6 +272,11 @@ function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; pre
 
 export function useStorage() {
   const { user } = useAuth();
+  // Supabase hands back a freshly deserialized user object on every auth
+  // event — including the token refreshes that fire when the tab regains
+  // focus. Keying the load on the id means a same-user refresh no longer
+  // re-runs it, which is what used to throw the whole app back to a spinner.
+  const userId = user?.id ?? null;
   const [history, setHistory] = useState<WorkoutSession[]>([]);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [programs, setPrograms] = useState<WorkoutProgram[]>([]);
@@ -280,10 +286,13 @@ export function useStorage() {
   const [profile, setProfileState] = useState<UserProfile>(DEFAULT_PROFILE);
   const [bodyMeasurements, setBodyMeasurements] = useState<BodyMeasurement[]>([]);
   const [loading, setLoading] = useState(true);
+  // True while a load runs behind already-visible data. Callers that gate a
+  // full-screen spinner should watch `loading`; this is for subtler hints.
+  const [refreshing, setRefreshing] = useState(false);
 
   // Load all data from Supabase on mount / user change
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setHistory([]);
       setTemplates([]);
       setPrograms([]);
@@ -294,21 +303,42 @@ export function useStorage() {
       return;
     }
 
+    // Paint last-known-good data immediately; the network load below then
+    // overwrites it. A miss just falls through to the old spinner path.
+    const cached = readStorageCache(userId);
+    if (cached) {
+      setHistory(cached.history);
+      setTemplates(cached.templates);
+      setPrograms(cached.programs);
+      setActiveProgramIdState(cached.activeProgramId);
+      setFutureWorkouts(cached.futureWorkouts);
+      setPreferencesState(cached.preferences);
+      setProfileState(cached.profile);
+      setBodyMeasurements(cached.bodyMeasurements);
+      setLoading(false);
+    }
+
+    // A user switch mid-flight would otherwise let a stale response overwrite
+    // the new account's data.
+    let cancelled = false;
+
     const load = async () => {
-      setLoading(true);
+      if (cached) setRefreshing(true);
+      else setLoading(true);
       try {
         const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes, measurementsRes] = await Promise.all([
-          supabase.from('workout_sessions').select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
-          supabase.from('workout_templates').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
-          supabase.from('workout_programs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabase.from('future_workouts').select('*').eq('user_id', user.id).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
-          supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
-          supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle(),
+          supabase.from('workout_sessions').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
+          supabase.from('workout_templates').select('*').eq('user_id', userId).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
+          supabase.from('workout_programs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+          supabase.from('future_workouts').select('*').eq('user_id', userId).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
+          supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
+          supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
           // Uses MAX_ROWS like the other paginated tables so a daily
           // bodyweight logger keeps more than a year of history. Previously
           // capped at 366 rows which silently truncated after ~1 year.
-          supabase.from('body_measurements').select('*').eq('user_id', user.id).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
+          supabase.from('body_measurements').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
         ]);
+        if (cancelled) return;
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
         if (templatesRes.data) setTemplates(templatesRes.data.map(mapTemplate));
@@ -343,15 +373,34 @@ export function useStorage() {
           })));
         }
       } catch (e) {
+        if (cancelled) return;
         console.error('[useStorage] Failed to load data:', e);
-        toast.error('Failed to load your data');
+        // Cached data is still on screen and still usable, so a failed
+        // background refresh doesn't warrant interrupting the user.
+        if (!cached) toast.error('Failed to load your data');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
 
     load();
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  // Snapshot after every settle, so the next open has something to paint.
+  // Runs on real data changes too, not just loads, which keeps the cache warm
+  // as the user edits.
+  useEffect(() => {
+    if (!userId || loading) return;
+    const snapshot: CachedStorage = {
+      history, templates, programs, activeProgramId,
+      futureWorkouts, preferences, profile, bodyMeasurements,
+    };
+    writeStorageCache(userId, snapshot);
+  }, [userId, loading, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
 
   const setActiveProgramId = useCallback((id: string | null) => {
     setActiveProgramIdState(id);
@@ -818,7 +867,7 @@ export function useStorage() {
   }, [user, bodyMeasurements]);
 
   return {
-    history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements, loading,
+    history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements, loading, refreshing,
     saveSession, saveTemplate, deleteTemplate,
     saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
     deleteFutureWorkout, pushProgramBack, updatePreferences,

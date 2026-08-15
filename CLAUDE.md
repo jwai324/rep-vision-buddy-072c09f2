@@ -112,6 +112,27 @@ The app isn't wrapped for native yet. When you're ready:
 4. For OAuth on native: swap the Google sign-in handler in `Auth.tsx` to open the OAuth URL with `@capacitor/browser` rather than `signInWithOAuth` (which uses `window.location`), and register a custom URL scheme (e.g. `com.yourcompany.repvision://callback`) as a deep link so Supabase can return the session.
 5. After every web build: `npm run build && npx cap sync`.
 
+## Data loading and the local snapshot
+
+`useStorage` is the only place the app's data is fetched. Two things about it
+are easy to break by accident:
+
+- **Effects are keyed on `user?.id`, never the `user` object.** Supabase hands
+  back a freshly deserialized user on every auth event, including the token
+  refreshes that fire when the tab regains focus. `AuthContext` holds the
+  previous object when the id and `updated_at` both match, so a refresh is a
+  no-op; keying anything on `user` identity reintroduces a full reload of the
+  app on every refocus.
+- **Loaded data is mirrored to localStorage** (`src/utils/storageCache.ts`)
+  and read back on mount, so a returning app paints real content instead of
+  the spinner while it revalidates. `loading` means "nothing to show yet";
+  `refreshing` means "data on screen, network in flight" — gate full-screen
+  spinners on `loading` only.
+
+If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
+it will be blank on a hydrated open until revalidation lands. Changing the
+shape of anything cached means bumping `CACHE_VERSION`.
+
 ## Known issues / deferred work
 
 `.lovable/plan.md` contains an audit of pre-existing issues that were not part of the migration. Highest priority (per that doc):
