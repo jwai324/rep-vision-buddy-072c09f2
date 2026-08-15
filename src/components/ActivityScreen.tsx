@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { ArrowLeft, ChevronRight, Eye, EyeOff, Play } from 'lucide-react';
+import { ArrowLeft, Check, ChevronRight, Eye, EyeOff, Play } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance } from '@/utils/exerciseInputMode';
@@ -41,7 +41,11 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
 
   const filteredFuture = useMemo(() => {
     let items = showRestDays ? futureWorkouts : futureWorkouts.filter(fw => fw.templateId !== 'rest');
+    // A single day's view shows that day's whole plan, done entries included, so
+    // an already-logged workout can still be repeated. The unfiltered list is a
+    // to-do list, so finished entries drop out of it.
     if (filterDate) items = items.filter(f => f.date === filterDate);
+    else items = items.filter(f => !f.completed);
     return items;
   }, [futureWorkouts, showRestDays, filterDate]);
 
@@ -124,7 +128,15 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                   >
                     <span className="text-xl">{isRest ? '😴' : '🏋️'}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{fw.label}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground truncate">{fw.label}</p>
+                        {fw.completed && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-green-500/15 text-green-400 text-[10px] font-bold uppercase tracking-wide shrink-0">
+                            <Check className="w-3 h-3" />
+                            Done
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {new Date(fw.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                       </p>
@@ -139,11 +151,11 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                   {canStart && (
                     <button
                       onClick={() => onStartTemplate!(template!)}
-                      aria-label={`Perform ${fw.label}`}
+                      aria-label={fw.completed ? `Perform ${fw.label} again` : `Perform ${fw.label}`}
                       className="flex flex-col items-center justify-center gap-1 px-4 border-l border-border text-primary hover:bg-primary/10 transition-colors shrink-0"
                     >
                       <Play className="w-5 h-5 fill-current" />
-                      <span className="text-[10px] uppercase tracking-wider font-bold">Perform</span>
+                      <span className="text-[10px] uppercase tracking-wider font-bold">{fw.completed ? 'Again' : 'Perform'}</span>
                     </button>
                   )}
                 </div>

@@ -7,6 +7,7 @@ import type { Database } from '@/integrations/supabase/types';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
+import { getFutureWorkoutsCompletedBySession } from '@/utils/scheduledWorkout';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
 type TemplateRow = Database['public']['Tables']['workout_templates']['Row'];
@@ -385,22 +386,24 @@ export function useStorage() {
       return [session, ...prev];
     });
 
-    // Clean future workouts that match this date — await deletes with error handling
-    const sessionDateStr = format(parseLocalDate(session.date), 'yyyy-MM-dd');
-    const matchingFws = futureWorkouts.filter(fw => format(parseLocalDate(fw.date), 'yyyy-MM-dd') === sessionDateStr && !fw.completed);
+    // Flag matching scheduled workouts as done rather than deleting them — the
+    // day's plan stays on the calendar and can still be started again.
+    const matchingFws = getFutureWorkoutsCompletedBySession(session, futureWorkouts);
     if (matchingFws.length > 0) {
-      const deleteResults = await Promise.all(
-        matchingFws.map(fw => supabase.from('future_workouts').delete().eq('id', fw.id))
+      const updateResults = await Promise.all(
+        matchingFws.map(fw =>
+          supabase.from('future_workouts').update({ completed: true }).eq('id', fw.id).eq('user_id', user.id)
+        )
       );
-      const deletedIds = new Set(
-        deleteResults
+      const updatedIds = new Set(
+        updateResults
           .map((r, i) => (r.error ? null : matchingFws[i].id))
           .filter((id): id is string => id !== null)
       );
-      if (deletedIds.size < matchingFws.length) {
-        console.error('[useStorage] future workout cleanup: some deletes failed');
+      if (updatedIds.size < matchingFws.length) {
+        console.error('[useStorage] scheduled workout completion: some updates failed');
       }
-      setFutureWorkouts(prev => prev.filter(fw => !deletedIds.has(fw.id)));
+      setFutureWorkouts(prev => prev.map(fw => updatedIds.has(fw.id) ? { ...fw, completed: true } : fw));
     }
   }, [user, futureWorkouts]);
 
@@ -609,7 +612,9 @@ export function useStorage() {
 
   const pushProgramBack = useCallback(async (programId: string, fromDate: string, days: number) => {
     if (!user || days <= 0) return;
-    const targets = futureWorkouts.filter(fw => fw.programId === programId && fw.date >= fromDate);
+    // Already-completed entries are a record of what happened on that date, so
+    // they stay put even though they still live in future_workouts.
+    const targets = futureWorkouts.filter(fw => fw.programId === programId && fw.date >= fromDate && !fw.completed);
     if (targets.length === 0) return;
     const updates = targets.map(fw => {
       const d = parseLocalDate(fw.date);
