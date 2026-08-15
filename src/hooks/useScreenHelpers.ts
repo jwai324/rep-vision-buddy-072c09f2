@@ -17,6 +17,8 @@ export function templateFromSession(session: WorkoutSession, nameOverride?: stri
       targetReps: ex.sets[0]?.reps ?? 10,
       setType: ex.sets[0]?.type ?? 'normal',
       restSeconds: defaultRestSeconds,
+      // Session weights are already in the canonical kg that targetWeight uses.
+      targetWeight: ex.sets[0]?.weight,
     })),
   };
 }

@@ -48,6 +48,13 @@ export interface TemplateExercise {
   targetReps: number | 'failure';
   setType: SetType;
   restSeconds: number;
+  /**
+   * Target load, stored the way session sets store weight: kg for ordinary
+   * loaded work, and the raw band level (1-5) for band exercises, where
+   * "weight" is a level rather than a mass. Undefined means no target — the
+   * set starts blank, as it always did.
+   */
+  targetWeight?: number;
   targetRpe?: number;
   supersetGroup?: number;
 }

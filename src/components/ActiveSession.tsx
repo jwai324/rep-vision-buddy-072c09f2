@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, distanceUnitFromWeightUnit, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
-import { toKg, fromKg } from '@/utils/weightConversion';
+import { toKg, fromKg, targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors } from '@/utils/setValidation';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
@@ -194,6 +194,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const tpl = templateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
       const restSec = tpl?.restSeconds ?? defaultRestSeconds;
+      const isBand = getExerciseInputMode(id, customExercises) === 'band';
       return {
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? customExercises.find(c => c.id === id)?.name ?? id,
@@ -202,7 +203,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         dropSetsEnabled: defaultDropSetsEnabled,
         sets: Array.from({ length: numSets }, (_, i) => ({
           setNumber: i + 1,
-          weight: '',
+          weight: targetWeightToInput(tpl?.targetWeight, weightUnit, isBand),
           reps: tpl?.targetReps === 'failure' ? '' : (tpl?.targetReps?.toString() ?? ''),
           completed: false,
           type: tpl?.setType ?? 'normal',
@@ -972,12 +973,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         .filter(b => b.sets.some(s => s.completed))
         .map(b => {
           const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
-          const lastReps = completed.length > 0 ? parseInt(completed[completed.length - 1].reps) || null : null;
+          const lastSet = completed[completed.length - 1];
+          const lastReps = completed.length > 0 ? parseInt(lastSet.reps) || null : null;
           const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
+          const mode = getExerciseInputMode(b.exerciseId, customExercises);
+          const lastWeight = usesWeight(mode)
+            ? inputToTargetWeight(lastSet?.weight, weightUnit, mode === 'band')
+            : undefined;
           return {
             exerciseId: b.exerciseId,
             completedSetCount: completed.length,
             lastReps,
+            lastWeight,
             setType,
             supersetGroup: b.supersetGroup,
             restSeconds: b.restSeconds,

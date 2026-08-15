@@ -86,6 +86,48 @@ describe('templateDiff — altered workouts SHOULD trigger a prompt', () => {
   });
 });
 
+describe('templateDiff — target weight', () => {
+  it('reports no changes when the logged load matches the target', () => {
+    const before = snapshotFromTemplateExercises([ex({ targetWeight: 60 })]);
+    const after = snapshotFromFinishedBlocks([finished({ lastWeight: 60 })]);
+    expect(diffTemplateSnapshots(before, after).hasChanges).toBe(false);
+  });
+
+  it('detects a heavier working set', () => {
+    const before = snapshotFromTemplateExercises([ex({ targetWeight: 60 })]);
+    const after = snapshotFromFinishedBlocks([finished({ lastWeight: 65 })]);
+    const diff = diffTemplateSnapshots(before, after);
+    expect(diff.hasChanges).toBe(true);
+    expect(diff.targetWeightChanged).toBe(1);
+    expect(diff.summary).toContain('1 weight change');
+  });
+
+  it('detects a load on a template that had no weight target yet', () => {
+    const before = snapshotFromTemplateExercises([ex()]);
+    const after = snapshotFromFinishedBlocks([finished({ lastWeight: 60 })]);
+    expect(diffTemplateSnapshots(before, after).targetWeightChanged).toBe(1);
+  });
+
+  it('ignores lbs round-trip drift', () => {
+    // 135 lbs → kg → lbs comes back a hair off; that is not an edit.
+    const before = snapshotFromTemplateExercises([ex({ targetWeight: 61.23 })]);
+    const after = snapshotFromFinishedBlocks([finished({ lastWeight: 61.235 })]);
+    expect(diffTemplateSnapshots(before, after).hasChanges).toBe(false);
+  });
+
+  it('does not flag bodyweight work, where no load is ever logged', () => {
+    const before = snapshotFromTemplateExercises([ex({ exerciseId: 'push-up' })]);
+    const after = snapshotFromFinishedBlocks([finished({ exerciseId: 'push-up', lastWeight: undefined })]);
+    expect(diffTemplateSnapshots(before, after).hasChanges).toBe(false);
+  });
+
+  it('does not wipe an existing target when a set is logged without a load', () => {
+    const before = snapshotFromTemplateExercises([ex({ targetWeight: 60 })]);
+    const after = snapshotFromFinishedBlocks([finished({ lastWeight: null })]);
+    expect(diffTemplateSnapshots(before, after).hasChanges).toBe(false);
+  });
+});
+
 describe('buildUpdatedTemplate', () => {
   it('preserves rest seconds from the original template', () => {
     const template: WorkoutTemplate = {
@@ -96,5 +138,23 @@ describe('buildUpdatedTemplate', () => {
     const updated = buildUpdatedTemplate(template, [finished({ completedSetCount: 4 })]);
     expect(updated.exercises[0].sets).toBe(4);
     expect(updated.exercises[0].restSeconds).toBe(120);
+  });
+
+  it('writes the logged load into the template', () => {
+    const template: WorkoutTemplate = { id: 't1', name: 'Push', exercises: [ex({ targetWeight: 60 })] };
+    const updated = buildUpdatedTemplate(template, [finished({ lastWeight: 65 })]);
+    expect(updated.exercises[0].targetWeight).toBe(65);
+  });
+
+  it('keeps the existing target when nothing was logged', () => {
+    const template: WorkoutTemplate = { id: 't1', name: 'Push', exercises: [ex({ targetWeight: 60 })] };
+    const updated = buildUpdatedTemplate(template, [finished({ lastWeight: null })]);
+    expect(updated.exercises[0].targetWeight).toBe(60);
+  });
+
+  it('carries the RPE target across instead of dropping it', () => {
+    const template: WorkoutTemplate = { id: 't1', name: 'Push', exercises: [ex({ targetRpe: 8 })] };
+    const updated = buildUpdatedTemplate(template, [finished({ completedSetCount: 4 })]);
+    expect(updated.exercises[0].targetRpe).toBe(8);
   });
 });
