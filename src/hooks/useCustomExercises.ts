@@ -27,11 +27,14 @@ export interface CustomExerciseInput {
 
 export function useCustomExercises() {
   const { user } = useAuth();
+  // Keyed on the id, not the user object — see AuthContext. A token refresh
+  // used to recreate this callback and refetch the whole list.
+  const userId = user?.id ?? null;
   const [exercises, setExercises] = useState<(Exercise & { isCustom: true; isRecovery: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchExercises = useCallback(async () => {
-    if (!user) { setExercises([]); setLoading(false); return; }
+    if (!userId) { setExercises([]); setLoading(false); return; }
     const { data, error } = await supabase
       .from('custom_exercises')
       .select('*')
@@ -53,7 +56,7 @@ export function useCustomExercises() {
       isRecovery: row.is_recovery,
     })));
     setLoading(false);
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => { fetchExercises(); }, [fetchExercises]);
 
