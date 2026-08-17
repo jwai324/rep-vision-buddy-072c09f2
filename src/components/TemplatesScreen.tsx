@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import type { WorkoutTemplate } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { Button } from '@/components/ui/button';
-import { Copy } from 'lucide-react';
+import { Copy, Share2 } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,11 +20,12 @@ interface TemplatesScreenProps {
   onEdit: (template: WorkoutTemplate) => void;
   onDelete: (id: string) => void;
   onDuplicate: (template: WorkoutTemplate) => void;
+  onShare: (template: WorkoutTemplate) => void;
   onCreate: () => void;
   onBack: () => void;
 }
 
-export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onStart, onEdit, onDelete, onDuplicate, onCreate, onBack }) => {
+export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onStart, onEdit, onDelete, onDuplicate, onShare, onCreate, onBack }) => {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [contextMenu, setContextMenu] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,6 +81,9 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
               <div className="flex gap-2">
                 <Button variant="neon" size="sm" onClick={() => onStart(t)}>Start</Button>
                 <Button variant="outline" size="sm" onClick={() => onEdit(t)}>Edit</Button>
+                <Button variant="ghost" size="sm" onClick={() => onShare(t)} aria-label={`Share ${t.name}`}>
+                  <Share2 className="w-4 h-4" />
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ id: t.id, name: t.name })} className="text-set-failure">Delete</Button>
               </div>
 

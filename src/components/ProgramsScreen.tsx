@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { WorkoutProgram, WorkoutTemplate } from '@/types/workout';
 import { Button } from '@/components/ui/button';
+import { Share2 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -13,12 +14,13 @@ interface ProgramsScreenProps {
   onSetActive: (id: string | null) => void;
   onEdit: (program: WorkoutProgram) => void;
   onDelete: (id: string) => void;
+  onShare: (program: WorkoutProgram) => void;
   onCreate: () => void;
   onBack: () => void;
 }
 
 export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
-  programs, templates, activeProgramId, onSetActive, onEdit, onDelete, onCreate, onBack
+  programs, templates, activeProgramId, onSetActive, onEdit, onDelete, onShare, onCreate, onBack
 }) => {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
@@ -61,6 +63,9 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
                   {activeProgramId === p.id ? 'Deactivate' : 'Set Active'}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onEdit(p)}>Edit</Button>
+                <Button variant="ghost" size="sm" onClick={() => onShare(p)} aria-label={`Share ${p.name}`}>
+                  <Share2 className="w-4 h-4" />
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ id: p.id, name: p.name })} className="text-set-failure">Delete</Button>
               </div>
             </div>

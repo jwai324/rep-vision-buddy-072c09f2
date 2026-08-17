@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload, Volume2, Target, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload, Volume2, Target, ChevronRight, Sparkles, Link2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { exportUserData, importUserData, validateBackup, getBackupCounts, type RepVisionBackup } from '@/utils/dataPortability';
 import { useToast } from '@/hooks/use-toast';
@@ -20,6 +20,7 @@ interface SettingsScreenProps {
   onGoToCustomExercises?: () => void;
   onGoToProfile?: () => void;
   onGoToCredits?: () => void;
+  onGoToSharedLinks?: () => void;
   onReplayTutorial?: () => void;
 }
 
@@ -136,7 +137,7 @@ const DataManagementSection: React.FC = () => {
 };
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
-  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onGoToProfile, onGoToCredits, onReplayTutorial,
+  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onGoToProfile, onGoToCredits, onGoToSharedLinks, onReplayTutorial,
 }) => {
   const { user, signOut } = useAuth();
   const [editingName, setEditingName] = useState(false);
@@ -234,6 +235,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-foreground">Subscription & Credits</span>
               <span className="text-[11px] text-muted-foreground">Plan, balance, top-ups</span>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </button>
+      )}
+
+      {/* Shared Links */}
+      {onGoToSharedLinks && (
+        <button
+          onClick={onGoToSharedLinks}
+          className="bg-card rounded-xl border border-border overflow-hidden flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Link2 className="w-4 h-4 text-primary" />
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-foreground">Shared Links</span>
+              <span className="text-[11px] text-muted-foreground">Manage links you've shared</span>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-muted-foreground" />

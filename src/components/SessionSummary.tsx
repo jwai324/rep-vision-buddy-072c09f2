@@ -5,7 +5,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString, formatVolumeFromKg } from '@/utils/weightConversion';
-import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon, Share2 } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
@@ -33,17 +33,23 @@ const REST_DAY_EXERCISE_IDS = [
 ];
 const REST_DAY_EXERCISES = EXERCISE_DATABASE.filter(ex => REST_DAY_EXERCISE_IDS.includes(ex.id));
 
+/**
+ * Every handler is optional so this renders safely on the public share page,
+ * where there is no owner and no action is available. Each control is gated on
+ * its handler: pass none and you get a pure read-only view.
+ */
 interface SessionSummaryProps {
   session: WorkoutSession;
   weightUnit?: WeightUnit;
-  onSave: () => void;
-  onSaveAsTemplate: () => void;
-  onClose: () => void;
+  onSave?: () => void;
+  onSaveAsTemplate?: () => void;
+  onClose?: () => void;
   onDelete?: (id: string) => void;
   onEdit?: (session: WorkoutSession) => void;
   onUpdateSession?: (session: WorkoutSession) => void;
   onContinue?: () => void;
   onReperform?: (session: WorkoutSession) => void;
+  onShare?: (session: WorkoutSession) => void;
   isViewMode?: boolean;
 }
 
@@ -64,7 +70,7 @@ const getSupersetColorClass = (group?: number) => {
   return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
 };
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, isViewMode }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, onShare, isViewMode }) => {
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -134,9 +140,11 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
     return (
       <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
         <div className="flex items-center gap-3 pt-2">
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          {onClose && (
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
           <div>
             <h1 className="text-xl font-extrabold text-foreground">Rest Day</h1>
             <p className="text-xs text-muted-foreground">{parseLocalDate(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
@@ -283,9 +291,11 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
       {/* Header */}
       {isViewMode ? (
         <div className="flex items-center gap-3 pt-2">
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          {onClose && (
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
           <div>
             <h1 className="text-xl font-extrabold text-foreground">Workout Details</h1>
             <p className="text-xs text-muted-foreground">
@@ -472,7 +482,15 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             {onReperform && (
               <Button variant="neon" onClick={() => onReperform(session)} className="w-full">Re-perform Workout</Button>
             )}
-            <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
+            {onSaveAsTemplate && (
+              <Button variant="outline" onClick={onSaveAsTemplate} className="w-full">Save as Template</Button>
+            )}
+            {onShare && (
+              <Button variant="outline" onClick={() => onShare(session)} className="w-full gap-2">
+                <Share2 className="w-4 h-4" />
+                Share Workout
+              </Button>
+            )}
             {onEdit && (
               <Button variant="outline" onClick={() => onEdit(session)} className="w-full">Edit Workout</Button>
             )}
@@ -527,7 +545,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             <AlertDialogAction
               onClick={() => {
                 setShowDiscardConfirm(false);
-                onClose();
+                onClose?.();
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

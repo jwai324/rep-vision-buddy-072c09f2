@@ -25,6 +25,7 @@ const noopProps = {
   onSetActive: vi.fn(),
   onEdit: vi.fn(),
   onDelete: vi.fn(),
+  onShare: vi.fn(),
   onCreate: vi.fn(),
   onBack: vi.fn(),
 };
