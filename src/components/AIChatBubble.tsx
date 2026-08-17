@@ -108,6 +108,8 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
       toast.error('Microphone access denied. Enable it in your browser settings.');
     } else if (err === 'audio-capture') {
       toast.error("Couldn't reach a microphone.");
+    } else if (err === 'restart-loop') {
+      toast.error('Voice input kept dropping out, so it was turned off.');
     } else {
       toast.error(`Voice input failed: ${err}`);
     }
@@ -117,6 +119,15 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     onError: handleSpeechError,
   });
 
+  // Dictation now runs until the user taps the mic again, so closing the panel
+  // has to end it too — otherwise the microphone stays live behind a dismissed
+  // chat with nothing on screen indicating it.
+  const stopSpeech = speech.stop;
+  const isListening = speech.isListening;
+  useEffect(() => {
+    if (!isOpen && isListening) stopSpeech();
+  }, [isOpen, isListening, stopSpeech]);
+
   const handleMicToggle = () => {
     if (isLoading || limitBlocks || consecutiveErrors >= 2) return;
     if (navigator.vibrate) navigator.vibrate(5);
@@ -125,7 +136,9 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
 
   const handleSend = () => {
     if (isSendDisabled) return;
-    if (speech.isListening) speech.stop();
+    // Sending deliberately leaves dictation running: the mic button is the
+    // only thing that turns it off, so you can dictate a follow-up without
+    // reaching for it again.
     const text = input.trim().slice(0, MAX_CHAT_CHARS);
     setInput('');
     if (navigator.vibrate) navigator.vibrate(10);
