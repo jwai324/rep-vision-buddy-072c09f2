@@ -22,6 +22,8 @@ import { ProgramsScreen } from '@/components/ProgramsScreen';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import { AIProgramBuilder } from '@/components/AIProgramBuilder';
 import { CustomExercisesScreen } from '@/components/CustomExercisesScreen';
+import { SharedLinksScreen } from '@/components/SharedLinksScreen';
+import { ShareDialog, type ShareTarget } from '@/components/ShareDialog';
 import { MonthlyCalendarScreen } from '@/components/MonthlyCalendarScreen';
 import { ChatProvider, useChatContext } from '@/contexts/ChatContext';
 import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
@@ -29,6 +31,7 @@ import { TutorialProvider, useTutorial } from '@/contexts/TutorialContext';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { AIChatBubble } from '@/components/AIChatBubble';
 import { templateFromSession, useDayClickHandler } from '@/hooks/useScreenHelpers';
+import { buildProgramSnapshot, buildSessionSnapshot, buildTemplateSnapshot } from '@/utils/shareSnapshot';
 
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
@@ -54,6 +57,7 @@ type Screen =
   | { type: 'analytics' }
   | { type: 'aiProgramBuilder' }
   | { type: 'customExercises' }
+  | { type: 'sharedLinks' }
   | { type: 'monthlyCalendar' };
 
 // Clearance for the fixed AI chat FAB (bottom-6 = 24px + h-14 = 56px, plus breathing room)
@@ -71,6 +75,16 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   });
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
+
+  // Everything a snapshot needs beyond the item itself. Built here because
+  // this is the one place that has preferences, profile, and custom exercises
+  // in hand at the same time.
+  const snapshotContext = React.useMemo(() => ({
+    weightUnit: storage.preferences.weightUnit,
+    sharedBy: storage.profile.displayName,
+    customExercises,
+  }), [storage.preferences.weightUnit, storage.profile.displayName, customExercises]);
 
   // Register screen context with AI chat
   useEffect(() => {
@@ -80,7 +94,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       summary: 'dashboard', sessionDetail: 'activity', activity: 'activity',
       futureWorkoutDetail: 'activity', templates: 'templates', templateBuilder: 'templates',
       programs: 'programs', programBuilder: 'programs', settings: 'settings',
-      profile: 'profile',
+      profile: 'profile', sharedLinks: 'settings',
       analytics: 'analytics', aiProgramBuilder: 'programs',
     };
     registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
@@ -468,6 +482,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             storage.saveSession(updated);
             setScreen({ type: 'sessionDetail', session: updated, from: 'activity' });
           }}
+          onShare={(session) => setShareTarget({
+            kind: 'session',
+            sourceId: session.id,
+            title: `Workout on ${parseLocalDate(session.date).toLocaleDateString()}`,
+            buildPayload: () => buildSessionSnapshot(session, snapshotContext),
+          })}
         />
       )}
 
@@ -481,6 +501,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             const copy = { ...t, id: crypto.randomUUID(), name: `${t.name} (2)` };
             storage.saveTemplate(copy);
           }}
+          onShare={(t) => setShareTarget({
+            kind: 'template',
+            sourceId: t.id,
+            title: t.name,
+            buildPayload: () => buildTemplateSnapshot(t, snapshotContext),
+          })}
           onCreate={() => setScreen({ type: 'templateBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
@@ -507,6 +533,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onSetActive={storage.setActiveProgram}
           onEdit={(p) => setScreen({ type: 'programBuilder', program: p })}
           onDelete={storage.deleteProgram}
+          onShare={(p) => setShareTarget({
+            kind: 'program',
+            sourceId: p.id,
+            title: p.name,
+            buildPayload: () => buildProgramSnapshot(p, storage.templates, snapshotContext),
+          })}
           onCreate={() => setScreen({ type: 'programBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}
         />
@@ -535,6 +567,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onGoToCustomExercises={() => setScreen({ type: 'customExercises' })}
           onGoToProfile={() => setScreen({ type: 'profile' })}
           onGoToCredits={() => setScreen({ type: 'credits' })}
+          onGoToSharedLinks={() => setScreen({ type: 'sharedLinks' })}
           onReplayTutorial={() => {
             setScreen({ type: 'dashboard' });
             // Defer to next tick so dashboard mounts before overlay measures
@@ -600,6 +633,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
+      {screen.type === 'sharedLinks' && (
+        <SharedLinksScreen onBack={() => setScreen({ type: 'settings' })} />
+      )}
+
       {screen.type === 'monthlyCalendar' && (
         <MonthlyCalendarScreen
           history={storage.history}
@@ -638,6 +675,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           />
         );
       })()}
+
+      <ShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
 
       <TutorialOverlay />
 

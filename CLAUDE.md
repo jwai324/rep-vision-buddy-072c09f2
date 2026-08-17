@@ -8,7 +8,7 @@ RepVision is a workout tracking PWA. The user plans workouts (templates → prog
 
 ## Stack
 
-- **Frontend**: Vite + React 18 + TypeScript, Tailwind + shadcn/ui, React Router (hash-based), TanStack Query
+- **Frontend**: Vite + React 18 + TypeScript, Tailwind + shadcn/ui, React Router (`BrowserRouter`, real paths — `vercel.json` rewrites everything to `/`), TanStack Query
 - **Backend**: Supabase (Postgres + Auth + Edge Functions running on Deno)
 - **AI**: Anthropic Claude API (`claude-opus-4-7`) via the official SDK, invoked from two edge functions
 
@@ -132,6 +132,39 @@ are easy to break by accident:
 If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
+
+## Shareable links
+
+A user can publish a completed workout, a template, or a program to a public URL
+(`/s/:token`) that anyone can open logged out, and that a signed-in viewer can
+import into their own library.
+
+- **Snapshots are frozen.** `public.shares.payload` holds a self-contained copy
+  of the item built by `src/utils/shareSnapshot.ts` — resolved exercise names,
+  any custom-exercise definitions used, and (for programs) every referenced
+  template embedded whole. Later edits to the source never reach an already-sent
+  link; re-sharing overwrites the snapshot behind the *same* token.
+- **The public page reads nothing owner-scoped.** `src/pages/SharedItem.tsx` is
+  a wrapper-free route and must never call `useStorage` or any user-keyed hook.
+  It renders from the payload alone.
+- **`shares` is owner-only under RLS with no anon policy** — an anon `SELECT`
+  would let anyone dump every share. The sole public read path is the
+  `SECURITY DEFINER` function `get_shared_item(token)`, granted to `anon`, which
+  returns a narrow column list (never `user_id` or `view_count`). A revoked
+  share resolves with `revoked = true` and a null payload so the viewer sees
+  "no longer available" rather than a not-found page.
+- **A partial unique index** on `(user_id, kind, source_id) WHERE revoked_at IS NULL`
+  keeps at most one live link per item, which is what makes the URL stable
+  across updates while still allowing a re-share after a revoke.
+- **Import remaps every id** (`src/utils/shareImport.ts`). Custom exercise ids
+  are `custom-<row uuid>`, so the recipient's copies necessarily differ —
+  missing ones are created (deduped by name) and each `exerciseId` is rewritten.
+  An imported program is deliberately **not** activated: activating it would
+  regenerate the viewer's `future_workouts`, which is destructive.
+- Snapshot shape changes must bump `SHARE_SNAPSHOT_VERSION` in
+  `src/types/share.ts`; the public page refuses payloads newer than it knows.
+- Links preview with the generic RepVision card — this is a client-rendered SPA
+  behind a catch-all rewrite, so per-share OG tags would need a prerender step.
 
 ## Known issues / deferred work
 

@@ -251,6 +251,48 @@ export type Database = {
         }
         Relationships: []
       }
+      shares: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          revoked_at: string | null
+          source_id: string | null
+          title: string
+          token: string
+          updated_at: string
+          user_id: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          payload: Json
+          revoked_at?: string | null
+          source_id?: string | null
+          title: string
+          token?: string
+          updated_at?: string
+          user_id: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          revoked_at?: string | null
+          source_id?: string | null
+          title?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+          view_count?: number
+        }
+        Relationships: []
+      }
       token_ledger: {
         Row: {
           balance_after_micros: number
@@ -564,6 +606,17 @@ export type Database = {
           free_used_micros: number
           new_balance_micros: number
           paid_balance_micros: number
+        }[]
+      }
+      get_shared_item: {
+        Args: { p_token: string }
+        Returns: {
+          created_at: string
+          kind: string
+          payload: Json
+          revoked: boolean
+          title: string
+          updated_at: string
         }[]
       }
       grant_tokens: {

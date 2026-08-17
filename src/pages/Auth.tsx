@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { Dumbbell } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { safeNext } from '@/utils/safeNext';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
 
@@ -20,6 +22,10 @@ function isCredentialError(error: { code?: string; message?: string; status?: nu
 }
 
 const Auth = () => {
+  const [params] = useSearchParams();
+  // Set when the user arrived from a shared link, so the round trip through
+  // sign-in returns them to it. Password sign-in is handled by AuthRoute.
+  const returnTo = `${window.location.origin}${safeNext(params.get('next')) ?? '/'}`;
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -71,7 +77,7 @@ const Auth = () => {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin },
+        options: { emailRedirectTo: returnTo },
       });
       if (error) {
         setFormError(error.message);
@@ -85,7 +91,7 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: returnTo },
     });
     if (error) {
       toast.error('Google sign-in failed');
