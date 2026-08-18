@@ -55,6 +55,12 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
 const RESTART_BURST_WINDOW_MS = 1000;
 const MAX_RESTARTS_PER_WINDOW = 5;
 
+// A fresh session started right after the browser cut the previous one off
+// tends to re-recognise the tail of the audio the old session already
+// finalised, so the same phrase arrives twice. Identical text this soon after
+// a restart is that echo rather than the user saying it again.
+const DUPLICATE_ECHO_WINDOW_MS = 2000;
+
 // Errors that mean another restart cannot possibly succeed.
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture']);
 
@@ -105,6 +111,14 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
   const shouldListenRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restartBurstRef = useRef({ count: 0, since: 0 });
+  // How many results of the current session have already been handed to
+  // onFinalResult. Results are finalised in order and never revised, so an
+  // index is all it takes to tell a genuinely new phrase from a redelivery.
+  const emittedFinalsRef = useRef(0);
+  // The last phrase emitted, for suppressing the cross-session echo described
+  // at DUPLICATE_ECHO_WINDOW_MS. `afterRestart` is set when a session ends
+  // while the user still wants to listen, and cleared once a final lands.
+  const lastFinalRef = useRef({ text: '', at: 0, afterRestart: false });
   // Keep callbacks in refs so we can hand them to a single long-lived
   // recognition instance without re-creating it on every parent render.
   const onFinalResultRef = useRef(onFinalResult);
@@ -143,7 +157,13 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
       if (reason) onErrorRef.current?.(reason);
     };
 
-    rec.onstart = () => setIsListening(true);
+    // `results` is per-session and starts empty again on every restart, so the
+    // emitted-count has to reset with it or the new session's phrases would be
+    // mistaken for ones already sent.
+    rec.onstart = () => {
+      emittedFinalsRef.current = 0;
+      setIsListening(true);
+    };
 
     rec.onend = () => {
       setInterimTranscript('');
@@ -151,6 +171,10 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
         setIsListening(false);
         return;
       }
+
+      // Anything the next session finalises straight away may be a re-run of
+      // audio this one already reported.
+      lastFinalRef.current.afterRestart = true;
 
       // Browsers end the session on their own silence timeout even with
       // continuous = true, so "keep listening until I tap again" has to be
@@ -199,18 +223,37 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
     rec.onresult = (ev) => {
       // Audio is reaching us, so whatever restarts got us here were healthy
       // gaps rather than a failing device.
-      restartBurstRef.current = { count: 0, since: Date.now() };
-      let interim = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const now = Date.now();
+      restartBurstRef.current = { count: 0, since: now };
+
+      // `ev.results` is cumulative for the session, and ev.resultIndex is not
+      // a reliable "everything before this is already handled" marker —
+      // browsers routinely replay earlier entries, including finalised ones.
+      // Walking the whole list and gating on emittedFinalsRef is what stops a
+      // phrase from being appended to the input a second time.
+      const interimParts: string[] = [];
+      for (let i = 0; i < ev.results.length; i++) {
         const result = ev.results[i];
-        const transcript = result[0]?.transcript ?? '';
-        if (result.isFinal) {
-          const trimmed = transcript.trim();
-          if (trimmed) onFinalResultRef.current?.(trimmed);
-        } else {
-          interim += transcript;
+        const transcript = (result?.[0]?.transcript ?? '').trim();
+        if (!result?.isFinal) {
+          if (transcript) interimParts.push(transcript);
+          continue;
         }
+        if (i < emittedFinalsRef.current) continue;
+        emittedFinalsRef.current = i + 1;
+        if (!transcript) continue;
+
+        const last = lastFinalRef.current;
+        const isEcho =
+          last.afterRestart && transcript === last.text && now - last.at < DUPLICATE_ECHO_WINDOW_MS;
+        lastFinalRef.current = { text: transcript, at: now, afterRestart: false };
+        if (isEcho) continue;
+        onFinalResultRef.current?.(transcript);
       }
+      // Joined rather than concatenated: the browser hands back separate
+      // results without any trailing space, so raw concatenation runs the
+      // words of the live preview together.
+      const interim = interimParts.join(' ');
       setInterimTranscript(interim);
       onInterimResultRef.current?.(interim);
     };
@@ -239,6 +282,8 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
     if (!rec || isListening) return;
     shouldListenRef.current = true;
     restartBurstRef.current = { count: 0, since: Date.now() };
+    emittedFinalsRef.current = 0;
+    lastFinalRef.current = { text: '', at: 0, afterRestart: false };
     try {
       rec.start();
     } catch (e) {
