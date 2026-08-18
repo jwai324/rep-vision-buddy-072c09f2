@@ -1,4 +1,4 @@
-export type MeasurementType = 'Reps' | 'Reps + Weight' | 'Time' | 'Distance' | 'Time + Distance';
+export type MeasurementType = 'Reps' | 'Reps + Weight' | 'Time' | 'Distance' | 'Time + Distance' | 'Time + Weight';
 
 export interface Exercise {
   id: string;
@@ -275,10 +275,10 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-arm-dumbbell-kickback', name: 'Single-Arm Dumbbell Kickback', primaryBodyPart: 'Triceps', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
 
   // Core
-  { id: 'plank', name: 'Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'], measurementType: 'Time' },
-  { id: 'side-plank', name: 'Side Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Obliques'], measurementType: 'Time' },
-  { id: 'trx-plank', name: 'TRX Plank', primaryBodyPart: 'Core', equipment: 'TRX/Suspension', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'], measurementType: 'Time' },
-  { id: 'swiss-ball-plank', name: 'Swiss Ball Plank', primaryBodyPart: 'Core', equipment: 'Swiss Ball', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'], measurementType: 'Time' },
+  { id: 'plank', name: 'Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'], measurementType: 'Time + Weight' },
+  { id: 'side-plank', name: 'Side Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Obliques'], measurementType: 'Time + Weight' },
+  { id: 'trx-plank', name: 'TRX Plank', primaryBodyPart: 'Core', equipment: 'TRX/Suspension', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'], measurementType: 'Time + Weight' },
+  { id: 'swiss-ball-plank', name: 'Swiss Ball Plank', primaryBodyPart: 'Core', equipment: 'Swiss Ball', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'], measurementType: 'Time + Weight' },
   { id: 'plank-to-push-up', name: 'Plank to Push-Up', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Chest', 'Triceps', 'Shoulders'] },
   { id: 'crunch', name: 'Crunch', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: [] },
   { id: 'bicycle-crunch', name: 'Bicycle Crunch', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Obliques'] },
@@ -303,7 +303,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'medicine-ball-slam', name: 'Medicine Ball Slam', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Flexion', secondaryMuscles: ['Shoulders', 'Lats'] },
   { id: 'medicine-ball-side-throw', name: 'Medicine Ball Side Throw', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Obliques', 'Shoulders'] },
   { id: 'medicine-ball-rotational-throw', name: 'Medicine Ball Rotational Throw', primaryBodyPart: 'Core', equipment: 'Medicine Ball', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Obliques', 'Shoulders', 'Hip Flexors'] },
-  { id: 'copenhagen-plank', name: 'Copenhagen Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Adductors', 'Obliques'], measurementType: 'Time' },
+  { id: 'copenhagen-plank', name: 'Copenhagen Plank', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Adductors', 'Obliques'], measurementType: 'Time + Weight' },
   { id: 'single-arm-farmers-carry', name: "Single-Arm Farmer's Carry", primaryBodyPart: 'Core', equipment: 'Dumbbell', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Obliques', 'Forearms', 'Traps'] },
   { id: 'side-bends', name: 'Side Bends', primaryBodyPart: 'Core', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: ['Obliques', 'Lower Back'], aliases: ['dumbbell side bends', 'lateral flexion'] },
   { id: 'dead-bug', name: 'Dead Bug', primaryBodyPart: 'Core', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Hip Flexors', 'Shoulders'], aliases: ['dead bugs', 'deadbug'] },
@@ -331,7 +331,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'barbell-reverse-wrist-curl', name: 'Barbell Reverse Wrist Curl', primaryBodyPart: 'Forearms', equipment: 'Barbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'dumbbell-reverse-wrist-curl', name: 'Dumbbell Reverse Wrist Curl', primaryBodyPart: 'Forearms', equipment: 'Dumbbell', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: [] },
   { id: 'trap-bar-farmers-walk', name: "Trap Bar Farmer's Walk", primaryBodyPart: 'Forearms', equipment: 'Trap Bar', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Carry', secondaryMuscles: ['Traps', 'Core'] },
-  { id: 'towel-hang', name: 'Towel Hang', primaryBodyPart: 'Forearms', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'] },
+  { id: 'towel-hang', name: 'Towel Hang', primaryBodyPart: 'Forearms', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Shoulders'], measurementType: 'Time + Weight' },
 
   // Full Body / Olympic
   { id: 'barbell-snatch', name: 'Barbell Snatch', primaryBodyPart: 'Full Body', equipment: 'Barbell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Olympic', secondaryMuscles: ['Shoulders', 'Back', 'Quads', 'Glutes'] },
@@ -380,7 +380,7 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'single-leg-rdl-to-row-kettlebell', name: 'Single-Leg Romanian Deadlift to Row (Kettlebell)', primaryBodyPart: 'Full Body', equipment: 'Kettlebell', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Hinge', secondaryMuscles: ['Hamstrings', 'Glutes', 'Back', 'Biceps', 'Core'] },
 
   // Flexibility / Recovery
-  { id: 'yoga', name: 'Yoga', primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Isometric', secondaryMuscles: ['Core', 'Hip Flexors', 'Hamstrings', 'Shoulders'] },
+  { id: 'yoga', name: 'Yoga', primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Isometric', secondaryMuscles: ['Core', 'Hip Flexors', 'Hamstrings', 'Shoulders'], measurementType: 'Time' },
   { id: 'stretching', name: 'Stretching', primaryBodyPart: 'Full Body', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Extension', secondaryMuscles: ['Hip Flexors', 'Hamstrings', 'Lower Back'] },
   { id: 'walking', name: 'Walking', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves'], measurementType: 'Time + Distance' },
   { id: 'swimming-full-body', name: 'Swimming', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads', 'Triceps', 'Lats'], measurementType: 'Time + Distance' },
@@ -390,18 +390,18 @@ export const EXERCISE_DATABASE: Exercise[] = [
 
   // Cardio / Sport
   { id: 'assault-bike', name: 'Assault Bike', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Core'], measurementType: 'Time + Distance' },
-  { id: 'elliptical', name: 'Elliptical', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Shoulders'], measurementType: 'Time' },
+  { id: 'elliptical', name: 'Elliptical', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Shoulders'], measurementType: 'Time + Distance' },
   { id: 'stationary-cycling', name: 'Stationary Cycling', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Hamstrings', 'Glutes', 'Calves'], measurementType: 'Time + Distance' },
   { id: 'sprinting', name: 'Sprinting', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Hip Flexors'], measurementType: 'Time + Distance' },
-  { id: 'basketball', name: 'Basketball', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Shoulders', 'Core'] },
-  { id: 'rock-climbing', name: 'Rock Climbing', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Forearms', 'Biceps', 'Core', 'Shoulders', 'Lats'] },
-  { id: 'volleyball', name: 'Volleyball', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Shoulders', 'Quads', 'Core', 'Calves', 'Forearms'] },
-  { id: 'tennis', name: 'Tennis', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Shoulders', 'Core', 'Quads', 'Calves', 'Forearms', 'Obliques'] },
+  { id: 'basketball', name: 'Basketball', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Shoulders', 'Core'], measurementType: 'Time' },
+  { id: 'rock-climbing', name: 'Rock Climbing', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Forearms', 'Biceps', 'Core', 'Shoulders', 'Lats'], measurementType: 'Time' },
+  { id: 'volleyball', name: 'Volleyball', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Shoulders', 'Quads', 'Core', 'Calves', 'Forearms'], measurementType: 'Time' },
+  { id: 'tennis', name: 'Tennis', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Shoulders', 'Core', 'Quads', 'Calves', 'Forearms', 'Obliques'], measurementType: 'Time' },
   { id: 'cycling-outdoor', name: 'Cycling (Outdoor)', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Hamstrings', 'Glutes', 'Calves', 'Core'], measurementType: 'Time + Distance' },
   { id: 'rowing-machine', name: 'Rowing Machine', primaryBodyPart: 'Cardio', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Quads', 'Hamstrings', 'Biceps', 'Core', 'Shoulders'], measurementType: 'Time + Distance' },
   { id: 'jump-rope', name: 'Jump Rope', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Calves', 'Quads', 'Shoulders', 'Forearms', 'Core'], measurementType: 'Time' },
-  { id: 'martial-arts-mma', name: 'Martial Arts / MMA', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Core', 'Quads', 'Glutes', 'Shoulders', 'Hip Flexors', 'Obliques'] },
-  { id: 'soccer', name: 'Soccer', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Hip Flexors'] },
+  { id: 'martial-arts-mma', name: 'Martial Arts / MMA', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Rotation', secondaryMuscles: ['Core', 'Quads', 'Glutes', 'Shoulders', 'Hip Flexors', 'Obliques'], measurementType: 'Time' },
+  { id: 'soccer', name: 'Soccer', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Hip Flexors'], measurementType: 'Time' },
   { id: 'hiking', name: 'Hiking', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Lunge', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'], measurementType: 'Time + Distance' },
   { id: 'shuttle-runs', name: 'Shuttle Runs', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'], measurementType: 'Time + Distance' },
   { id: 'running-steady-state', name: 'Running (Steady State)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'], measurementType: 'Time + Distance' },
@@ -411,15 +411,15 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'swimming-cardio', name: 'Swimming', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads'], measurementType: 'Time + Distance' },
 
   // Recovery / Wellness
-  { id: 'sleep-focus', name: 'Sleep Focus', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
-  { id: 'cold-plunge', name: 'Cold Plunge', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
-  { id: 'sauna', name: 'Sauna', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
-  { id: 'meditation', name: 'Meditation', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
-  { id: 'massage', name: 'Massage', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Lower Back', 'Hamstrings', 'Upper Back'] },
-  { id: 'foam-rolling', name: 'Foam Rolling', primaryBodyPart: 'Full Body', equipment: 'Foam Roller', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Upper Back', 'Calves'] },
-  { id: 'active-rest', name: 'Active Rest', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Isometric', secondaryMuscles: [] },
-  { id: 'compression-cuff', name: 'Compression Cuff', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [] },
-  { id: 'breathing-exercises', name: 'Breathing Exercises', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Core'] },
+  { id: 'sleep-focus', name: 'Sleep Focus', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },
+  { id: 'cold-plunge', name: 'Cold Plunge', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },
+  { id: 'sauna', name: 'Sauna', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },
+  { id: 'meditation', name: 'Meditation', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },
+  { id: 'massage', name: 'Massage', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Lower Back', 'Hamstrings', 'Upper Back'], measurementType: 'Time' },
+  { id: 'foam-rolling', name: 'Foam Rolling', primaryBodyPart: 'Full Body', equipment: 'Foam Roller', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Glutes', 'Upper Back', 'Calves'], measurementType: 'Time' },
+  { id: 'active-rest', name: 'Active Rest', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },
+  { id: 'compression-cuff', name: 'Compression Cuff', primaryBodyPart: 'Full Body', equipment: 'Machine', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },
+  { id: 'breathing-exercises', name: 'Breathing Exercises', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: ['Core'], measurementType: 'Time' },
 ];
 
 // Body part groupings for filtering

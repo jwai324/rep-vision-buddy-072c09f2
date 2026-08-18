@@ -181,6 +181,7 @@ function getGridCols(mode: ExerciseInputMode): string {
   switch (mode) {
     case 'time': return 'grid-cols-[32px_1fr_1fr_30px_36px]';
     case 'time-distance': return 'grid-cols-[32px_1fr_1fr_1fr_36px]';
+    case 'weight-time': return 'grid-cols-[32px_1fr_1fr_1fr_42px_36px]';
     case 'distance': return 'grid-cols-[32px_1fr_1fr_36px]';
     case 'reps': return 'grid-cols-[32px_1fr_1fr_42px_30px_36px]';
     case 'band':
@@ -217,6 +218,17 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
           <span className="text-center">{distanceUnit}</span>
+          <RpeHeaderPopover />
+          <CheckHeader />
+        </div>
+      );
+    case 'weight-time':
+      return (
+        <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
+          <span>Set</span>
+          <span className="text-center">Previous</span>
+          <span className="text-center">{weightUnit}</span>
+          <span className="text-center">Time</span>
           <RpeHeaderPopover />
           <CheckHeader />
         </div>
@@ -539,6 +551,39 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   {completeBtn}
                 </div>
               );
+            case 'weight-time': {
+              const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
+              const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
+              return (
+                <div id={blockIdx === 0 && setIdx === 0 ? 'tutorial-set-row' : undefined}
+                  className={`grid ${gridCols} gap-1 items-center py-1.5 px-1 rounded-md ${set.completed ? 'bg-primary/10' : ''}`}>
+                  <span className={setLabelClass}>{setLabel}</span>
+                  {prevSet ? (
+                    <button type="button" onClick={() => {
+                      if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prevSet.weight, weightUnit))));
+                      if (prevSet.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prevSet.time));
+                      if (prevSet.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prevSet.rpe));
+                    }} className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer" title="Tap to copy to current set">
+                      {`${prevSet.weight ? `${Math.round(fromKg(prevSet.weight, weightUnit))} × ` : ''}${formatMmSs(prevSet.time ?? 0)}`}
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground text-center">—</span>
+                  )}
+                  <input
+                    id={buildInputId(blockIdx, setIdx, 'weight')}
+                    type="number" inputMode="decimal" value={set.weight}
+                    onChange={e => onUpdateSet(blockIdx, setIdx, 'weight', e.target.value)}
+                    onFocus={e => e.target.value && e.target.select()}
+                    placeholder="—"
+                    aria-invalid={!!setErrors.weight}
+                    className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${errorRingClass('weight')} [&::-webkit-inner-spin-button]:appearance-auto`}
+                  />
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time')} value={set.time} onChange={v => onUpdateSet(blockIdx, setIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx} />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe')} value={set.rpe} onChange={v => onUpdateSet(blockIdx, setIdx, 'rpe', v)} />
+                  {completeBtn}
+                </div>
+              );
+            }
             case 'reps': {
               const workingSetIndex = block.sets.slice(0, setIdx).filter(s => s.type !== 'warmup').length;
               const prevSet = set.type !== 'warmup' ? previousSets[workingSetIndex] : undefined;
@@ -663,6 +708,19 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <input id={buildInputId(blockIdx, setIdx, 'distance', dropIdx)} type="number" inputMode="decimal" value={drop.distance ?? ''}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'distance' as keyof DropRow, e.target.value)}
                     placeholder="—" className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
+                  {dropCompleteBtn}
+                </div>
+              );
+            case 'weight-time':
+              return (
+                <div className={baseClass}>
+                  <span className="text-xs font-bold text-set-dropset text-center">{dropLabel}</span>
+                  <span className="text-xs text-muted-foreground text-center">—</span>
+                  <input id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} type="number" inputMode="decimal" value={drop.weight}
+                    onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
+                    placeholder="—" className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                  <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   {dropCompleteBtn}
                 </div>

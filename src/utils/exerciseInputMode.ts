@@ -2,7 +2,7 @@ import { EXERCISE_DATABASE, type Exercise, type MeasurementType } from '@/data/e
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatMmSs } from '@/utils/timeFormat';
 
-export type ExerciseInputMode = 'reps' | 'reps-weight' | 'time' | 'distance' | 'time-distance' | 'band';
+export type ExerciseInputMode = 'reps' | 'reps-weight' | 'time' | 'distance' | 'time-distance' | 'weight-time' | 'band';
 
 /**
  * Determine the input mode for an exercise based on its measurementType (preferred)
@@ -10,9 +10,10 @@ export type ExerciseInputMode = 'reps' | 'reps-weight' | 'time' | 'distance' | '
  *
  * - reps: bodyweight rep work (push-ups, pull-ups)
  * - reps-weight: loaded strength work (bench press, squat)
- * - time: isometric holds + stationary cardio (plank, elliptical)
+ * - time: unloaded holds + stationary cardio (jump rope, sauna)
  * - distance: distance-only (rare; placeholder)
  * - time-distance: locomotive cardio (running, rowing, cycling)
+ * - weight-time: loaded isometric holds (weighted plank, weighted dead hang)
  * - band: band exercises (equipment === 'Band')
  */
 export function getExerciseInputMode(
@@ -43,6 +44,7 @@ export function getExerciseInputMode(
       case 'Time': return 'time';
       case 'Distance': return 'distance';
       case 'Time + Distance': return 'time-distance';
+      case 'Time + Weight': return 'weight-time';
     }
   }
 
@@ -125,6 +127,7 @@ export function getMeasurementBadge(mode: ExerciseInputMode): { icon: string; la
     case 'time': return { icon: '⏱', label: 'Time' };
     case 'distance': return { icon: '📏', label: 'Distance' };
     case 'time-distance': return { icon: '⏱📏', label: 'Time+Dist' };
+    case 'weight-time': return { icon: '🏋⏱', label: 'Weight+Time' };
     case 'reps': return { icon: '#', label: 'Reps' };
     case 'band': return { icon: '🔗', label: 'Band' };
     case 'reps-weight':
@@ -150,6 +153,11 @@ export function formatSetDisplay(
       const distPart = set.distance ? formatDistance(set.distance) : '';
       return distPart ? `${timePart} · ${distPart}` : timePart;
     }
+    case 'weight-time': {
+      // Added load is optional — an unweighted hold reads as a plain duration.
+      const timePart = formatMmSs(set.time ?? 0);
+      return set.weight ? `${set.weight} ${unit} · ${timePart}` : timePart;
+    }
     case 'reps':
       return `${set.reps} reps`;
     case 'band':
@@ -163,9 +171,9 @@ export function formatSetDisplay(
   }
 }
 
-/** Whether this mode uses time as the primary metric (no reps/weight needed) */
+/** Whether time is the primary metric, i.e. reps do not apply */
 export function isTimeBased(mode: ExerciseInputMode): boolean {
-  return mode === 'time' || mode === 'time-distance';
+  return mode === 'time' || mode === 'time-distance' || mode === 'weight-time';
 }
 
 /** Whether this mode uses distance */
@@ -180,5 +188,5 @@ export function usesReps(mode: ExerciseInputMode): boolean {
 
 /** Whether this mode requires weight */
 export function usesWeight(mode: ExerciseInputMode): boolean {
-  return mode === 'reps-weight' || mode === 'band';
+  return mode === 'reps-weight' || mode === 'band' || mode === 'weight-time';
 }

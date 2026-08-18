@@ -473,7 +473,11 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           const showWeight = usesWeight(mode);
                           const showReps = usesReps(mode);
                           const isTime = isTimeBased(mode);
-                          const colCount = [true, showWeight || isTime, showReps, true].filter(Boolean).length; // set + inputs + rpe
+                          // A loaded hold is the one mode carrying two inputs
+                          // that aren't weight+reps, so it doesn't fit the
+                          // boolean tally below.
+                          const isWeightTime = mode === 'weight-time';
+                          const colCount = isWeightTime ? 4 : [true, showWeight || isTime, showReps, true].filter(Boolean).length; // set + inputs + rpe
                           const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
                             : colCount === 3 ? 'grid-cols-[32px_1fr_1fr]'
                             : 'grid-cols-[32px_1fr_1fr]';
@@ -481,6 +485,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                             switch (mode) {
                               case 'time': return ['Set', 'Time (min)', 'RPE'];
                               case 'time-distance': return ['Set', 'Time (min)', 'RPE'];
+                              case 'weight-time': return ['Set', weightUnit, 'Time (min)', 'RPE'];
                               case 'distance': return ['Set', 'Dist (km)', 'RPE'];
                               case 'reps': return ['Set', 'Reps', 'RPE'];
                               case 'band': return ['Set', 'Band', 'Reps', 'RPE'];
@@ -500,7 +505,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           const showWeight = usesWeight(mode);
                           const showReps = usesReps(mode);
                           const isTime = isTimeBased(mode);
-                          const colCount = [true, showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
+                          const isWeightTime = mode === 'weight-time';
+                          const colCount = isWeightTime ? 4 : [true, showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
                           const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
                             : 'grid-cols-[32px_1fr_1fr]';
                           return (
@@ -509,7 +515,16 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                             className={`grid ${cols} gap-1 items-center py-1.5 px-1 rounded-md`}
                           >
                             <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-                            {isTime ? (
+                            {isWeightTime ? (
+                              <>
+                                <input type="number" inputMode="decimal" value={set.targetWeight}
+                                  onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="—"
+                                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                                <input type="number" inputMode="decimal" value={set.targetReps}
+                                  onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)} placeholder="min"
+                                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                              </>
+                            ) : isTime ? (
                               <input type="number" inputMode="decimal" value={set.targetReps}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)} placeholder="min"
                                 className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />

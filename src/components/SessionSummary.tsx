@@ -7,6 +7,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString, formatVolumeFromKg } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon, Share2 } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
+import { formatMmSs } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
@@ -376,7 +377,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             return { label: `${normalCount}`, isDropset: false };
           });
 
-          const gridCols = isTimeBased(mode) && !isDistanceBased(mode)
+          const gridCols = mode === 'weight-time'
+            ? 'grid-cols-[2.5rem_1fr_1fr_3rem]'
+            : isTimeBased(mode) && !isDistanceBased(mode)
             ? 'grid-cols-[2.5rem_1fr_3rem]'
             : (mode === 'time-distance')
               ? 'grid-cols-[2.5rem_1fr_1fr_3rem]'
@@ -390,6 +393,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             switch (mode) {
               case 'time': return ['SET', 'TIME', 'RPE'];
               case 'time-distance': return ['SET', 'TIME', 'DIST', 'RPE'];
+              case 'weight-time': return ['SET', 'WEIGHT', 'TIME', 'RPE'];
               case 'distance': return ['SET', 'DIST', 'RPE'];
               case 'reps': return ['SET', 'REPS', 'RPE'];
               case 'band': return ['SET', 'BAND', 'REPS', 'RPE'];
@@ -428,6 +432,13 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                       );
                     case 'distance':
                       return <span className="text-center">{set.distance ? formatDistance(set.distance, distanceUnit) : '—'}</span>;
+                    case 'weight-time':
+                      return (
+                        <>
+                          <span className="text-center">{set.weight ? formatWeightString(set.weight, weightUnit) : '—'}</span>
+                          <span className="text-center">{formatMmSs(set.time ?? 0)}</span>
+                        </>
+                      );
                     case 'reps':
                       return <span className="text-center">{set.reps}</span>;
                     case 'band':
