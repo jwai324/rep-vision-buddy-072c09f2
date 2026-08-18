@@ -106,6 +106,70 @@ describe('useSpeechRecognition', () => {
     expect(onFinal).toHaveBeenCalledWith('hello world');
   });
 
+  describe('does not repeat or jumble what was said', () => {
+    it('ignores a redelivery of a final result it already emitted', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      const phrase = [{ transcript: 'add three sets of squats', isFinal: true }];
+      act(() => latestInstance!.fireResult(phrase));
+      // Chrome replays the cumulative list without advancing resultIndex past
+      // results it has already finalized.
+      act(() => latestInstance!.fireResult(phrase, 0));
+
+      expect(onFinal).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits only the new phrase when a stale resultIndex replays earlier ones', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'first phrase', isFinal: true }]));
+      act(() => latestInstance!.fireResult(
+        [
+          { transcript: 'first phrase', isFinal: true },
+          { transcript: 'second phrase', isFinal: true },
+        ],
+        0,
+      ));
+
+      expect(onFinal).toHaveBeenCalledTimes(2);
+      expect(onFinal).toHaveBeenNthCalledWith(1, 'first phrase');
+      expect(onFinal).toHaveBeenNthCalledWith(2, 'second phrase');
+    });
+
+    it('still emits a phrase the user genuinely repeats in one session', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'go', isFinal: true }]));
+      act(() => latestInstance!.fireResult([
+        { transcript: 'go', isFinal: true },
+        { transcript: 'go', isFinal: true },
+      ]));
+
+      expect(onFinal).toHaveBeenCalledTimes(2);
+    });
+
+    it('spaces interim segments instead of running them together', () => {
+      const onInterim = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onInterimResult: onInterim }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([
+        { transcript: 'done with', isFinal: true },
+        { transcript: 'now add', isFinal: false },
+        { transcript: 'bench press', isFinal: false },
+      ]));
+
+      expect(result.current.interimTranscript).toBe('now add bench press');
+      expect(onInterim).toHaveBeenLastCalledWith('now add bench press');
+    });
+  });
+
   it('surfaces real errors but swallows aborted/no-speech', () => {
     const onError = vi.fn();
     const { result } = renderHook(() => useSpeechRecognition({ onError }));
@@ -151,6 +215,21 @@ describe('useSpeechRecognition', () => {
 
       expect(onFinal).toHaveBeenNthCalledWith(1, 'first phrase');
       expect(onFinal).toHaveBeenNthCalledWith(2, 'second phrase');
+    });
+
+    it('drops the previous session\'s last phrase when the new one re-hears it', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(0); });
+      // The fresh session re-recognises the tail of the audio the old one
+      // already finalised.
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+
+      expect(onFinal).toHaveBeenCalledTimes(1);
     });
 
     it('does not restart after the user stops it', () => {
