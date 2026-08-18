@@ -85,7 +85,7 @@ export const SharedTemplateView: React.FC<SharedTemplateViewProps> = ({
                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">
                   <span>
                     {ex.sets} × {ex.targetReps === 'failure' ? 'failure' : ex.targetReps}
-                    {mode === 'time' || mode === 'time-distance' ? ' (time)' : ''}
+                    {mode === 'time' || mode === 'time-distance' || mode === 'weight-time' ? ' (time)' : ''}
                   </span>
                   {target && <span>@ {target}</span>}
                   {ex.targetRpe != null && <span>RPE {ex.targetRpe}</span>}

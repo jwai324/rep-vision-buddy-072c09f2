@@ -14,7 +14,7 @@ const DIFFICULTIES = ['Beginner', 'Intermediate', 'Advanced'] as const;
 const EXERCISE_TYPES = ['Compound', 'Isolation'] as const;
 const BODY_PART_OPTIONS = BODY_PARTS.filter(b => b !== 'All');
 const EQUIPMENT_OPTIONS = EQUIPMENT_LIST.filter(e => e !== 'All');
-const MEASUREMENT_TYPES: MeasurementType[] = ['Reps', 'Reps + Weight', 'Time', 'Distance', 'Time + Distance'];
+const MEASUREMENT_TYPES: MeasurementType[] = ['Reps', 'Reps + Weight', 'Time', 'Distance', 'Time + Distance', 'Time + Weight'];
 
 interface CreateExerciseFormProps {
   onSave: (input: CustomExerciseInput) => void;

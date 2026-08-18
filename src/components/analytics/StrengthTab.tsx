@@ -23,6 +23,7 @@ function hasDataForMode(set: WorkoutSet, mode: ExerciseInputMode): boolean {
     case 'reps':
       return set.reps > 0;
     case 'time':
+    case 'weight-time':
       return !!set.time && set.time > 0;
     case 'distance':
       return !!set.distance && set.distance > 0;
@@ -70,6 +71,7 @@ function getMetricForKey(key: PanelKey, weightUnit: WeightUnit): MetricConfig {
         formatTick: v => `${v}`,
       };
     case 'time':
+    case 'weight-time':
       return {
         label: 'Longest Time',
         getValue: s => (s.time && s.time > 0 ? s.time : null),
@@ -298,7 +300,7 @@ export const StrengthTab: React.FC<StrengthTabProps> = ({ history, weightUnit })
                   <YAxis
                     tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
                     tickFormatter={panel.formatTick}
-                    width={panel.key === 'time' ? 44 : panel.key === 'band' ? 44 : 40}
+                    width={panel.key === 'time' || panel.key === 'weight-time' ? 44 : panel.key === 'band' ? 44 : 40}
                   />
                   <Tooltip
                     contentStyle={{

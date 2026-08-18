@@ -100,6 +100,12 @@ export function canCompleteSet(
         // At least one must be filled
         return (!isNaN(timeVal) && timeVal > 0) || (!isNaN(distVal) && distVal > 0);
       }
+      case 'weight-time': {
+        // Added load is optional — a bodyweight hold is a complete set on its
+        // own, so only the duration gates completion.
+        const timeVal = parseFloat(time);
+        return !isNaN(timeVal) && timeVal > 0;
+      }
       case 'reps': {
         const repsResult = validateReps(reps);
         return repsResult.valid;
@@ -146,7 +152,7 @@ export function getSetFieldErrors(
 ): SetFieldErrors {
   const errors: SetFieldErrors = {};
 
-  const weightApplies = mode === undefined || mode === 'reps-weight';
+  const weightApplies = mode === undefined || mode === 'reps-weight' || mode === 'weight-time';
   const repsApplies = mode === undefined || mode === 'reps-weight' || mode === 'reps' || mode === 'band';
 
   if (weightApplies && fields.weight && fields.weight !== '') {

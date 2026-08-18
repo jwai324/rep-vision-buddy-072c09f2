@@ -3,6 +3,7 @@ import type { ExerciseLog } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
+import { formatWeightString } from '@/utils/weightConversion';
 
 interface WorkoutLogProps {
   logs: ExerciseLog[];
@@ -22,6 +23,7 @@ export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' 
           const mode = getExerciseInputMode(log.exerciseId);
           const totalSeconds = log.sets.reduce((s, set) => s + (set.time ?? 0), 0);
           const totalDistance = log.sets.reduce((s, set) => s + (set.distance ?? 0), 0);
+          const topWeight = log.sets.reduce((s, set) => Math.max(s, set.weight ?? 0), 0);
           return (
             <div key={i} className="flex items-center justify-between text-sm">
               <span className="text-foreground font-medium">{log.exerciseName}</span>
@@ -30,6 +32,7 @@ export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' 
                   <>
                     {formatMmSs(totalSeconds)}
                     {isDistanceBased(mode) && totalDistance > 0 && <> · {formatDistance(totalDistance, distanceUnit)}</>}
+                    {mode === 'weight-time' && topWeight > 0 && <> · {formatWeightString(topWeight, weightUnit)}</>}
                   </>
                 ) : mode === 'distance' ? (
                   <>{totalDistance > 0 ? formatDistance(totalDistance, distanceUnit) : '—'}</>

@@ -445,7 +445,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{info?.name ?? exerciseLookup[ex.exerciseId] ?? ex.exerciseId}</p>
                       <p className="text-xs text-muted-foreground">
-                        {mode === 'time' || mode === 'time-distance'
+                        {mode === 'time' || mode === 'time-distance' || mode === 'weight-time'
                           ? `${ex.sets} × ${ex.targetReps === 'failure' ? 'failure' : `${ex.targetReps} min`}`
                           : mode === 'distance'
                             ? `${ex.sets} sets`

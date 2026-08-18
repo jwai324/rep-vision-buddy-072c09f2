@@ -42,6 +42,72 @@ const baseProps = {
   onExtendTimer: vi.fn(),
 };
 
+describe('ExerciseTable weight-time rows', () => {
+  const renderHold = (onUpdateSet = vi.fn()) => {
+    const block = makeBlock({
+      exerciseId: 'plank' as ExerciseBlock['exerciseId'],
+      exerciseName: 'Plank',
+      sets: [{ setNumber: 1, weight: '20', reps: '', rpe: '', time: '90', completed: false, type: 'normal' }],
+    });
+    render(
+      <ExerciseTable
+        {...baseProps}
+        inputMode="weight-time"
+        block={block}
+        blockIdx={0}
+        blocks={[block]}
+        onUpdateSet={onUpdateSet}
+        onToggleComplete={vi.fn()}
+      />,
+    );
+    return onUpdateSet;
+  };
+
+  it('renders a weight input and a time control, and no reps input', () => {
+    renderHold();
+
+    const weight = document.getElementById('input-0-0-weight') as HTMLInputElement;
+    expect(weight).toBeTruthy();
+    expect(weight.value).toBe('20');
+
+    // The duration is entered through the time button, which shows m:ss.
+    expect(screen.getByText('1:30')).toBeTruthy();
+    expect(document.getElementById('input-0-0-reps')).toBeNull();
+  });
+
+  it('reports weight edits against the weight field', () => {
+    const onUpdateSet = renderHold();
+    const weight = document.getElementById('input-0-0-weight') as HTMLInputElement;
+    fireEvent.change(weight, { target: { value: '25' } });
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'weight', '25');
+  });
+
+  it('completes an unweighted hold that only has a duration', () => {
+    const block = makeBlock({
+      exerciseId: 'plank' as ExerciseBlock['exerciseId'],
+      exerciseName: 'Plank',
+      sets: [{ setNumber: 1, weight: '', reps: '', rpe: '', time: '60', completed: false, type: 'normal' }],
+    });
+    const onToggleComplete = vi.fn();
+    render(
+      <ExerciseTable
+        {...baseProps}
+        inputMode="weight-time"
+        block={block}
+        blockIdx={0}
+        blocks={[block]}
+        onUpdateSet={vi.fn()}
+        onToggleComplete={onToggleComplete}
+      />,
+    );
+
+    const checkBtn = screen.getByTestId('set-complete-0-0') as HTMLButtonElement;
+    expect(checkBtn).not.toBeDisabled();
+    fireEvent.click(checkBtn);
+    expect(onToggleComplete).toHaveBeenCalledWith(0, 0);
+  });
+});
+
 describe('ExerciseTable inline validation', () => {
   it('shows weight error and disables checkmark for -250 lbs', () => {
     const block = makeBlock({
