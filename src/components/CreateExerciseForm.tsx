@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { Heart } from 'lucide-react';
+import { Heart, ChartNoAxesColumn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { BODY_PARTS, EQUIPMENT_LIST, EXERCISE_DATABASE } from '@/data/exercises';
 import type { MeasurementType } from '@/data/exercises';
-import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
-import type { Exercise } from '@/data/exercises';
+import type { CustomExercise, CustomExerciseInput } from '@/hooks/useCustomExercises';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { isDuplicateExerciseName } from '@/utils/exerciseSearch';
 
@@ -19,7 +18,7 @@ const MEASUREMENT_TYPES: MeasurementType[] = ['Reps', 'Reps + Weight', 'Time', '
 interface CreateExerciseFormProps {
   onSave: (input: CustomExerciseInput) => void;
   onCancel: () => void;
-  editingExercise?: (Exercise & { isCustom: true; isRecovery: boolean }) | null;
+  editingExercise?: CustomExercise | null;
 }
 
 export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, onCancel, editingExercise }) => {
@@ -34,6 +33,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
     (editingExercise?.exerciseType as 'Compound' | 'Isolation' | undefined) || 'Isolation'
   );
   const [isRecovery, setIsRecovery] = useState(editingExercise?.isRecovery || false);
+  const [excludeFromVolume, setExcludeFromVolume] = useState(editingExercise?.excludeFromVolume || false);
   const [measurementType, setMeasurementType] = useState<MeasurementType | null>(
     editingExercise?.measurementType ?? null
   );
@@ -56,6 +56,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
       movementPattern: 'Other',
       secondaryMuscles: [],
       isRecovery,
+      excludeFromVolume,
       measurementType: measurementType,
     });
   };
@@ -131,6 +132,17 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
           </div>
         </div>
         <Switch checked={isRecovery} onCheckedChange={setIsRecovery} />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ChartNoAxesColumn className="w-4 h-4 text-primary" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Exclude from Volume</p>
+            <p className="text-xs text-muted-foreground">Still logged, but left out of weekly volume and set counts</p>
+          </div>
+        </div>
+        <Switch checked={excludeFromVolume} onCheckedChange={setExcludeFromVolume} />
       </div>
 
       <div className="flex gap-2">

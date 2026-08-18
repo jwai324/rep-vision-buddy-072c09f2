@@ -134,6 +134,32 @@ If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
 
+## Volume exclusions
+
+A custom exercise can carry `exclude_from_volume` (see `CustomExercise` in
+`src/hooks/useCustomExercises.ts`), which keeps rehab/mobility/isometric work
+out of volume and set aggregates without hiding it from the log.
+
+- **The flag is applied at read time, never baked into stored totals.**
+  `workout_sessions.total_volume` / `total_sets` / `total_reps` stay exactly as
+  the session was saved, and `src/utils/volumeExclusions.ts` nets the excluded
+  exercises back out wherever those totals are aggregated. Flipping the switch
+  therefore re-scores existing history in both directions.
+- Because the stored totals count every set including warmups,
+  `excludedSessionTotals` counts them the same way. Subtracting a differently
+  scoped number would make corrected totals drift from raw ones.
+- Applied to: weekly sets by body part (`Dashboard`), both charts in
+  `analytics/VolumeTab`, movement-pattern sets in `analytics/BalanceTab`, and
+  the AI coach's `summary` / `volume_by_muscle` analyses so its numbers match
+  the charts.
+- Deliberately *not* applied to: per-session summaries, per-exercise history
+  (`exercise_progression`, `weekly_volume_by_exercise`, `ExerciseDetailModal`),
+  streaks, and consistency — those answer "what did I do" and "did I show up",
+  not "how much load did I take on".
+- `available_exercises` surfaces the flag to the coach as
+  `excluded_from_volume: true`; the `ai-coach` system prompt tells it not to
+  count those exercises when discussing volume.
+
 ## Shareable links
 
 A user can publish a completed workout, a template, or a program to a public URL

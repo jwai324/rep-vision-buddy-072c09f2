@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Plus, Trash2, Dumbbell, Heart, Pencil } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Dumbbell, Heart, Pencil, ChartNoAxesColumn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { getBodyPartIcon } from '@/data/exercises';
-import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
-import type { Exercise } from '@/data/exercises';
+import type { CustomExercise, CustomExerciseInput } from '@/hooks/useCustomExercises';
 import { CreateExerciseForm } from '@/components/CreateExerciseForm';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
 import type { UserPreferences, WeightUnit } from '@/hooks/useStorage';
 
 interface CustomExercisesScreenProps {
-  exercises: (Exercise & { isCustom: true; isRecovery: boolean })[];
+  exercises: CustomExercise[];
   onAdd: (input: CustomExerciseInput) => void;
   onUpdate: (id: string, input: CustomExerciseInput) => void;
   onDelete: (id: string) => void;
@@ -26,7 +25,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
   exercises, onAdd, onUpdate, onDelete, onBack,
   history = [], weightUnit = 'kg', stickyNotes, onUpdateStickyNotes,
 }) => {
-  const [editingExercise, setEditingExercise] = useState<(Exercise & { isCustom: true; isRecovery: boolean }) | null>(null);
+  const [editingExercise, setEditingExercise] = useState<CustomExercise | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
@@ -46,7 +45,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
     setEditingExercise(null);
   };
 
-  const openEdit = (ex: Exercise & { isCustom: true; isRecovery: boolean }) => {
+  const openEdit = (ex: CustomExercise) => {
     setEditingExercise(ex);
     setShowForm(true);
   };
@@ -96,6 +95,9 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-semibold text-foreground truncate">{ex.name}</p>
                   {ex.isRecovery && <Heart className="w-3 h-3 text-primary shrink-0" />}
+                  {ex.excludeFromVolume && (
+                    <ChartNoAxesColumn className="w-3 h-3 text-muted-foreground shrink-0" aria-label="Excluded from volume" />
+                  )}
                 </div>
                 <p className="text-[10px] text-muted-foreground">{ex.equipment} · {ex.primaryBodyPart} · {ex.difficulty}</p>
               </div>

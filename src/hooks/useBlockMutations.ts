@@ -6,7 +6,7 @@ import type { ExerciseBlock, SetRow, DropRow, ActiveSessionCache, RunningSetStat
 import { getExerciseInputMode, isTimeBased, isDistanceBased, usesReps, usesWeight, toMeters } from '@/utils/exerciseInputMode';
 import { canCompleteSet } from '@/utils/setValidation';
 import type { WeightUnit } from '@/hooks/useStorage';
-import type { Exercise } from '@/data/exercises';
+import type { CustomExercise } from '@/hooks/useCustomExercises';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 
 /**
@@ -32,7 +32,7 @@ interface UseBlockMutationsOptions {
   weightUnit: WeightUnit;
   defaultDropSetsEnabled: boolean;
   defaultRestSeconds: number;
-  customExercises: (Exercise & { isCustom: true; isRecovery: boolean })[];
+  customExercises: CustomExercise[];
   startTimer: (id: TimerId, duration: number) => void;
 }
 

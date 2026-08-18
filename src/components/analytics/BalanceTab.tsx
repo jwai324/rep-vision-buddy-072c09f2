@@ -4,6 +4,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts';
 import { subDays, isAfter } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { volumeExcludedIds } from '@/utils/volumeExclusions';
 
 const PATTERNS = ['Push', 'Pull', 'Hinge', 'Squat', 'Lunge', 'Fly', 'Carry', 'Rotation'];
 
@@ -19,6 +20,7 @@ export const BalanceTab: React.FC<BalanceTabProps> = ({ history }) => {
     for (const ce of customExercises) map.set(ce.id, ce.movementPattern);
     return map;
   }, [customExercises]);
+  const excludedIds = useMemo(() => volumeExcludedIds(customExercises), [customExercises]);
 
   const data = useMemo(() => {
     const cutoff = subDays(new Date(), period);
@@ -30,6 +32,7 @@ export const BalanceTab: React.FC<BalanceTabProps> = ({ history }) => {
     const setCounts: Record<string, number> = {};
     for (const s of recentSessions) {
       for (const ex of s.exercises) {
+        if (excludedIds.has(ex.exerciseId)) continue;
         const pattern = exercisePatternMap.get(ex.exerciseId) || 'Other';
         const workingSetCount = ex.sets.filter(set => set.type !== 'warmup').length;
         setCounts[pattern] = (setCounts[pattern] || 0) + workingSetCount;
@@ -39,7 +42,7 @@ export const BalanceTab: React.FC<BalanceTabProps> = ({ history }) => {
     return PATTERNS
       .filter(p => setCounts[p] || PATTERNS.indexOf(p) < 5) // Always show main 5
       .map(p => ({ pattern: p, sets: setCounts[p] || 0 }));
-  }, [history, period]);
+  }, [history, period, exercisePatternMap, excludedIds]);
 
   const hasData = data.some(d => d.sets > 0);
 
