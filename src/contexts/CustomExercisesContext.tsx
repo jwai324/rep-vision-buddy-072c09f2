@@ -1,10 +1,10 @@
 import React, { createContext, useContext } from 'react';
 import { useCustomExercises } from '@/hooks/useCustomExercises';
-import type { Exercise } from '@/data/exercises';
+import type { CustomExercise } from '@/hooks/useCustomExercises';
 import type { CustomExerciseInput } from '@/hooks/useCustomExercises';
 
 interface CustomExercisesContextValue {
-  exercises: (Exercise & { isCustom: true; isRecovery: boolean })[];
+  exercises: CustomExercise[];
   loading: boolean;
   addExercise: (input: CustomExerciseInput) => Promise<void>;
   deleteExercise: (id: string) => Promise<void>;

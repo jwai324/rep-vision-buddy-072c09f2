@@ -45,6 +45,7 @@ function makeInput(name: string): CustomExerciseInput {
     movementPattern: 'Push',
     secondaryMuscles: [],
     isRecovery: false,
+    excludeFromVolume: false,
   };
 }
 

@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
 import { formatLocalDate } from '@/utils/dateUtils';
+import { volumeExcludedIds, countedSessionTotals } from '@/utils/volumeExclusions';
 import { deriveBalance, EMPTY_BALANCE, type CreditsBalance } from '@/utils/credits';
 import {
   weeklyRpeTrend, exerciseProgression, exerciseRpeTrend,
@@ -191,7 +192,7 @@ const ChatContext = createContext<ChatContextType>({
 
 export const useChatContext = () => useContext(ChatContext);
 
-type ExerciseLike = Exercise & { isCustom?: boolean };
+type ExerciseLike = Exercise & { isCustom?: boolean; excludeFromVolume?: boolean };
 
 function buildExerciseListLean(list: ExerciseLike[]) {
   return list.map(e => ({
@@ -203,6 +204,7 @@ function buildExerciseListLean(list: ExerciseLike[]) {
     movement_pattern: e.movementPattern,
     difficulty: e.difficulty,
     ...(e.isCustom ? { is_custom: true } : {}),
+    ...(e.excludeFromVolume ? { excluded_from_volume: true } : {}),
   }));
 }
 
@@ -389,6 +391,7 @@ export const ChatProvider: React.FC<{
     [customExercises]
   );
   const exerciseById = useMemo(() => new Map(mergedExercises.map(e => [e.id, e])), [mergedExercises]);
+  const volumeExcluded = useMemo(() => volumeExcludedIds(customExercises), [customExercises]);
   const exerciseListLean = useMemo(() => buildExerciseListLean(mergedExercises), [mergedExercises]);
 
   const registerScreen = useCallback((ctx: ScreenContext) => {
@@ -855,15 +858,19 @@ export const ChatProvider: React.FC<{
         }
 
         switch (args.analysisType) {
-          case 'summary':
+          case 'summary': {
+            // Same exclusions the analytics screens apply, so the coach and
+            // the charts never quote different totals for the same window.
+            const counted = recent.map(w => countedSessionTotals(w, volumeExcluded));
             return { result: {
               ...meta,
               total_workouts: recent.length,
-              total_volume: recent.reduce((s, w) => s + w.totalVolume, 0),
-              total_sets: recent.reduce((s, w) => s + w.totalSets, 0),
-              total_reps: recent.reduce((s, w) => s + w.totalReps, 0),
+              total_volume: counted.reduce((s, t) => s + t.volume, 0),
+              total_sets: counted.reduce((s, t) => s + t.sets, 0),
+              total_reps: counted.reduce((s, t) => s + t.reps, 0),
               avg_duration_min: recent.length ? Math.round(recent.reduce((s, w) => s + w.duration, 0) / recent.length / 60) : 0,
             }};
+          }
 
           case 'prs': {
             const prs: Record<string, { weight: number; reps: number; rpe?: number }> = {};
@@ -896,6 +903,7 @@ export const ChatProvider: React.FC<{
             const vol: Record<string, number> = {};
             for (const session of recent) {
               for (const ex of session.exercises) {
+                if (volumeExcluded.has(ex.exerciseId)) continue;
                 const bp = exerciseById.get(ex.exerciseId)?.primaryBodyPart || 'Other';
                 vol[bp] = (vol[bp] || 0) + ex.sets.length;
               }
@@ -952,7 +960,7 @@ export const ChatProvider: React.FC<{
       default:
         return { result: { error: `Action is not allowed.` } };
     }
-  }, [storage, getSessionRows, daysSinceMember, exerciseById, mergedExercises, memberSince, earliestSessionDate]);
+  }, [storage, getSessionRows, daysSinceMember, exerciseById, mergedExercises, memberSince, earliestSessionDate, volumeExcluded]);
 
   const applyProposal = useCallback(async (id: string) => {
     const proposal = proposals[id];

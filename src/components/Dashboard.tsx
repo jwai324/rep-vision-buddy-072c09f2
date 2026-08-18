@@ -9,6 +9,7 @@ import { addDays, addWeeks, format, getDay, isSameDay, startOfWeek } from 'date-
 import { parseLocalDate } from '@/utils/dateUtils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { volumeExcludedIds } from '@/utils/volumeExclusions';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import type { UserPreferences } from '@/hooks/useStorage';
 import { computeDisplayedStreak } from '@/utils/streak';
@@ -65,6 +66,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
     for (const ce of customExercises) map.set(ce.id, ce.primaryBodyPart);
     return map;
   }, [customExercises]);
+  const excludedIds = useMemo(() => volumeExcludedIds(customExercises), [customExercises]);
   const [weekOffset, setWeekOffset] = useState(0);
 
   const { weeklyData, weekLabel } = useMemo(() => {
@@ -81,6 +83,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       const sessionDate = session.date.length >= 10 ? session.date.substring(0, 10) : format(new Date(session.date), 'yyyy-MM-dd');
       if (sessionDate < startStr || sessionDate > endStr) continue;
       for (const ex of session.exercises) {
+        if (excludedIds.has(ex.exerciseId)) continue;
         const bodyPart = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
         const setCount = ex.sets.filter(s => s.type !== 'warmup' && (s.rpe === undefined || s.rpe >= 5)).length;
         if (setCount === 0) continue;
@@ -99,7 +102,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       : `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d')}`;
 
     return { weeklyData: { counts, totalSets, hiddenSets }, weekLabel: label };
-  }, [history, weekOffset]);
+  }, [history, weekOffset, exerciseBodyPartMap, excludedIds]);
 
   return (
     <div className="bg-card rounded-xl p-4 border border-border">

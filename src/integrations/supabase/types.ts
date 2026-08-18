@@ -70,6 +70,7 @@ export type Database = {
           created_at: string
           difficulty: string
           equipment: string
+          exclude_from_volume: boolean
           exercise_type: string
           id: string
           is_recovery: boolean
@@ -85,6 +86,7 @@ export type Database = {
           created_at?: string
           difficulty?: string
           equipment?: string
+          exclude_from_volume?: boolean
           exercise_type?: string
           id?: string
           is_recovery?: boolean
@@ -100,6 +102,7 @@ export type Database = {
           created_at?: string
           difficulty?: string
           equipment?: string
+          exclude_from_volume?: boolean
           exercise_type?: string
           id?: string
           is_recovery?: boolean

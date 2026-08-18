@@ -13,6 +13,13 @@ type CustomExerciseInsertExtended =
 type CustomExerciseUpdateExtended =
   Database['public']['Tables']['custom_exercises']['Update'] & { measurement_type?: MeasurementType | null };
 
+/** A custom exercise as the app consumes it, after row -> Exercise mapping. */
+export type CustomExercise = Exercise & {
+  isCustom: true;
+  isRecovery: boolean;
+  excludeFromVolume: boolean;
+};
+
 export interface CustomExerciseInput {
   name: string;
   primaryBodyPart: string;
@@ -22,6 +29,7 @@ export interface CustomExerciseInput {
   movementPattern: string;
   secondaryMuscles: string[];
   isRecovery: boolean;
+  excludeFromVolume: boolean;
   measurementType?: MeasurementType | null;
 }
 
@@ -30,7 +38,7 @@ export function useCustomExercises() {
   // Keyed on the id, not the user object — see AuthContext. A token refresh
   // used to recreate this callback and refetch the whole list.
   const userId = user?.id ?? null;
-  const [exercises, setExercises] = useState<(Exercise & { isCustom: true; isRecovery: boolean })[]>([]);
+  const [exercises, setExercises] = useState<CustomExercise[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchExercises = useCallback(async () => {
@@ -54,6 +62,7 @@ export function useCustomExercises() {
       measurementType: (row as { measurement_type?: MeasurementType | null }).measurement_type ?? undefined,
       isCustom: true as const,
       isRecovery: row.is_recovery,
+      excludeFromVolume: row.exclude_from_volume,
     })));
     setLoading(false);
   }, [userId]);
@@ -72,6 +81,7 @@ export function useCustomExercises() {
       movement_pattern: input.movementPattern,
       secondary_muscles: input.secondaryMuscles,
       is_recovery: input.isRecovery,
+      exclude_from_volume: input.excludeFromVolume,
       measurement_type: input.measurementType ?? null,
     };
     const { error } = await supabase
@@ -103,6 +113,7 @@ export function useCustomExercises() {
       movement_pattern: input.movementPattern,
       secondary_muscles: input.secondaryMuscles,
       is_recovery: input.isRecovery,
+      exclude_from_volume: input.excludeFromVolume,
       measurement_type: input.measurementType ?? null,
     };
     const { error } = await supabase
