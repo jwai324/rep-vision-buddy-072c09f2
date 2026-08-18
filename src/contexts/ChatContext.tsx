@@ -206,6 +206,50 @@ function buildExerciseListLean(list: ExerciseLike[]) {
   }));
 }
 
+// Empty "nothing happened" snapshot per tool, used when a proposal is rejected
+// before we know anything about its arguments.
+function emptySnapshotFor(name: ToolCall['name']): ProposalSnapshot {
+  switch (name) {
+    case 'create_template':
+    case 'edit_template':
+    case 'delete_template':
+      return { kind: 'template', template: null };
+    case 'create_program':
+    case 'delete_program':
+      return { kind: 'program', program: null };
+    case 'set_active_program':
+      return { kind: 'active-program', programId: null, programName: null };
+    default:
+      return { kind: 'session', rows: [] };
+  }
+}
+
+// Turn the raw streamed accumulators into tool calls, separating out the ones
+// whose arguments never finished arriving. Unparseable JSON means the
+// tool_use block was cut off mid-write (the response hit max_tokens); running
+// those through normal validation reports whichever required field happens to
+// be missing ("Template requires a name and at least one exercise"), which
+// points the user at the wrong problem entirely.
+// Exported for unit testing — pure, no React/singleton deps.
+export function parseAccumulatedToolCalls(
+  raw: readonly (RawToolCallAccumulator | undefined)[],
+): { toolCalls: ToolCall[]; cutOffIds: Set<string> } {
+  const cutOffIds = new Set<string>();
+  const toolCalls = raw
+    .filter((tc): tc is RawToolCallAccumulator => Boolean(tc?.name) && AI_ALLOWED_ACTIONS.has(tc.name))
+    .map(tc => {
+      let parsedArgs: unknown;
+      try {
+        parsedArgs = JSON.parse(tc.arguments);
+      } catch {
+        cutOffIds.add(tc.id);
+        parsedArgs = {};
+      }
+      return { id: tc.id, name: tc.name, arguments: parsedArgs, status: 'pending' as const } as ToolCall;
+    });
+  return { toolCalls, cutOffIds };
+}
+
 // Allowed AI actions — anything not here is blocked
 const AI_ALLOWED_ACTIONS = new Set([
   'create_template', 'edit_template', 'delete_template',
@@ -1160,6 +1204,9 @@ export const ChatProvider: React.FC<{
       setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: '', isLoading: true }]);
 
       let streamDone = false;
+      // Set when the model was cut off at max_tokens — any tool call it was
+      // mid-way through emitting is incomplete.
+      let truncatedResponse = false;
       while (!streamDone) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1195,7 +1242,8 @@ export const ChatProvider: React.FC<{
               }
             }
 
-            if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') streamDone = true;
+            if (choice.finish_reason === 'length') truncatedResponse = true;
+            if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop' || choice.finish_reason === 'length') streamDone = true;
           } catch {
             textBuffer = line + "\n" + textBuffer;
             break;
@@ -1205,19 +1253,40 @@ export const ChatProvider: React.FC<{
 
       // Process tool calls
       if (toolCalls.length > 0) {
-        const parsedToolCalls: ToolCall[] = toolCalls
-          .filter((tc): tc is RawToolCallAccumulator => Boolean(tc?.name) && AI_ALLOWED_ACTIONS.has(tc.name))
-          .map(tc => {
-            let parsedArgs: unknown;
-            try { parsedArgs = JSON.parse(tc.arguments); } catch { parsedArgs = {}; }
-            return { id: tc.id, name: tc.name, arguments: parsedArgs, status: 'pending' as const } as ToolCall;
-          });
+        const { toolCalls: parsedToolCalls, cutOffIds: cutOffToolCallIds } = parseAccumulatedToolCalls(toolCalls);
 
         const results: { tool_call_id: string; result: ToolCallResult }[] = [];
         const newProposals: Proposal[] = [];
         const coveredAddExerciseIds = new Set<string>();
         for (const tc of parsedToolCalls) {
           tc.status = 'executing';
+          if (cutOffToolCallIds.has(tc.id)) {
+            const userMsg = truncatedResponse
+              ? "That was too big to fit in one reply, so the proposal got cut off. Ask for it in smaller pieces and I'll build it up."
+              : 'The proposal came back incomplete. Try asking again.';
+            tc.status = 'error';
+            tc.result = { success: false, message: userMsg };
+            newProposals.push({
+              id: tc.id,
+              messageId: assistantMessageId,
+              toolName: tc.name,
+              arguments: {},
+              before: emptySnapshotFor(tc.name),
+              after: emptySnapshotFor(tc.name),
+              status: 'invalid',
+              error: userMsg,
+              suggestions: [],
+              summary: `Incomplete ${tc.name.replace(/_/g, ' ')} proposal`,
+            });
+            results.push({
+              tool_call_id: tc.id,
+              result: {
+                success: false,
+                message: `Your ${tc.name} call was cut off before its arguments finished (the response hit the output token limit), so nothing was proposed. Retry with fewer items per call — split the work across several smaller calls.`,
+              },
+            });
+            continue;
+          }
           try {
             const { result, proposal } = await proposeToolCall(tc, assistantMessageId);
             tc.result = result;

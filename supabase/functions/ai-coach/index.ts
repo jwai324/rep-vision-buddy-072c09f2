@@ -14,6 +14,13 @@ const corsHeaders = {
 
 const MODEL = "claude-opus-4-7";
 
+// A create_template / create_program call that covers a full workout is
+// several thousand output tokens of tool JSON on its own. When the cap is hit
+// mid-tool_use, Anthropic still ends the stream cleanly and the client is left
+// holding a half-written JSON string it can't parse — which surfaced as a
+// bogus "Template requires a name and at least one exercise" rejection.
+const MAX_TOKENS = 8000;
+
 const GOD_MODE_PHRASE = "god mode 3247";
 
 const COST_CONTROL_RULES = `
@@ -395,7 +402,7 @@ async function* translateStream(stream: AsyncIterable<AnthropicStreamEvent>): As
   // We track which Anthropic block index corresponds to which OpenAI tool_call index.
   const blockToToolIndex: Record<number, number> = {};
   let nextToolIndex = 0;
-  let finishReason: "stop" | "tool_calls" = "stop";
+  let finishReason: "stop" | "tool_calls" | "length" = "stop";
 
   const emit = (delta: Record<string, unknown>, finish: string | null = null) =>
     `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
@@ -432,7 +439,11 @@ async function* translateStream(stream: AsyncIterable<AnthropicStreamEvent>): As
         }
       }
     } else if (event.type === "message_delta") {
-      if (event.delta?.stop_reason === "tool_use") finishReason = "tool_calls";
+      // "length" is not a reason the model chose — it means we cut it off, and
+      // any tool_use JSON emitted so far is incomplete. The client needs to
+      // know that rather than treating the partial call as a real one.
+      if (event.delta?.stop_reason === "max_tokens") finishReason = "length";
+      else if (event.delta?.stop_reason === "tool_use") finishReason = "tool_calls";
       else if (event.delta?.stop_reason) finishReason = "stop";
     }
   }
@@ -517,7 +528,7 @@ serve(async (req) => {
     // the same session, so this should hit the cache on every follow-up turn.
     const stream = await client.messages.stream({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: MAX_TOKENS,
       system: [
         {
           type: "text",
