@@ -56,13 +56,55 @@ const RESTART_BURST_WINDOW_MS = 1000;
 const MAX_RESTARTS_PER_WINDOW = 5;
 
 // A fresh session started right after the browser cut the previous one off
-// tends to re-recognise the tail of the audio the old session already
-// finalised, so the same phrase arrives twice. Identical text this soon after
-// a restart is that echo rather than the user saying it again.
-const DUPLICATE_ECHO_WINDOW_MS = 2000;
+// re-recognises the tail of the audio the old session already finalised. The
+// echo is not reliably an exact repeat of the last phrase: the overlap can
+// start mid-phrase ("three sets" then "three sets of squats"), span two of the
+// old session's phrases, or arrive a couple of seconds late while the
+// recogniser catches up. Everything a restarted session finalises inside this
+// window is checked against what has already been emitted and trimmed to the
+// part that is genuinely new.
+const RESTART_OVERLAP_WINDOW_MS = 6000;
+
+// Words kept from what has already been emitted, to match a restart's echo
+// against. Long enough to cover a re-heard phrase or two, short enough that an
+// unrelated word said much earlier can't swallow the start of a new phrase.
+const OVERLAP_TAIL_WORDS = 24;
 
 // Errors that mean another restart cannot possibly succeed.
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture']);
+
+// Compared on words rather than raw text: the same audio recognised twice
+// comes back with different capitalisation and punctuation ("Add three sets"
+// vs "add three sets,").
+function toWords(text: string): string[] {
+  return text.split(/\s+/).filter(Boolean);
+}
+
+function normalizeWord(word: string): string {
+  return word.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+}
+
+/**
+ * Drop the leading part of `phrase` that repeats the end of `tail`, and return
+ * what's left. The whole phrase being an echo yields an empty string.
+ *
+ * Exported for unit testing — pure.
+ */
+export function trimEchoedPrefix(tail: readonly string[], phrase: string): string {
+  const words = toWords(phrase);
+  if (words.length === 0 || tail.length === 0) return phrase.trim();
+  const normalized = words.map(normalizeWord);
+  // Longest match first: the re-heard chunk is whatever the two sides share,
+  // and taking the longest overlap is what turns "three sets of squats" into
+  // "of squats" rather than leaving a stutter behind.
+  for (let k = Math.min(words.length, tail.length); k > 0; k--) {
+    const tailSlice = tail.slice(tail.length - k);
+    if (tailSlice.every((word, i) => word === normalized[i])) {
+      return words.slice(k).join(' ');
+    }
+  }
+  return words.join(' ');
+}
 
 export interface UseSpeechRecognitionOptions {
   lang?: string;
@@ -115,10 +157,14 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
   // onFinalResult. Results are finalised in order and never revised, so an
   // index is all it takes to tell a genuinely new phrase from a redelivery.
   const emittedFinalsRef = useRef(0);
-  // The last phrase emitted, for suppressing the cross-session echo described
-  // at DUPLICATE_ECHO_WINDOW_MS. `afterRestart` is set when a session ends
-  // while the user still wants to listen, and cleared once a final lands.
-  const lastFinalRef = useRef({ text: '', at: 0, afterRestart: false });
+  // Normalised words already handed to onFinalResult this listening run, most
+  // recent last, for matching a restart's echo against. Reset per run, not per
+  // session — the whole point is to look back across a restart.
+  const emittedTailRef = useRef<string[]>([]);
+  // When the current session started as a restart, and therefore may still be
+  // re-reporting audio the previous one already finalised. 0 once a session has
+  // produced something genuinely new.
+  const restartedAtRef = useRef(0);
   // Keep callbacks in refs so we can hand them to a single long-lived
   // recognition instance without re-creating it on every parent render.
   const onFinalResultRef = useRef(onFinalResult);
@@ -174,7 +220,7 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
 
       // Anything the next session finalises straight away may be a re-run of
       // audio this one already reported.
-      lastFinalRef.current.afterRestart = true;
+      restartedAtRef.current = Date.now();
 
       // Browsers end the session on their own silence timeout even with
       // continuous = true, so "keep listening until I tap again" has to be
@@ -231,6 +277,12 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
       // browsers routinely replay earlier entries, including finalised ones.
       // Walking the whole list and gating on emittedFinalsRef is what stops a
       // phrase from being appended to the input a second time.
+      //
+      // A cumulative list only ever grows. If it came back shorter, this
+      // browser handed us a fresh list mid-session, and holding on to the old
+      // count would silently swallow every phrase that follows.
+      if (ev.results.length < emittedFinalsRef.current) emittedFinalsRef.current = 0;
+
       const interimParts: string[] = [];
       for (let i = 0; i < ev.results.length; i++) {
         const result = ev.results[i];
@@ -243,17 +295,28 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
         emittedFinalsRef.current = i + 1;
         if (!transcript) continue;
 
-        const last = lastFinalRef.current;
-        const isEcho =
-          last.afterRestart && transcript === last.text && now - last.at < DUPLICATE_ECHO_WINDOW_MS;
-        lastFinalRef.current = { text: transcript, at: now, afterRestart: false };
-        if (isEcho) continue;
-        onFinalResultRef.current?.(transcript);
+        // Only a session that began as a restart can be echoing, and only until
+        // it reports something new — after that the user is talking again, and
+        // a genuine repeat ("squats, squats") has to survive.
+        const echoing =
+          restartedAtRef.current !== 0 && now - restartedAtRef.current < RESTART_OVERLAP_WINDOW_MS;
+        const fresh = echoing ? trimEchoedPrefix(emittedTailRef.current, transcript) : transcript;
+        if (!fresh) continue;
+        restartedAtRef.current = 0;
+
+        emittedTailRef.current = [...emittedTailRef.current, ...toWords(fresh).map(normalizeWord)]
+          .slice(-OVERLAP_TAIL_WORDS);
+        onFinalResultRef.current?.(fresh);
       }
       // Joined rather than concatenated: the browser hands back separate
       // results without any trailing space, so raw concatenation runs the
-      // words of the live preview together.
-      const interim = interimParts.join(' ');
+      // words of the live preview together. A session still working through a
+      // restart's echo gets the same trim as its finals, so the preview does
+      // not replay words that are already sitting in the input box.
+      const stillEchoing =
+        restartedAtRef.current !== 0 && now - restartedAtRef.current < RESTART_OVERLAP_WINDOW_MS;
+      const interimRaw = interimParts.join(' ');
+      const interim = stillEchoing ? trimEchoedPrefix(emittedTailRef.current, interimRaw) : interimRaw;
       setInterimTranscript(interim);
       onInterimResultRef.current?.(interim);
     };
@@ -283,7 +346,8 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
     shouldListenRef.current = true;
     restartBurstRef.current = { count: 0, since: Date.now() };
     emittedFinalsRef.current = 0;
-    lastFinalRef.current = { text: '', at: 0, afterRestart: false };
+    emittedTailRef.current = [];
+    restartedAtRef.current = 0;
     try {
       rec.start();
     } catch (e) {
