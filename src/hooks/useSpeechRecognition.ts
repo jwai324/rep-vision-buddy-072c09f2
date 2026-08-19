@@ -70,6 +70,15 @@ const RESTART_OVERLAP_WINDOW_MS = 6000;
 // unrelated word said much earlier can't swallow the start of a new phrase.
 const OVERLAP_TAIL_WORDS = 24;
 
+// How long everything can stay quiet before dictation decides the user is
+// done and turns itself off. It has to outlast the browser's own end-of-speech
+// detection several times over: that fires a second or two after you stop
+// talking, which is nowhere near long enough to be "finished" — it's the
+// length of a pause for breath. Measured from the last words heard, not from
+// the last session restart, or a run of silent restarts would keep it alive
+// forever.
+const DEFAULT_STOP_AFTER_SILENCE_MS = 8000;
+
 // Errors that mean another restart cannot possibly succeed.
 const FATAL_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'audio-capture']);
 
@@ -106,6 +115,14 @@ export function trimEchoedPrefix(tail: readonly string[], phrase: string): strin
   return words.join(' ');
 }
 
+// Any transcript at all, interim or final, means the user is still talking.
+function hasSpeech(ev: SpeechRecognitionEventLike): boolean {
+  for (let i = 0; i < ev.results.length; i++) {
+    if ((ev.results[i]?.[0]?.transcript ?? '').trim()) return true;
+  }
+  return false;
+}
+
 export interface UseSpeechRecognitionOptions {
   lang?: string;
   // Keep listening until the caller stops, rather than ending after the first
@@ -122,6 +139,10 @@ export interface UseSpeechRecognitionOptions {
   onInterimResult?: (text: string) => void;
   // Called on any recognition error. `error` matches SpeechRecognitionErrorEvent.error.
   onError?: (error: string) => void;
+  // Silence, in ms, after which listening stops on its own — the caller is
+  // treated as having finished talking. 0 disables it, leaving the session
+  // live until the caller stops it.
+  stopAfterSilenceMs?: number;
 }
 
 export interface UseSpeechRecognitionResult {
@@ -134,13 +155,25 @@ export interface UseSpeechRecognitionResult {
 }
 
 /**
- * Wraps the browser Web Speech API for dictation that stays live until the
- * caller stops it. Designed as a building block for both the chat mic button
- * and a future back-and-forth voice mode — start/stop are explicit so the
- * caller can later drive them from turn detection instead of a tap.
+ * Wraps the browser Web Speech API for dictation that survives the pauses in
+ * normal speech and then ends itself once the speaker is actually done —
+ * browsers cut a session off after a second or two of quiet, which is a pause,
+ * not an ending, so those gaps are bridged by restarting and only a long
+ * silence (stopAfterSilenceMs) stops for real. Designed as a building block
+ * for both the chat mic button and a future back-and-forth voice mode —
+ * start/stop are explicit so the caller can later drive them from turn
+ * detection instead of a tap.
  */
 export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): UseSpeechRecognitionResult {
-  const { lang = 'en-US', continuous = true, interimResults = true, onFinalResult, onInterimResult, onError } = opts;
+  const {
+    lang = 'en-US',
+    continuous = true,
+    interimResults = true,
+    stopAfterSilenceMs = DEFAULT_STOP_AFTER_SILENCE_MS,
+    onFinalResult,
+    onInterimResult,
+    onError,
+  } = opts;
 
   const [isSupported, setIsSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -152,6 +185,15 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
   // that gap is exactly what the auto-restart below covers.
   const shouldListenRef = useRef(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Fires once the room has been quiet for stopAfterSilenceMs. Re-armed from
+  // scratch every time words come in, so it measures silence since the last
+  // thing said rather than since the session (re)started.
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set by the effect below so start() can arm the same timer the recognition
+  // handlers use, without re-creating the recognition instance to reach it.
+  const armSilenceTimerRef = useRef<() => void>(() => {});
+  const stopAfterSilenceRef = useRef(stopAfterSilenceMs);
+  useEffect(() => { stopAfterSilenceRef.current = stopAfterSilenceMs; }, [stopAfterSilenceMs]);
   const restartBurstRef = useRef({ count: 0, since: 0 });
   // How many results of the current session have already been handed to
   // onFinalResult. Results are finalised in order and never revised, so an
@@ -195,9 +237,40 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
       }
     };
 
+    const clearSilenceTimer = () => {
+      if (silenceTimerRef.current !== null) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+    };
+
+    const armSilenceTimer = () => {
+      clearSilenceTimer();
+      const window = stopAfterSilenceRef.current;
+      if (!window || window <= 0) return;
+      silenceTimerRef.current = setTimeout(() => {
+        silenceTimerRef.current = null;
+        if (!shouldListenRef.current) return;
+        // Nothing said for long enough that this reads as finished rather than
+        // mid-thought. Ending it the same way a tap would: no restart, mic off,
+        // whatever was dictated left where it is for the caller to send.
+        shouldListenRef.current = false;
+        clearRestartTimer();
+        setInterimTranscript('');
+        setIsListening(false);
+        try {
+          rec.stop();
+        } catch {
+          // Already ended — onend has nothing left to do either.
+        }
+      }, window);
+    };
+    armSilenceTimerRef.current = armSilenceTimer;
+
     const giveUp = (reason?: string) => {
       shouldListenRef.current = false;
       clearRestartTimer();
+      clearSilenceTimer();
       setIsListening(false);
       setInterimTranscript('');
       if (reason) onErrorRef.current?.(reason);
@@ -271,6 +344,9 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
       // gaps rather than a failing device.
       const now = Date.now();
       restartBurstRef.current = { count: 0, since: now };
+      // Interim results count: the point is to keep the session alive while
+      // someone is mid-sentence, and interim text is the earliest sign of that.
+      if (hasSpeech(ev)) armSilenceTimer();
 
       // `ev.results` is cumulative for the session, and ev.resultIndex is not
       // a reliable "everything before this is already handled" marker —
@@ -327,6 +403,8 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
       // outlive the component and leave the microphone open.
       shouldListenRef.current = false;
       clearRestartTimer();
+      clearSilenceTimer();
+      armSilenceTimerRef.current = () => {};
       rec.onstart = null;
       rec.onend = null;
       rec.onerror = null;
@@ -348,6 +426,9 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
     emittedFinalsRef.current = 0;
     emittedTailRef.current = [];
     restartedAtRef.current = 0;
+    // Armed from the tap, so a mic opened and never spoken into closes itself
+    // instead of sitting live.
+    armSilenceTimerRef.current();
     try {
       rec.start();
     } catch (e) {
@@ -366,6 +447,10 @@ export function useSpeechRecognition(opts: UseSpeechRecognitionOptions = {}): Us
     if (restartTimerRef.current !== null) {
       clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;
+    }
+    if (silenceTimerRef.current !== null) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
     const rec = recognitionRef.current;
     if (!rec) return;
