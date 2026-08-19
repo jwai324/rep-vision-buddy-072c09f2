@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Plus, Trash2, Dumbbell, Heart, Pencil, ChartNoAxesColumn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -29,6 +29,16 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
   const [showForm, setShowForm] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // The editor opens above the list, so tapping the pencil on an exercise far
+  // down the page otherwise looks like nothing happened. Keyed on the edited
+  // id as well as the open flag, so going straight from one exercise's pencil
+  // to another's scrolls again rather than sitting still on the second tap.
+  useEffect(() => {
+    if (!showForm) return;
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showForm, editingExercise?.id]);
 
   const handleSave = (input: CustomExerciseInput) => {
     if (editingExercise) {
@@ -66,11 +76,18 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
       )}
 
       {showForm && (
-        <CreateExerciseForm
-          onSave={handleSave}
-          onCancel={handleCancel}
-          editingExercise={editingExercise}
-        />
+        <div ref={formRef} data-testid="custom-exercise-form">
+          {/* Keyed so tapping a second exercise's pencil while the form is open
+              rebuilds it: the form seeds its fields from editingExercise once,
+              on mount, so without this it would keep showing the first
+              exercise's values while saving over the second one. */}
+          <CreateExerciseForm
+            key={editingExercise?.id ?? 'new'}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            editingExercise={editingExercise}
+          />
+        </div>
       )}
 
       <ScrollArea className="flex-1">
@@ -112,10 +129,10 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
                 </div>
               ) : (
                 <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => openEdit(ex)} className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                  <button aria-label={`Edit ${ex.name}`} onClick={() => openEdit(ex)} className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setConfirmDelete(ex.id)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                  <button aria-label={`Delete ${ex.name}`} onClick={() => setConfirmDelete(ex.id)} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
