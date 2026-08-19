@@ -119,9 +119,10 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     onError: handleSpeechError,
   });
 
-  // Dictation now runs until the user taps the mic again, so closing the panel
-  // has to end it too — otherwise the microphone stays live behind a dismissed
-  // chat with nothing on screen indicating it.
+  // Dictation outlives the pauses in a sentence, so closing the panel has to
+  // end it rather than waiting for the silence window — otherwise the
+  // microphone stays live behind a dismissed chat with nothing on screen
+  // indicating it.
   const stopSpeech = speech.stop;
   const isListening = speech.isListening;
   useEffect(() => {
@@ -136,9 +137,10 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
 
   const handleSend = () => {
     if (isSendDisabled) return;
-    // Sending deliberately leaves dictation running: the mic button is the
-    // only thing that turns it off, so you can dictate a follow-up without
-    // reaching for it again.
+    // Sending is as clear a "that's my turn" as going quiet is, so it ends
+    // dictation too rather than leaving the mic open to catch whatever gets
+    // said next. The next turn starts with a tap on the mic.
+    if (speech.isListening) speech.stop();
     const text = input.trim().slice(0, MAX_CHAT_CHARS);
     setInput('');
     if (navigator.vibrate) navigator.vibrate(10);

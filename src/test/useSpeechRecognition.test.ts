@@ -449,7 +449,7 @@ describe('useSpeechRecognition', () => {
       expect(latestInstance!.started).toBe(1);
     });
 
-    it('keeps listening through a silent stretch', () => {
+    it('keeps listening through a silent stretch short of the stop window', () => {
       const onError = vi.fn();
       const { result } = renderHook(() => useSpeechRecognition({ onError }));
       act(() => result.current.start());
@@ -473,6 +473,108 @@ describe('useSpeechRecognition', () => {
 
       expect(latestInstance!.aborted).toBe(1);
       expect(latestInstance!.started).toBe(1);
+    });
+  });
+
+  describe('stops itself once the user is actually done', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('turns off after a long silence', () => {
+      const { result } = renderHook(() => useSpeechRecognition());
+      act(() => result.current.start());
+
+      act(() => { vi.advanceTimersByTime(7900); });
+      expect(result.current.isListening).toBe(true);
+
+      act(() => { vi.advanceTimersByTime(200); });
+      expect(result.current.isListening).toBe(false);
+    });
+
+    it('is not kept alive by the restarts that bridge the pause', () => {
+      // The browser ends a session a second or two after you stop talking. The
+      // silence is measured from the last words, not from those restarts, or
+      // dictation would never decide you were finished.
+      const { result } = renderHook(() => useSpeechRecognition());
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'add three sets', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(1500); });
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(1500); });
+      expect(result.current.isListening).toBe(true);
+
+      act(() => { vi.advanceTimersByTime(6000); });
+      expect(result.current.isListening).toBe(false);
+    });
+
+    it('keeps listening as long as words keep arriving', () => {
+      const { result } = renderHook(() => useSpeechRecognition());
+      act(() => result.current.start());
+
+      // Interim text counts — it is the earliest sign of someone mid-sentence.
+      act(() => { vi.advanceTimersByTime(6000); });
+      act(() => latestInstance!.fireResult([{ transcript: 'still talking', isFinal: false }]));
+      act(() => { vi.advanceTimersByTime(6000); });
+      expect(result.current.isListening).toBe(true);
+
+      act(() => { vi.advanceTimersByTime(2100); });
+      expect(result.current.isListening).toBe(false);
+    });
+
+    it('does not restart once it has stopped itself', () => {
+      const { result } = renderHook(() => useSpeechRecognition());
+      act(() => result.current.start());
+      expect(latestInstance!.started).toBe(1);
+
+      act(() => { vi.advanceTimersByTime(8100); });
+      act(() => { vi.advanceTimersByTime(1000); });
+
+      expect(latestInstance!.started).toBe(1);
+      expect(result.current.isListening).toBe(false);
+    });
+
+    it('closes a mic that was opened and never spoken into', () => {
+      const { result } = renderHook(() => useSpeechRecognition());
+      act(() => result.current.start());
+
+      act(() => { vi.advanceTimersByTime(8100); });
+
+      expect(result.current.isListening).toBe(false);
+      expect(latestInstance!.stopped).toBe(1);
+    });
+
+    it('honours a caller-supplied window', () => {
+      const { result } = renderHook(() => useSpeechRecognition({ stopAfterSilenceMs: 3000 }));
+      act(() => result.current.start());
+
+      act(() => { vi.advanceTimersByTime(2900); });
+      expect(result.current.isListening).toBe(true);
+
+      act(() => { vi.advanceTimersByTime(200); });
+      expect(result.current.isListening).toBe(false);
+    });
+
+    it('stays live indefinitely when the window is disabled', () => {
+      const { result } = renderHook(() => useSpeechRecognition({ stopAfterSilenceMs: 0 }));
+      act(() => result.current.start());
+
+      act(() => { vi.advanceTimersByTime(60_000); });
+
+      expect(result.current.isListening).toBe(true);
+    });
+
+    it('emits everything said before the silence ran out', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'add three sets of squats', isFinal: true }]));
+      act(() => { vi.advanceTimersByTime(8100); });
+
+      expect(onFinal).toHaveBeenCalledWith('add three sets of squats');
+      expect(result.current.isListening).toBe(false);
     });
   });
 
