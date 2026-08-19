@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useSpeechRecognition, type SpeechRecognitionLike } from '@/hooks/useSpeechRecognition';
+import { useSpeechRecognition, trimEchoedPrefix, type SpeechRecognitionLike } from '@/hooks/useSpeechRecognition';
 
 // A minimal stand-in for the browser SpeechRecognition class. We record
 // starts/stops and expose helpers to fire the events the hook listens for.
@@ -71,6 +71,33 @@ afterEach(() => {
   delete (window as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
 });
 
+describe('trimEchoedPrefix', () => {
+  it('returns the phrase untouched when nothing overlaps', () => {
+    expect(trimEchoedPrefix(['lift', 'heavy'], 'then go home')).toBe('then go home');
+  });
+
+  it('returns an empty string when the whole phrase is an echo', () => {
+    expect(trimEchoedPrefix(['lift', 'heavy'], 'lift heavy')).toBe('');
+  });
+
+  it('keeps the part that continues past the overlap', () => {
+    expect(trimEchoedPrefix(['add', 'three', 'sets'], 'three sets of squats')).toBe('of squats');
+  });
+
+  it('prefers the longest overlap when a word repeats', () => {
+    // "sets sets of ten" would be the result of matching only the final word.
+    expect(trimEchoedPrefix(['do', 'three', 'sets'], 'three sets of ten')).toBe('of ten');
+  });
+
+  it('matches through punctuation and casing differences', () => {
+    expect(trimEchoedPrefix(['lift', 'heavy'], 'Lift heavy, today')).toBe('today');
+  });
+
+  it('has nothing to trim against an empty tail', () => {
+    expect(trimEchoedPrefix([], 'lift heavy')).toBe('lift heavy');
+  });
+});
+
 describe('useSpeechRecognition', () => {
   it('reports unsupported when neither global is present', () => {
     delete (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition;
@@ -138,6 +165,22 @@ describe('useSpeechRecognition', () => {
       expect(onFinal).toHaveBeenCalledTimes(2);
       expect(onFinal).toHaveBeenNthCalledWith(1, 'first phrase');
       expect(onFinal).toHaveBeenNthCalledWith(2, 'second phrase');
+    });
+
+    it('keeps emitting when the browser hands back a shorter result list', () => {
+      // Some engines restart their result list mid-session instead of growing
+      // it; gating on the old count would drop everything said afterwards.
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([
+        { transcript: 'first', isFinal: true },
+        { transcript: 'second', isFinal: true },
+      ]));
+      act(() => latestInstance!.fireResult([{ transcript: 'third', isFinal: true }]));
+
+      expect(onFinal.mock.calls.map(c => c[0])).toEqual(['first', 'second', 'third']);
     });
 
     it('still emits a phrase the user genuinely repeats in one session', () => {
@@ -230,6 +273,127 @@ describe('useSpeechRecognition', () => {
       act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
 
       expect(onFinal).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps only the new words when the restart re-hears part of the phrase', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'add three sets', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(0); });
+      // The restarted session hears the tail again and carries on past it.
+      act(() => latestInstance!.fireResult([{ transcript: 'add three sets of squats', isFinal: true }]));
+
+      expect(onFinal).toHaveBeenNthCalledWith(2, 'of squats');
+    });
+
+    it('matches an echo back across more than one earlier phrase', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'add three sets', isFinal: true }]));
+      // The session's result list is cumulative, so the second phrase arrives
+      // alongside the first.
+      act(() => latestInstance!.fireResult([
+        { transcript: 'add three sets', isFinal: true },
+        { transcript: 'of squats', isFinal: true },
+      ]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(0); });
+      act(() => latestInstance!.fireResult([{ transcript: 'three sets of squats', isFinal: true }]));
+
+      expect(onFinal).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores punctuation and casing when matching the echo', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy today', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(0); });
+      act(() => latestInstance!.fireResult([{ transcript: 'Lift heavy, today!', isFinal: true }]));
+
+      expect(onFinal).toHaveBeenCalledTimes(1);
+    });
+
+    it('still drops an echo that the recogniser takes seconds to deliver', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      // Well past the 2s the previous implementation allowed for.
+      act(() => { vi.advanceTimersByTime(3000); });
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+
+      expect(onFinal).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats the same words much later as the user saying them again', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(7000); });
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+
+      expect(onFinal).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves an unrelated phrase after a restart alone', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(0); });
+      act(() => latestInstance!.fireResult([{ transcript: 'then go home', isFinal: true }]));
+
+      expect(onFinal).toHaveBeenNthCalledWith(2, 'then go home');
+    });
+
+    it('passes a repeat through once the restarted session has said something new', () => {
+      const onFinal = vi.fn();
+      const { result } = renderHook(() => useSpeechRecognition({ onFinalResult: onFinal }));
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'squats', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(0); });
+      // Echo, then real speech, then the user genuinely says it twice.
+      act(() => latestInstance!.fireResult([{ transcript: 'squats', isFinal: true }]));
+      act(() => latestInstance!.fireResult([
+        { transcript: 'squats', isFinal: true },
+        { transcript: 'and lunges', isFinal: true },
+      ]));
+      act(() => latestInstance!.fireResult([
+        { transcript: 'squats', isFinal: true },
+        { transcript: 'and lunges', isFinal: true },
+        { transcript: 'and lunges', isFinal: true },
+      ]));
+
+      expect(onFinal.mock.calls.map(c => c[0])).toEqual(['squats', 'and lunges', 'and lunges']);
+    });
+
+    it('keeps the live preview from replaying words already in the box', () => {
+      const { result } = renderHook(() => useSpeechRecognition());
+      act(() => result.current.start());
+
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy', isFinal: true }]));
+      act(() => latestInstance!.fireSilenceTimeout());
+      act(() => { vi.advanceTimersByTime(0); });
+      act(() => latestInstance!.fireResult([{ transcript: 'lift heavy today', isFinal: false }]));
+
+      expect(result.current.interimTranscript).toBe('today');
     });
 
     it('does not restart after the user stops it', () => {
