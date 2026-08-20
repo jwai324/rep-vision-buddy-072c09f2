@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
+import type { PreviousPerformance } from '@/utils/previousPerformance';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Sparkles, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,7 +22,7 @@ interface FocusModeProps {
   restRecords: Record<string, number>;
   runningSet: RunningSetState | null;
   getStickyNote: (exerciseId: string) => string;
-  getPreviousSets: (exerciseId: string) => { weight?: number; reps: number; rpe?: number; time?: number }[];
+  getPrevious: (exerciseId: string) => PreviousPerformance;
   getInputMode: (exerciseId: string) => ExerciseInputMode;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
@@ -322,7 +323,8 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
               stickyNote={props.getStickyNote(block.exerciseId)}
               activeTimer={props.activeTimer}
               restRecords={props.restRecords}
-              previousSets={props.getPreviousSets(block.exerciseId)}
+              previousSets={props.getPrevious(block.exerciseId).sets}
+              previousDate={props.getPrevious(block.exerciseId).date}
               inputMode={props.getInputMode(block.exerciseId)}
               onUpdateSet={props.onUpdateSet}
               onToggleComplete={props.onToggleComplete}

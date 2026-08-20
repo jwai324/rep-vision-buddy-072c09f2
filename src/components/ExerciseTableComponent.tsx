@@ -4,9 +4,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
-import { BAND_LEVELS, getBandLevelLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
-import { fromKg } from '@/utils/weightConversion';
+import { BAND_LEVELS, getBandLevelLabel, getBandLevelShortLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
+import { formatWeight } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
+import { parseLocalDate } from '@/utils/dateUtils';
+import { format, differenceInCalendarDays } from 'date-fns';
+import type { PreviousSet } from '@/utils/previousPerformance';
 import { getSetFieldErrors, hasFieldErrors, type SetFieldErrors } from '@/utils/setValidation';
 import type { WeightUnit } from '@/hooks/useStorage';
 import type { ExerciseBlock, SetRow, DropRow, PersistedTimer, RunningSetState } from '@/types/activeSession';
@@ -171,6 +174,48 @@ const TimerHeaderPopover: React.FC = () => (
   </Popover>
 );
 
+/**
+ * The weight from a previous set, as text.
+ *
+ * Rounding to a whole number here used to turn 62.5 kg into "63" — and, since
+ * the cell copies its own value into the live set, wrote 63 as well. Band
+ * exercises store a level rather than a mass, so they never go through the
+ * unit conversion.
+ */
+function previousWeightText(weightKg: number, unit: WeightUnit, isBand: boolean): string {
+  return isBand ? getBandLevelShortLabel(weightKg) : formatWeight(weightKg, unit).display;
+}
+
+/** What tapping the cell puts in the weight input. */
+function previousWeightValue(weightKg: number, unit: WeightUnit, isBand: boolean): string {
+  return isBand ? String(weightKg) : formatWeight(weightKg, unit).display;
+}
+
+/**
+ * "Previous" plus the day those numbers were logged, so the column says which
+ * session it is quoting rather than just "some earlier one".
+ */
+const PreviousHeader: React.FC<{ date?: string | null }> = ({ date }) => (
+  <span className="text-center leading-tight">
+    Previous
+    {date && (
+      <span className="block text-[9px] font-normal text-muted-foreground/70">
+        {formatPreviousDate(date)}
+      </span>
+    )}
+  </span>
+);
+
+function formatPreviousDate(date: string): string {
+  const parsed = parseLocalDate(date);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const today = new Date();
+  const days = differenceInCalendarDays(today, parsed);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return format(parsed, parsed.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
+}
+
 const CheckHeader: React.FC = () => (
   <span className="text-center"><Check className="w-3 h-3 mx-auto" /></span>
 );
@@ -190,7 +235,7 @@ function getGridCols(mode: ExerciseInputMode): string {
   }
 }
 
-const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: WeightUnit; distanceUnit: DistanceUnit }> = ({ inputMode, weightUnit, distanceUnit }) => {
+const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: WeightUnit; distanceUnit: DistanceUnit; previousDate?: string | null }> = ({ inputMode, weightUnit, distanceUnit, previousDate }) => {
   const cols = getGridCols(inputMode);
   switch (inputMode) {
     case 'time':
@@ -226,7 +271,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Previous</span>
+          <PreviousHeader date={previousDate} />
           <span className="text-center">{weightUnit}</span>
           <span className="text-center">Time</span>
           <RpeHeaderPopover />
@@ -237,7 +282,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Previous</span>
+          <PreviousHeader date={previousDate} />
           <span className="text-center">Reps</span>
           <RpeHeaderPopover />
           <TimerHeaderPopover />
@@ -248,7 +293,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Previous</span>
+          <PreviousHeader date={previousDate} />
           <span className="text-center">Band</span>
           <span className="text-center">Reps</span>
           <RpeHeaderPopover />
@@ -261,7 +306,7 @@ const SetTableHeader: React.FC<{ inputMode: ExerciseInputMode; weightUnit: Weigh
       return (
         <div className={`grid ${cols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
           <span>Set</span>
-          <span className="text-center">Previous</span>
+          <PreviousHeader date={previousDate} />
           <span className="text-center">{weightUnit}</span>
           <span className="text-center">Reps</span>
           <RpeHeaderPopover />
@@ -357,7 +402,9 @@ export interface ExerciseTableProps {
   stickyNote: string;
   activeTimer: PersistedTimer | null;
   restRecords: Record<string, number>;
-  previousSets: { weight?: number; reps: number; rpe?: number; time?: number }[];
+  previousSets: PreviousSet[];
+  /** Day the previousSets were logged, shown under the column heading. */
+  previousDate?: string | null;
   inputMode: ExerciseInputMode;
   onUpdateSet: (blockIdx: number, setIdx: number, field: keyof SetRow, value: string | boolean | number) => void;
   onToggleComplete: (blockIdx: number, setIdx: number) => void;
@@ -381,7 +428,7 @@ export interface ExerciseTableProps {
 
 /* ---------- ExerciseTable Component ---------- */
 
-export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, distanceUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName, hideTimers }) => {
+export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, distanceUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, previousDate, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName, hideTimers }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
   const [menuOpen, setMenuOpen] = React.useState(false);
   return (
@@ -470,7 +517,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
       )}
 
       {/* Table Header */}
-      <SetTableHeader inputMode={inputMode} weightUnit={weightUnit} distanceUnit={distanceUnit} />
+      <SetTableHeader inputMode={inputMode} weightUnit={weightUnit} distanceUnit={distanceUnit} previousDate={previousDate} />
 
       {/* Set Rows */}
       {block.sets.map((set, setIdx) => {
@@ -560,11 +607,11 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <span className={setLabelClass}>{setLabel}</span>
                   {prevSet ? (
                     <button type="button" onClick={() => {
-                      if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prevSet.weight, weightUnit))));
+                      if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', previousWeightValue(prevSet.weight, weightUnit, false));
                       if (prevSet.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prevSet.time));
                       if (prevSet.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prevSet.rpe));
                     }} className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer" title="Tap to copy to current set">
-                      {`${prevSet.weight ? `${Math.round(fromKg(prevSet.weight, weightUnit))} × ` : ''}${formatMmSs(prevSet.time ?? 0)}`}
+                      {`${prevSet.weight ? `${previousWeightText(prevSet.weight, weightUnit, false)} × ` : ''}${formatMmSs(prevSet.time ?? 0)}`}
                     </button>
                   ) : (
                     <span className="text-xs text-muted-foreground text-center">—</span>
@@ -626,12 +673,12 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <span className={setLabelClass}>{setLabel}</span>
                   {prevSet ? (
                     <button type="button" onClick={() => {
-                      if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', String(Math.round(fromKg(prevSet.weight, weightUnit))));
+                      if (prevSet.weight !== undefined) onUpdateSet(blockIdx, setIdx, 'weight', previousWeightValue(prevSet.weight, weightUnit, inputMode === 'band'));
                       if (prevSet.reps !== undefined) onUpdateSet(blockIdx, setIdx, 'reps', String(prevSet.reps));
                       if (prevSet.rpe !== undefined) onUpdateSet(blockIdx, setIdx, 'rpe', String(prevSet.rpe));
                       if (prevSet.time !== undefined) onUpdateSet(blockIdx, setIdx, 'time', String(prevSet.time));
                     }} className="text-xs text-muted-foreground text-center truncate w-full hover:text-primary hover:bg-primary/10 rounded-md py-0.5 transition-colors cursor-pointer" title="Tap to copy to current set">
-                      {`${prevSet.weight != null ? Math.round(fromKg(prevSet.weight!, weightUnit)) : '—'} × ${prevSet.reps}`}
+                      {`${prevSet.weight != null ? previousWeightText(prevSet.weight, weightUnit, inputMode === 'band') : '—'} × ${prevSet.reps}`}
                     </button>
                   ) : (
                     <span className="text-xs text-muted-foreground text-center">—</span>
