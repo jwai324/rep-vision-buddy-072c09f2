@@ -293,6 +293,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           : null)
   );
 
+  // Cached alongside the snapshot: flushCache has no reactive deps, and the
+  // restored screen needs the id to find the template again after a reload.
+  const templateIdRef = useRef<string | null>(templateId ?? cachedSession?.templateId ?? null);
+  useEffect(() => {
+    if (templateId) templateIdRef.current = templateId;
+  }, [templateId]);
+
   // Pending finished session — held while we ask the user about updating the template
   const [pendingFinishedSession, setPendingFinishedSession] = useState<WorkoutSession | null>(null);
   const [pendingTemplateUpdate, setPendingTemplateUpdate] = useState<{
@@ -405,6 +412,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       timerPaused: s.timerPaused,
       pausedElapsedSec: pausedSec,
       templateSnapshot: originalTemplateSnapshot.current,
+      templateId: templateIdRef.current,
     });
   }, []);
 
@@ -853,6 +861,51 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     setShowSupersetLinker(false);
   }, []);
 
+  // The same question for both ways a workout can end: the ordinary Finish and
+  // the "save it anyway" confirmation for a very short session, which used to
+  // hand the session straight to onFinish and skip the template diff.
+  const finishWithTemplateCheck = useCallback((finalSession: WorkoutSession) => {
+    const shouldCheckTemplate =
+      !isEditMode &&
+      template &&
+      onUpdateTemplate &&
+      originalTemplateSnapshot.current;
+
+    if (shouldCheckTemplate) {
+      const completedBlocks: FinishedBlockLite[] = blocks
+        .filter(b => b.sets.some(s => s.completed))
+        .map(b => {
+          const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
+          const lastSet = completed[completed.length - 1];
+          const lastReps = completed.length > 0 ? parseInt(lastSet.reps) || null : null;
+          const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
+          const mode = getExerciseInputMode(b.exerciseId, customExercises);
+          const lastWeight = usesWeight(mode)
+            ? inputToTargetWeight(lastSet?.weight, weightUnit, mode === 'band')
+            : undefined;
+          return {
+            exerciseId: b.exerciseId,
+            completedSetCount: completed.length,
+            lastReps,
+            lastWeight,
+            setType,
+            supersetGroup: b.supersetGroup,
+            restSeconds: b.restSeconds,
+          };
+        });
+      const afterSnapshot = snapshotFromFinishedBlocks(completedBlocks);
+      const diff = diffTemplateSnapshots(originalTemplateSnapshot.current!, afterSnapshot);
+      if (diff.hasChanges) {
+        const updated = buildUpdatedTemplate(template!, completedBlocks);
+        setPendingFinishedSession(finalSession);
+        setPendingTemplateUpdate({ template: updated, summary: diff.summary });
+        return;
+      }
+    }
+
+    onFinish(finalSession);
+  }, [blocks, onFinish, isEditMode, weightUnit, customExercises, template, onUpdateTemplate]);
+
   const finishWorkout = useCallback(() => {
     // Guard: require at least one completed set
     const hasCompletedSet = blocks.some(b => b.sets.some(s => s.completed));
@@ -965,47 +1018,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       return;
     }
 
-    // Check whether to prompt user about updating the source template
-    const shouldCheckTemplate =
-      !isEditMode &&
-      template &&
-      onUpdateTemplate &&
-      originalTemplateSnapshot.current;
-
-    if (shouldCheckTemplate) {
-      const completedBlocks: FinishedBlockLite[] = blocks
-        .filter(b => b.sets.some(s => s.completed))
-        .map(b => {
-          const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
-          const lastSet = completed[completed.length - 1];
-          const lastReps = completed.length > 0 ? parseInt(lastSet.reps) || null : null;
-          const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
-          const mode = getExerciseInputMode(b.exerciseId, customExercises);
-          const lastWeight = usesWeight(mode)
-            ? inputToTargetWeight(lastSet?.weight, weightUnit, mode === 'band')
-            : undefined;
-          return {
-            exerciseId: b.exerciseId,
-            completedSetCount: completed.length,
-            lastReps,
-            lastWeight,
-            setType,
-            supersetGroup: b.supersetGroup,
-            restSeconds: b.restSeconds,
-          };
-        });
-      const afterSnapshot = snapshotFromFinishedBlocks(completedBlocks);
-      const diff = diffTemplateSnapshots(originalTemplateSnapshot.current!, afterSnapshot);
-      if (diff.hasChanges) {
-        const updated = buildUpdatedTemplate(template!, completedBlocks);
-        setPendingFinishedSession(finalSession);
-        setPendingTemplateUpdate({ template: updated, summary: diff.summary });
-        return;
-      }
-    }
-
-    onFinish(finalSession);
-  }, [blocks, onFinish, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, template, onUpdateTemplate]);
+    finishWithTemplateCheck(finalSession);
+  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises]);
 
   if (showSupersetLinker) {
     return (
@@ -1459,7 +1473,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               onClick={() => {
                 const session = pendingShortWorkout;
                 setPendingShortWorkout(null);
-                if (session) onFinish(session);
+                if (session) finishWithTemplateCheck(session);
               }}
             >
               Save

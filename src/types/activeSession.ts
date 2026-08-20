@@ -79,6 +79,10 @@ export interface ActiveSessionCache {
   // cold reload — without it the ref inside ActiveSession would be null on
   // re-mount and the diff check would silently skip.
   templateSnapshot?: TemplateSnapshot | null;
+  // Which template the session was started from. Needed for the same reason as
+  // the snapshot: a cold reload rebuilds the screen from this cache alone, and
+  // without the id there is no template to offer to update.
+  templateId?: string | null;
 }
 
 export const SUPERSET_COLORS = [

@@ -4,6 +4,7 @@ import { useStorage } from '@/hooks/useStorage';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
+import { restoredSessionScreen } from '@/utils/sessionRestore';
 import { MinimizedSessionBar, MINIMIZED_BAR_HEIGHT } from '@/components/MinimizedSessionBar';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
@@ -70,9 +71,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const tutorial = useTutorial();
   // On a cold load with a cached in-progress workout, surface a dashboard
   // banner instead of dropping the user straight back into the session.
-  const [minimizedSession, setMinimizedSession] = useState<Screen | null>(() => {
-    return getSessionCache() ? { type: 'activeSession', exercises: [] } : null;
-  });
+  const [minimizedSession, setMinimizedSession] = useState<Screen | null>(
+    () => restoredSessionScreen(getSessionCache()),
+  );
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
