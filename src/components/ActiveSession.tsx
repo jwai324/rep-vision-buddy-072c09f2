@@ -6,6 +6,7 @@ import { EXERCISES } from '@/types/workout';
 import { toKg, fromKg, targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors } from '@/utils/setValidation';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { findPreviousPerformance } from '@/utils/previousPerformance';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
@@ -113,21 +114,24 @@ interface ActiveSessionProps {
   onUpdateHideTimers?: (val: boolean) => void;
 }
 
-/** Look up the most recent session data for a given exercise */
-function getPreviousExerciseData(history: WorkoutSession[], exerciseId: ExerciseId): { weight?: number; reps: number; rpe?: number; time?: number }[] {
-  for (const session of history) {
-    const log = session.exercises.find(e => e.exerciseId === exerciseId);
-    if (log && log.sets.length > 0) {
-      return log.sets.filter(s => s.type !== 'warmup').map(s => ({ weight: s.weight, reps: s.reps, rpe: s.rpe, time: s.time }));
-    }
-  }
-  return [];
-}
 // normalizeBlocks is imported from useBlockMutations
 
 export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
+  // Scanning every logged session per exercise, on a component that re-renders
+  // on each keystroke, adds up — so the answers are cached until history moves.
+  const previousFor = useMemo(() => {
+    const cache = new Map<string, ReturnType<typeof findPreviousPerformance>>();
+    return (exerciseId: ExerciseId) => {
+      let found = cache.get(exerciseId);
+      if (!found) {
+        found = findPreviousPerformance(history, exerciseId);
+        cache.set(exerciseId, found);
+      }
+      return found;
+    };
+  }, [history]);
   const { exercises: customExercises } = useCustomExercisesContext();
   const { active: tutorialActive } = useTutorial();
   // Convert saved session exercises back to blocks for editing.
@@ -1307,7 +1311,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                         stickyNote={getStickyNote(block.exerciseId)}
                         activeTimer={activeTimer}
                         restRecords={restRecords}
-                        previousSets={getPreviousExerciseData(history, block.exerciseId)}
+                        previousSets={previousFor(block.exerciseId).sets}
+                        previousDate={previousFor(block.exerciseId).date}
                         inputMode={getExerciseInputMode(block.exerciseId, customExercises)}
                         onUpdateSet={updateSet}
                         onToggleComplete={toggleSetComplete}
@@ -1356,7 +1361,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           restRecords={restRecords}
           runningSet={runningSet}
           getStickyNote={getStickyNote}
-          getPreviousSets={(exId) => getPreviousExerciseData(history, exId)}
+          getPrevious={previousFor}
           getInputMode={(exId) => getExerciseInputMode(exId, customExercises)}
           onUpdateSet={updateSet}
           onToggleComplete={toggleSetComplete}

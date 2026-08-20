@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ExerciseTable } from '@/components/ExerciseTableComponent';
 import type { ExerciseBlock } from '@/types/activeSession';
@@ -230,5 +230,97 @@ describe('ExerciseTable inline validation', () => {
     expect(weightInput).toBeTruthy();
     expect(weightInput.className).toMatch(/ring-destructive/);
     expect(weightInput.getAttribute('aria-invalid')).toBe('true');
+  });
+});
+
+describe('ExerciseTable previous column', () => {
+  const renderWithPrevious = (
+    props: Partial<Parameters<typeof ExerciseTable>[0]> = {},
+    onUpdateSet = vi.fn(),
+  ) => {
+    const block = makeBlock({
+      sets: [
+        { setNumber: 1, weight: '', reps: '', rpe: '', time: '', completed: false, type: 'normal' },
+        { setNumber: 2, weight: '', reps: '', rpe: '', time: '', completed: false, type: 'normal' },
+      ],
+    });
+    render(
+      <ExerciseTable
+        {...baseProps}
+        block={block}
+        blockIdx={0}
+        blocks={[block]}
+        onUpdateSet={onUpdateSet}
+        onToggleComplete={vi.fn()}
+        {...props}
+      />,
+    );
+    return onUpdateSet;
+  };
+
+  it('shows the weight and reps logged for each set last time', () => {
+    renderWithPrevious({
+      previousSets: [
+        { weight: 61.23, reps: 10 },
+        { weight: 61.23, reps: 8 },
+      ],
+    });
+
+    // 61.23 kg is what 135 lbs round-trips to in storage.
+    expect(screen.getByText('135 × 10')).toBeInTheDocument();
+    expect(screen.getByText('135 × 8')).toBeInTheDocument();
+  });
+
+  describe('naming the day those numbers came from', () => {
+    // Pinned: the header reads relative to today, so a real clock would make
+    // these assertions drift.
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-19T12:00:00'));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('shows the date alongside the column heading', () => {
+      renderWithPrevious({ previousSets: [{ weight: 61.23, reps: 10 }], previousDate: '2026-08-11' });
+
+      expect(screen.getByText('Previous')).toBeInTheDocument();
+      expect(screen.getByText('Aug 11')).toBeInTheDocument();
+    });
+
+    it('says today and yesterday rather than a date', () => {
+      renderWithPrevious({ previousSets: [{ weight: 61.23, reps: 10 }], previousDate: '2026-08-18' });
+      expect(screen.getByText('yesterday')).toBeInTheDocument();
+    });
+
+    it('spells out the year for an older session', () => {
+      renderWithPrevious({ previousSets: [{ weight: 61.23, reps: 10 }], previousDate: '2025-11-02' });
+      expect(screen.getByText('Nov 2, 2025')).toBeInTheDocument();
+    });
+
+    it('shows no date when the exercise has never been logged', () => {
+      renderWithPrevious({ previousSets: [] });
+      expect(screen.getByText('Previous')).toBeInTheDocument();
+      expect(screen.queryByText(/^Aug /)).not.toBeInTheDocument();
+    });
+  });
+
+  it('falls back to a dash for a set with nothing to compare against', () => {
+    renderWithPrevious({ previousSets: [{ weight: 61.23, reps: 10 }] });
+
+    expect(screen.getByText('135 × 10')).toBeInTheDocument();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('keeps a half-kilo increment instead of rounding it away', () => {
+    const onUpdateSet = renderWithPrevious(
+      { previousSets: [{ weight: 62.5, reps: 5 }], weightUnit: 'kg' },
+    );
+
+    expect(screen.getByText('62.5 × 5')).toBeInTheDocument();
+
+    // Tapping the cell copies exactly what it shows into the live set.
+    fireEvent.click(screen.getByText('62.5 × 5'));
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'weight', '62.5');
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'reps', '5');
   });
 });
