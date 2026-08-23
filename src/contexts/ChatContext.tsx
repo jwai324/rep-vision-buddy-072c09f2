@@ -90,6 +90,7 @@ type TC<N extends string, A> = {
 export type ToolCall =
   | TC<'create_template', { name: string; exercises: ExerciseInput[] }>
   | TC<'edit_template', { templateId: string; name?: string; exercises?: ExerciseInput[] }>
+  | TC<'add_exercises_to_template', { templateId: string; exercises: ExerciseInput[] }>
   | TC<'delete_template', { templateId: string }>
   | TC<'create_program', { name: string; days: ProgramDayInput[]; durationWeeks?: number; startDate?: string }>
   | TC<'delete_program', { programId: string }>
@@ -214,6 +215,7 @@ function emptySnapshotFor(name: ToolCall['name']): ProposalSnapshot {
   switch (name) {
     case 'create_template':
     case 'edit_template':
+    case 'add_exercises_to_template':
     case 'delete_template':
       return { kind: 'template', template: null };
     case 'create_program':
@@ -254,7 +256,7 @@ export function parseAccumulatedToolCalls(
 
 // Allowed AI actions — anything not here is blocked
 const AI_ALLOWED_ACTIONS = new Set([
-  'create_template', 'edit_template', 'delete_template',
+  'create_template', 'edit_template', 'add_exercises_to_template', 'delete_template',
   'create_program', 'delete_program', 'set_active_program',
   'get_workout_history',
   'add_exercise_to_workout', 'add_sets_to_exercise',
@@ -285,6 +287,25 @@ function validateExerciseReference(
     suggestions,
     error: `Missing or unknown exerciseId "${exerciseId || ''}". Use an id from available_exercises.${suggestions.length ? ' Did you mean: ' + suggestions.join(', ') + '?' : ''}`,
   };
+}
+
+// Pick the exercises an add_exercises_to_template call actually contributes.
+// The tool contract is "send only the new ones", but a model that re-sends the
+// whole list (or names one twice) would otherwise duplicate rows the template
+// already has. Order of the additions is preserved.
+// Exported for unit testing — pure, no React/singleton deps.
+export function appendableTemplateExercises<T extends { exerciseId: string }>(
+  existing: readonly { exerciseId: string }[],
+  incoming: readonly T[],
+): { additions: T[]; skipped: number } {
+  const seen = new Set(existing.map(e => e.exerciseId));
+  const additions: T[] = [];
+  for (const e of incoming) {
+    if (seen.has(e.exerciseId)) continue;
+    seen.add(e.exerciseId);
+    additions.push(e);
+  }
+  return { additions, skipped: incoming.length - additions.length };
 }
 
 // The AI sometimes emits the same add_exercise_to_workout call more than once
@@ -347,6 +368,22 @@ class BalanceExhaustedError extends Error {
   constructor() {
     super('AI credits exhausted');
     this.name = 'BalanceExhaustedError';
+  }
+}
+
+// Fallback narration when the follow-up turn produces no prose of its own.
+function toolCallSummary(toolCalls: readonly ToolCall[]): string {
+  return toolCalls.map(tc => tc.result?.message || `${tc.name} completed`).join('. ');
+}
+
+// Thrown when the edge function reports that the stream died after it had
+// already started (upstream billing, rate limit, or a dropped connection). It
+// carries the server's plain-language reason so the chat can show that instead
+// of the empty reply the client used to render when it skipped the payload.
+class StreamFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StreamFailedError';
   }
 }
 
@@ -667,6 +704,49 @@ export const ChatProvider: React.FC<{
         return { result: { success: true, proposalId: tc.id, message: `Proposal queued: ${proposal.summary}. Awaiting user apply.` }, proposal };
       }
 
+      case 'add_exercises_to_template': {
+        const args = tc.arguments;
+        if (!args.templateId) return mkInvalid({ kind: 'template', template: null }, 'Template ID is required.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = storage.templates.find((t: any) => t.id === args.templateId);
+        if (!existing) return mkInvalid({ kind: 'template', template: null }, `Template "${args.templateId}" not found.`);
+        const before = { kind: 'template' as const, template: { id: existing.id, name: existing.name, exercises: existing.exercises } };
+        if (!Array.isArray(args.exercises) || args.exercises.length === 0) {
+          return mkInvalid(before, 'At least one exercise to add is required.');
+        }
+        const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises, exerciseById, mergedExercises);
+        if (!valid) return mkInvalid(before, errors.join('\n'), suggestions);
+        const currentExercises: ExerciseInput[] = existing.exercises ?? [];
+        const { additions, skipped } = appendableTemplateExercises(currentExercises, validated);
+        if (additions.length === 0) {
+          return mkInvalid(before, `Every exercise you listed is already in "${existing.name}".`);
+        }
+        const appended = additions.map(e => ({
+          exerciseId: e.exerciseId,
+          exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
+          sets: e.sets,
+          targetReps: e.targetReps,
+          setType: e.setType || 'normal',
+          restSeconds: e.restSeconds ?? 90,
+          targetRpe: e.targetRpe,
+        }));
+        const proposal: Proposal = {
+          id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          before,
+          after: { kind: 'template', template: { id: existing.id, name: existing.name, exercises: [...currentExercises, ...appended] } },
+          status: 'pending',
+          summary: `Add ${appended.length} exercise${appended.length === 1 ? '' : 's'} to "${existing.name}"`,
+        };
+        return {
+          result: {
+            success: true,
+            proposalId: tc.id,
+            message: `Proposal queued: ${proposal.summary}${skipped ? ` (${skipped} already in the template, skipped)` : ''}. Awaiting user apply.`,
+          },
+          proposal,
+        };
+      }
+
       case 'delete_template': {
         const args = tc.arguments;
         if (!args.templateId) return mkInvalid({ kind: 'template', template: null }, 'Template ID is required.');
@@ -969,19 +1049,22 @@ export const ChatProvider: React.FC<{
     try {
       switch (proposal.toolName) {
         case 'create_template':
-        case 'edit_template': {
+        case 'edit_template':
+        case 'add_exercises_to_template': {
           if (proposal.after.kind !== 'template' || !proposal.after.template) return;
           const t = proposal.after.template;
           await storage.saveTemplate({
             id: t.id,
             name: t.name,
-            exercises: t.exercises.map(e => ({
-              exerciseId: e.exerciseId,
-              sets: e.sets,
-              targetReps: e.targetReps,
+            // Spread rather than re-listing the fields: an untouched exercise
+            // carried through an edit still holds template-only data the tool
+            // schema never sees (targetWeight, supersetGroup), and rebuilding
+            // it field-by-field silently dropped that. exerciseName is a
+            // display hint the proposal adds and must not be persisted.
+            exercises: t.exercises.map(({ exerciseName: _displayOnly, ...e }) => ({
+              ...e,
               setType: e.setType || 'normal',
               restSeconds: e.restSeconds ?? 90,
-              targetRpe: e.targetRpe,
             })),
           });
           break;
@@ -1212,6 +1295,8 @@ export const ChatProvider: React.FC<{
       setMessages(prev => [...prev, { id: assistantMessageId, role: 'assistant', content: '', isLoading: true }]);
 
       let streamDone = false;
+      // Plain-language reason from the server when the stream dies mid-flight.
+      let streamError: string | null = null;
       // Set when the model was cut off at max_tokens — any tool call it was
       // mid-way through emitting is incomplete.
       let truncatedResponse = false;
@@ -1233,6 +1318,14 @@ export const ChatProvider: React.FC<{
 
           try {
             const parsed = JSON.parse(jsonStr);
+            // The function emits { error } instead of a choices chunk when the
+            // upstream call fails partway through. It carries no `choices`, so
+            // it has to be checked before the chunk shape below.
+            if (typeof parsed.error === 'string') {
+              streamError = parsed.error;
+              streamDone = true;
+              break;
+            }
             const choice = parsed.choices?.[0];
             if (!choice) continue;
 
@@ -1258,6 +1351,10 @@ export const ChatProvider: React.FC<{
           }
         }
       }
+
+      // A failed stream leaves half-built tool calls behind; surface the
+      // reason rather than proposing them.
+      if (streamError) throw new StreamFailedError(streamError);
 
       // Process tool calls
       if (toolCalls.length > 0) {
@@ -1385,6 +1482,7 @@ export const ChatProvider: React.FC<{
               if (fJson === "[DONE]") { done2 = true; break; }
               try {
                 const fp = JSON.parse(fJson);
+                if (typeof fp.error === 'string') { done2 = true; break; }
                 const fc = fp.choices?.[0]?.delta?.content;
                 if (fc) {
                   followContent += fc;
@@ -1401,15 +1499,22 @@ export const ChatProvider: React.FC<{
               m.id === assistantMessageId ? { ...m, content: followContent, isLoading: false, toolCalls: parsedToolCalls } : m
             ));
           } else {
-            const summary = parsedToolCalls.map(tc => tc.result?.message || `${tc.name} completed`).join('. ');
             setMessages(prev => prev.map(m =>
-              m.id === assistantMessageId ? { ...m, content: summary, isLoading: false, toolCalls: parsedToolCalls } : m
+              m.id === assistantMessageId ? { ...m, content: toolCallSummary(parsedToolCalls), isLoading: false, toolCalls: parsedToolCalls } : m
             ));
           }
+        } else {
+          // The proposals are already on screen and applyable; only the
+          // narration failed. Without this the bubble spins forever.
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMessageId ? { ...m, content: toolCallSummary(parsedToolCalls), isLoading: false, toolCalls: parsedToolCalls } : m
+          ));
         }
       } else {
         setMessages(prev => prev.map(m =>
-          m.id === assistantMessageId ? { ...m, content: assistantContent, isLoading: false } : m
+          m.id === assistantMessageId
+            ? { ...m, content: assistantContent || "The coach didn't send a reply. Try again.", isLoading: false }
+            : m
         ));
       }
     } catch (err) {
@@ -1447,7 +1552,9 @@ export const ChatProvider: React.FC<{
         });
       } else {
         setMessages(prev => {
-          const errMsg = `Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}. Try again.`;
+          const errMsg = err instanceof StreamFailedError
+            ? err.message
+            : `Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}. Try again.`;
           const last = prev[prev.length - 1];
           if (last?.role === 'assistant') {
             return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
