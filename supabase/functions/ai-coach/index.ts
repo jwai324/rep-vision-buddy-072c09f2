@@ -54,6 +54,7 @@ RULES:
    - Hybrid: read user_profile.hybrid_goals — it lists 1+ of the goals above the user is training for at once. Blend the defaults: e.g. strength + endurance means heavy compounds in the 3-6 range PLUS conditioning/higher-rep accessory work in the same session or week; strength + hypertrophy means low-rep primary lifts followed by 8-12 rep accessories. If hybrid_goals is empty, ask the user which goals to blend before proposing a program or template.
 8. Always put compound movements before isolation movements.
 9. If you can't do something (e.g., the user asks about nutrition and you don't have that data), say so directly and suggest what you can help with.
+10. Adding exercises to a template the user already has: call add_exercises_to_template with ONLY the new exercises. edit_template replaces the whole list, so reserve it for renaming, reordering, dropping exercises, or changing the sets/reps of ones already there — and only then re-send the full list. Emitting a full template you were only asked to add to wastes the reply budget and risks the tool call being cut off mid-write.
 
 ${COST_CONTROL_RULES}
 
@@ -88,7 +89,7 @@ PROGRAM CREATION (create_program):
 - Every day in the array MUST have a UNIQUE frequency.weekday. Never assign two days to the same weekday — the second one gets overwritten and disappears from the calendar. Before you emit the tool call, mentally walk Sun→Sat and confirm each weekday appears at most once.
 - For a 7-day program, cover every weekday exactly once — use rest entries (templateId: "rest") for any day the user isn't training so the calendar shows a rest badge instead of a blank cell.
 - Order the days array in the SAME order as the weekdays you assign, so Day 1 corresponds to the earliest weekday, Day 2 to the next, and so on. The label field is just what shows on the calendar tile — use a short label like "Day 1", "Push A", or "Rest".
-- templateId must be an existing template id from the user's `templates` context, or the literal string "rest". Do not invent template ids. If you need a template that doesn't exist yet, propose create_template first, then reference the id the user's tool_result gives back in a follow-up create_program call.
+- templateId must be an existing template id from the user's \`templates\` context, or the literal string "rest". Do not invent template ids. If you need a template that doesn't exist yet, propose create_template first, then reference the id the user's tool_result gives back in a follow-up create_program call.
 
 CONTEXT: You receive the user's current screen, user_profile, templates, programs, active session, and available exercises with every message. user_profile fields:
 - display_name, weight_unit ('kg'|'lbs'), member_since, days_since_member, earliest_logged_workout (date of the oldest logged workout, or null if none), history_window_max_days, total_sessions_logged (always present)
@@ -133,7 +134,7 @@ const tools = [
   },
   {
     name: "edit_template",
-    description: "Propose edits to an existing workout template — replace its exercises. The user must Apply the proposal before it persists.",
+    description: "Propose edits to an existing workout template — REPLACES its exercise list wholesale, so every exercise that should survive must be re-sent. Use add_exercises_to_template for pure additions. The user must Apply the proposal before it persists.",
     input_schema: {
       type: "object",
       properties: {
@@ -156,6 +157,34 @@ const tools = [
         },
       },
       required: ["templateId"],
+    },
+  },
+  {
+    name: "add_exercises_to_template",
+    description: "Propose appending exercises to the end of an existing template, keeping everything already in it. Use this instead of edit_template whenever the user is only ADDING — it does not require re-sending the exercises that are already there. The user must Apply the proposal before it persists.",
+    input_schema: {
+      type: "object",
+      properties: {
+        templateId: { type: "string" },
+        exercises: {
+          type: "array",
+          description: "Only the NEW exercises to append. Never repeat exercises the template already has.",
+          items: {
+            type: "object",
+            properties: {
+              exerciseId: { type: "string", description: "Required. Must be a valid id from available_exercises." },
+              exerciseName: { type: "string", description: "Display hint only. Ignored for resolution." },
+              sets: { type: "number" },
+              targetReps: { type: "number" },
+              setType: { type: "string", enum: ["normal", "superset", "dropset", "warmup"] },
+              restSeconds: { type: "number" },
+              targetRpe: { type: "number" },
+            },
+            required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
+          },
+        },
+      },
+      required: ["templateId", "exercises"],
     },
   },
   {
@@ -345,6 +374,25 @@ async function logError(supabase: SupabaseLike, userId: string | null, errorType
   } catch (e) {
     console.error('Failed to log error:', e);
   }
+}
+
+// A stream can die after the response has already started — the upstream call
+// is rejected (billing, rate limit) or drops mid-message. The client can't act
+// on a stack trace, so send back one plain sentence it can render as the
+// coach's reply. The raw error still goes to ai_error_log.
+function streamErrorMessage(err: unknown): string {
+  const status = (err as { status?: number } | undefined)?.status;
+  const detail = String((err as { message?: string } | undefined)?.message ?? err).toLowerCase();
+
+  if (detail.includes("credit balance")) {
+    return "The app's AI service is out of credits, so the coach can't reply right now. This is on our end — nothing is wrong with your workout data.";
+  }
+  if (status === 429) return "The AI service is rate limited right now. Give it a moment and try again.";
+  if (status === 401 || status === 403) return "The AI service rejected the app's credentials. This is a server-side problem, not something you can fix.";
+  if (status === 529 || (typeof status === "number" && status >= 500)) {
+    return "The AI service is temporarily unavailable. Try again in a moment.";
+  }
+  return "The reply failed partway through. Try again.";
 }
 
 // Convert the client's OpenAI-shaped message history into Anthropic format.
@@ -553,7 +601,10 @@ serve(async (req) => {
         } catch (err) {
           console.error("Stream translation error:", err);
           await logError(supabase, userId, "stream_error", String(err));
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "stream failed" })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: streamErrorMessage(err) })}\n\n`));
+          // Terminate the SSE stream properly — without it the client sits in
+          // its read loop until the body closes and reports nothing at all.
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         } finally {
           controller.close();
 
