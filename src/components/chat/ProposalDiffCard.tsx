@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { Check, X, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { EXERCISE_DATABASE } from '@/data/exercises';
 import type { Proposal, ProposalSnapshot, SessionExerciseRow, ExerciseInput, ProgramDayInput } from '@/contexts/ChatContext';
-
-const EX_BY_ID = new Map(EXERCISE_DATABASE.map(e => [e.id, e]));
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 
 interface Props {
   proposal: Proposal;
@@ -13,7 +11,10 @@ interface Props {
   onDiscard: (id: string) => void;
 }
 
-const exerciseName = (id: string) => EX_BY_ID.get(id)?.name || id;
+// The lookup is threaded in rather than built here: it has to cover the user's
+// custom exercises as well as the built-in library, or an appended custom
+// exercise shows up as the raw `custom-<uuid>` id on the card the user applies.
+type ExerciseNames = Record<string, string>;
 
 type DiffMark = 'add' | 'remove' | 'change' | 'same';
 
@@ -24,8 +25,11 @@ const markClass: Record<DiffMark, string> = {
   same: 'text-muted-foreground border-l-2 border-transparent pl-2',
 };
 
-const formatExerciseRow = (e: { exerciseId: string; sets?: number; targetReps?: number; restSeconds?: number }) => {
-  const name = exerciseName(e.exerciseId);
+const formatExerciseRow = (
+  e: { exerciseId: string; sets?: number; targetReps?: number; restSeconds?: number },
+  names: ExerciseNames,
+) => {
+  const name = names[e.exerciseId] ?? e.exerciseId;
   const sets = e.sets ?? '—';
   const reps = e.targetReps ?? '—';
   const rest = e.restSeconds != null ? ` · rest ${e.restSeconds}s` : '';
@@ -33,6 +37,7 @@ const formatExerciseRow = (e: { exerciseId: string; sets?: number; targetReps?: 
 };
 
 const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot }> = ({ before, after }) => {
+  const names = useExerciseLookup();
   if (before.kind !== 'template' || after.kind !== 'template') return null;
   const beforeEx = before.template?.exercises || [];
   const afterEx = after.template?.exercises || [];
@@ -42,7 +47,7 @@ const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot
       <div className="space-y-1">
         <div className="text-[11px] uppercase tracking-wide text-muted-foreground">New template "{after.template.name}"</div>
         {afterEx.map((e, i) => (
-          <div key={i} className={cn('text-xs py-0.5', markClass.add)}>+ {formatExerciseRow(e)}</div>
+          <div key={i} className={cn('text-xs py-0.5', markClass.add)}>+ {formatExerciseRow(e, names)}</div>
         ))}
       </div>
     );
@@ -53,7 +58,7 @@ const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot
       <div className="space-y-1">
         <div className="text-[11px] uppercase tracking-wide text-destructive">Delete "{before.template.name}"</div>
         {beforeEx.map((e: ExerciseInput, i: number) => (
-          <div key={i} className={cn('text-xs py-0.5', markClass.remove)}>− {formatExerciseRow(e)}</div>
+          <div key={i} className={cn('text-xs py-0.5', markClass.remove)}>− {formatExerciseRow(e, names)}</div>
         ))}
       </div>
     );
@@ -67,18 +72,18 @@ const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Edit "{after.template?.name}"</div>
       {beforeEx.map((e: ExerciseInput, i: number) =>
         !afterIds.has(e.exerciseId)
-          ? <div key={'r-' + i} className={cn('text-xs py-0.5', markClass.remove)}>− {formatExerciseRow(e)}</div>
+          ? <div key={'r-' + i} className={cn('text-xs py-0.5', markClass.remove)}>− {formatExerciseRow(e, names)}</div>
           : null
       )}
       {afterEx.map((e: ExerciseInput, i: number) => {
         if (!beforeIds.has(e.exerciseId)) {
-          return <div key={'a-' + i} className={cn('text-xs py-0.5', markClass.add)}>+ {formatExerciseRow(e)}</div>;
+          return <div key={'a-' + i} className={cn('text-xs py-0.5', markClass.add)}>+ {formatExerciseRow(e, names)}</div>;
         }
         const matching = beforeEx.find((b: ExerciseInput) => b.exerciseId === e.exerciseId);
         const changed = matching && (matching.sets !== e.sets || matching.targetReps !== e.targetReps || matching.restSeconds !== e.restSeconds);
         return (
           <div key={'k-' + i} className={cn('text-xs py-0.5', changed ? markClass.change : markClass.same)}>
-            {changed ? '~ ' : '  '}{formatExerciseRow(e)}
+            {changed ? '~ ' : '  '}{formatExerciseRow(e, names)}
           </div>
         );
       })}

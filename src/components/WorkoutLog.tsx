@@ -4,6 +4,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 import { formatWeightString } from '@/utils/weightConversion';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 
 interface WorkoutLogProps {
   logs: ExerciseLog[];
@@ -12,6 +13,7 @@ interface WorkoutLogProps {
 
 export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' }) => {
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
+  const exerciseLookup = useExerciseLookup();
   const hasAnyData = logs.some(l => l.sets.length > 0);
   if (!hasAnyData) return null;
 
@@ -26,7 +28,7 @@ export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' 
           const topWeight = log.sets.reduce((s, set) => Math.max(s, set.weight ?? 0), 0);
           return (
             <div key={i} className="flex items-center justify-between text-sm">
-              <span className="text-foreground font-medium">{log.exerciseName}</span>
+              <span className="text-foreground font-medium">{exerciseLookup[log.exerciseId] ?? log.exerciseName}</span>
               <span className="text-muted-foreground text-xs">
                 {isTimeBased(mode) ? (
                   <>

@@ -144,6 +144,25 @@ If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
 
+## Exercise names are resolved, never trusted
+
+`ExerciseBlock` and `ExerciseLog` carry an `exerciseName` next to the
+`exerciseId`, but it is only ever a snapshot of what the library said when the
+row was created. Built-in exercises ship with the bundle; custom ones load from
+Supabase after mount (`useCustomExercises` has no localStorage cache), so a row
+created in that window falls back to the raw `custom-<uuid>` id — and that
+string then persists into the session cache, the saved log, and every screen
+that reads the log back.
+
+The id is the source of truth. Resolve names at read time
+(`useExerciseLookup()`, or `buildExerciseLookup` in the share snapshot builders)
+and keep the stored name only as the fallback for an id the library no longer
+knows, e.g. a deleted custom exercise. `src/utils/exerciseNames.ts` holds the
+two helpers; `ActiveSession` re-resolves its blocks whenever the lookup changes,
+which is what heals a session that started before the custom library landed.
+Anything the AI coach renders is subject to the same rule — the proposal diff
+card resolves through the merged lookup, not `EXERCISE_DATABASE`.
+
 ## Volume exclusions
 
 A custom exercise can carry `exclude_from_volume` (see `CustomExercise` in

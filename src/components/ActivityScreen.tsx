@@ -226,13 +226,13 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                           const totalTime = e.sets.reduce((acc, set) => acc + (set.time ?? 0), 0);
                           const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);
                           const distStr = isDistanceBased(mode) && totalDist > 0 ? ` · ${formatDistance(totalDist)}` : '';
-                          return `${e.exerciseName} (${totalTime} min${distStr})`;
+                          return `${exerciseLookup[e.exerciseId] ?? e.exerciseName} (${totalTime} min${distStr})`;
                         }
                         if (mode === 'distance') {
                           const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);
-                          return `${e.exerciseName} (${totalDist > 0 ? formatDistance(totalDist) : '—'})`;
+                          return `${exerciseLookup[e.exerciseId] ?? e.exerciseName} (${totalDist > 0 ? formatDistance(totalDist) : '—'})`;
                         }
-                        return e.exerciseName;
+                        return exerciseLookup[e.exerciseId] ?? e.exerciseName;
                       }).join(', ')}</span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">

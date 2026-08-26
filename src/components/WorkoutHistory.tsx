@@ -97,7 +97,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({ sessions, onSele
               ) : (
                 <>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{s.exercises.map(e => e.exerciseName).join(', ')}</span>
+                    <span>{s.exercises.map(e => exerciseLookup[e.exerciseId] ?? e.exerciseName).join(', ')}</span>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
                     <span>{s.totalSets} sets</span>
