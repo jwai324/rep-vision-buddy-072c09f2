@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ExerciseLog } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, isTimeBased, isDistanceBased, usesWeight, formatDistance, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 import { formatWeightString } from '@/utils/weightConversion';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
@@ -34,12 +34,10 @@ export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' 
                   <>
                     {formatMmSs(totalSeconds)}
                     {isDistanceBased(mode) && totalDistance > 0 && <> · {formatDistance(totalDistance, distanceUnit)}</>}
-                    {mode === 'weight-time' && topWeight > 0 && <> · {formatWeightString(topWeight, weightUnit)}</>}
+                    {usesWeight(mode) && topWeight > 0 && <> · {formatWeightString(topWeight, weightUnit)}</>}
                   </>
                 ) : mode === 'distance' ? (
                   <>{totalDistance > 0 ? formatDistance(totalDistance, distanceUnit) : '—'}</>
-                ) : mode === 'reps' ? (
-                  <>{log.sets.length} set{log.sets.length !== 1 ? 's' : ''} · {log.sets.reduce((s, set) => s + set.reps, 0)} reps</>
                 ) : mode === 'band' ? (
                   <>{log.sets.length} set{log.sets.length !== 1 ? 's' : ''} · {log.sets.reduce((s, set) => s + set.reps, 0)} reps</>
                 ) : (

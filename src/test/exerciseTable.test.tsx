@@ -324,3 +324,58 @@ describe('ExerciseTable previous column', () => {
     expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'reps', '5');
   });
 });
+
+describe('optional load on rep- and time-based rows', () => {
+  const renderMode = (inputMode: 'reps' | 'time', set: Record<string, string>) => {
+    const onUpdateSet = vi.fn();
+    const block = makeBlock({
+      exerciseId: 'custom-iso' as ExerciseBlock['exerciseId'],
+      exerciseName: 'Calf Raise Iso',
+      sets: [{ setNumber: 1, weight: '', reps: '', rpe: '', time: '', completed: false, type: 'normal', ...set }],
+    });
+    // Rendered as the second block: the first row of the first block carries
+    // the tutorial ids instead of the addressable input-<block>-<set>-<field>.
+    render(
+      <ExerciseTable
+        {...baseProps}
+        inputMode={inputMode}
+        block={block}
+        blockIdx={1}
+        blocks={[block, block]}
+        onUpdateSet={onUpdateSet}
+        onToggleComplete={vi.fn()}
+      />,
+    );
+    return onUpdateSet;
+  };
+
+  it('gives a timed hold a weight input alongside its duration', () => {
+    const onUpdateSet = renderMode('time', { time: '45' });
+
+    const weight = document.getElementById('input-1-0-weight') as HTMLInputElement;
+    expect(weight).toBeTruthy();
+    expect(screen.getByText('lbs')).toBeInTheDocument();
+
+    fireEvent.change(weight, { target: { value: '35' } });
+    expect(onUpdateSet).toHaveBeenCalledWith(1, 0, 'weight', '35');
+  });
+
+  it('gives a rep-only exercise a weight input alongside its reps', () => {
+    const onUpdateSet = renderMode('reps', { reps: '15' });
+
+    const weight = document.getElementById('input-1-0-weight') as HTMLInputElement;
+    const reps = document.getElementById('input-1-0-reps') as HTMLInputElement;
+    expect(weight).toBeTruthy();
+    expect(reps).toBeTruthy();
+
+    fireEvent.change(weight, { target: { value: '20' } });
+    expect(onUpdateSet).toHaveBeenCalledWith(1, 0, 'weight', '20');
+  });
+
+  it('leaves the load blank rather than filling anything in', () => {
+    renderMode('reps', { reps: '15' });
+    const weight = document.getElementById('input-1-0-weight') as HTMLInputElement;
+    expect(weight.value).toBe('');
+    expect(weight.placeholder).toBe('—');
+  });
+});

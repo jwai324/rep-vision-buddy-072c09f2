@@ -10,7 +10,7 @@ import { SetTypeBadge } from '@/components/SetTypeBadge';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { EXERCISE_DATABASE } from '@/data/exercises';
-import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, usesReps, usesWeight } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, usesReps, usesWeight, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 import { targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -18,6 +18,9 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { SUPERSET_COLORS } from '@/types/activeSession';
+
+/** A hold takes a load next to its duration; distance work never does. */
+const isLoadedHold = (mode: ExerciseInputMode) => mode === 'time' || mode === 'weight-time';
 
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
@@ -473,21 +476,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           const showWeight = usesWeight(mode);
                           const showReps = usesReps(mode);
                           const isTime = isTimeBased(mode);
-                          // A loaded hold is the one mode carrying two inputs
-                          // that aren't weight+reps, so it doesn't fit the
-                          // boolean tally below.
-                          const isWeightTime = mode === 'weight-time';
+                          // A hold carries two inputs that aren't weight+reps,
+                          // so it doesn't fit the boolean tally below.
+                          const isWeightTime = isLoadedHold(mode);
                           const colCount = isWeightTime ? 4 : [true, showWeight || isTime, showReps, true].filter(Boolean).length; // set + inputs + rpe
                           const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
                             : colCount === 3 ? 'grid-cols-[32px_1fr_1fr]'
                             : 'grid-cols-[32px_1fr_1fr]';
                           const headerLabels = (() => {
                             switch (mode) {
-                              case 'time': return ['Set', 'Time (min)', 'RPE'];
                               case 'time-distance': return ['Set', 'Time (min)', 'RPE'];
+                              case 'time':
                               case 'weight-time': return ['Set', weightUnit, 'Time (min)', 'RPE'];
                               case 'distance': return ['Set', 'Dist (km)', 'RPE'];
-                              case 'reps': return ['Set', 'Reps', 'RPE'];
                               case 'band': return ['Set', 'Band', 'Reps', 'RPE'];
                               default: return ['Set', weightUnit, 'Reps', 'RPE'];
                             }
@@ -505,7 +506,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           const showWeight = usesWeight(mode);
                           const showReps = usesReps(mode);
                           const isTime = isTimeBased(mode);
-                          const isWeightTime = mode === 'weight-time';
+                          const isWeightTime = isLoadedHold(mode);
                           const colCount = isWeightTime ? 4 : [true, showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
                           const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
                             : 'grid-cols-[32px_1fr_1fr]';
@@ -539,17 +540,12 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                                 <option value="">—</option>
                                 {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
                               </select>
-                            ) : mode === 'reps' ? (
-                              <input type="number" inputMode="numeric" value={set.targetReps}
-                                onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
-                                placeholder={block.setType === 'failure' ? 'Fail' : '—'}
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             ) : (
                               <input type="number" inputMode="decimal" value={set.targetWeight}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="—"
                                 className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             )}
-                            {showReps && mode !== 'reps' && !isTime && mode !== 'distance' && (
+                            {showReps && !isTime && mode !== 'distance' && (
                               <input type="number" inputMode="numeric" value={set.targetReps}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
                                 placeholder={block.setType === 'failure' ? 'Fail' : '—'}

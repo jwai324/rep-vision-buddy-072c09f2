@@ -163,6 +163,26 @@ which is what heals a session that started before the custom library landed.
 Anything the AI coach renders is subject to the same rule — the proposal diff
 card resolves through the merged lookup, not `EXERCISE_DATABASE`.
 
+## Exercise input modes
+
+`getExerciseInputMode` turns an exercise's `measurementType` into one of the
+`ExerciseInputMode` values, and every logging surface (the live set table, the
+template builder, the session summary, validation, the finish path) branches on
+that mode rather than on the measurement type directly.
+
+The mode says which fields *lead*, not which are *allowed*. Weight is offered
+on every rep- or time-based mode — a calf raise iso done with a kettlebell, a
+weighted pull-up — and is optional there: `canCompleteSet` gates on reps or
+duration alone, and an unloaded set renders exactly as it did before the field
+existed (`12 reps`, `0:45`). `usesWeight` is the single gate; distance-only
+work is the one thing it excludes, because that numeric field is kilometres.
+Band levels are picked from a list rather than typed, so they never surface a
+weight *error* even though `usesWeight('band')` is true.
+
+Practical consequence: `'time'` renders like `'weight-time'` and `'reps'` like
+`'reps-weight'`, so those switch cases are deliberately merged. Keep them
+merged — splitting them back out is how the weight field goes missing again.
+
 ## Volume exclusions
 
 A custom exercise can carry `exclude_from_volume` (see `CustomExercise` in

@@ -182,9 +182,23 @@ describe('getSetFieldErrors', () => {
     expect(errs).toEqual({});
   });
 
-  it('does not check weight for reps-only mode', () => {
+  it('checks the optional weight a rep-only set carries', () => {
     const errs = getSetFieldErrors({ weight: '-50', reps: '10', rpe: '' }, 'lbs', 'reps');
-    expect(errs.weight).toBeUndefined();
+    expect(errs.weight).toBeTruthy();
+  });
+
+  it('leaves a rep-only set alone when no weight was typed', () => {
+    const errs = getSetFieldErrors({ weight: '', reps: '10', rpe: '' }, 'lbs', 'reps');
+    expect(errs).toEqual({});
+  });
+
+  it('checks the optional weight a hold carries', () => {
+    expect(getSetFieldErrors({ weight: '-50' }, 'lbs', 'time').weight).toBeTruthy();
+    expect(getSetFieldErrors({ weight: '' }, 'lbs', 'time').weight).toBeUndefined();
+  });
+
+  it('never reports a weight error on a band set, whose level comes from a picker', () => {
+    expect(getSetFieldErrors({ weight: '-50', reps: '10' }, 'lbs', 'band').weight).toBeUndefined();
   });
 
   it('does not check reps for time-only mode', () => {
