@@ -13,6 +13,7 @@ import { repairFlatSets } from '@/utils/dropsetRepair';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -79,6 +80,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
   const [search, setSearch] = useState('');
 
   const { exercises: customExercises } = useCustomExercisesContext();
+  const exerciseLookup = useExerciseLookup();
 
   const allRestDayExercises = useMemo(() => {
     const customRecovery = customExercises.filter(ex => ex.isRecovery);
@@ -406,7 +408,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
             <div className="flex items-center gap-2 mb-3">
               <span className="text-xl">{icon}</span>
-              <h3 className="font-semibold text-foreground">{ex.exerciseName}</h3>
+              <h3 className="font-semibold text-foreground">{exerciseLookup[ex.exerciseId] ?? ex.exerciseName}</h3>
             </div>
             {ex.note && (
               <p className="text-sm text-muted-foreground mb-3 whitespace-pre-wrap break-words">{ex.note}</p>

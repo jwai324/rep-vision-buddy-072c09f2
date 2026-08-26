@@ -108,6 +108,7 @@ export function buildSessionSnapshot(
   ctx: SnapshotContext,
 ): SessionSnapshot {
   const ids = uniq(session.exercises.map(e => e.exerciseId));
+  const lookup = buildExerciseLookup(ctx.customExercises);
   return {
     ...base(ctx, ids),
     kind: 'session',
@@ -115,9 +116,15 @@ export function buildSessionSnapshot(
       id: session.id,
       date: session.date,
       startedAt: session.startedAt,
-      // ExerciseLog already embeds exerciseName, so a shared session renders
-      // custom exercises correctly without any lookup on the viewer's side.
-      exercises: session.exercises,
+      // ExerciseLog embeds exerciseName so a shared session renders custom
+      // exercises without any lookup on the viewer's side — but that name was
+      // snapshotted when the set was logged, and a session logged before the
+      // custom library finished loading stored the raw id. Re-resolve here so
+      // a frozen payload never publishes one.
+      exercises: session.exercises.map(e => ({
+        ...e,
+        exerciseName: lookup[e.exerciseId]?.name ?? e.exerciseName,
+      })),
       duration: session.duration,
       totalVolume: session.totalVolume,
       totalSets: session.totalSets,

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 
 interface ProgramBuilderProps {
   templates: WorkoutTemplate[];
@@ -49,6 +50,7 @@ function loadDraft(initial?: WorkoutProgram): { name: string; durationWeeks: num
 }
 
 export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, history, initial, onSave, onCancel }) => {
+  const exerciseLookup = useExerciseLookup();
   const draft = React.useMemo(() => loadDraft(initial), []);
   const [name, setName] = useState(draft.name);
   const [durationWeeks, setDurationWeeks] = useState(draft.durationWeeks);
@@ -233,7 +235,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
               <optgroup label="Past Workouts">
                 {history.map(s => (
                   <option key={s.id} value={`session:${s.id}`}>
-                    {parseLocalDate(s.date).toLocaleDateString()} — {s.exercises.map(e => e.exerciseName).join(', ')}
+                    {parseLocalDate(s.date).toLocaleDateString()} — {s.exercises.map(e => exerciseLookup[e.exerciseId] ?? e.exerciseName).join(', ')}
                   </option>
                 ))}
               </optgroup>

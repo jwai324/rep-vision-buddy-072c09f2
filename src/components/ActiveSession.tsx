@@ -7,6 +7,7 @@ import { toKg, fromKg, targetWeightToInput, inputToTargetWeight } from '@/utils/
 import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors } from '@/utils/setValidation';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { findPreviousPerformance } from '@/utils/previousPerformance';
+import { repairBlockNames, resolveExerciseName } from '@/utils/exerciseNames';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
@@ -230,6 +231,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     startTimer,
   });
   const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, replaceExercise, toggleDropSets, addWarmupSet } = blockOps;
+
+  // A block's exerciseName is captured when the block is created, but custom
+  // exercises load from the network after mount — a block created in that
+  // window fell back to the raw `custom-<uuid>` id and kept it for the rest of
+  // the workout, cache and saved log included. Re-resolve every block against
+  // the live library instead of trusting the name each writer snapshotted.
+  // repairBlockNames returns the same array when nothing changed, so the
+  // setBlocks bails out rather than looping.
+  useEffect(() => {
+    setBlocks(prev => repairBlockNames(prev, exerciseLookup));
+  }, [exerciseLookup, blocks]);
   const [workoutName, setWorkoutName] = useState(() => {
     if (cachedSession?.workoutName) return cachedSession.workoutName;
     if (editSession) return 'Workout';
@@ -811,7 +823,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       },
     });
     return () => unregisterSession();
-  }, [blocks, defaultDropSetsEnabled, defaultRestSeconds, activeTimer]);
+  }, [blocks, defaultDropSetsEnabled, defaultRestSeconds, activeTimer, exerciseLookup]);
 
   // toggleDropSets and addWarmupSet are provided by useBlockMutations hook
 
@@ -963,7 +975,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         });
         return {
           exerciseId: b.exerciseId,
-          exerciseName: b.exerciseName,
+          exerciseName: resolveExerciseName(exerciseLookup, b.exerciseId, b.exerciseName),
           supersetGroup: b.supersetGroup,
           sets,
           note: b.note?.trim() || undefined,
@@ -1019,7 +1031,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
 
     finishWithTemplateCheck(finalSession);
-  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises]);
+  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, exerciseLookup]);
 
   if (showSupersetLinker) {
     return (
