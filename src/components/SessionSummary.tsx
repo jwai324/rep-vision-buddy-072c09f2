@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString, formatVolumeFromKg } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon, Share2 } from 'lucide-react';
-import { getExerciseInputMode, getBandLevelShortLabel, isTimeBased, isDistanceBased, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
@@ -379,25 +379,18 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             return { label: `${normalCount}`, isDropset: false };
           });
 
-          const gridCols = mode === 'weight-time'
-            ? 'grid-cols-[2.5rem_1fr_1fr_3rem]'
-            : isTimeBased(mode) && !isDistanceBased(mode)
+          // Every mode but distance-only carries a load column now, so the
+          // three-column layout is left to distance work alone.
+          const gridCols = (mode === 'distance')
             ? 'grid-cols-[2.5rem_1fr_3rem]'
-            : (mode === 'time-distance')
-              ? 'grid-cols-[2.5rem_1fr_1fr_3rem]'
-              : (mode === 'distance')
-                ? 'grid-cols-[2.5rem_1fr_3rem]'
-                : (mode === 'reps')
-                  ? 'grid-cols-[2.5rem_1fr_3rem]'
-                  : 'grid-cols-[2.5rem_1fr_1fr_3rem]';
+            : 'grid-cols-[2.5rem_1fr_1fr_3rem]';
 
           const headers = (() => {
             switch (mode) {
-              case 'time': return ['SET', 'TIME', 'RPE'];
               case 'time-distance': return ['SET', 'TIME', 'DIST', 'RPE'];
+              case 'time':
               case 'weight-time': return ['SET', 'WEIGHT', 'TIME', 'RPE'];
               case 'distance': return ['SET', 'DIST', 'RPE'];
-              case 'reps': return ['SET', 'REPS', 'RPE'];
               case 'band': return ['SET', 'BAND', 'REPS', 'RPE'];
               case 'reps-weight':
               default: return ['SET', 'WEIGHT', 'REPS', 'RPE'];
@@ -423,8 +416,6 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                 const { label, isDropset } = labels[j];
                 const renderCells = () => {
                   switch (mode) {
-                    case 'time':
-                      return <span className="text-center">{set.time ?? 0} min</span>;
                     case 'time-distance':
                       return (
                         <>
@@ -434,6 +425,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                       );
                     case 'distance':
                       return <span className="text-center">{set.distance ? formatDistance(set.distance, distanceUnit) : '—'}</span>;
+                    case 'time':
                     case 'weight-time':
                       return (
                         <>
@@ -441,8 +433,6 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                           <span className="text-center">{formatMmSs(set.time ?? 0)}</span>
                         </>
                       );
-                    case 'reps':
-                      return <span className="text-center">{set.reps}</span>;
                     case 'band':
                       return (
                         <>

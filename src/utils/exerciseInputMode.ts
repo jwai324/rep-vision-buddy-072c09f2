@@ -8,13 +8,18 @@ export type ExerciseInputMode = 'reps' | 'reps-weight' | 'time' | 'distance' | '
  * Determine the input mode for an exercise based on its measurementType (preferred)
  * or legacy heuristics (fallback).
  *
- * - reps: bodyweight rep work (push-ups, pull-ups)
+ * - reps: rep work that isn't primarily about load (push-ups, pull-ups)
  * - reps-weight: loaded strength work (bench press, squat)
- * - time: unloaded holds + stationary cardio (jump rope, sauna)
+ * - time: holds + stationary cardio (jump rope, sauna)
  * - distance: distance-only (rare; placeholder)
  * - time-distance: locomotive cardio (running, rowing, cycling)
- * - weight-time: loaded isometric holds (weighted plank, weighted dead hang)
+ * - weight-time: isometric holds that are usually loaded (weighted plank)
  * - band: band exercises (equipment === 'Band')
+ *
+ * The mode says which fields lead, not which are allowed: every rep- or
+ * time-based mode carries an optional weight, because a lifter can load any of
+ * them (a calf raise iso with a kettlebell, a weighted pull-up). Only
+ * distance-only work has no load column — see `usesWeight`.
  */
 export function getExerciseInputMode(
   exerciseId: string,
@@ -144,8 +149,6 @@ export function formatSetDisplay(
   unit: WeightUnit = 'kg'
 ): string {
   switch (mode) {
-    case 'time':
-      return formatMmSs(set.time ?? 0);
     case 'distance':
       return formatDistance(set.distance ?? 0);
     case 'time-distance': {
@@ -153,17 +156,19 @@ export function formatSetDisplay(
       const distPart = set.distance ? formatDistance(set.distance) : '';
       return distPart ? `${timePart} · ${distPart}` : timePart;
     }
+    case 'time':
     case 'weight-time': {
       // Added load is optional — an unweighted hold reads as a plain duration.
       const timePart = formatMmSs(set.time ?? 0);
       return set.weight ? `${set.weight} ${unit} · ${timePart}` : timePart;
     }
-    case 'reps':
-      return `${set.reps} reps`;
     case 'band':
       return `${getBandLevelShortLabel(set.weight ?? 0)} × ${set.reps}`;
+    case 'reps':
     case 'reps-weight':
     default:
+      // An unloaded set reads as plain reps, so a bodyweight exercise looks the
+      // same as it did before the weight field existed.
       if (set.weight !== undefined && set.weight !== 0) {
         return `${set.weight} ${unit} × ${set.reps}`;
       }
@@ -186,7 +191,13 @@ export function usesReps(mode: ExerciseInputMode): boolean {
   return mode === 'reps' || mode === 'reps-weight' || mode === 'band';
 }
 
-/** Whether this mode requires weight */
+/**
+ * Whether this mode offers a weight field. Load is *required* only in
+ * 'reps-weight' and 'band'; rep- and time-based work carries it as an optional
+ * extra so a loaded hold or a weighted bodyweight rep has somewhere to record
+ * it. Distance-only work is the one mode with no load column — its numeric
+ * field is kilometres.
+ */
 export function usesWeight(mode: ExerciseInputMode): boolean {
-  return mode === 'reps-weight' || mode === 'band' || mode === 'weight-time';
+  return mode !== 'distance' && mode !== 'time-distance';
 }

@@ -1,5 +1,5 @@
 import type { WeightUnit } from '@/hooks/useStorage';
-import type { ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { usesWeight, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 
 export interface ValidationResult {
   valid: boolean;
@@ -152,7 +152,9 @@ export function getSetFieldErrors(
 ): SetFieldErrors {
   const errors: SetFieldErrors = {};
 
-  const weightApplies = mode === undefined || mode === 'reps-weight' || mode === 'weight-time';
+  // Band levels come from a picker, not a typed number, so they never carry a
+  // weight error however the mode answers usesWeight.
+  const weightApplies = mode === undefined || (usesWeight(mode) && mode !== 'band');
   const repsApplies = mode === undefined || mode === 'reps-weight' || mode === 'reps' || mode === 'band';
 
   if (weightApplies && fields.weight && fields.weight !== '') {

@@ -61,11 +61,50 @@ describe('loaded isometric holds (Time + Weight)', () => {
     }
   });
 
-  it('leaves timed recovery work unloaded', () => {
+  it('keeps timed recovery work on the plain Time measurement', () => {
     for (const id of ['sauna', 'meditation', 'yoga', 'foam-rolling', 'breathing-exercises']) {
       expect(byId(id)?.measurementType, id).toBe('Time');
-      expect(usesWeight(getExerciseInputMode(id)), id).toBe(false);
+      expect(getExerciseInputMode(id), id).toBe('time');
     }
+  });
+});
+
+describe('optional load on rep- and time-based work', () => {
+  it('offers a weight field wherever reps or time are logged', () => {
+    for (const mode of ['reps', 'reps-weight', 'time', 'weight-time', 'band'] as const) {
+      expect(usesWeight(mode), mode).toBe(true);
+    }
+  });
+
+  it('keeps the load column off distance work, whose number is kilometres', () => {
+    expect(usesWeight('distance')).toBe(false);
+    expect(usesWeight('time-distance')).toBe(false);
+  });
+
+  it('never makes that load a condition of completing the set', () => {
+    // Reps and duration still gate completion; the load is extra.
+    expect(canCompleteSet('', '12', 'kg', false, '', 'reps')).toBe(true);
+    expect(canCompleteSet('', '', 'kg', false, '45', 'time')).toBe(true);
+    expect(canCompleteSet('', '', 'kg', false, '', 'reps')).toBe(false);
+    expect(canCompleteSet('', '', 'kg', false, '', 'time')).toBe(false);
+  });
+
+  it('validates a load typed onto a rep- or time-based set', () => {
+    expect(getSetFieldErrors({ weight: '-5' }, 'kg', 'reps').weight).toBeTruthy();
+    expect(getSetFieldErrors({ weight: '-5' }, 'kg', 'time').weight).toBeTruthy();
+    expect(getSetFieldErrors({ weight: '20' }, 'kg', 'reps').weight).toBeUndefined();
+  });
+
+  it('shows the load once it is there, and reads as before without it', () => {
+    expect(formatSetDisplay('reps', { reps: 12, weight: 10 }, 'kg')).toBe('10 kg × 12');
+    expect(formatSetDisplay('reps', { reps: 12 }, 'kg')).toBe('12 reps');
+    expect(formatSetDisplay('time', { reps: 1, weight: 24, time: 45 }, 'kg')).toBe('24 kg · 0:45');
+    expect(formatSetDisplay('time', { reps: 1, time: 45 }, 'kg')).toBe('0:45');
+  });
+
+  it('leaves the picker badges keyed to the measurement, not the load', () => {
+    expect(getMeasurementBadge('reps')).toEqual({ icon: '#', label: 'Reps' });
+    expect(getMeasurementBadge('time')).toEqual({ icon: '⏱', label: 'Time' });
   });
 });
 
