@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Sparkles, Send, Trash2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Sparkles, Send, Trash2, Mic, Square } from 'lucide-react';
+import { toast } from 'sonner';
 import { useChatContext, GOD_MODE_PHRASE } from '@/contexts/ChatContext';
+import { useDictation, type DictationFailure } from '@/hooks/useDictation';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
@@ -11,6 +13,24 @@ const MAX_CHAT_CHARS = 500;
 // without letting the input consume too much of the chat panel.
 const MAX_INPUT_ROWS = 3;
 const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
+
+const DICTATION_MESSAGES: Record<DictationFailure['reason'], string> = {
+  denied: 'Microphone access is blocked. Allow it in your browser settings to dictate.',
+  'no-microphone': "Couldn't find a microphone to record from.",
+  unstable: 'Voice input kept cutting out, so it stopped.',
+  'recognizer-error': 'Voice input stopped unexpectedly.',
+};
+
+/**
+ * Put dictated words after whatever is already typed. The recognizer reports
+ * phrases without surrounding whitespace, so the separating space is added
+ * here; an empty box keeps the spoken text flush against the left.
+ */
+function appendSpoken(typed: string, spoken: string): string {
+  if (!spoken) return typed;
+  const base = typed.trimEnd();
+  return (base ? `${base} ${spoken}` : spoken).slice(0, MAX_CHAT_CHARS);
+}
 
 const TypingIndicator = () => (
   <div className="flex items-center gap-1 px-3 py-2">
@@ -91,28 +111,74 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     }
   }, [isOpen]);
 
-  const isGodPhrase = input.trim().toLowerCase() === GOD_MODE_PHRASE;
+  const handleDictationFailure = useCallback((failure: DictationFailure) => {
+    toast.error(DICTATION_MESSAGES[failure.reason]);
+  }, []);
+  const dictation = useDictation({ onFailure: handleDictationFailure });
+
+  // `input` is only what was typed; the dictation engine holds what was spoken
+  // until it is folded in below. Composing the two at render time — rather than
+  // pushing each finished phrase into the box — means a phrase the browser
+  // reports twice shows up once, because the engine's transcript is a value and
+  // not a stream of appends.
+  const spoken = dictation.partial
+    ? `${dictation.transcript} ${dictation.partial}`.trim()
+    : dictation.transcript;
+  const value = appendSpoken(input, spoken);
+
+  // Fold the transcript into the typed text as soon as the run ends, whichever
+  // way it ended — the mic button, a closing panel, or a failure. Until this
+  // runs the words live in the engine, so nothing on screen changes; after it
+  // they are an ordinary draft that persists like any other.
+  const { transcript, listening, reset: resetDictation, stop: stopDictation } = dictation;
+  useEffect(() => {
+    if (listening || !transcript) return;
+    setInput(prev => appendSpoken(prev, transcript));
+    resetDictation();
+  }, [listening, transcript, resetDictation]);
+
+  // Leaving the microphone live behind a dismissed panel would give no sign it
+  // was still recording.
+  useEffect(() => {
+    if (!isOpen && listening) stopDictation();
+  }, [isOpen, listening, stopDictation]);
+
+  const isGodPhrase = value.trim().toLowerCase() === GOD_MODE_PHRASE;
   const limitBlocks = creditsBalance.exhausted && !godMode && !isGodPhrase;
-  const isSendDisabled = !input.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
+  const isSendDisabled = !value.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
+  const micDisabled = isLoading || limitBlocks || consecutiveErrors >= 2;
 
   const handleSend = () => {
     if (isSendDisabled) return;
-    const text = input.trim().slice(0, MAX_CHAT_CHARS);
+    const text = value.trim().slice(0, MAX_CHAT_CHARS);
     setInput('');
+    // Sending clears what was said as well as what was typed, but leaves the
+    // run going: the mic button is the only thing that stops it, so a follow-up
+    // can be dictated without reaching for it again.
+    dictation.reset();
     if (navigator.vibrate) navigator.vibrate(10);
     sendMessage(text);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
-    if (val.length <= MAX_CHAT_CHARS) {
-      setInput(val);
-    }
+    if (val.length > MAX_CHAT_CHARS) return;
+    setInput(val);
+    // The box already shows everything dictated so far, so an edit makes the
+    // edited text the new baseline. Keeping the transcript would replay those
+    // words on top of it.
+    if (transcript || dictation.partial) dictation.reset();
+  };
+
+  const handleMicToggle = () => {
+    if (micDisabled) return;
+    if (navigator.vibrate) navigator.vibrate(5);
+    dictation.toggle();
   };
 
   // Auto-resize the message textarea from 1 row up to MAX_INPUT_ROWS,
   // scrolling internally beyond that. Runs whenever the value changes (typing,
-  // paste) and when the panel first opens so the initial single-row
+  // paste, dictation) and when the panel first opens so the initial single-row
   // height is applied deterministically. Falls back to a scrollHeight-only
   // formula if the computed line-height parses as NaN (some test envs).
   useEffect(() => {
@@ -129,7 +195,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     const next = Math.min(el.scrollHeight, cap);
     el.style.height = `${next}px`;
     el.style.overflowY = el.scrollHeight > cap ? 'auto' : 'hidden';
-  }, [input, isOpen]);
+  }, [value, isOpen]);
 
   const handleFabClick = () => {
     if (!hasSeenPulse) {
@@ -161,7 +227,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     dragStartY.current = null;
   };
 
-  const charsRemaining = MAX_CHAT_CHARS - input.length;
+  const charsRemaining = MAX_CHAT_CHARS - value.length;
 
   return (
     <>
@@ -355,20 +421,35 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
 
           {/* Input */}
           <div className="px-4 pb-4 pt-2 border-t border-border flex-shrink-0">
+            {dictation.listening && (
+              <div className="flex items-center gap-2 mb-1.5 text-[11px] text-primary">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                </span>
+                <span>Listening — words appear as you speak</span>
+              </div>
+            )}
             <div className="flex items-end gap-2">
               <div className="flex-1 relative">
                 <textarea
                   ref={inputRef}
                   rows={1}
-                  value={input}
+                  value={value}
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder={creditsBalance.exhausted && !godMode ? "Out of credits" : "Ask anything…"}
+                  placeholder={
+                    creditsBalance.exhausted && !godMode
+                      ? "Out of credits"
+                      : dictation.listening
+                        ? "Speak now…"
+                        : "Ask anything…"
+                  }
                   className="block w-full resize-none bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                   disabled={isLoading || consecutiveErrors >= 2}
                   maxLength={MAX_CHAT_CHARS}
                 />
-                {input.length > 0 && (
+                {value.length > 0 && (
                   <span className={cn(
                     // Anchored to the bottom-right so the counter stays put as
                     // the textarea grows from 1 to MAX_INPUT_ROWS. pointer-
@@ -376,10 +457,28 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                     "pointer-events-none absolute right-3 bottom-2 text-[10px]",
                     charsRemaining <= 50 ? "text-destructive" : "text-muted-foreground"
                   )}>
-                    {input.length}/{MAX_CHAT_CHARS}
+                    {value.length}/{MAX_CHAT_CHARS}
                   </span>
                 )}
               </div>
+              {dictation.supported && (
+                <button
+                  onClick={handleMicToggle}
+                  disabled={micDisabled}
+                  aria-label={dictation.listening ? 'Stop voice input' : 'Start voice input'}
+                  aria-pressed={dictation.listening}
+                  className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0",
+                    dictation.listening
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/40"
+                      : micDisabled
+                        ? "bg-secondary text-muted-foreground"
+                        : "bg-secondary text-foreground hover:bg-secondary/70 hover:text-primary"
+                  )}
+                >
+                  {dictation.listening ? <Square className="w-3.5 h-3.5 fill-current" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
               <button
                 onClick={handleSend}
                 disabled={isSendDisabled}
