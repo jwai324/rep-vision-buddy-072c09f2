@@ -17,7 +17,7 @@ const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
 const DICTATION_MESSAGES: Record<DictationFailure['reason'], string> = {
   denied: 'Microphone access is blocked. Allow it in your browser settings to dictate.',
   'no-microphone': "Couldn't find a microphone to record from.",
-  unstable: 'Voice input kept cutting out, so it stopped.',
+  'no-start': "Voice input didn't start. Tap the mic to try again.",
   'recognizer-error': 'Voice input stopped unexpectedly.',
 };
 
@@ -433,7 +433,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                 </span>
-                <span>Listening — words appear as you speak</span>
+                <span>Listening — pause when you're done</span>
               </div>
             )}
             <div className="flex items-end gap-2">

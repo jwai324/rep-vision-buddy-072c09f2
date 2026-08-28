@@ -86,12 +86,14 @@ Default model is `claude-opus-4-7` (the most capable model in the Claude 4.x fam
   session had re-heard. That guesswork cut real words out of messages at least
   as often as it removed duplicates. Every word the recognizer reports is kept,
   once, in the order it was reported.
-- **A run outlives a session.** Browsers end a session on their own silence
-  timeout even with `continuous = true`, so a run reopens one until the user
-  stops or nothing has been said for `QUIET_RUN_LIMIT_MS` (which is what
-  releases the microphone when someone walks away mid-run). Sessions never
-  overlap or interact: a session's words are committed to the run once, when it
-  ends, and only the recognizer that is currently live is listened to.
+- **A run is one session.** Browsers end a session on their own silence timeout
+  and don't all honour `continuous`, so the run ends when the session does: the
+  words are handed over exactly as if the mic button had been pressed, and the
+  microphone is released. Reopening a session behind the user's back is what an
+  earlier version did, and it left the mic live long after anyone was talking
+  and gave a departing session the chance to report over the one replacing it.
+  Only the recognizer that is currently live is listened to, and a phrase still
+  in flight when the run ends is kept — those words were on screen.
 
 The chat composes `input + transcript + partial` at render time rather than
 pushing finished phrases into the box, and folds the words into the draft when

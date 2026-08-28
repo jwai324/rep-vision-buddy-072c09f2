@@ -101,14 +101,6 @@ const mic = () => recognizers[recognizers.length - 1];
 const box = () => screen.getByRole('textbox') as HTMLTextAreaElement;
 const startDictating = () => fireEvent.click(screen.getByLabelText('Start voice input'));
 
-/** The browser timing the session out and the engine opening the next one. */
-async function reopen() {
-  mic().timeOut();
-  await act(async () => {
-    await new Promise(resolve => setTimeout(resolve, 0));
-  });
-}
-
 beforeEach(() => {
   localStorage.clear();
   chatValue.isOpen = true;
@@ -125,7 +117,6 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition;
-  vi.useRealTimers();
 });
 
 describe('AI coach voice input', () => {
@@ -166,19 +157,40 @@ describe('AI coach voice input', () => {
     expect(box()).toHaveValue('add three sets of squats');
   });
 
-  it('writes a sentence spoken across a session timeout once', async () => {
+  it('banks what was said and releases the mic when the browser ends the session', () => {
+    render(<AIChatBubble />);
+    startDictating();
+    mic().said('add three sets of squats');
+
+    // Browsers close the session on their own silence timeout, and the run ends
+    // with it rather than reopening one behind the user's back.
+    mic().timeOut();
+
+    expect(screen.getByLabelText('Start voice input')).toBeTruthy();
+    expect(box()).toHaveValue('add three sets of squats');
+  });
+
+  it('keeps the phrase in flight when the browser ends the session under it', () => {
     render(<AIChatBubble />);
     startDictating();
     mic().said('add three sets');
+    mic().speaking('of squats');
+    mic().timeOut();
 
-    // The browser closes the session on its silence timeout mid-sentence and
-    // the run picks up in a new one.
-    await reopen();
+    expect(box()).toHaveValue('add three sets of squats');
+  });
+
+  it('carries a second run on after the words already in the box', () => {
+    render(<AIChatBubble />);
+    startDictating();
+    mic().said('add three sets');
+    mic().timeOut();
+
+    startDictating();
     mic().said('of squats');
     mic().replay();
-    mic().speaking('and a plank');
 
-    expect(box()).toHaveValue('add three sets of squats and a plank');
+    expect(box()).toHaveValue('add three sets of squats');
   });
 
   it('sends the dictated message and does not let a replayed phrase come back', () => {
@@ -256,21 +268,6 @@ describe('AI coach voice input', () => {
     startDictating();
     mic().said('and lunges');
     expect(box()).toHaveValue('add squats and lunges');
-  });
-
-  it('releases the microphone once nobody has said anything for a while', () => {
-    vi.useFakeTimers();
-    render(<AIChatBubble />);
-    startDictating();
-    mic().said('add three sets of squats');
-
-    act(() => {
-      vi.advanceTimersByTime(11_000);
-    });
-    mic().timeOut();
-
-    expect(screen.getByLabelText('Start voice input')).toBeTruthy();
-    expect(box()).toHaveValue('add three sets of squats');
   });
 
   it('treats an edit as the new baseline instead of replaying over it', () => {

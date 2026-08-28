@@ -109,11 +109,10 @@ function makeDictation(onFailure?: (failure: DictationFailure) => void) {
   return new Dictation({ onFailure, now: () => clock });
 }
 
-/** The browser timing the session out and the engine opening the next one. */
-async function reopen() {
+/** The browser closing the session on its own after a silence. */
+function timeOut() {
   clock += 4000;
   newest().timeOut();
-  await settle();
 }
 
 beforeEach(() => {
@@ -231,73 +230,92 @@ describe('Dictation — what the browser reports', () => {
   });
 });
 
-describe('Dictation — sessions coming and going', () => {
-  it('keeps the run going when the browser times a session out', async () => {
+describe('Dictation — the run ends with the session', () => {
+  it('ends the run when the browser closes the session, keeping what was said', async () => {
     const dictation = makeDictation();
     dictation.start();
     newest().said('add three sets');
 
-    clock += 4000;
-    newest().timeOut();
-    // The mic button must not blink while the next session is opening.
-    expect(dictation.getState().listening).toBe(true);
+    timeOut();
+    expect(dictation.getState()).toMatchObject({
+      listening: false,
+      transcript: 'add three sets',
+      partial: '',
+    });
+
+    // Nothing is reopened behind the user's back.
+    await settle();
+    expect(built).toHaveLength(1);
+    expect(newest().live).toBe(false);
+  });
+
+  it('keeps the phrase in flight when the session ends under it', () => {
+    const dictation = makeDictation();
+    dictation.start();
+    newest().said('add three sets');
+    newest().speaking('of squats');
+
+    timeOut();
+    // Those words were on screen; ending the run must not take them back.
+    expect(dictation.getState()).toMatchObject({
+      transcript: 'add three sets of squats',
+      partial: '',
+    });
+  });
+
+  it('keeps the phrase in flight when the mic button ends the run', () => {
+    const dictation = makeDictation();
+    dictation.start();
+    newest().speaking('add three sets');
+    dictation.stop();
+
+    expect(dictation.getState()).toMatchObject({
+      transcript: 'add three sets',
+      partial: '',
+      listening: false,
+    });
+  });
+
+  it('ends the run quietly when the browser gives up waiting for speech', async () => {
+    const onFailure = vi.fn();
+    const dictation = makeDictation(onFailure);
+    dictation.start();
+    newest().said('add squats');
+    newest().fail('no-speech');
+    timeOut();
     await settle();
 
+    expect(onFailure).not.toHaveBeenCalled();
+    expect(dictation.getState()).toMatchObject({ listening: false, transcript: 'add squats' });
+  });
+
+  it('takes a second tap to dictate again, and starts that run empty', () => {
+    const dictation = makeDictation();
+    dictation.start();
+    newest().said('add squats');
+    timeOut();
+
+    dictation.start();
     expect(built).toHaveLength(2);
-    expect(newest().live).toBe(true);
-    expect(dictation.getState().transcript).toBe('add three sets');
+    expect(dictation.getState()).toMatchObject({ listening: true, transcript: '' });
+    newest().said('and lunges');
+    expect(dictation.getState().transcript).toBe('and lunges');
   });
 
-  it('writes a sentence spoken across a session boundary exactly once', async () => {
-    const dictation = makeDictation();
-    dictation.start();
-    newest().said('add three sets');
-    await reopen();
-
-    // The new session numbers its results from zero, the same slots the last
-    // one used. Its words go after the old ones, they do not overwrite them and
-    // they do not come back a second time when the list is replayed.
-    newest().said('of squats');
-    newest().said('and a plank');
-    newest().replay();
-
-    expect(dictation.getState().transcript).toBe('add three sets of squats and a plank');
-  });
-
-  it('carries the transcript through session after session', async () => {
-    const dictation = makeDictation();
-    dictation.start();
-    for (const word of ['one', 'two', 'three', 'four']) {
-      newest().said(word);
-      await reopen();
-    }
-    expect(dictation.getState().transcript).toBe('one two three four');
-  });
-
-  it('drops the phrase in flight when a session ends under it', async () => {
-    const dictation = makeDictation();
-    dictation.start();
-    newest().said('add three sets');
-    newest().speaking('of squ');
-    await reopen();
-
-    expect(dictation.getState()).toMatchObject({ transcript: 'add three sets', partial: '' });
-  });
-
-  it('ignores a session still talking after it has been replaced', async () => {
+  it('ignores a session still talking after the run moved on', () => {
     const dictation = makeDictation();
     dictation.start();
     const first = newest();
     first.said('add three sets');
-    await reopen();
+    timeOut();
 
-    // A recognizer on its way out reporting the audio the live one is also
-    // hearing is the one thing that could double a word, so a report is only
-    // taken from the session that is actually running.
-    first.saidLate('of squats');
+    dictation.start();
+    // A recognizer on its way out reporting into the run that replaced it is
+    // the one thing that could double a word.
+    first.saidLate('add three sets');
     newest().said('of squats');
 
-    expect(dictation.getState().transcript).toBe('add three sets of squats');
+    expect(dictation.getState().transcript).toBe('of squats');
   });
 });
 
@@ -341,14 +359,14 @@ describe('Dictation — banking what was said', () => {
     expect(dictation.getState().partial).toBe('');
   });
 
-  it('keeps banked words out of the sessions that follow', async () => {
+  it('keeps banked words out of what the run hands over at the end', () => {
     const dictation = makeDictation();
     dictation.start();
     newest().said('add three sets');
     dictation.reset();
-    await reopen();
-
     newest().said('of squats');
+    timeOut();
+
     expect(dictation.getState().transcript).toBe('of squats');
   });
 
@@ -391,84 +409,25 @@ describe('Dictation — ending a run', () => {
     expect(newest().live).toBe(false);
   });
 
-  it('cancels a queued reopen when stopped in the gap between sessions', async () => {
-    const dictation = makeDictation();
+  it('says so when a session dies on the spot without ever listening', () => {
+    const onFailure = vi.fn();
+    const dictation = makeDictation(onFailure);
     dictation.start();
-    clock += 4000;
+    // No clock movement: the session ended the instant it opened.
     newest().timeOut();
-    dictation.stop();
-    await settle();
 
-    expect(built).toHaveLength(1);
+    expect(onFailure).toHaveBeenCalledWith({ reason: 'no-start' });
     expect(dictation.getState().listening).toBe(false);
   });
 
-  it('ends a run nobody is talking into, keeping what was said', async () => {
-    const dictation = makeDictation();
-    dictation.start();
-    newest().said('add three sets');
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      clock += 5000;
-      newest().timeOut();
-      await settle();
-    }
-
-    expect(dictation.getState()).toMatchObject({
-      listening: false,
-      transcript: 'add three sets',
-    });
-    // And the microphone is not reopened behind the user's back.
-    const opened = built.length;
-    await settle();
-    expect(built).toHaveLength(opened);
-    expect(newest().live).toBe(false);
-  });
-
-  it('goes on reopening while the talking continues', async () => {
+  it('does not call a silence that lasted a while a failure to start', () => {
     const onFailure = vi.fn();
     const dictation = makeDictation(onFailure);
     dictation.start();
-
-    for (let attempt = 0; attempt < 8; attempt++) {
-      newest().said(`phrase ${attempt}`);
-      await reopen();
-    }
-
-    expect(onFailure).not.toHaveBeenCalled();
-    expect(dictation.getState().listening).toBe(true);
-  });
-
-  it('ends a silent run quietly rather than calling it a failure', async () => {
-    const onFailure = vi.fn();
-    const dictation = makeDictation(onFailure);
-    dictation.start();
-
-    for (let attempt = 0; attempt < 8; attempt++) {
-      clock += 4000;
-      newest().timeOut();
-      await settle();
-    }
+    timeOut();
 
     expect(onFailure).not.toHaveBeenCalled();
     expect(dictation.getState().listening).toBe(false);
-  });
-
-  it('gives up when sessions keep dying the instant they open', async () => {
-    const onFailure = vi.fn();
-    const dictation = makeDictation(onFailure);
-    dictation.start();
-
-    for (let attempt = 0; attempt < 6; attempt++) {
-      newest().timeOut();
-      await settle();
-    }
-
-    expect(onFailure).toHaveBeenCalledWith({ reason: 'unstable' });
-    expect(dictation.getState().listening).toBe(false);
-    const opened = built.length;
-    await settle();
-    expect(built).toHaveLength(opened);
   });
 
   it('releases the microphone on dispose', async () => {
@@ -536,20 +495,6 @@ describe('Dictation — failures', () => {
     });
   });
 
-  it('treats a pause as a pause, not a failure', async () => {
-    const onFailure = vi.fn();
-    const dictation = makeDictation(onFailure);
-    dictation.start();
-    newest().fail('no-speech');
-    clock += 4000;
-    newest().timeOut();
-    await settle();
-
-    expect(onFailure).not.toHaveBeenCalled();
-    expect(dictation.getState().listening).toBe(true);
-    expect(built).toHaveLength(2);
-  });
-
   it('reports a browser with no recognizer at all instead of doing nothing', () => {
     delete (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition;
     const onFailure = vi.fn();
@@ -560,7 +505,7 @@ describe('Dictation — failures', () => {
     expect(dictation.getState().listening).toBe(false);
   });
 
-  it('survives a recognizer that throws instead of starting', async () => {
+  it('survives a recognizer that throws instead of starting', () => {
     (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition = function () {
       const recognizer = new FakeRecognizer();
       recognizer.start = () => {
@@ -573,9 +518,7 @@ describe('Dictation — failures', () => {
     const dictation = makeDictation(onFailure);
 
     expect(() => dictation.start()).not.toThrow();
-    for (let attempt = 0; attempt < 6; attempt++) await settle();
-
-    expect(onFailure).toHaveBeenCalledWith({ reason: 'unstable' });
+    expect(onFailure).toHaveBeenCalledWith({ reason: 'no-start' });
     expect(dictation.getState().listening).toBe(false);
   });
 });
