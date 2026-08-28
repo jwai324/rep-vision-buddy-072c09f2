@@ -146,7 +146,10 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const isGodPhrase = value.trim().toLowerCase() === GOD_MODE_PHRASE;
   const limitBlocks = creditsBalance.exhausted && !godMode && !isGodPhrase;
   const isSendDisabled = !value.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
-  const micDisabled = isLoading || limitBlocks || consecutiveErrors >= 2;
+  // Whatever else is going on, a live microphone can always be switched off:
+  // sending leaves the run going deliberately, and `isLoading` disabling the
+  // button there would strand it listening until the reply landed.
+  const micDisabled = !dictation.listening && (isLoading || limitBlocks || consecutiveErrors >= 2);
 
   const handleSend = () => {
     if (isSendDisabled) return;

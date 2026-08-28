@@ -106,6 +106,13 @@ const SCREENED_PHRASES_AFTER_REOPEN = 2;
 // swallow the start of a new one.
 const ECHO_CONTEXT_WORDS = 30;
 
+// A run that has gone this long without the recognizer reporting anything is
+// over: the user has said their piece and walked away from the mic. Reopening
+// past this point leaves the microphone live indefinitely — and every reopen is
+// another chance to re-hear audio. Comfortably longer than a pause for thought,
+// and longer than the browser's own per-session silence timeout.
+const QUIET_RUN_LIMIT_MS = 12_000;
+
 // No restart can fix these, so the run ends instead of reopening into them.
 const FATAL_ERRORS: Record<string, DictationFailure['reason']> = {
   'not-allowed': 'denied',
@@ -198,6 +205,11 @@ export class DictationEngine {
   // file itself once the browser finalizes it would hand over the same words a
   // second time.
   private pendingKeys = new Set<string>();
+  // The opening words screening removed from a phrase, by key. A browser that
+  // redelivers the phrase hands back the untrimmed text, and the cut has to be
+  // made again — re-screening can't do it, because the transcript it would be
+  // measured against now contains the phrase itself.
+  private readonly echoedPrefixes = new Map<string, string>();
   // The end of what has been banked, kept only so a session reopening right
   // after a reset can still recognize the audio it re-hears.
   private bankedTail = '';
@@ -211,6 +223,8 @@ export class DictationEngine {
 
   private sessionSeq = 0;
   private sessionOpenedAt = 0;
+  // When the recognizer last reported anything, across sessions.
+  private lastHeardAt = 0;
   private sessionHeardSomething = false;
   private stillbornSessions = 0;
   // Phrases still to be screened for echoed audio after a reopen.
@@ -247,6 +261,7 @@ export class DictationEngine {
     }
     this.wantsToListen = true;
     this.stillbornSessions = 0;
+    this.lastHeardAt = this.now();
     this.openSession(false);
   };
 
@@ -275,6 +290,7 @@ export class DictationEngine {
     for (const key of this.pendingKeys) this.settled.add(key);
     this.pendingKeys.clear();
     this.phrases.clear();
+    this.echoedPrefixes.clear();
     this.publish({ ...this.state, transcript: '', partial: '' });
   };
 
@@ -355,7 +371,10 @@ export class DictationEngine {
     this.sessionSeq += 1;
     this.sessionOpenedAt = this.now();
     this.sessionHeardSomething = false;
-    if (isReopen) this.screeningLeft = SCREENED_PHRASES_AFTER_REOPEN;
+    // Cleared on a fresh session as well as set on a reopen: a leftover count
+    // would screen the first thing said in a new run against the last run's
+    // words and swallow it.
+    this.screeningLeft = isReopen ? SCREENED_PHRASES_AFTER_REOPEN : 0;
 
     const session = this.sessionSeq;
     const recognizer = new Recognizer();
@@ -384,6 +403,7 @@ export class DictationEngine {
   private handleResults(session: number, event: RecognitionResultEvent): void {
     this.sessionHeardSomething = true;
     this.stillbornSessions = 0;
+    this.lastHeardAt = this.now();
 
     const partials: string[] = [];
     const stillSpeaking = new Set<string>();
@@ -405,20 +425,27 @@ export class DictationEngine {
       }
       if (!spoken) continue;
 
-      // Screening only applies the first time a phrase is filed. A redelivery
-      // is measured against a transcript that already contains it, which would
-      // read as an echo and blank the phrase out.
+      // Screening runs against the transcript, so it only works the first time
+      // a phrase is filed — by the redelivery that transcript already contains
+      // the phrase, and measuring it again would blank it out. A redelivery is
+      // instead re-trimmed against the prefix screening took off it, which is
+      // still the right cut and leaves a revision that drops the echo itself
+      // alone.
       if (this.phrases.has(key)) {
-        this.phrases.set(key, spoken);
+        const echoedPrefix = this.echoedPrefixes.get(key);
+        this.phrases.set(key, echoedPrefix ? withoutEcho(echoedPrefix, spoken) : spoken);
         continue;
       }
       if (this.screeningLeft > 0) {
         this.screeningLeft -= 1;
-        const fresh = withoutEcho(this.echoContext(), spoken);
+        const words = spoken.split(/\s+/);
+        const echoed = echoedWordCount(this.echoContext(), spoken);
+        const fresh = words.slice(echoed).join(' ');
         if (!fresh) {
           this.settled.add(key);
           continue;
         }
+        if (echoed > 0) this.echoedPrefixes.set(key, words.slice(0, echoed).join(' '));
         this.phrases.set(key, fresh);
         continue;
       }
@@ -450,6 +477,15 @@ export class DictationEngine {
   private handleEnd(): void {
     if (!this.wantsToListen) {
       this.publish({ ...this.state, listening: false, partial: '' });
+      return;
+    }
+
+    // "Keep listening until I say stop" can't mean forever: a mic nobody is
+    // talking into is left live, and each reopen is another chance to re-hear
+    // the tail of what was already said. The transcript survives, so this lands
+    // in the message box exactly as if the mic button had been pressed.
+    if (this.now() - this.lastHeardAt >= QUIET_RUN_LIMIT_MS) {
+      this.stop();
       return;
     }
 

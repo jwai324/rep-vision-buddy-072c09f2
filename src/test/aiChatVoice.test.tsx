@@ -82,6 +82,7 @@ function startDictating() {
 beforeEach(() => {
   localStorage.clear();
   chatValue.isOpen = true;
+  chatValue.isLoading = false;
   sendMessage.mockClear();
   toastError.mockClear();
   recognizers = [];
@@ -168,6 +169,39 @@ describe('AI coach voice input', () => {
     fireEvent.click(screen.getByLabelText('Send message'));
 
     expect(screen.getByLabelText('Stop voice input')).toBeTruthy();
+  });
+
+  it('writes a sentence a reopened session re-hears exactly once', async () => {
+    render(<AIChatBubble />);
+    startDictating();
+    mic().speak([{ text: 'add three sets', final: true }]);
+
+    // The browser closes the session on its own silence timeout; the run
+    // reopens and the new session re-hears the tail of what was just said.
+    await act(async () => {
+      mic().stop();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    mic().speak([{ text: 'three sets of squats', final: true }]);
+    mic().speak([
+      { text: 'three sets of squats', final: true },
+      { text: 'and a plank', final: false },
+    ]);
+
+    expect(box()).toHaveValue('add three sets of squats and a plank');
+  });
+
+  it('can switch the microphone off while a reply is still streaming', () => {
+    const { rerender } = render(<AIChatBubble />);
+    startDictating();
+    mic().speak([{ text: 'add three sets of squats', final: true }]);
+    fireEvent.click(screen.getByLabelText('Send message'));
+
+    chatValue.isLoading = true;
+    rerender(<AIChatBubble />);
+    fireEvent.click(screen.getByLabelText('Stop voice input'));
+
+    expect(screen.getByLabelText('Start voice input')).toBeTruthy();
   });
 
   it('banks what was said as an ordinary draft once the mic is switched off', () => {

@@ -241,6 +241,45 @@ describe('DictationEngine', () => {
     expect(engine.getState().transcript).toBe('add three sets of squats');
   });
 
+  it('keeps re-heard audio out of a phrase the browser replays', async () => {
+    const engine = makeEngine();
+    engine.start();
+    newest().speak([{ text: 'add three sets', final: true }]);
+    clock += 4000;
+    newest().timeOut();
+    await settle();
+
+    newest().speak([{ text: 'three sets of squats', final: true }]);
+    // Chrome replays the session's whole result list every time it reports
+    // something new, and hands back the phrase with the re-heard words still on
+    // the front of it.
+    newest().speak([
+      { text: 'three sets of squats', final: true },
+      { text: 'and a plank', final: false },
+    ]);
+    expect(engine.getState().transcript).toBe('add three sets of squats');
+
+    newest().speak([
+      { text: 'three sets of squats', final: true },
+      { text: 'and a plank', final: true },
+    ]);
+    expect(engine.getState().transcript).toBe('add three sets of squats and a plank');
+  });
+
+  it('takes a replayed phrase the browser has revised past the re-heard words', async () => {
+    const engine = makeEngine();
+    engine.start();
+    newest().speak([{ text: 'add three sets', final: true }]);
+    clock += 4000;
+    newest().timeOut();
+    await settle();
+
+    newest().speak([{ text: 'three sets of squats', final: true }]);
+    // A revision that drops the echo itself is already the trimmed phrase.
+    newest().speak([{ text: 'of squats', final: true }]);
+    expect(engine.getState().transcript).toBe('add three sets of squats');
+  });
+
   it('screens the reopened preview too, so it does not show words already banked', async () => {
     const engine = makeEngine();
     engine.start();
@@ -273,6 +312,23 @@ describe('DictationEngine', () => {
       { text: 'squats', final: true },
     ]);
     expect(engine.getState().transcript).toBe('squats then lunges squats');
+  });
+
+  it('screens nothing at the start of a fresh run', async () => {
+    const engine = makeEngine();
+    engine.start();
+    newest().speak([{ text: 'add squats', final: true }]);
+    clock += 4000;
+    newest().timeOut();
+    await settle();
+    // The reopened session hears nothing, so its screening allowance is unspent.
+    engine.stop();
+    engine.reset();
+
+    // Saying the same thing again in a new run is a new sentence, not an echo.
+    engine.start();
+    newest().speak([{ text: 'add squats', final: true }]);
+    expect(engine.getState().transcript).toBe('add squats');
   });
 
   it('stops for good on a denied microphone instead of reopening into it', async () => {
@@ -337,7 +393,7 @@ describe('DictationEngine', () => {
     expect(built).toHaveLength(openedBeforeGivingUp);
   });
 
-  it('does not count a long silent session against the run', async () => {
+  it('lets a long session that heard nothing end the run quietly, not as a failure', async () => {
     const onFailure = vi.fn();
     const engine = makeEngine(onFailure);
     engine.start();
@@ -349,7 +405,44 @@ describe('DictationEngine', () => {
     }
 
     expect(onFailure).not.toHaveBeenCalled();
+    expect(engine.getState().listening).toBe(false);
+  });
+
+  it('keeps reopening while the talking continues', async () => {
+    const onFailure = vi.fn();
+    const engine = makeEngine(onFailure);
+    engine.start();
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      newest().speak([{ text: `phrase ${attempt}`, final: true }]);
+      clock += 4000;
+      newest().timeOut();
+      await settle();
+    }
+
+    expect(onFailure).not.toHaveBeenCalled();
     expect(engine.getState().listening).toBe(true);
+  });
+
+  it('ends a run the user has stopped talking into, keeping what was said', async () => {
+    const engine = makeEngine();
+    engine.start();
+    newest().speak([{ text: 'add three sets', final: true }]);
+
+    // Silence, session after session, until the run has plainly been abandoned.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      clock += 5000;
+      newest().timeOut();
+      await settle();
+    }
+
+    expect(engine.getState().listening).toBe(false);
+    expect(engine.getState().transcript).toBe('add three sets');
+    // And the microphone is not reopened behind the user's back.
+    const openedBeforeGivingUp = built.length;
+    await settle();
+    expect(built).toHaveLength(openedBeforeGivingUp);
+    expect(newest().live).toBe(false);
   });
 
   it('stays stopped after stop, even though closing fires the browser end event', async () => {
