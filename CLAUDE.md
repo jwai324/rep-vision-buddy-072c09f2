@@ -70,6 +70,34 @@ One-shot, non-streaming. Returns JSON. The system prompt has `cache_control: { t
 
 Default model is `claude-opus-4-7` (the most capable model in the Claude 4.x family). If responses are too expensive, swap to `claude-sonnet-4-6` — both edge functions have a `MODEL` constant at the top.
 
+## Voice input (AI coach chat)
+
+`src/utils/dictation.ts` drives the mic button in `AIChatBubble`, via
+`useDictation`. Three rules keep it from repeating or eating words:
+
+- **The transcript is derived, never accumulated.** Every report from the
+  recognizer rebuilds the run's text from the results the browser is holding,
+  each filed under the index the browser gave it. Chrome replays a session's
+  *whole* result list on every event, so anything that appends per callback
+  duplicates phrases; assigning by index makes a redelivery a no-op and a
+  revision an overwrite.
+- **Nothing guesses whether words are a repeat.** An earlier version compared
+  incoming words against the transcript to strip audio it believed a reopened
+  session had re-heard. That guesswork cut real words out of messages at least
+  as often as it removed duplicates. Every word the recognizer reports is kept,
+  once, in the order it was reported.
+- **A run outlives a session.** Browsers end a session on their own silence
+  timeout even with `continuous = true`, so a run reopens one until the user
+  stops or nothing has been said for `QUIET_RUN_LIMIT_MS` (which is what
+  releases the microphone when someone walks away mid-run). Sessions never
+  overlap or interact: a session's words are committed to the run once, when it
+  ends, and only the recognizer that is currently live is listened to.
+
+The chat composes `input + transcript + partial` at render time rather than
+pushing finished phrases into the box, and folds the words into the draft when
+the run ends. `reset()` is how the caller says "I have taken these words" —
+sending a message, or editing the box by hand.
+
 ## OAuth
 
 Native Supabase OAuth (`supabase.auth.signInWithOAuth`) — see `src/pages/Auth.tsx`. To enable Google sign-in, configure the Google provider in the Supabase dashboard (Authentication → Providers) with your OAuth client ID and redirect URI.
