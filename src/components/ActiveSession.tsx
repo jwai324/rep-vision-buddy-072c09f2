@@ -110,7 +110,7 @@ interface ActiveSessionProps {
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
   onMinimize?: () => void;
-  onUpdateTemplate?: (template: WorkoutTemplate) => void;
+  onUpdateTemplate?: (template: WorkoutTemplate) => void | Promise<boolean | void>;
   hideTimersPref?: boolean;
   onUpdateHideTimers?: (val: boolean) => void;
 }
@@ -311,6 +311,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   useEffect(() => {
     if (templateId) templateIdRef.current = templateId;
   }, [templateId]);
+
+  // Guards the dialog against acting twice on one decision: the button's own
+  // handler and the close that follows it both see the pre-click state.
+  const templateChoiceMade = useRef(false);
 
   // Pending finished session — held while we ask the user about updating the template
   const [pendingFinishedSession, setPendingFinishedSession] = useState<WorkoutSession | null>(null);
@@ -909,6 +913,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const diff = diffTemplateSnapshots(originalTemplateSnapshot.current!, afterSnapshot);
       if (diff.hasChanges) {
         const updated = buildUpdatedTemplate(template!, completedBlocks);
+        templateChoiceMade.current = false;
         setPendingFinishedSession(finalSession);
         setPendingTemplateUpdate({ template: updated, summary: diff.summary });
         return;
@@ -917,6 +922,42 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
     onFinish(finalSession);
   }, [blocks, onFinish, isEditMode, weightUnit, customExercises, template, onUpdateTemplate]);
+
+  const keepTemplate = useCallback(() => {
+    if (templateChoiceMade.current) return;
+    templateChoiceMade.current = true;
+    const session = pendingFinishedSession;
+    setPendingTemplateUpdate(null);
+    setPendingFinishedSession(null);
+    if (session) onFinish(session);
+  }, [pendingFinishedSession, onFinish]);
+
+  /**
+   * Save the template, then finish. The save is awaited rather than fired and
+   * forgotten: it can fail (a phone with no signal at the end of a workout is
+   * the common case), and reporting success before the write was even
+   * attempted is what made a lost update look like one that had landed.
+   * `onUpdateTemplate` keeps the edit and retries it later, so a failure here
+   * is reported, not silently dropped.
+   */
+  const acceptTemplateUpdate = useCallback(async () => {
+    if (templateChoiceMade.current) return;
+    templateChoiceMade.current = true;
+    const session = pendingFinishedSession;
+    const tplUpdate = pendingTemplateUpdate;
+    setPendingTemplateUpdate(null);
+    setPendingFinishedSession(null);
+    if (session) onFinish(session);
+
+    if (!tplUpdate || !onUpdateTemplate) return;
+    try {
+      const saved = await onUpdateTemplate(tplUpdate.template);
+      if (saved !== false) toast.success('Template updated');
+    } catch (e) {
+      console.error('[ActiveSession] update template failed:', e);
+      toast.error('Failed to update template');
+    }
+  }, [pendingFinishedSession, pendingTemplateUpdate, onFinish, onUpdateTemplate]);
 
   const finishWorkout = useCallback(() => {
     // Guard: require at least one completed set
@@ -1561,12 +1602,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       <AlertDialog
         open={!!pendingTemplateUpdate}
         onOpenChange={(open) => {
-          if (!open && pendingFinishedSession) {
-            // Treat dismiss (overlay click / escape) as "Keep template"
-            const session = pendingFinishedSession;
-            setPendingTemplateUpdate(null);
-            setPendingFinishedSession(null);
-            onFinish(session);
+          // Radix also fires this as the dialog closes behind a button press,
+          // and the state those handlers cleared is still set in this render's
+          // closure — so without the ref guard a click finishes twice.
+          if (!open && !templateChoiceMade.current && pendingFinishedSession) {
+            // Treat dismiss (escape / back gesture) as "Keep template"
+            keepTemplate();
           }
         }}
       >
@@ -1582,34 +1623,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                const session = pendingFinishedSession;
-                setPendingTemplateUpdate(null);
-                setPendingFinishedSession(null);
-                if (session) onFinish(session);
-              }}
-            >
+            <AlertDialogCancel onClick={keepTemplate}>
               Keep template
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                const session = pendingFinishedSession;
-                const tplUpdate = pendingTemplateUpdate;
-                setPendingTemplateUpdate(null);
-                setPendingFinishedSession(null);
-                if (tplUpdate && onUpdateTemplate) {
-                  try {
-                    onUpdateTemplate(tplUpdate.template);
-                    toast.success('Template updated');
-                  } catch (e) {
-                    console.error('[ActiveSession] update template failed:', e);
-                    toast.error('Failed to update template');
-                  }
-                }
-                if (session) onFinish(session);
-              }}
-            >
+            <AlertDialogAction onClick={acceptTemplateUpdate}>
               Update template
             </AlertDialogAction>
           </AlertDialogFooter>

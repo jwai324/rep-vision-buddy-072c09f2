@@ -144,6 +144,18 @@ If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
 
+`saveTemplate` is the one write that survives a failure. It resolves
+`false` rather than throwing, applies the edit locally anyway, and parks the
+template in `src/utils/pendingTemplateWrites.ts`; the next successful load
+lays those entries over the loaded rows and replays them. The update-template
+prompt at the end of a workout is why: it fires once, on a gym phone that may
+have no signal, and its screen unmounts moments later, so a dropped upsert
+had nothing to retry from and the change was gone — while the session itself
+still saved, because the user was sitting on the summary screen and could
+press Save again. Anything that resolves a template's fate (a later
+successful save, a delete) must clear its queued entry, or the replay
+resurrects it.
+
 ## Exercise names are resolved, never trusted
 
 `ExerciseBlock` and `ExerciseLog` carry an `exerciseName` next to the

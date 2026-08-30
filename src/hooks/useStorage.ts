@@ -9,6 +9,7 @@ import { parseLocalDate } from '@/utils/dateUtils';
 import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
 import { getFutureWorkoutsCompletedBySession } from '@/utils/scheduledWorkout';
 import { readStorageCache, writeStorageCache, type CachedStorage } from '@/utils/storageCache';
+import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate, type PendingTemplateWrite } from '@/utils/pendingTemplateWrites';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
 type TemplateRow = Database['public']['Tables']['workout_templates']['Row'];
@@ -270,6 +271,43 @@ function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; pre
   };
 }
 
+/**
+ * Replay template writes that an earlier session couldn't get through. Runs
+ * after a successful load, so a connection good enough to read is the signal
+ * to try writing again. Stops at the first failure and leaves the rest queued
+ * rather than burning through a batch that is clearly still offline.
+ */
+async function flushPendingTemplateWrites(userId: string, pending: PendingTemplateWrite[]): Promise<void> {
+  for (const { template } of pending) {
+    try {
+      const { error } = await supabase.from('workout_templates').upsert({
+        id: template.id,
+        user_id: userId,
+        name: template.name,
+        exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
+      });
+      if (error) {
+        console.error('[useStorage] pending template flush failed:', error);
+        return;
+      }
+      clearPendingTemplate(userId, template.id);
+    } catch (e) {
+      console.error('[useStorage] pending template flush failed:', e);
+      return;
+    }
+  }
+}
+
+/** Loaded rows with any not-yet-written edits laid back over the top. */
+function overlayPendingTemplates(
+  loaded: WorkoutTemplate[],
+  pending: PendingTemplateWrite[],
+): WorkoutTemplate[] {
+  const byId = new Map(loaded.map(t => [t.id, t] as const));
+  for (const { template } of pending) byId.set(template.id, template);
+  return [...byId.values()];
+}
+
 export function useStorage() {
   const { user } = useAuth();
   // Supabase hands back a freshly deserialized user object on every auth
@@ -341,7 +379,14 @@ export function useStorage() {
         if (cancelled) return;
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
-        if (templatesRes.data) setTemplates(templatesRes.data.map(mapTemplate));
+        if (templatesRes.data) {
+          const loaded = templatesRes.data.map(mapTemplate);
+          // A queued write is newer than what the server just handed back, so
+          // it wins on screen while the replay below catches the row up.
+          const pending = readPendingTemplates(userId);
+          setTemplates(pending.length ? overlayPendingTemplates(loaded, pending) : loaded);
+          if (pending.length) void flushPendingTemplateWrites(userId, pending);
+        }
         if (programsRes.data) setPrograms(programsRes.data.map(mapProgram));
         if (futureRes.data) setFutureWorkouts(futureRes.data.map(mapFutureWorkout));
         if (settingsRes.data) {
@@ -456,25 +501,47 @@ export function useStorage() {
     }
   }, [user, futureWorkouts]);
 
-  const saveTemplate = useCallback(async (template: WorkoutTemplate) => {
-    if (!user) return;
-    const { error } = await supabase.from('workout_templates').upsert({
-      id: template.id,
-      user_id: user.id,
-      name: template.name,
-      exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
-    });
-    if (error) {
-      console.error('[useStorage] saveTemplate error:', error);
-      toast.error('Failed to save template');
-      return;
-    }
+  const applyTemplateLocally = useCallback((template: WorkoutTemplate) => {
     setTemplates(prev => {
       const exists = prev.findIndex(t => t.id === template.id);
       if (exists >= 0) return prev.map(t => t.id === template.id ? template : t);
       return [...prev, template];
     });
-  }, [user]);
+  }, []);
+
+  /**
+   * Persist a template. Resolves true only once the row is actually written.
+   *
+   * A failure keeps the edit rather than dropping it: the new version is
+   * applied locally and parked in the pending queue, which the next successful
+   * load replays. That matters most for the finish-a-workout prompt, whose
+   * screen unmounts moments later and so has nowhere of its own to retry from.
+   */
+  const saveTemplate = useCallback(async (template: WorkoutTemplate): Promise<boolean> => {
+    if (!user) return false;
+    let error: unknown = null;
+    try {
+      ({ error } = await supabase.from('workout_templates').upsert({
+        id: template.id,
+        user_id: user.id,
+        name: template.name,
+        exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
+      }));
+    } catch (e) {
+      // An offline fetch rejects rather than resolving with an error payload.
+      error = e;
+    }
+    if (error) {
+      console.error('[useStorage] saveTemplate error:', error);
+      toast.error('Failed to save template — it will retry when you\'re back online');
+      applyTemplateLocally(template);
+      queuePendingTemplate(user.id, template);
+      return false;
+    }
+    clearPendingTemplate(user.id, template.id);
+    applyTemplateLocally(template);
+    return true;
+  }, [user, applyTemplateLocally]);
 
   const deleteTemplate = useCallback(async (id: string) => {
     if (!user) return;
@@ -484,6 +551,9 @@ export function useStorage() {
       toast.error('Failed to delete template');
       return;
     }
+    // Otherwise a queued write for this template would recreate it on the
+    // next load.
+    clearPendingTemplate(user.id, id);
     setTemplates(prev => prev.filter(t => t.id !== id));
   }, [user]);
 
