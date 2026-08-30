@@ -45,6 +45,44 @@ describe('fromKg', () => {
   });
 });
 
+describe('round-trip stability (the "14.99" bug)', () => {
+  const LBS_ENTRIES = [15, 2.5, 27.5, 35, 45, 95, 135, 137.5, 185, 225, 315, 405];
+
+  it.each(LBS_ENTRIES)('an entry of %s lbs reads back as the same number', (entered) => {
+    expect(fromKg(toKg(entered, 'lbs'), 'lbs')).toBe(entered);
+  });
+
+  it.each(LBS_ENTRIES)('%s lbs survives repeated save/load cycles', (entered) => {
+    let kg = toKg(entered, 'lbs');
+    for (let i = 0; i < 20; i++) {
+      kg = toKg(fromKg(kg, 'lbs'), 'lbs');
+    }
+    expect(fromKg(kg, 'lbs')).toBe(entered);
+  });
+
+  it('heals legacy rows that were stored rounded to 0.01 kg', () => {
+    // 15 lbs used to be persisted as 6.8 kg, which read back as 14.99.
+    expect(fromKg(6.8, 'lbs')).toBe(15);
+    expect(fromKg(61.23, 'lbs')).toBe(135);
+    expect(fromKg(102.06, 'lbs')).toBe(225);
+  });
+
+  it('renders into an input without conversion residue', () => {
+    const stored = inputToTargetWeight('15', 'lbs', false)!;
+    expect(targetWeightToInput(stored, 'lbs', false)).toBe('15');
+  });
+
+  it('keeps kg entries exact', () => {
+    expect(fromKg(toKg(60, 'kg'), 'kg')).toBe(60);
+    expect(fromKg(toKg(62.5, 'kg'), 'kg')).toBe(62.5);
+  });
+
+  it('shows an lbs-entered load to a kg user without a decimal tail', () => {
+    expect(fromKg(toKg(15, 'lbs'), 'kg')).toBe(6.8);
+    expect(fromKg(toKg(135, 'lbs'), 'kg')).toBe(61.24);
+  });
+});
+
 describe('toKg', () => {
   it('returns same value for kg', () => {
     expect(toKg(100, 'kg')).toBe(100);
