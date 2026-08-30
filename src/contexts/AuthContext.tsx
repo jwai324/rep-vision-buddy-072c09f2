@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { clearStorageCache } from '@/utils/storageCache';
+import { clearAllPendingTemplates } from '@/utils/pendingTemplateWrites';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -63,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Drop the cached snapshot first so the next account on this device can't
     // be shown the previous one's data while its own load is in flight.
     clearStorageCache();
+    clearAllPendingTemplates();
     await supabase.auth.signOut();
   }, []);
 
