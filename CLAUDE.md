@@ -302,6 +302,36 @@ import into their own library.
 - Links preview with the generic RepVision card — this is a client-rendered SPA
   behind a catch-all rewrite, so per-share OG tags would need a prerender step.
 
+## Error reports and the triage routine
+
+Every signed-in screen has a small bug handle hanging from the top centre of
+the viewport (`src/components/ErrorReportButton.tsx`). It opens a bottom sheet
+that files a row in `public.error_reports` with the screen, route, deployed
+commit, device info, and the last 20 console errors. The commit comes from
+`__APP_VERSION__`, which `vite.config.ts` injects from Vercel's
+`VERCEL_GIT_COMMIT_SHA` (local builds say `dev`); the console errors come from
+`src/utils/consoleErrorBuffer.ts`, installed in `main.tsx` before the first
+render. The handle sits at top centre because every screen header puts its
+controls at the left and right edges and starts at or below 16px, so a 24px
+strip in the middle is free on all of them; the AI coach owns the bottom-right.
+
+The table is a queue, not a log. A scheduled Claude Code Routine ("RepVision
+error triage", nightly around 03:30 ET) follows
+`.claude/skills/error-triage/SKILL.md`: obvious defects are fixed directly on
+`main` behind the full gate (lint, typecheck, tests, build, then the CI
+workflow on the pushed commit) and their rows are **deleted**; anything else is
+parked as `needs_review` with a note the user sees in-app under "Your open
+reports", and listed on the Notion page "🐛 RepVision Error Reports" (child of
+"💠 AI Exercise App") for the Morning Brief to pick up. Answer a parked item by
+adding a nested `Decision:` bullet under it in Notion; the next run treats that
+as the spec, and `Decision: drop` deletes the row. Users have no UPDATE or
+DELETE policy on the table — the routine writes with the service role through
+the Supabase MCP server.
+
+`.github/workflows/ci.yml` runs the same gate on GitHub for every push to
+`main` and every PR. The routine waits for it and reverts a fix whose run goes
+red, so keep the workflow's steps identical to the local gate.
+
 ## Known issues / deferred work
 
 `.lovable/plan.md` contains an audit of pre-existing issues that were not part of the migration. Highest priority (per that doc):

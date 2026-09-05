@@ -1,0 +1,31 @@
+# The same gate the error-triage routine runs locally before it pushes a fix
+# to main. Running it again here, on the pushed commit, is the routine's
+# independent "did it actually work" check: it waits for this run and reverts
+# the commit if it goes red.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run lint
+
+      - run: npx tsc -p tsconfig.app.json --noEmit
+
+      - run: npm test
+
+      - run: npm run build

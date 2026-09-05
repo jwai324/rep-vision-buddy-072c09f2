@@ -12,6 +12,12 @@ export default defineConfig({
     },
   },
   plugins: [react()],
+  define: {
+    // Vercel exposes the deploying commit at build time. Error reports carry
+    // it so the triage routine can tell a report filed against an old build
+    // from one filed against current main. Local builds say "dev".
+    __APP_VERSION__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? "dev").slice(0, 7)),
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

@@ -116,6 +116,63 @@ export type Database = {
         }
         Relationships: []
       }
+      error_reports: {
+        Row: {
+          app_version: string | null
+          context: Json
+          created_at: string
+          description: string
+          expected: string | null
+          id: string
+          kind: string
+          route: string | null
+          screen: string | null
+          status: string
+          triage_notes: string | null
+          triaged_at: string | null
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+          viewport: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          context?: Json
+          created_at?: string
+          description: string
+          expected?: string | null
+          id?: string
+          kind: string
+          route?: string | null
+          screen?: string | null
+          status?: string
+          triage_notes?: string | null
+          triaged_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+          viewport?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          context?: Json
+          created_at?: string
+          description?: string
+          expected?: string | null
+          id?: string
+          kind?: string
+          route?: string | null
+          screen?: string | null
+          status?: string
+          triage_notes?: string | null
+          triaged_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+          viewport?: string | null
+        }
+        Relationships: []
+      }
       future_workouts: {
         Row: {
           completed: boolean | null
