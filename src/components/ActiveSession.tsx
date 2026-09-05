@@ -8,6 +8,7 @@ import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldE
 import { parseLocalDate } from '@/utils/dateUtils';
 import { findPreviousPerformance } from '@/utils/previousPerformance';
 import { repairBlockNames, resolveExerciseName } from '@/utils/exerciseNames';
+import { resolveTemplateSupersets } from '@/utils/templateSupersets';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
@@ -61,7 +62,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 // Re-export shared types from dedicated module
 export type { TimerStatus, PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import type { PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
-import { SUPERSET_COLORS } from '@/types/activeSession';
+import { supersetColorClass } from '@/types/activeSession';
 import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
@@ -192,11 +193,21 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, [editSession, weightUnit, defaultRestSeconds]);
 
+  // A template can express a superset two ways (an explicit group id, or the
+  // older setType-only form the AI tools still write); the session only
+  // understands the group id, so links are resolved here before anything
+  // reads the template — the blocks below and the update-template snapshot
+  // both, so a workout run exactly as planned never reports a superset change.
+  const resolvedTemplateExercises = useMemo(
+    () => (templateExercises ? resolveTemplateSupersets(templateExercises) : undefined),
+    [templateExercises],
+  );
+
   const [blocks, setBlocks] = useState<ExerciseBlock[]>(() => {
     if (editBlocks) return normalizeBlocks(editBlocks);
     if (cachedSession) return normalizeBlocks(cachedSession.blocks);
     return initialExercises.map((id, idx) => {
-      const tpl = templateExercises?.[idx];
+      const tpl = resolvedTemplateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
       const restSec = tpl?.restSeconds ?? defaultRestSeconds;
       const isBand = getExerciseInputMode(id, customExercises) === 'band';
@@ -276,7 +287,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // Replaces the old window.confirm(), which is suppressed by some mobile
   // WebViews so the guardrail silently defaulted through.
   const [pendingShortWorkout, setPendingShortWorkout] = useState<WorkoutSession | null>(null);
-  const [discardConfirmInput, setDiscardConfirmInput] = useState('');
   const [showFocusMode, setShowFocusMode] = useState(cachedSession?.showFocusMode ?? false);
   const [hideTimers, setHideTimers] = useState(hideTimersPref);
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
@@ -300,8 +310,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     isEditMode
       ? null
       : cachedSession?.templateSnapshot
-        ?? (templateExercises && templateId
-          ? snapshotFromTemplateExercises(templateExercises)
+        ?? (resolvedTemplateExercises && templateId
+          ? snapshotFromTemplateExercises(resolvedTemplateExercises)
           : null)
   );
 
@@ -1117,11 +1127,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     );
   }
 
-  const getSupersetColorClass = (group?: number) => {
-    if (group === undefined) return '';
-    return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
-  };
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -1368,7 +1373,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 )}
                 <div ref={el => { blockRefs.current[blockIdx] = el; }}>
                   <SortableExerciseItem id={block.exerciseId}>
-                    <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
+                    <div className={`rounded-lg ${supersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
                       <ExerciseTable
                         block={block}
                         blockIdx={blockIdx}
@@ -1471,36 +1476,23 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Discard confirmation dialog — requires typing DISCARD so a stray
-          tap on an in-progress workout can't destroy an hour of logging. */}
-      <AlertDialog
-        open={showDiscardConfirm}
-        onOpenChange={(open) => {
-          setShowDiscardConfirm(open);
-          if (!open) setDiscardConfirmInput('');
-        }}
-      >
+      {/* Discard confirmation — a plain yes/no, the same question the
+          minimized bar asks. The dialog itself is the guard against a stray
+          tap; making the user type a word on top of it only slowed down a
+          decision they had already made. */}
+      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Discard Workout</AlertDialogTitle>
             <AlertDialogDescription>
-              All progress will be lost. Type <span className="font-semibold text-foreground">DISCARD</span> to confirm.
+              Are you sure you want to discard this workout? All progress will be lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <input
-            type="text"
-            value={discardConfirmInput}
-            onChange={(e) => setDiscardConfirmInput(e.target.value)}
-            placeholder="Type DISCARD"
-            autoFocus
-            className="w-full bg-secondary/60 border border-border rounded-md px-3 py-2 text-base text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-destructive"
-          />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={discardConfirmInput.trim().toUpperCase() !== 'DISCARD'}
-              onClick={() => { setDiscardConfirmInput(''); onCancel(); }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40 disabled:pointer-events-none"
+              onClick={() => { setShowDiscardConfirm(false); onCancel(); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Discard
             </AlertDialogAction>

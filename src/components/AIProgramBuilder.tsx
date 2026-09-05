@@ -534,6 +534,10 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
           targetReps: repsVal || 10,
           setType: (ex.set_type as SetType) || 'normal',
           restSeconds: ex.rest_seconds,
+          // The schema shows superset_group as null and never says how to
+          // number it, so only a positive id is trusted; a pair the model
+          // marked by set_type alone is linked by adjacency when it is used.
+          ...(typeof ex.superset_group === 'number' && ex.superset_group > 0 ? { supersetGroup: ex.superset_group } : {}),
         };
       });
 

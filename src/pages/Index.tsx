@@ -78,6 +78,16 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
 
+  // Screens swap inside one window-scrolled container, so a screen opened
+  // from the bottom of the dashboard — Start Workout lives there — inherited
+  // the dashboard's scroll offset and painted from the middle of the page.
+  // Reset before paint on every screen change. Keyed on the type, not the
+  // screen object, so an in-place update of the current screen's payload
+  // (a future workout being edited) does not yank the page to the top.
+  React.useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [screen.type]);
+
   // Everything a snapshot needs beyond the item itself. Built here because
   // this is the one place that has preferences, profile, and custom exercises
   // in hand at the same time.
@@ -324,14 +334,14 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             session={pendingSummary}
             weightUnit={storage.preferences.weightUnit}
             onSave={() => {
-              storage.saveSession(pendingSummary);
+              storage.saveSession(pendingSummary, { templateId: screen.templateId });
               clearSessionCache();
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
             }}
             onSaveAsTemplate={() => {
-              storage.saveSession(pendingSummary);
+              storage.saveSession(pendingSummary, { templateId: screen.templateId });
               clearSessionCache();
               storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds));
               setMinimizedSession(null);

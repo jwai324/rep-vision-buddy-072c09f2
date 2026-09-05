@@ -451,7 +451,12 @@ export function useStorage() {
     setActiveProgramIdState(id);
   }, []);
 
-  const saveSession = useCallback(async (session: WorkoutSession) => {
+  /**
+   * Persist a session. `origin.templateId` is the template the workout was
+   * started from, when there is one; it decides which of the day's scheduled
+   * workouts the session marks done, and is not stored on the session itself.
+   */
+  const saveSession = useCallback(async (session: WorkoutSession, origin: { templateId?: string | null } = {}) => {
     if (!user) return;
     const { error } = await supabase.from('workout_sessions').upsert({
       id: session.id,
@@ -482,7 +487,10 @@ export function useStorage() {
 
     // Flag matching scheduled workouts as done rather than deleting them — the
     // day's plan stays on the calendar and can still be started again.
-    const matchingFws = getFutureWorkoutsCompletedBySession(session, futureWorkouts);
+    const matchingFws = getFutureWorkoutsCompletedBySession(session, futureWorkouts, {
+      templateId: origin.templateId,
+      templates,
+    });
     if (matchingFws.length > 0) {
       const updateResults = await Promise.all(
         matchingFws.map(fw =>
@@ -499,7 +507,7 @@ export function useStorage() {
       }
       setFutureWorkouts(prev => prev.map(fw => updatedIds.has(fw.id) ? { ...fw, completed: true } : fw));
     }
-  }, [user, futureWorkouts]);
+  }, [user, futureWorkouts, templates]);
 
   const applyTemplateLocally = useCallback((template: WorkoutTemplate) => {
     setTemplates(prev => {
