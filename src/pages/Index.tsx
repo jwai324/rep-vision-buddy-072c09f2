@@ -31,6 +31,7 @@ import { CustomExercisesProvider, useCustomExercisesContext } from '@/contexts/C
 import { TutorialProvider, useTutorial } from '@/contexts/TutorialContext';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { AIChatBubble } from '@/components/AIChatBubble';
+import { ErrorReportButton } from '@/components/ErrorReportButton';
 import { templateFromSession, useDayClickHandler } from '@/hooks/useScreenHelpers';
 import { buildProgramSnapshot, buildSessionSnapshot, buildTemplateSnapshot } from '@/utils/shareSnapshot';
 
@@ -685,6 +686,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         templates={storage.templates}
         onOpenCredits={() => setScreen({ type: 'credits' })}
       />
+
+      <ErrorReportButton screen={screen.type} />
       </div>
     </div>
   );

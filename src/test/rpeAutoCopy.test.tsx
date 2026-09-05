@@ -32,6 +32,7 @@ describe('RPE auto-copy on set complete', () => {
       useBlockMutations(blocks, setBlocks, {
         weightUnit: 'lbs',
         defaultDropSetsEnabled: false,
+        defaultRestSeconds: 90,
         customExercises: [],
         startTimer: vi.fn(),
       }),
@@ -58,6 +59,7 @@ describe('RPE auto-copy on set complete', () => {
       useBlockMutations(blocks, setBlocks, {
         weightUnit: 'lbs',
         defaultDropSetsEnabled: false,
+        defaultRestSeconds: 90,
         customExercises: [],
         startTimer: vi.fn(),
       }),
