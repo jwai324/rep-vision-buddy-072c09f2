@@ -91,3 +91,57 @@ describe('a completed day still exposes what was scheduled', () => {
     expect(results[0].futureWorkout?.completed).toBe(true);
   });
 });
+
+describe('a day with two scheduled workouts', () => {
+  const push = fw({ id: 'fw-push', templateId: 'tpl-push', label: 'Push' });
+  const legs = fw({ id: 'fw-legs', templateId: 'tpl-legs', label: 'Legs' });
+  const templates: WorkoutTemplate[] = [
+    { id: 'tpl-push', name: 'Push', exercises: [
+      { exerciseId: 'bench', sets: 3, targetReps: 10, setType: 'normal', restSeconds: 90 },
+      { exerciseId: 'ohp', sets: 3, targetReps: 10, setType: 'normal', restSeconds: 90 },
+    ] },
+    { id: 'tpl-legs', name: 'Legs', exercises: [
+      { exerciseId: 'squat', sets: 3, targetReps: 10, setType: 'normal', restSeconds: 90 },
+      { exerciseId: 'rdl', sets: 3, targetReps: 10, setType: 'normal', restSeconds: 90 },
+    ] },
+  ];
+  const logged = (...ids: string[]) => ids.map(exerciseId => ({ exerciseId, exerciseName: exerciseId, sets: [] }));
+
+  it('marks only the workout the session was started from', () => {
+    const matched = getFutureWorkoutsCompletedBySession(session(), [push, legs], { templateId: 'tpl-legs', templates });
+    expect(matched).toEqual([legs]);
+  });
+
+  it('marks nothing when a finished workout is done again while the other is outstanding', () => {
+    const matched = getFutureWorkoutsCompletedBySession(
+      session(),
+      [{ ...push, completed: true }, legs],
+      { templateId: 'tpl-push', templates },
+    );
+    expect(matched).toEqual([]);
+  });
+
+  it('matches a session with no template by the exercises it logged', () => {
+    const matched = getFutureWorkoutsCompletedBySession(
+      session({ exercises: logged('squat', 'rdl') }),
+      [push, legs],
+      { templates },
+    );
+    expect(matched).toEqual([legs]);
+  });
+
+  it('falls back to the first scheduled workout when nothing tells them apart', () => {
+    const matched = getFutureWorkoutsCompletedBySession(session(), [push, legs], { templates });
+    expect(matched).toEqual([push]);
+  });
+
+  it('still counts a substituted workout against the one entry on a single-workout day', () => {
+    const matched = getFutureWorkoutsCompletedBySession(session(), [push], { templateId: 'tpl-legs', templates });
+    expect(matched).toEqual([push]);
+  });
+
+  it('never marks more than one workout for one session', () => {
+    const matched = getFutureWorkoutsCompletedBySession(session(), [push, legs]);
+    expect(matched).toHaveLength(1);
+  });
+});

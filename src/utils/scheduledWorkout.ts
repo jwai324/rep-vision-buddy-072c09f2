@@ -61,6 +61,13 @@ export function getScheduledWorkoutsForDate(
   });
 }
 
+export interface SessionOrigin {
+  /** The template the session was started from, when there is one. */
+  templateId?: string | null;
+  /** The template library, for matching a session with no known template by what it logged. */
+  templates?: WorkoutTemplate[];
+}
+
 /**
  * Which scheduled entries a saved session marks as done.
  *
@@ -68,18 +75,48 @@ export function getScheduledWorkoutsForDate(
  * calendar (and stays startable) and is only flagged `completed`. A rest-day
  * session only matches scheduled rest days, and a workout session only matches
  * scheduled workouts, so logging one kind never marks the other as done.
+ *
+ * One workout completes one scheduled workout. A program can put two on the
+ * same day, and finishing one of them must not flag both, so among the day's
+ * outstanding entries the session marks:
+ *  - the entry for the template it was started from, when it has one;
+ *  - nothing, when that template's entry is already done — that is a repeat
+ *    of a finished workout, not the other one on the day;
+ *  - otherwise the entry whose template shares the most exercises with what
+ *    was logged, the first scheduled winning a tie. This covers a blank
+ *    workout, a re-performed history entry, or a substituted template: the
+ *    day's plan still counts as done, as it always did.
  */
 export function getFutureWorkoutsCompletedBySession(
-  session: { date: string; isRestDay?: boolean },
+  session: { date: string; isRestDay?: boolean; exercises?: { exerciseId: string }[] },
   futureWorkouts: FutureWorkout[],
+  origin: SessionOrigin = {},
 ): FutureWorkout[] {
   const sessionDateStr = format(parseLocalDate(session.date), 'yyyy-MM-dd');
   const wantsRest = session.isRestDay === true;
-  return futureWorkouts.filter(fw => {
-    if (fw.completed) return false;
+  const onDay = futureWorkouts.filter(fw => {
     if (format(parseLocalDate(fw.date), 'yyyy-MM-dd') !== sessionDateStr) return false;
     return wantsRest ? fw.templateId === 'rest' : fw.templateId !== 'rest';
   });
+  const outstanding = onDay.filter(fw => !fw.completed);
+  if (wantsRest || outstanding.length === 0) return outstanding;
+
+  if (origin.templateId) {
+    const own = outstanding.find(fw => fw.templateId === origin.templateId);
+    if (own) return [own];
+    if (onDay.some(fw => fw.templateId === origin.templateId)) return [];
+  }
+
+  const logged = new Set((session.exercises ?? []).map(e => e.exerciseId));
+  const templatesById = new Map((origin.templates ?? []).map(t => [t.id, t]));
+  let best = outstanding[0];
+  let bestOverlap = -1;
+  for (const fw of outstanding) {
+    const template = templatesById.get(fw.templateId);
+    const overlap = template ? template.exercises.filter(e => logged.has(e.exerciseId)).length : 0;
+    if (overlap > bestOverlap) { best = fw; bestOverlap = overlap; }
+  }
+  return [best];
 }
 
 /**

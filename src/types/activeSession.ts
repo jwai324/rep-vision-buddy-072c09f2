@@ -96,3 +96,13 @@ export const SUPERSET_COLORS = [
   'bg-purple-500/20',
   'bg-white/20',
 ];
+
+/**
+ * The tint a linked exercise's card carries. One helper for every surface —
+ * the template builder, the live session, the summary — so a superset looks
+ * the same wherever it is shown.
+ */
+export function supersetColorClass(group?: number): string {
+  if (group === undefined) return '';
+  return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
+}

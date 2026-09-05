@@ -17,7 +17,8 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { SupersetLinker } from '@/components/SupersetLinker';
-import { SUPERSET_COLORS } from '@/types/activeSession';
+import { supersetColorClass } from '@/types/activeSession';
+import { linkedSetType, resolveTemplateSupersets } from '@/utils/templateSupersets';
 
 /** A hold takes a load next to its duration; distance work never does. */
 const isLoadedHold = (mode: ExerciseInputMode) => mode === 'time' || mode === 'weight-time';
@@ -30,7 +31,12 @@ interface TemplateBuilderProps {
   onCancel: () => void;
 }
 
-const setTypes: SetType[] = ['normal', 'superset', 'dropset', 'failure'];
+// A superset is a link between exercises, made from the exercise menu exactly
+// as in a live session — not a per-exercise set type — so it is not a pill here.
+const setTypes: SetType[] = ['normal', 'dropset', 'failure'];
+
+/** The pill to light up for a block; a linked block's 'superset' echo reads as plain. */
+const displayedSetType = (setType: SetType): SetType => setType === 'superset' ? 'normal' : setType;
 
 interface TemplateSetRow {
   setNumber: number;
@@ -46,11 +52,6 @@ interface TemplateBlock {
   setType: SetType;
   restSeconds: number;
   supersetGroup?: number;
-}
-
-function getSupersetColorClass(group?: number): string {
-  if (group === undefined) return '';
-  return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
 }
 
 type CustomExerciseLite = Parameters<typeof getExerciseInputMode>[1];
@@ -94,7 +95,7 @@ function blockToExercise(
     exerciseId: block.exerciseId,
     sets: block.sets.length,
     targetReps: reps,
-    setType: block.setType,
+    setType: linkedSetType(block.setType, block.supersetGroup !== undefined),
     restSeconds: block.restSeconds,
     // Only weight-based modes put a load in this column — for distance work it
     // holds km, which doesn't belong in targetWeight.
@@ -119,13 +120,17 @@ function loadDraft(
       const draft = JSON.parse(raw);
       // Only restore if editing the same template (or both are new)
       if ((draft.id ?? null) === (initialTemplate?.id ?? null)) {
-        return { name: draft.name ?? '', blocks: draft.blocks ?? [] };
+        // A draft from before supersets became links may still carry the
+        // old per-exercise pill, so it is resolved the same way a template is.
+        return { name: draft.name ?? '', blocks: resolveTemplateSupersets<TemplateBlock>(draft.blocks ?? []) };
       }
     }
   } catch { /* ignore corrupt data */ }
   return {
     name: initialTemplate?.name ?? '',
-    blocks: initialTemplate?.exercises.map(ex => exerciseToBlock(ex, undefined, weightUnit, customExercises)) ?? [],
+    blocks: initialTemplate
+      ? resolveTemplateSupersets(initialTemplate.exercises).map(ex => exerciseToBlock(ex, undefined, weightUnit, customExercises))
+      : [],
   };
 }
 
@@ -153,12 +158,17 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     setShowSupersetLinker(false);
   }, []);
 
-  // Re-resolve exercise names when custom exercises load
+  // Re-resolve exercise names when custom exercises load. Hands back the same
+  // array when every name already matches, so a lookup that changes identity
+  // without changing content cannot re-render the builder in a loop.
   React.useEffect(() => {
-    setBlocks(prev => prev.map(b => ({
-      ...b,
-      exerciseName: exerciseLookup[b.exerciseId] ?? b.exerciseName,
-    })));
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        const name = exerciseLookup[b.exerciseId] ?? b.exerciseName;
+        return name === b.exerciseName ? b : { ...b, exerciseName: name };
+      });
+      return next.some((b, i) => b !== prev[i]) ? next : prev;
+    });
   }, [exerciseLookup]);
 
   React.useEffect(() => {
@@ -378,7 +388,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
           <SortableContext items={blocks.map(b => b.exerciseId)} strategy={verticalListSortingStrategy}>
             {blocks.map((block, blockIdx) => (
               <SortableExerciseItem key={block.exerciseId} id={block.exerciseId}>
-                <div className={`rounded-lg ${getSupersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
+                <div className={`rounded-lg ${supersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
                   {/* Exercise Header */}
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
@@ -446,7 +456,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                   <div className="flex gap-1.5 flex-wrap mb-2">
                     {setTypes.map(t => (
                       <SetTypeBadge
-                        key={t} type={t} selected={block.setType === t}
+                        key={t} type={t} selected={displayedSetType(block.setType) === t}
                         onClick={() => updateBlockType(blockIdx, t)}
                       />
                     ))}

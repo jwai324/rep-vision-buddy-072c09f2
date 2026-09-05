@@ -10,6 +10,7 @@ import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, formatSet
 import { formatMmSs } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
+import { supersetColorClass } from '@/types/activeSession';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
@@ -60,17 +61,6 @@ function formatDuration(s: number) {
   const sec = s % 60;
   return `${m}m ${sec}s`;
 }
-
-const SUPERSET_COLORS = [
-  'bg-red-500/20', 'bg-blue-500/20', 'bg-green-500/20',
-  'bg-yellow-500/20', 'bg-pink-500/20', 'bg-orange-500/20',
-  'bg-amber-800/20', 'bg-purple-500/20', 'bg-white/20',
-];
-
-const getSupersetColorClass = (group?: number) => {
-  if (group === undefined) return '';
-  return SUPERSET_COLORS[(group - 1) % SUPERSET_COLORS.length];
-};
 
 export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, onShare, isViewMode }) => {
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
@@ -398,7 +388,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           })();
 
           return (
-          <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? getSupersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
+          <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? supersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
             <div className="flex items-center gap-2 mb-3">
               <span className="text-xl">{icon}</span>
               <h3 className="font-semibold text-foreground">{exerciseLookup[ex.exerciseId] ?? ex.exerciseName}</h3>

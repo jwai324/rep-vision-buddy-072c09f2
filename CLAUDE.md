@@ -225,6 +225,24 @@ Practical consequence: `'time'` renders like `'weight-time'` and `'reps'` like
 `'reps-weight'`, so those switch cases are deliberately merged. Keep them
 merged — splitting them back out is how the weight field goes missing again.
 
+## Supersets are links, not a set type
+
+A superset is `supersetGroup` shared by two or more exercises; it is made from
+the exercise menu ("Create Superset" → `SupersetLinker`) in the template
+builder and the live session alike, and shown the same way on both, plus the
+summary, through `supersetColorClass`. `setType: 'superset'` is only the echo
+of that link (`linkedSetType`), never the link itself — the builder used to
+offer it as a per-exercise pill, which linked nothing and carried nothing into
+a workout.
+
+The AI coach's tool schema and the program generator still write the
+setType-only form, so `resolveTemplateSupersets` (`src/utils/templateSupersets.ts`)
+runs wherever a template is read into an editor or a session: explicit groups
+are kept, an ungrouped run of two or more superset-typed exercises becomes a
+new group, and a lone one is a plain exercise. The session's update-template
+snapshot is taken from the resolved list too, so a superset template run as
+planned never prompts with a phantom "superset change".
+
 ## Volume exclusions
 
 A custom exercise can carry `exclude_from_volume` (see `CustomExercise` in
