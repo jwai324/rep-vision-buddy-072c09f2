@@ -359,6 +359,37 @@ describe('SpeechToText — chaining sessions while the user keeps talking', () =
     expect(engine.getState().listening).toBe(false);
   });
 
+  it('releases the microphone once the user goes quiet even if the browser reports blank results', () => {
+    const { engine, ended } = harness();
+    engine.start();
+    mic().final('add three sets of squats');
+    endAfterSpeech();
+
+    // Every chained session reports one blank interim before the browser gives
+    // up on it; a blank result is not speech and must not keep the run going.
+    chain();
+    mic().interim('');
+    mic().interim('  ');
+    vi.advanceTimersByTime(6000);
+    mic().error('no-speech');
+    mic().end();
+
+    expect(engine.getState().listening).toBe(false);
+    expect(ended).toEqual(['add three sets of squats']);
+    chain();
+    expect(built).toHaveLength(2);
+  });
+
+  it('does not let blank results postpone the silence timeout', () => {
+    const { engine } = harness();
+    engine.start();
+    mic().final('add squats');
+    vi.advanceTimersByTime(SILENCE_TIMEOUT_MS - 1);
+    mic().interim('');
+    vi.advanceTimersByTime(1);
+    expect(engine.getState().listening).toBe(false);
+  });
+
   it('ends the run when nothing has been reported for a while', () => {
     const { engine, ended } = harness();
     engine.start();
@@ -437,12 +468,15 @@ describe('SpeechToText — the mic button ending a run', () => {
     expect(ended).toEqual(['add three sets of squats']);
   });
 
-  it('ends at once when pressed between sessions', () => {
+  it('switches off at once when pressed between sessions and hands over on the next tick', () => {
     const { engine, ended } = harness();
     engine.start();
     mic().final('add squats');
     endAfterSpeech();
     engine.stop();
+    expect(engine.getState()).toEqual({ listening: false, transcript: 'add squats' });
+    expect(ended).toEqual([]);
+    vi.advanceTimersByTime(0);
     expect(ended).toEqual(['add squats']);
     expect(engine.getState()).toEqual({ listening: false, transcript: '' });
     chain();
@@ -488,11 +522,51 @@ describe('SpeechToText — the mic button ending a run', () => {
     engine.start();
 
     expect(ended).toEqual(['add squats']);
-    expect(built).toHaveLength(2);
     expect(engine.getState()).toEqual({ listening: true, transcript: '' });
+    // The recognizer just told to abort gets the same room a chained session
+    // does before the next one opens — a start that races its teardown is
+    // refused on Android.
+    expect(built).toHaveLength(1);
+    chain();
+    expect(built).toHaveLength(2);
+    expect(mic().live).toBe(true);
     mic().final('add squats');
     // The same words said again are a new sentence, not a repeat of the old one.
     expect(engine.getState().transcript).toBe('add squats');
+  });
+
+  it('waits for the recognizer a send just aborted before opening the next', () => {
+    const { engine } = harness();
+    engine.start();
+    mic().interim('add squats');
+    engine.cancel();
+    vi.advanceTimersByTime(RESTART_DELAY_MS / 2);
+    engine.start();
+    expect(engine.getState().listening).toBe(true);
+    expect(built).toHaveLength(1);
+    vi.advanceTimersByTime(RESTART_DELAY_MS / 2);
+    expect(built).toHaveLength(2);
+  });
+
+  it('opens at once when nothing was aborted recently', () => {
+    const { engine } = harness();
+    engine.start();
+    engine.cancel();
+    vi.advanceTimersByTime(RESTART_DELAY_MS);
+    engine.start();
+    expect(built).toHaveLength(2);
+  });
+
+  it('can be stopped while waiting to open, handing nothing over', () => {
+    const { engine, ended } = harness();
+    engine.start();
+    engine.cancel();
+    engine.start();
+    engine.stop();
+    vi.advanceTimersByTime(RESTART_DELAY_MS + FINALIZE_GRACE_MS);
+    expect(built).toHaveLength(1);
+    expect(ended).toEqual([]);
+    expect(engine.getState().listening).toBe(false);
   });
 
   it('starts a new run empty, whatever the last one heard', () => {
@@ -585,8 +659,20 @@ describe('SpeechToText — cancelling and disposing', () => {
     expect(ended).toEqual([]);
 
     engine.start();
-    expect(built).toHaveLength(2);
     expect(engine.getState().listening).toBe(true);
+    chain();
+    expect(built).toHaveLength(2);
+  });
+
+  it('opens at once after a session the browser had already ended', () => {
+    const { engine } = harness();
+    engine.start();
+    mic().final('add squats');
+    engine.stop();
+    mic().end();
+    engine.start();
+    expect(built).toHaveLength(2);
+    expect(built[0].aborted).toBe(false);
   });
 });
 

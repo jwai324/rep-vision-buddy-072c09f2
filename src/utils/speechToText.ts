@@ -185,10 +185,8 @@ interface Session {
   readonly openedAt: number;
   /** Rebuilt from the latest result list on every report. */
   text: string;
-  /** Whether any result has arrived at all. */
+  /** Whether any words have arrived at all. */
   heard: boolean;
-  /** `stop()` has been called and the final result is being waited for. */
-  closing: boolean;
 }
 
 export class SpeechToText {
@@ -205,6 +203,10 @@ export class SpeechToText {
   private segments: string[] = [];
   /** A run is on from `start()` until its words are handed over. */
   private running = false;
+  /** `stop()` has been pressed and the run is waiting to hand its words over. */
+  private closing = false;
+  /** When the last recognizer was told to abort; see `start`. */
+  private lastAbortAt = -Infinity;
 
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -234,7 +236,7 @@ export class SpeechToText {
 
   /** Open the microphone. A run already closing hands its words over first. */
   start = (): void => {
-    if (this.running && !this.session?.closing) return;
+    if (this.running && !this.closing) return;
     if (this.running) this.finish({});
 
     const Recognizer = findSpeechRecognition();
@@ -246,7 +248,13 @@ export class SpeechToText {
     this.running = true;
     this.segments = [];
     this.publish({ listening: true, transcript: '' });
-    this.openSession(Recognizer);
+
+    // A recognizer told to abort a moment ago — a double tap on the mic, or a
+    // tap straight after a send — may still be tearing down, and a start that
+    // races that is refused. Give it the same room a chained session gets.
+    const sinceAbort = this.now() - this.lastAbortAt;
+    if (sinceAbort < RESTART_DELAY_MS) this.openSessionLater(RESTART_DELAY_MS - sinceAbort);
+    else this.openSession(Recognizer);
   };
 
   /**
@@ -254,23 +262,24 @@ export class SpeechToText {
    * finalize; then the run's words go to `onEnd`.
    */
   stop = (): void => {
-    if (!this.running) return;
-    const session = this.session;
-    // Between sessions there is nothing in flight to wait for.
-    if (!session) {
-      this.finish({});
-      return;
-    }
-    if (session.closing) return;
+    if (!this.running || this.closing) return;
 
+    this.closing = true;
     this.clearTimer('silence');
     this.clearTimer('restart');
-    session.closing = true;
     this.publish({ listening: false });
+
+    const session = this.session;
+    // Between sessions there is nothing in flight to wait for. The words are
+    // still handed over from a fresh task: `stop()` is also what the chat calls
+    // from an effect when its panel closes, and a hand-over from inside a React
+    // effect could not be committed atomically (see useSpeechToText).
+    const grace = session ? FINALIZE_GRACE_MS : 0;
     this.graceTimer = setTimeout(() => {
       this.graceTimer = null;
       this.finish({});
-    }, FINALIZE_GRACE_MS);
+    }, grace);
+    if (!session) return;
     try {
       session.recognizer.stop();
     } catch {
@@ -307,15 +316,19 @@ export class SpeechToText {
       openedAt: this.now(),
       text: '',
       heard: false,
-      closing: false,
     };
     // Gated on the session still being current, so a departing session's late
     // events can't touch the run that moved on.
     recognizer.onresult = event => {
       if (this.session !== session) return;
-      session.heard = true;
-      session.text = transcriptOf(event.results);
-      if (!session.closing) this.armSilenceTimer();
+      const text = transcriptOf(event.results);
+      // Only a report that changes the words counts as the user speaking: a
+      // blank result, or a replay of what is already there, must neither keep
+      // the run alive nor count as having heard anything.
+      const spoke = text !== session.text;
+      session.text = text;
+      if (text) session.heard = true;
+      if (spoke && !this.closing) this.armSilenceTimer();
       this.publish({ transcript: joinSegments([...this.segments, session.text]) });
     };
     recognizer.onerror = event => {
@@ -358,34 +371,51 @@ export class SpeechToText {
 
   /** The browser closed the session on its own. */
   private handleSessionEnd(session: Session): void {
-    if (session.closing) {
-      this.finish({});
+    if (this.closing) {
+      this.finish({ ended: true });
       return;
     }
     if (!session.heard) {
       const stillborn = this.now() - session.openedAt < VIABLE_SESSION_MS;
       const firstSession = this.segments.length === 0;
-      this.finish(stillborn && firstSession ? { error: { reason: 'no-start' } } : {});
+      this.finish({
+        ended: true,
+        error: stillborn && firstSession ? { reason: 'no-start' } : undefined,
+      });
       return;
     }
 
     this.segments.push(session.text);
     this.session = null;
     this.clearTimer('silence');
+    this.openSessionLater(RESTART_DELAY_MS);
+  }
+
+  private openSessionLater(delay: number): void {
+    this.clearTimer('restart');
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
       const Recognizer = findSpeechRecognition();
       if (Recognizer) this.openSession(Recognizer);
       else this.finish({});
-    }, RESTART_DELAY_MS);
+    }, delay);
   }
 
   /**
    * End the run. The current session's text — final or interim — joins the
    * segments unless the words are being discarded; then everything is handed
-   * over, exactly once.
+   * over, exactly once. `ended` says the browser has already closed the
+   * session, so there is nothing left to abort or to wait for.
    */
-  private finish({ discard = false, error }: { discard?: boolean; error?: SpeechToTextError }): void {
+  private finish({
+    discard = false,
+    ended = false,
+    error,
+  }: {
+    discard?: boolean;
+    ended?: boolean;
+    error?: SpeechToTextError;
+  }): void {
     this.clearTimer('silence');
     this.clearTimer('grace');
     this.clearTimer('restart');
@@ -398,10 +428,13 @@ export class SpeechToText {
       recognizer.onend = null;
       recognizer.onerror = null;
       recognizer.onresult = null;
-      try {
-        recognizer.abort();
-      } catch {
-        // Some browsers throw when aborting a recognizer that never started.
+      if (!ended) {
+        try {
+          recognizer.abort();
+        } catch {
+          // Some browsers throw when aborting a recognizer that never started.
+        }
+        this.lastAbortAt = this.now();
       }
       if (!discard) this.segments.push(session.text);
     }
@@ -409,6 +442,10 @@ export class SpeechToText {
     const words = discard ? '' : joinSegments(this.segments);
     this.segments = [];
     this.running = false;
+    this.closing = false;
+    // The transcript is cleared before the words are handed over, so a
+    // consumer that shows both never has them on screen twice; the hook makes
+    // the two land in one React commit.
     this.publish({ listening: false, transcript: '' });
 
     if (words) this.onEnd?.(words);

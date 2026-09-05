@@ -108,6 +108,29 @@ words are already in the message or the box, so the run is dropped rather than
 handed over on top of them. Closing the panel calls `stop()`, so the words land
 in the persisted draft.
 
+Two details exist because of how browsers and React actually behave, and are
+easy to undo by accident:
+
+- `useSpeechToText` delivers `onEnd` inside `flushSync`. The engine clears its
+  transcript (a synchronous store update) and then hands the words over (a
+  setState from a browser event or timer, which React would commit later and
+  separately). Without `flushSync` there is a commit with the words in neither
+  place, and a Send tapped in that instant goes out without them. The engine
+  therefore never hands words over from inside a React effect — `stop()`
+  between sessions finishes on a fresh task for exactly that reason.
+- A session opens `RESTART_DELAY_MS` after the previous recognizer was told
+  to abort (chaining, or a tap right after a send or a double tap). Chrome for
+  Android tears the native recognizer down asynchronously and reports a start
+  that races it as `not-allowed`, which would otherwise surface as a false
+  "microphone blocked" toast.
+
+Browser facts the design leans on (verified in Chromium and WebKit source):
+Chrome and WebKit only ever append finals and keep at most one interim, always
+last; a single-utterance session ends after 0.5–1 s of silence on desktop
+Chrome (8 s `no-speech` if nothing is said) and after the utterance on Android
+and Safari 17+; WebKit never emits `no-speech` and has no silence timer of its
+own, so the engine's 10 s backstop is what releases the mic on iPhones.
+
 Trade-offs to know: there is a short gap between chained sessions, so words
 spoken in the instant after a pause can be missed (pause, then continue), and
 Android plays its start sound at the top of every session. Both are the price

@@ -326,6 +326,76 @@ describe('AI coach voice input', () => {
     expect(box().value.length).toBe(500);
   });
 
+  it('moves the words from the run into the box in one commit, so a send in that instant keeps them', async () => {
+    const g = globalThis as { event?: unknown; IS_REACT_ACT_ENVIRONMENT?: boolean };
+    render(<AIChatBubble />);
+    fireEvent.change(box(), { target: { value: 'for tomorrow' } });
+    tapMic();
+    browser.final('add three sets of squats');
+    tapStop();
+    expect(box()).toHaveValue('for tomorrow add three sets of squats');
+
+    // The browser ends the session on its own: outside act(), and outside any
+    // React event, so React would give the fold-in a lower priority than the
+    // cleared transcript and commit the two apart — a frame with the words in
+    // neither place — unless the hook forces them together.
+    g.event = undefined;
+    g.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      mic().end();
+      expect(box()).toHaveValue('for tomorrow add three sets of squats');
+      fireEvent.click(screen.getByLabelText('Send message'));
+    } finally {
+      g.IS_REACT_ACT_ENVIRONMENT = true;
+    }
+    await act(async () => {});
+
+    expect(sendMessage).toHaveBeenCalledWith('for tomorrow add three sets of squats');
+    expect(box()).toHaveValue('');
+  });
+
+  it('keeps the phrase in flight on screen when the grace period ends it and the user types at once', async () => {
+    const g = globalThis as { event?: unknown; IS_REACT_ACT_ENVIRONMENT?: boolean };
+    render(<AIChatBubble />);
+    tapMic();
+    browser.interim('add three sets of squats');
+    tapStop();
+
+    g.event = undefined;
+    g.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      vi.advanceTimersByTime(FINALIZE_GRACE_MS);
+      expect(box()).toHaveValue('add three sets of squats');
+      fireEvent.change(box(), { target: { value: 'add three sets of squats!' } });
+    } finally {
+      g.IS_REACT_ACT_ENVIRONMENT = true;
+    }
+    await act(async () => {});
+
+    expect(box()).toHaveValue('add three sets of squats!');
+  });
+
+  it('folds the words in when the panel closes between two sessions', () => {
+    const { rerender } = render(<AIChatBubble />);
+    tapMic();
+    browser.final('add squats');
+    // The browser has ended the session and the next has not opened yet.
+    act(() => {
+      vi.advanceTimersByTime(800);
+      mic().end();
+    });
+
+    chatValue.isOpen = false;
+    rerender(<AIChatBubble />);
+    browser.wait(RESTART_DELAY_MS);
+    chatValue.isOpen = true;
+    rerender(<AIChatBubble />);
+
+    expect(micIsOff()).toBeTruthy();
+    expect(box()).toHaveValue('add squats');
+    expect(recognizers).toHaveLength(1);
+  });
+
   it('folds the words in exactly once under StrictMode', () => {
     // StrictMode mounts, unmounts and remounts, and double-invokes effects; a
     // fold that ran per effect would double the words here.
