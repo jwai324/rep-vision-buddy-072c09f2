@@ -72,33 +72,74 @@ Default model is `claude-opus-4-7` (the most capable model in the Claude 4.x fam
 
 ## Voice input (AI coach chat)
 
-`src/utils/dictation.ts` drives the mic button in `AIChatBubble`, via
-`useDictation`. Three rules keep it from repeating or eating words:
+`src/utils/speechToText.ts` drives the mic button in `AIChatBubble`, via
+`useSpeechToText`. It was rebuilt from scratch after two designs built on
+continuous-mode sessions kept duplicating words ("add three sets three sets of
+squats"). Three rules hold it together:
 
-- **The transcript is derived, never accumulated.** Every report from the
-  recognizer rebuilds the run's text from the results the browser is holding,
-  each filed under the index the browser gave it. Chrome replays a session's
-  *whole* result list on every event, so anything that appends per callback
-  duplicates phrases; assigning by index makes a redelivery a no-op and a
-  revision an overwrite.
-- **Nothing guesses whether words are a repeat.** An earlier version compared
-  incoming words against the transcript to strip audio it believed a reopened
-  session had re-heard. That guesswork cut real words out of messages at least
-  as often as it removed duplicates. Every word the recognizer reports is kept,
-  once, in the order it was reported.
-- **A run is one session.** Browsers end a session on their own silence timeout
-  and don't all honour `continuous`, so the run ends when the session does: the
-  words are handed over exactly as if the mic button had been pressed, and the
-  microphone is released. Reopening a session behind the user's back is what an
-  earlier version did, and it left the mic live long after anyone was talking
-  and gave a departing session the chance to report over the one replacing it.
-  Only the recognizer that is currently live is listened to, and a phrase still
-  in flight when the run ends is kept — those words were on screen.
+- **One utterance per browser session.** The recognizer runs with
+  `continuous` off, the mode every browser implements the same way: hear one
+  utterance, finalize it, end. Continuous mode is where phone browsers go
+  wrong — Chrome for Android segments a long session internally and its own
+  result list can carry the same audio twice at different indices, which no
+  bookkeeping on our side can tell from a real repetition. Keep `continuous`
+  off; turning it back on is how the duplicates come back.
+- **A session's text is a pure function of its latest result list.** Nothing
+  is appended per event: each `onresult` carries the browser's whole list for
+  the session, so `transcriptOf` recomputes the session's text from it. Two
+  structural rules cover the ways browsers list one phrase twice — an entry
+  identical to the one before it is dropped, and an entry that begins with the
+  whole of the one before it replaces it. There is deliberately no word-level
+  overlap guessing; an earlier version had it and it cut real words out.
+- **Sessions are chained by the app and never overlap; words are handed over
+  once.** When the browser ends a session that heard speech, the next one
+  opens so the user can keep talking; a session that heard nothing ends the
+  run (that is how silence releases the mic), as does 10 s without a result.
+  Handlers are bound to their own session object and ignored once it is no
+  longer current. Each ended session's text is banked once, in order, and the
+  run's words reach the caller exactly once, through `onEnd`, when the run
+  finishes — never through an effect that could re-run.
 
-The chat composes `input + transcript + partial` at render time rather than
-pushing finished phrases into the box, and folds the words into the draft when
-the run ends. `reset()` is how the caller says "I have taken these words" —
-sending a message, or editing the box by hand.
+The mic button ending a run calls `stop()`, which gives the browser a second to
+finalize the phrase in flight before its interim text is taken as it stands.
+The chat composes `input + transcript` at render time while a run is on and
+folds the words in through `onEnd`. Sending or typing calls `cancel()`: the
+words are already in the message or the box, so the run is dropped rather than
+handed over on top of them. Closing the panel calls `stop()`, so the words land
+in the persisted draft.
+
+Two details exist because of how browsers and React actually behave, and are
+easy to undo by accident:
+
+- `useSpeechToText` delivers `onEnd` inside `flushSync`. The engine clears its
+  transcript (a synchronous store update) and then hands the words over (a
+  setState from a browser event or timer, which React would commit later and
+  separately). Without `flushSync` there is a commit with the words in neither
+  place, and a Send tapped in that instant goes out without them. The engine
+  therefore never hands words over from inside a React effect — `stop()`
+  between sessions finishes on a fresh task for exactly that reason.
+- A session opens `RESTART_DELAY_MS` after the previous recognizer was told
+  to abort (chaining, or a tap right after a send or a double tap). Chrome for
+  Android tears the native recognizer down asynchronously and reports a start
+  that races it as `not-allowed`, which would otherwise surface as a false
+  "microphone blocked" toast.
+
+Browser facts the design leans on (verified in Chromium and WebKit source):
+Chrome and WebKit only ever append finals and keep at most one interim, always
+last; a single-utterance session ends after 0.5–1 s of silence on desktop
+Chrome (8 s `no-speech` if nothing is said) and after the utterance on Android
+and Safari 17+; WebKit never emits `no-speech` and has no silence timer of its
+own, so the engine's 10 s backstop is what releases the mic on iPhones.
+
+Trade-offs to know: there is a short gap between chained sessions, so words
+spoken in the instant after a pause can be missed (pause, then continue), and
+Android plays its start sound at the top of every session. Both are the price
+of a mode that cannot double a word.
+
+Tests: `src/test/speechToText.test.ts` (engine, including seeded browser
+"personalities" that replay, duplicate and cumulate) and
+`src/test/aiChatSpeech.test.tsx` (panel integration, including StrictMode).
+`src/test/helpers/fakeSpeechRecognition.ts` is the shared fake.
 
 ## OAuth
 
