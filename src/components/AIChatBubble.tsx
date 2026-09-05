@@ -17,7 +17,7 @@ const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
 const DICTATION_MESSAGES: Record<DictationFailure['reason'], string> = {
   denied: 'Microphone access is blocked. Allow it in your browser settings to dictate.',
   'no-microphone': "Couldn't find a microphone to record from.",
-  unstable: 'Voice input kept cutting out, so it stopped.',
+  'no-start': "Voice input didn't start. Tap the mic to try again.",
   'recognizer-error': 'Voice input stopped unexpectedly.',
 };
 
@@ -26,10 +26,15 @@ const DICTATION_MESSAGES: Record<DictationFailure['reason'], string> = {
  * phrases without surrounding whitespace, so the separating space is added
  * here; an empty box keeps the spoken text flush against the left.
  */
-function appendSpoken(typed: string, spoken: string): string {
+function withSpoken(typed: string, spoken: string): string {
   if (!spoken) return typed;
   const base = typed.trimEnd();
   return (base ? `${base} ${spoken}` : spoken).slice(0, MAX_CHAT_CHARS);
+}
+
+/** The run as it reads right now: what is finalized, plus the phrase in flight. */
+function joinSpoken(transcript: string, partial: string): string {
+  return partial ? `${transcript} ${partial}`.trim() : transcript;
 }
 
 const TypingIndicator = () => (
@@ -116,24 +121,22 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   }, []);
   const dictation = useDictation({ onFailure: handleDictationFailure });
 
-  // `input` is only what was typed; the dictation engine holds what was spoken
-  // until it is folded in below. Composing the two at render time — rather than
-  // pushing each finished phrase into the box — means a phrase the browser
-  // reports twice shows up once, because the engine's transcript is a value and
-  // not a stream of appends.
-  const spoken = dictation.partial
-    ? `${dictation.transcript} ${dictation.partial}`.trim()
-    : dictation.transcript;
-  const value = appendSpoken(input, spoken);
+  const { transcript, partial, listening, reset: resetDictation, stop: stopDictation } = dictation;
 
-  // Fold the transcript into the typed text as soon as the run ends, whichever
-  // way it ended — the mic button, a closing panel, or a failure. Until this
-  // runs the words live in the engine, so nothing on screen changes; after it
-  // they are an ordinary draft that persists like any other.
-  const { transcript, listening, reset: resetDictation, stop: stopDictation } = dictation;
+  // `input` holds what was typed; the run's words stay in the engine until they
+  // are folded in below. The box shows the two composed at render time rather
+  // than each finished phrase being pushed into it, so what is on screen is
+  // always the whole of what the engine heard — a phrase the browser reports
+  // twice can't land twice, because this is a value and not a stream of appends.
+  const value = withSpoken(input, joinSpoken(transcript, partial));
+
+  // Fold those words into the typed text as soon as the run ends, whichever way
+  // it ended — the mic button, a run that went quiet, a closing panel, or a
+  // failure. Nothing on screen changes as it happens; the words simply become an
+  // ordinary draft, which persists like any other.
   useEffect(() => {
     if (listening || !transcript) return;
-    setInput(prev => appendSpoken(prev, transcript));
+    setInput(prev => withSpoken(prev, transcript));
     resetDictation();
   }, [listening, transcript, resetDictation]);
 
@@ -149,16 +152,16 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   // Whatever else is going on, a live microphone can always be switched off:
   // sending leaves the run going deliberately, and `isLoading` disabling the
   // button there would strand it listening until the reply landed.
-  const micDisabled = !dictation.listening && (isLoading || limitBlocks || consecutiveErrors >= 2);
+  const micDisabled = !listening && (isLoading || limitBlocks || consecutiveErrors >= 2);
 
   const handleSend = () => {
     if (isSendDisabled) return;
     const text = value.trim().slice(0, MAX_CHAT_CHARS);
     setInput('');
     // Sending clears what was said as well as what was typed, but leaves the
-    // run going: the mic button is the only thing that stops it, so a follow-up
-    // can be dictated without reaching for it again.
-    dictation.reset();
+    // run going, so a follow-up can be dictated without reaching for the mic
+    // button again.
+    resetDictation();
     if (navigator.vibrate) navigator.vibrate(10);
     sendMessage(text);
   };
@@ -170,7 +173,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     // The box already shows everything dictated so far, so an edit makes the
     // edited text the new baseline. Keeping the transcript would replay those
     // words on top of it.
-    if (transcript || dictation.partial) dictation.reset();
+    if (transcript || partial) resetDictation();
   };
 
   const handleMicToggle = () => {
@@ -424,13 +427,13 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
 
           {/* Input */}
           <div className="px-4 pb-4 pt-2 border-t border-border flex-shrink-0">
-            {dictation.listening && (
+            {listening && (
               <div className="flex items-center gap-2 mb-1.5 text-[11px] text-primary">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                 </span>
-                <span>Listening — words appear as you speak</span>
+                <span>Listening — pause when you're done</span>
               </div>
             )}
             <div className="flex items-end gap-2">
@@ -444,7 +447,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                   placeholder={
                     creditsBalance.exhausted && !godMode
                       ? "Out of credits"
-                      : dictation.listening
+                      : listening
                         ? "Speak now…"
                         : "Ask anything…"
                   }
@@ -468,18 +471,18 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                 <button
                   onClick={handleMicToggle}
                   disabled={micDisabled}
-                  aria-label={dictation.listening ? 'Stop voice input' : 'Start voice input'}
-                  aria-pressed={dictation.listening}
+                  aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+                  aria-pressed={listening}
                   className={cn(
                     "w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0",
-                    dictation.listening
+                    listening
                       ? "bg-primary text-primary-foreground shadow-lg shadow-primary/40"
                       : micDisabled
                         ? "bg-secondary text-muted-foreground"
                         : "bg-secondary text-foreground hover:bg-secondary/70 hover:text-primary"
                   )}
                 >
-                  {dictation.listening ? <Square className="w-3.5 h-3.5 fill-current" /> : <Mic className="w-4 h-4" />}
+                  {listening ? <Square className="w-3.5 h-3.5 fill-current" /> : <Mic className="w-4 h-4" />}
                 </button>
               )}
               <button
