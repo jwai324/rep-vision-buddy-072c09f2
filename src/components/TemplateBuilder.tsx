@@ -4,9 +4,10 @@ import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/t
 import { EXERCISES } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
-import { Plus, MoreHorizontal, Trash2, Timer, ArrowLeftRight, Search, Layers } from 'lucide-react';
+import { Plus, MoreHorizontal, Trash2, Timer, RefreshCw, Search, Layers } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { SetTypeBadge } from '@/components/SetTypeBadge';
+import { SupersetBadge } from '@/components/SupersetBadge';
+import { RpePickerButton } from '@/components/ExerciseTableComponent';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { EXERCISE_DATABASE } from '@/data/exercises';
@@ -18,7 +19,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { SupersetLinker } from '@/components/SupersetLinker';
 import { supersetColorClass } from '@/types/activeSession';
-import { linkedSetType, resolveTemplateSupersets } from '@/utils/templateSupersets';
+import { groupAdjacentSupersets, linkedSetType, resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
 
 /** A hold takes a load next to its duration; distance work never does. */
 const isLoadedHold = (mode: ExerciseInputMode) => mode === 'time' || mode === 'weight-time';
@@ -31,12 +32,10 @@ interface TemplateBuilderProps {
   onCancel: () => void;
 }
 
-// A superset is a link between exercises, made from the exercise menu exactly
-// as in a live session — not a per-exercise set type — so it is not a pill here.
-const setTypes: SetType[] = ['normal', 'dropset', 'failure'];
-
-/** The pill to light up for a block; a linked block's 'superset' echo reads as plain. */
-const displayedSetType = (setType: SetType): SetType => setType === 'superset' ? 'normal' : setType;
+// The builder shows an exercise the way a live workout does, so it offers no
+// per-exercise set-type pills: a superset is a link made in the linker, and
+// dropsets and to-failure work are decided set by set while training. Whatever
+// set type a template already carries is round-tripped untouched.
 
 interface TemplateSetRow {
   setNumber: number;
@@ -52,6 +51,15 @@ interface TemplateBlock {
   setType: SetType;
   restSeconds: number;
   supersetGroup?: number;
+  /**
+   * The template targets failure rather than a rep count. Held on the block
+   * because the rep input is blank in that case and so cannot carry it, and
+   * `setType` cannot either: the end-of-workout update writes
+   * `targetReps: 'failure'` alongside a plain set type whenever a set logged
+   * no reps (templateDiff.ts), and rebuilding the target from the set type
+   * alone turned that back into 10 on the next save.
+   */
+  repsToFailure: boolean;
 }
 
 type CustomExerciseLite = Parameters<typeof getExerciseInputMode>[1];
@@ -74,6 +82,7 @@ function exerciseToBlock(
     setType: ex.setType,
     restSeconds: ex.restSeconds,
     supersetGroup: ex.supersetGroup,
+    repsToFailure: ex.targetReps === 'failure' || ex.setType === 'failure',
     sets: Array.from({ length: ex.sets }, (_, i) => ({
       setNumber: i + 1,
       targetWeight: weightInput,
@@ -89,7 +98,7 @@ function blockToExercise(
   customExercises?: CustomExerciseLite,
 ): TemplateExercise {
   const firstSet = block.sets[0];
-  const reps = block.setType === 'failure' ? 'failure' as const : (parseInt(firstSet?.targetReps) || 10);
+  const reps = block.repsToFailure ? 'failure' as const : (parseInt(firstSet?.targetReps) || 10);
   const mode = getExerciseInputMode(block.exerciseId, customExercises);
   return {
     exerciseId: block.exerciseId,
@@ -121,8 +130,13 @@ function loadDraft(
       // Only restore if editing the same template (or both are new)
       if ((draft.id ?? null) === (initialTemplate?.id ?? null)) {
         // A draft from before supersets became links may still carry the
-        // old per-exercise pill, so it is resolved the same way a template is.
-        return { name: draft.name ?? '', blocks: resolveTemplateSupersets<TemplateBlock>(draft.blocks ?? []) };
+        // old per-exercise pill, so it is resolved the same way a template is;
+        // one from before repsToFailure existed still has the flag in its set
+        // type, which is where it used to live.
+        const blocks: TemplateBlock[] = (draft.blocks ?? []).map((b: TemplateBlock) => (
+          b.repsToFailure === undefined ? { ...b, repsToFailure: b.setType === 'failure' } : b
+        ));
+        return { name: draft.name ?? '', blocks: resolveTemplateSupersets(blocks) };
       }
     }
   } catch { /* ignore corrupt data */ }
@@ -154,7 +168,9 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
 
   const handleSupersetSave = useCallback((groups: Record<string, number | undefined>) => {
-    setBlocks(prev => prev.map(b => ({ ...b, supersetGroup: groups[b.exerciseId] })));
+    setBlocks(prev => groupAdjacentSupersets(
+      withoutLoneSupersets(prev.map(b => ({ ...b, supersetGroup: groups[b.exerciseId] }))),
+    ));
     setShowSupersetLinker(false);
   }, []);
 
@@ -204,7 +220,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   }, []);
 
   const removeExercise = useCallback((blockIdx: number) => {
-    setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
+    setBlocks(prev => withoutLoneSupersets(prev.filter((_, i) => i !== blockIdx)));
   }, []);
 
   const sensors = useSensors(
@@ -221,10 +237,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
       if (oldIndex === -1 || newIndex === -1) return prev;
       return arrayMove(prev, oldIndex, newIndex);
     });
-  }, []);
-
-  const updateBlockType = useCallback((blockIdx: number, type: SetType) => {
-    setBlocks(prev => prev.map((b, i) => i === blockIdx ? { ...b, setType: type } : b));
   }, []);
 
   const updateRestSeconds = useCallback((blockIdx: number, seconds: number) => {
@@ -244,6 +256,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
           exerciseId: id,
           exerciseName: exerciseLookup[id] ?? id,
           setType: 'normal' as SetType,
+          repsToFailure: false,
           restSeconds: defaultRestSeconds,
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
@@ -389,12 +402,18 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
             {blocks.map((block, blockIdx) => (
               <SortableExerciseItem key={block.exerciseId} id={block.exerciseId}>
                 <div className={`rounded-lg ${supersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
+                  {block.supersetGroup !== undefined && (
+                    <div className="mb-1">
+                      <SupersetBadge group={block.supersetGroup} onClick={() => setShowSupersetLinker(true)} />
+                    </div>
+                  )}
+
                   {/* Exercise Header */}
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-sm font-semibold text-primary">{block.exerciseName}</h3>
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <h3 className="text-sm font-semibold text-primary truncate">{block.exerciseName}</h3>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="text-muted-foreground hover:text-foreground p-1">
+                        <button className="text-muted-foreground hover:text-foreground p-1 shrink-0">
                           <MoreHorizontal className="w-4 h-4" />
                         </button>
                       </PopoverTrigger>
@@ -403,7 +422,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           onClick={() => setSwapTarget(blockIdx)}
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md text-foreground hover:bg-secondary"
                         >
-                          <ArrowLeftRight className="w-4 h-4" /> Swap Exercise
+                          <RefreshCw className="w-4 h-4" /> Replace Exercise
                         </button>
                         <button
                           onClick={() => setShowSupersetLinker(true)}
@@ -452,16 +471,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                     </div>
                   )}
 
-                  {/* Set Type Badges */}
-                  <div className="flex gap-1.5 flex-wrap mb-2">
-                    {setTypes.map(t => (
-                      <SetTypeBadge
-                        key={t} type={t} selected={displayedSetType(block.setType) === t}
-                        onClick={() => updateBlockType(blockIdx, t)}
-                      />
-                    ))}
-                  </div>
-
                   {/* Rest Timer Setting */}
                   <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
                     <Timer className="w-3 h-3" />
@@ -490,9 +499,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           // so it doesn't fit the boolean tally below.
                           const isWeightTime = isLoadedHold(mode);
                           const colCount = isWeightTime ? 4 : [true, showWeight || isTime, showReps, true].filter(Boolean).length; // set + inputs + rpe
-                          const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
-                            : colCount === 3 ? 'grid-cols-[32px_1fr_1fr]'
-                            : 'grid-cols-[32px_1fr_1fr]';
+                          const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_42px]' : 'grid-cols-[32px_1fr_42px]';
                           const headerLabels = (() => {
                             switch (mode) {
                               case 'time-distance': return ['Set', 'Time (min)', 'RPE'];
@@ -518,8 +525,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                           const isTime = isTimeBased(mode);
                           const isWeightTime = isLoadedHold(mode);
                           const colCount = isWeightTime ? 4 : [true, showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
-                          const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_1fr]'
-                            : 'grid-cols-[32px_1fr_1fr]';
+                          const cols = colCount === 4 ? 'grid-cols-[32px_1fr_1fr_42px]' : 'grid-cols-[32px_1fr_42px]';
                           return (
                           <div
                             key={setIdx}
@@ -530,47 +536,41 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                               <>
                                 <input type="number" inputMode="decimal" value={set.targetWeight}
                                   onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="—"
-                                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                                  className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                                 <input type="number" inputMode="decimal" value={set.targetReps}
                                   onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)} placeholder="min"
-                                  className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                                  className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                               </>
                             ) : isTime ? (
                               <input type="number" inputMode="decimal" value={set.targetReps}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)} placeholder="min"
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                                className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             ) : mode === 'distance' ? (
                               <input type="number" inputMode="decimal" value={set.targetWeight}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="km"
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                                className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             ) : mode === 'band' ? (
                               <select value={set.targetWeight}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)}
-                                className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                                className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
                                 <option value="">—</option>
                                 {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
                               </select>
                             ) : (
                               <input type="number" inputMode="decimal" value={set.targetWeight}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="—"
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                                className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             )}
                             {showReps && !isTime && mode !== 'distance' && (
                               <input type="number" inputMode="numeric" value={set.targetReps}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
-                                placeholder={block.setType === 'failure' ? 'Fail' : '—'}
-                                className="w-full text-center text-sm bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                                placeholder={block.repsToFailure ? 'Fail' : '—'}
+                                className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             )}
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              min="1"
-                              max="10"
-                              step="0.5"
+                            <RpePickerButton
+                              id={`template-rpe-${blockIdx}-${setIdx}`}
                               value={set.targetRpe}
-                              onChange={e => updateSet(blockIdx, setIdx, 'targetRpe', e.target.value)}
-                              placeholder="—"
-                              className="w-full text-center text-xs bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto"
+                              onChange={v => updateSet(blockIdx, setIdx, 'targetRpe', v)}
                             />
                           </div>
                           );
@@ -600,6 +600,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
           <Plus className="w-4 h-4" />
           Add Exercise
         </button>
+
+        {/* Out in the open rather than only behind an exercise's menu: linking
+            is how a superset is made, and a template that never shows the door
+            reads as if it cannot hold one. */}
+        {blocks.length >= 2 && (
+          <button
+            onClick={() => setShowSupersetLinker(true)}
+            className="w-full py-3 rounded-lg border border-dashed border-muted-foreground/30 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center gap-2"
+          >
+            <Layers className="w-4 h-4" />
+            Link Supersets
+          </button>
+        )}
       </div>
     </div>
   );

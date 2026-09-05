@@ -29,6 +29,8 @@ export interface ExerciseInput {
   setType?: string;
   restSeconds?: number;
   targetRpe?: number;
+  supersetGroup?: number;
+  targetWeight?: number;
 }
 
 export interface ProgramDayInput {
@@ -320,6 +322,33 @@ export function isDuplicateSessionAdd(
   if (proposal.status !== 'pending') return false;
   const exId = proposal.arguments?.exerciseId;
   return typeof exId === 'string' && coveredExerciseIds.has(exId);
+}
+
+/**
+ * Carry template-only data across a wholesale `edit_template`.
+ *
+ * The tool replaces the exercise list outright, and an exercise the model
+ * re-sends unchanged comes back holding only the fields the schema describes.
+ * Anything else the template row held — its superset link, its target load,
+ * its target RPE — has to be taken back off the row being replaced, or every
+ * superset in the template is silently unlinked by an edit that never meant to
+ * touch it. A value the model did send always wins.
+ */
+export function carryTemplateOnlyFields(
+  incoming: ExerciseInput[],
+  existing: ExerciseInput[] | undefined,
+): ExerciseInput[] {
+  const before = new Map((existing ?? []).map(e => [e.exerciseId, e] as const));
+  return incoming.map(e => {
+    const prior = before.get(e.exerciseId);
+    if (!prior) return e;
+    return {
+      ...e,
+      targetRpe: e.targetRpe ?? prior.targetRpe,
+      supersetGroup: e.supersetGroup ?? prior.supersetGroup,
+      targetWeight: e.targetWeight ?? prior.targetWeight,
+    };
+  });
 }
 
 function validateAllExercises(
@@ -660,6 +689,8 @@ export const ChatProvider: React.FC<{
             setType: e.setType || 'normal',
             restSeconds: e.restSeconds ?? 90,
             targetRpe: e.targetRpe,
+            supersetGroup: e.supersetGroup,
+            targetWeight: e.targetWeight,
           })),
         };
         const proposal: Proposal = {
@@ -683,7 +714,7 @@ export const ChatProvider: React.FC<{
         if (args.exercises?.length) {
           const { valid, validated, errors, suggestions } = validateAllExercises(args.exercises, exerciseById, mergedExercises);
           if (!valid) return mkInvalid(before, errors.join('\n'), suggestions);
-          exercises = validated.map(e => ({
+          exercises = carryTemplateOnlyFields(validated, existing.exercises).map(e => ({
             exerciseId: e.exerciseId,
             exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
             sets: e.sets,
@@ -691,6 +722,8 @@ export const ChatProvider: React.FC<{
             setType: e.setType || 'normal',
             restSeconds: e.restSeconds ?? 90,
             targetRpe: e.targetRpe,
+            supersetGroup: e.supersetGroup,
+            targetWeight: e.targetWeight,
           }));
         }
         const after = { ...existing, name: args.name || existing.name, exercises };
@@ -729,6 +762,8 @@ export const ChatProvider: React.FC<{
           setType: e.setType || 'normal',
           restSeconds: e.restSeconds ?? 90,
           targetRpe: e.targetRpe,
+          supersetGroup: e.supersetGroup,
+          targetWeight: e.targetWeight,
         }));
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,

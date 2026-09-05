@@ -43,10 +43,23 @@ const supersetByTypeOnly: WorkoutTemplate = {
 describe('supersets in the template builder', () => {
   beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
 
-  it('no longer offers Superset as a per-exercise set type', () => {
+  it('offers no set-type pills — a template plans exercises, not set types', () => {
     render(<TemplateBuilder initial={supersetByTypeOnly} onSave={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getAllByText('Normal').length).toBe(3);
-    expect(screen.queryByText('Superset')).toBeNull();
+    for (const label of ['Normal', 'Dropset', 'To Failure', 'Warm-up']) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
+  });
+
+  it('names the superset each linked exercise belongs to, as the live session does', () => {
+    render(<TemplateBuilder initial={supersetByTypeOnly} onSave={vi.fn()} onCancel={vi.fn()} />);
+    // Bench and row are the pair; the fly is on its own.
+    expect(screen.getAllByText('Superset A')).toHaveLength(2);
+    expect(screen.queryByText('Superset B')).toBeNull();
+  });
+
+  it('puts linking in reach without opening an exercise menu', () => {
+    render(<TemplateBuilder initial={supersetByTypeOnly} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByText('Link Supersets')).toBeTruthy();
   });
 
   it('saves a set-type-only superset as an explicit link between the two exercises', () => {
@@ -76,6 +89,61 @@ describe('supersets in the template builder', () => {
     expect(saved.exercises.map(e => e.supersetGroup)).toEqual([2, 2]);
     expect(saved.exercises.map(e => e.setType)).toEqual(['superset', 'failure']);
     expect(saved.exercises[1].targetReps).toBe('failure');
+  });
+
+  it('keeps a failure target that is not echoed in the set type', () => {
+    // The shape the end-of-workout update writes when a set logged no reps:
+    // targetReps 'failure' next to a plain set type. Rebuilding the target
+    // from the set type alone turned this back into 10 on the next save.
+    const onSave = vi.fn();
+    const fromWorkout: WorkoutTemplate = {
+      id: 'tpl-fail', name: 'Holds',
+      exercises: [{ exerciseId: BENCH, sets: 2, targetReps: 'failure', setType: 'normal', restSeconds: 60 }],
+    };
+    render(<TemplateBuilder initial={fromWorkout} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByText('Save Template'));
+
+    expect((onSave.mock.calls[0][0] as WorkoutTemplate).exercises[0].targetReps).toBe('failure');
+  });
+
+  it('carries a dropset template through untouched now that the pill is gone', () => {
+    const onSave = vi.fn();
+    const drops: WorkoutTemplate = {
+      id: 'tpl-drop', name: 'Arms',
+      exercises: [{ exerciseId: BENCH, sets: 3, targetReps: 8, setType: 'dropset', restSeconds: 60 }],
+    };
+    render(<TemplateBuilder initial={drops} onSave={onSave} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByText('Save Template'));
+
+    expect((onSave.mock.calls[0][0] as WorkoutTemplate).exercises[0].setType).toBe('dropset');
+  });
+});
+
+describe('a superset looks the same in the builder as in the session', () => {
+  beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+
+  const tintOf = () => Array.from(document.querySelectorAll('div'))
+    .map(n => n.className)
+    .filter(c => typeof c === 'string' && /bg-(red|blue|green|yellow|pink|orange|amber|purple|white)-\d+\/20/.test(c))
+    .sort();
+
+  it('uses the same tint and the same group name on both surfaces', () => {
+    const { unmount } = render(<TemplateBuilder initial={supersetByTypeOnly} onSave={vi.fn()} onCancel={vi.fn()} />);
+    const builderTints = tintOf();
+    const builderLabels = screen.getAllByText('Superset A').length;
+    unmount();
+
+    render(
+      <ActiveSession
+        exercises={supersetByTypeOnly.exercises.map(e => e.exerciseId)}
+        templateExercises={supersetByTypeOnly.exercises}
+        templateName="Upper"
+        onFinish={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(tintOf()).toEqual(builderTints);
+    expect(screen.getAllByText('Superset A').length).toBe(builderLabels);
   });
 });
 

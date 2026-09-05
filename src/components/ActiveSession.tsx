@@ -8,7 +8,7 @@ import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldE
 import { parseLocalDate } from '@/utils/dateUtils';
 import { findPreviousPerformance } from '@/utils/previousPerformance';
 import { repairBlockNames, resolveExerciseName } from '@/utils/exerciseNames';
-import { resolveTemplateSupersets } from '@/utils/templateSupersets';
+import { resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
@@ -898,7 +898,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       originalTemplateSnapshot.current;
 
     if (shouldCheckTemplate) {
-      const completedBlocks: FinishedBlockLite[] = blocks
+      // A partner skipped outright leaves its group with one member, which is
+      // no longer a superset — and writing it back would park a link the
+      // template can never resolve.
+      const completedBlocks: FinishedBlockLite[] = withoutLoneSupersets(blocks
         .filter(b => b.sets.some(s => s.completed))
         .map(b => {
           const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
@@ -918,7 +921,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             supersetGroup: b.supersetGroup,
             restSeconds: b.restSeconds,
           };
-        });
+        }));
       const afterSnapshot = snapshotFromFinishedBlocks(completedBlocks);
       const diff = diffTemplateSnapshots(originalTemplateSnapshot.current!, afterSnapshot);
       if (diff.hasChanges) {
@@ -1355,9 +1358,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               const betweenId: TimerId = { type: 'between', blockIdx };
               const betweenKey = timerIdKey(betweenId);
               const isBetweenActive = activeTimer !== null && timerIdKey(activeTimer.id) === betweenKey;
+              // You don't rest between the halves of a superset — you move to
+              // the next one — and a rest bar wedged between them is the one
+              // thing that stops a linked pair reading as linked.
+              const withinSuperset = blockIdx > 0
+                && block.supersetGroup !== undefined
+                && blocks[blockIdx - 1].supersetGroup === block.supersetGroup;
               return (
               <React.Fragment key={block.exerciseId}>
-                {!hideTimers && blockIdx > 0 && (
+                {!hideTimers && blockIdx > 0 && !withinSuperset && (
                   <ExerciseRestTimer
                     timerId={betweenId}
                     defaultDuration={blocks[blockIdx - 1].restSeconds}
@@ -1422,6 +1431,16 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           <Plus className="w-4 h-4" />
           Add Exercise
         </button>
+
+        {blocks.length >= 2 && (
+          <button
+            onClick={() => setShowSupersetLinker(true)}
+            className="w-full py-3 rounded-lg border border-dashed border-muted-foreground/30 text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center gap-2"
+          >
+            <Layers className="w-4 h-4" />
+            Link Supersets
+          </button>
+        )}
       </div>
 
       {/* Focus Mode overlay */}

@@ -13,12 +13,13 @@ import type { PreviousSet } from '@/utils/previousPerformance';
 import { getSetFieldErrors, hasFieldErrors, type SetFieldErrors } from '@/utils/setValidation';
 import type { WeightUnit } from '@/hooks/useStorage';
 import type { ExerciseBlock, SetRow, DropRow, PersistedTimer, RunningSetState } from '@/types/activeSession';
+import { SupersetBadge } from '@/components/SupersetBadge';
 
 export const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
 
 /* ---------- RPE Picker Button ---------- */
 
-const RpePickerButton: React.FC<{ id: string; value: string; onChange: (v: string) => void }> = ({ id, value, onChange }) => {
+export const RpePickerButton: React.FC<{ id: string; value: string; onChange: (v: string) => void }> = ({ id, value, onChange }) => {
   const [open, setOpen] = React.useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -415,6 +416,12 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
   const [menuOpen, setMenuOpen] = React.useState(false);
   return (
     <div>
+      {block.supersetGroup !== undefined && (
+        <div className="mb-1">
+          <SupersetBadge group={block.supersetGroup} onClick={() => onMenuAction('Create Superset', blockIdx)} />
+        </div>
+      )}
+
       {/* Exercise Header */}
       <div className="flex items-center justify-between mb-1 gap-2">
         {hideHeaderName ? (

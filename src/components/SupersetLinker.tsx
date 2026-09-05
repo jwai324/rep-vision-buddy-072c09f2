@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
+import { supersetColorClass, supersetDotClass, supersetLabel } from '@/types/activeSession';
 
 interface ExerciseItem {
   exerciseId: string;
@@ -13,18 +14,6 @@ interface SupersetLinkerProps {
   onSave: (groups: Record<string, number | undefined>) => void;
   onCancel: () => void;
 }
-
-const SUPERSET_COLORS = [
-  'bg-red-500/20 border-red-500',
-  'bg-blue-500/20 border-blue-500',
-  'bg-green-500/20 border-green-500',
-  'bg-yellow-500/20 border-yellow-500',
-  'bg-pink-500/20 border-pink-500',
-  'bg-orange-500/20 border-orange-500',
-  'bg-amber-800/20 border-amber-800',
-  'bg-purple-500/20 border-purple-500',
-  'bg-white/20 border-white',
-];
 
 export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSave, onCancel }) => {
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -63,11 +52,6 @@ export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSav
     setGroups(prev => ({ ...prev, [exerciseId]: undefined }));
   };
 
-  const getColorClass = (groupId: number | undefined) => {
-    if (groupId === undefined) return '';
-    return SUPERSET_COLORS[(groupId - 1) % SUPERSET_COLORS.length];
-  };
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="flex items-center justify-between p-4">
@@ -84,7 +68,7 @@ export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSav
         {exercises.map((ex, idx) => {
           const isSelected = selected.has(idx);
           const groupId = groups[ex.exerciseId];
-          const colorClass = getColorClass(groupId);
+          const colorClass = supersetColorClass(groupId);
 
           return (
             <button
@@ -94,7 +78,7 @@ export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSav
                 isSelected
                   ? 'border-primary bg-primary/10'
                   : colorClass
-                    ? `border ${colorClass}`
+                    ? `border-border ${colorClass}`
                     : 'border-border bg-card'
               }`}
             >
@@ -106,7 +90,10 @@ export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSav
               <div className="flex-1">
                 <span className="text-sm font-medium text-foreground">{ex.exerciseName}</span>
                 {groupId !== undefined && (
-                  <span className="ml-2 text-xs text-muted-foreground">Group {groupId}</span>
+                  <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <span className={`w-1.5 h-1.5 rounded-full ${supersetDotClass(groupId)}`} />
+                    Superset {supersetLabel(groupId)}
+                  </span>
                 )}
               </div>
               {groupId !== undefined && (
