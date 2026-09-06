@@ -3,6 +3,7 @@ import { Sparkles, Send, Trash2, Mic, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { useChatContext, GOD_MODE_PHRASE } from '@/contexts/ChatContext';
 import { useSpeechToText, type SpeechToTextError } from '@/hooks/useSpeechToText';
+import { SPEECH_ERROR_MESSAGES, withSpoken } from '@/utils/speechToText';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
@@ -13,25 +14,6 @@ const MAX_CHAT_CHARS = 500;
 // without letting the input consume too much of the chat panel.
 const MAX_INPUT_ROWS = 3;
 const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
-
-const SPEECH_MESSAGES: Record<SpeechToTextError['reason'], string> = {
-  unsupported: "This browser can't do voice input.",
-  denied: 'Microphone access is blocked. Allow it in your browser settings to dictate.',
-  'no-microphone': "Couldn't find a microphone to record from.",
-  'no-start': "Voice input didn't start. Tap the mic to try again.",
-  'recognizer-error': 'Voice input stopped unexpectedly.',
-};
-
-/**
- * Put spoken words after whatever is already typed. The recognizer reports
- * phrases without surrounding whitespace, so the separating space is added
- * here; an empty box keeps the spoken text flush against the left.
- */
-function withSpoken(typed: string, spoken: string): string {
-  if (!spoken) return typed;
-  const base = typed.trimEnd();
-  return (base ? `${base} ${spoken}` : spoken).slice(0, MAX_CHAT_CHARS);
-}
 
 const TypingIndicator = () => (
   <div className="flex items-center gap-1 px-3 py-2">
@@ -118,12 +100,12 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   // stream of appends. When the run ends the engine hands its words over once,
   // and they become an ordinary draft, which persists like any other.
   const speech = useSpeechToText({
-    onEnd: useCallback((words: string) => setInput(prev => withSpoken(prev, words)), []),
-    onError: useCallback((error: SpeechToTextError) => toast.error(SPEECH_MESSAGES[error.reason]), []),
+    onEnd: useCallback((words: string) => setInput(prev => withSpoken(prev, words, MAX_CHAT_CHARS)), []),
+    onError: useCallback((error: SpeechToTextError) => toast.error(SPEECH_ERROR_MESSAGES[error.reason]), []),
   });
   const { listening, transcript, stop: stopListening, cancel: cancelListening } = speech;
 
-  const value = withSpoken(input, transcript);
+  const value = withSpoken(input, transcript, MAX_CHAT_CHARS);
 
   // Leaving the microphone live behind a dismissed panel would give no sign it
   // was still recording.
