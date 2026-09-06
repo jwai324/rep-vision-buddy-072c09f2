@@ -281,7 +281,18 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // picker should land in add mode rather than a half-completed replace flow.
   const [replaceIdx, setReplaceIdx] = useState<number | null>(null);
   const [showSupersetLinker, setShowSupersetLinker] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(cachedSession?.elapsedAtCache ?? (editSession?.duration ?? 0));
+  // Same stale-snapshot hazard as startTime below: elapsedAtCache is debounced
+  // and can lag well behind reality, so a running (non-paused) resume computes
+  // the true elapsed from the fixed startTimestamp instead. A paused resume
+  // has no live clock to compute from, so it keeps the frozen snapshot.
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+    if (cachedSession) {
+      return cachedSession.timerPaused
+        ? cachedSession.elapsedAtCache
+        : Math.floor((Date.now() - cachedSession.startTimestamp) / 1000);
+    }
+    return editSession?.duration ?? 0;
+  });
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   // Pending session held while we ask the user whether to save a <30s workout.
   // Replaces the old window.confirm(), which is suppressed by some mobile
@@ -292,7 +303,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const [detailExerciseId, setDetailExerciseId] = useState<ExerciseId | null>(null);
   const [timerPaused, setTimerPaused] = useState(cachedSession?.timerPaused ?? false);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const startTime = useRef(cachedSession ? (Date.now() - (cachedSession.elapsedAtCache * 1000)) : Date.now());
+  // Anchor to the cached startTimestamp, not elapsedAtCache: the cache write is
+  // debounced (see flushCache below), so elapsedAtCache can be several minutes
+  // stale by the time a minimized session is reopened, while startTimestamp is
+  // a fixed instant that never goes stale. Reconstructing from elapsedAtCache
+  // made this timer restart from that stale snapshot and drift from the
+  // MinimizedSessionBar, which already reads startTimestamp directly.
+  const startTime = useRef(cachedSession ? cachedSession.startTimestamp : Date.now());
   // Restore paused elapsed so a mid-pause reload keeps the frozen counter
   // instead of jumping when the user resumes.
   const pausedElapsed = useRef<number | null>(
