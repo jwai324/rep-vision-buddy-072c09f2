@@ -53,6 +53,7 @@ RULES:
    - General Fitness: 3 sets × 8-12 reps, 60s rest
    - Hybrid: read user_profile.hybrid_goals — it lists 1+ of the goals above the user is training for at once. Blend the defaults: e.g. strength + endurance means heavy compounds in the 3-6 range PLUS conditioning/higher-rep accessory work in the same session or week; strength + hypertrophy means low-rep primary lifts followed by 8-12 rep accessories. If hybrid_goals is empty, ask the user which goals to blend before proposing a program or template.
 8. Always put compound movements before isolation movements.
+8a. A superset is a LINK, not a set type: give every exercise performed back-to-back the SAME integer supersetGroup (1, 2, 3... within the template), and list them next to each other. Two exercises per group is the norm; use three only for a genuine tri-set. Leave supersetGroup off anything done on its own, and never give a group to a single exercise. When you re-send an exercise you are not changing, re-send its existing supersetGroup so the link survives the edit.
 9. If you can't do something (e.g., the user asks about nutrition and you don't have that data), say so directly and suggest what you can help with.
 10. Adding exercises to a template the user already has: call add_exercises_to_template with ONLY the new exercises. edit_template replaces the whole list, so reserve it for renaming, reordering, dropping exercises, or changing the sets/reps of ones already there — and only then re-send the full list. Emitting a full template you were only asked to add to wastes the reply budget and risks the tool call being cut off mid-write.
 
@@ -124,6 +125,8 @@ const tools = [
               setType: { type: "string", enum: ["normal", "superset", "dropset", "warmup"] },
               restSeconds: { type: "number" },
               targetRpe: { type: "number" },
+              targetWeight: { type: "number", description: "Target load in kg, or the band level for band work. Omit for no target." },
+              supersetGroup: { type: "number", description: "Shared integer id linking exercises performed back-to-back. Same id = same superset. Omit for an exercise done on its own." },
             },
             required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
           },
@@ -151,6 +154,8 @@ const tools = [
               targetReps: { type: "number" },
               setType: { type: "string" },
               restSeconds: { type: "number" },
+              targetWeight: { type: "number", description: "Target load in kg, or the band level for band work. Re-send the existing value for an exercise you are not changing." },
+              supersetGroup: { type: "number", description: "Shared integer id linking exercises performed back-to-back. Re-send the existing value for an exercise you are not changing, or its superset is broken." },
             },
             required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
           },
@@ -179,6 +184,8 @@ const tools = [
               setType: { type: "string", enum: ["normal", "superset", "dropset", "warmup"] },
               restSeconds: { type: "number" },
               targetRpe: { type: "number" },
+              targetWeight: { type: "number", description: "Target load in kg, or the band level for band work. Omit for no target." },
+              supersetGroup: { type: "number", description: "Shared integer id linking exercises performed back-to-back. Same id = same superset. Omit for an exercise done on its own." },
             },
             required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
           },

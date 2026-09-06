@@ -41,6 +41,11 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 Like migrations, edits under `supabase/functions/` do NOT ship on their own — the frontend auto-deploys, the functions do not. After changing either function run `supabase functions deploy <name>` (or deploy via the Supabase MCP server) and check the deployed version, because a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces".
 
+Deploy state as of 2026-09-06: `ai-coach` is at version 4 and byte-identical to
+this repo. `generate-program` is at version 2 and **behind** — the superset
+prompt change is in the repo but not live. Confirm with the MCP server's
+`get_edge_function` and diff against the file rather than assuming.
+
 ## AI integration
 
 Both edge functions talk to Anthropic directly via `npm:@anthropic-ai/sdk`. The API key lives in `ANTHROPIC_API_KEY` (set as a Supabase function secret).
@@ -276,13 +281,32 @@ of that link (`linkedSetType`), never the link itself — the builder used to
 offer it as a per-exercise pill, which linked nothing and carried nothing into
 a workout.
 
-The AI coach's tool schema and the program generator still write the
-setType-only form, so `resolveTemplateSupersets` (`src/utils/templateSupersets.ts`)
-runs wherever a template is read into an editor or a session: explicit groups
-are kept, an ungrouped run of two or more superset-typed exercises becomes a
-new group, and a lone one is a plain exercise. The session's update-template
-snapshot is taken from the resolved list too, so a superset template run as
-planned never prompts with a phantom "superset change".
+Older templates carry the setType-only form, so `resolveTemplateSupersets`
+(`src/utils/templateSupersets.ts`) runs wherever a template is read into an
+editor or a session: explicit groups are kept, an ungrouped run of two or more
+superset-typed exercises is **cut into pairs** (an odd run ends in a trio), and
+a lone one is a plain exercise. Cutting matters — the coach writes "pair these
+up" as a run of six or eight, and one group of eight renders as a whole workout
+in a single colour. A group only one exercise is left holding is cleared
+(`withoutLoneSupersets`), which is what heals a partner deleted in the builder
+or skipped in a workout that then updates its template. The session's
+update-template snapshot is taken from the resolved list too, so a superset
+template run as planned never prompts with a phantom "superset change".
+
+`supersetInfo(items, idx)` in `src/types/activeSession.ts` is the single source
+for how a superset is *shown*: which pairing it is (A, B, C… by order of
+appearance, never by the stored id, which goes sparse), where the exercise sits
+in it, how many it links, and the tint. The live session, focus mode, the
+template builder, the linker and the summary all read from it, and
+`SupersetBadge` renders it as "Superset A · 1 of 2". Group ids are internal.
+
+Both edge functions can now express a link: `supersetGroup` is in the ai-coach
+template tool schemas, and `superset_group` is described (not hard-coded to
+null) in the generate-program prompt. `carryTemplateOnlyFields` in
+`ChatContext.tsx` re-attaches `supersetGroup` and `targetWeight` from the row
+being replaced on an `edit_template`, because the model can omit what it wasn't
+asked to change — without it a wholesale edit unlinked every superset in the
+template.
 
 ## Volume exclusions
 

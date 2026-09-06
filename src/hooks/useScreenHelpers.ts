@@ -11,15 +11,21 @@ export function templateFromSession(session: WorkoutSession, nameOverride?: stri
   return {
     id: crypto.randomUUID(),
     name: nameOverride ?? `Workout ${parseLocalDate(session.date).toLocaleDateString()}`,
-    exercises: session.exercises.map(ex => ({
-      exerciseId: ex.exerciseId,
-      sets: ex.sets.length,
-      targetReps: ex.sets[0]?.reps ?? 10,
-      setType: ex.sets[0]?.type ?? 'normal',
-      restSeconds: defaultRestSeconds,
-      // Session weights are already in the canonical kg that targetWeight uses.
-      targetWeight: ex.sets[0]?.weight,
-    })),
+    exercises: session.exercises.map(ex => {
+      // Warm-ups are prepended, so sets[0] is a warm-up whenever one was added
+      // — and its light load and low reps are not what the template is for.
+      const first = ex.sets.find(s => s.type !== 'warmup') ?? ex.sets[0];
+      return {
+        exerciseId: ex.exerciseId,
+        sets: ex.sets.length,
+        targetReps: first?.reps ?? 10,
+        setType: first?.type ?? 'normal',
+        restSeconds: defaultRestSeconds,
+        // Session weights are already in the canonical kg that targetWeight uses.
+        targetWeight: first?.weight,
+        supersetGroup: ex.supersetGroup,
+      };
+    }),
   };
 }
 

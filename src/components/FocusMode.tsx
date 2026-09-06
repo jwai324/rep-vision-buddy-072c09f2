@@ -11,6 +11,7 @@ import {
   type RunningSetState,
   type PersistedTimer,
 } from '@/components/ActiveSession';
+import { supersetInfo } from '@/types/activeSession';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { distanceUnitFromWeightUnit, type ExerciseInputMode } from '@/utils/exerciseInputMode';
@@ -228,18 +229,10 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
   const block = displayedIdx !== null ? blocks[displayedIdx] : null;
 
   const supersetLabel = useMemo(() => {
-    if (!block || block.supersetGroup === undefined || displayedIdx === null) return null;
-    // Determine the ordinal of this superset GROUP (A for first group, B for second, etc.)
-    const uniqueGroups = Array.from(new Set(
-      blocks.filter(b => b.supersetGroup !== undefined).map(b => b.supersetGroup as number)
-    )).sort((a, b) => a - b);
-    const groupOrdinal = uniqueGroups.indexOf(block.supersetGroup) + 1;
-    const groupIdxs = blocks
-      .map((b, i) => (b.supersetGroup === block.supersetGroup ? i : -1))
-      .filter(i => i >= 0);
-    const posInGroup = groupIdxs.indexOf(displayedIdx) + 1;
-    return `Superset ${String.fromCharCode(64 + groupOrdinal)} · ${posInGroup} of ${groupIdxs.length}`;
-  }, [blocks, block, displayedIdx]);
+    if (displayedIdx === null) return null;
+    const info = supersetInfo(blocks, displayedIdx);
+    return info ? `Superset ${info.letter} · ${info.position} of ${info.size}` : null;
+  }, [blocks, displayedIdx]);
 
   const totalSets = block?.sets.length ?? 0;
   const currentRound = block ? completedRounds(block) + 1 : 0;

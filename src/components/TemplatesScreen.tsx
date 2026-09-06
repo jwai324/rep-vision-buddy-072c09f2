@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import type { WorkoutTemplate } from '@/types/workout';
+import { describeSupersetOrder, resolveTemplateSupersets } from '@/utils/templateSupersets';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { Button } from '@/components/ui/button';
 import { Copy, Share2 } from 'lucide-react';
@@ -73,7 +74,10 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
             >
               <h3 className="font-semibold text-foreground mb-1">{t.name}</h3>
               <p className="text-xs text-muted-foreground mb-3">
-                {t.exercises.map(e => exerciseLookup[e.exerciseId] ?? e.exerciseId).join(' → ')}
+                {describeSupersetOrder(
+                  resolveTemplateSupersets(t.exercises),
+                  e => exerciseLookup[e.exerciseId] ?? e.exerciseId,
+                )}
               </p>
               <p className="text-xs text-muted-foreground mb-3">
                 {t.exercises.reduce((s, e) => s + e.sets, 0)} sets total

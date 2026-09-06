@@ -29,7 +29,8 @@ RULES:
 - Return the program as valid JSON matching the schema below.
 - Program structure: a weekly split across the user's available training days.
 - Each training day has a name (e.g., "Upper A", "Push", "Legs") and an ordered list of exercises.
-- For each exercise, specify: exercise name (must match exactly from the list), sets, reps (or rep range), rest period in seconds, set type (normal, superset, dropset), and order position.
+- For each exercise, specify: exercise name (must match exactly from the list), sets, reps (or rep range), rest period in seconds, set type (normal, superset, dropset), order position, and superset_group.
+- A superset is a link, not a label: when two exercises are paired, give both the same superset_group integer and place them one after the other. Marking them "superset" without a shared group leaves the app guessing at the pairing.
 - Compound movements first, isolation movements last within each day.
 - Apply these rep ranges based on goal:
   - Hypertrophy: 3-4 sets × 8-12 reps, 60-90s rest
@@ -71,7 +72,7 @@ JSON SCHEMA:
           "rest_seconds": number,
           "set_type": "normal | superset | dropset",
           "order": number,
-          "superset_group": null
+          "superset_group": "number or null — the SAME integer on exercises performed back-to-back (2 per group is the norm, 3 only for a genuine tri-set), listed next to each other. null for an exercise done on its own. Never give a group to a single exercise.
         }
       ]
     }
