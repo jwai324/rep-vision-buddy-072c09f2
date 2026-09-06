@@ -40,6 +40,10 @@ const supersetByTypeOnly: WorkoutTemplate = {
   ],
 };
 
+/** What each superset badge on screen reads, top to bottom. */
+const badgeLabels = () => screen.queryAllByTestId('superset-badge')
+  .map(n => n.textContent!.replace(/\s+/g, ' ').trim());
+
 describe('supersets in the template builder', () => {
   beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
 
@@ -50,11 +54,10 @@ describe('supersets in the template builder', () => {
     }
   });
 
-  it('names the superset each linked exercise belongs to, as the live session does', () => {
+  it('names the superset each linked exercise belongs to and how big it is', () => {
     render(<TemplateBuilder initial={supersetByTypeOnly} onSave={vi.fn()} onCancel={vi.fn()} />);
     // Bench and row are the pair; the fly is on its own.
-    expect(screen.getAllByText('Superset A')).toHaveLength(2);
-    expect(screen.queryByText('Superset B')).toBeNull();
+    expect(badgeLabels()).toEqual(['Superset A · 1 of 2', 'Superset A · 2 of 2']);
   });
 
   it('puts linking in reach without opening an exercise menu', () => {
@@ -127,10 +130,10 @@ describe('a superset looks the same in the builder as in the session', () => {
     .filter(c => typeof c === 'string' && /bg-(red|blue|green|yellow|pink|orange|amber|purple|white)-\d+\/20/.test(c))
     .sort();
 
-  it('uses the same tint and the same group name on both surfaces', () => {
+  it('uses the same tint and the same group labels on both surfaces', () => {
     const { unmount } = render(<TemplateBuilder initial={supersetByTypeOnly} onSave={vi.fn()} onCancel={vi.fn()} />);
     const builderTints = tintOf();
-    const builderLabels = screen.getAllByText('Superset A').length;
+    const builderLabels = badgeLabels();
     unmount();
 
     render(
@@ -143,7 +146,25 @@ describe('a superset looks the same in the builder as in the session', () => {
       />,
     );
     expect(tintOf()).toEqual(builderTints);
-    expect(screen.getAllByText('Superset A').length).toBe(builderLabels);
+    expect(badgeLabels()).toEqual(builderLabels);
+  });
+
+  it('gives each pair of a long superset run its own letter and colour', () => {
+    // The user's real "Upper A": six in a row typed as supersets, no group ids.
+    const sixInARow: WorkoutTemplate = {
+      id: 'tpl-six', name: 'Upper A',
+      exercises: [BENCH, ROW, FLY, 'lat-pulldown', 'dumbbell-curl', 'rope-tricep-pushdown'].map(id => ({
+        exerciseId: id, sets: 3, targetReps: 10, setType: 'superset' as const, restSeconds: 60,
+      })),
+    };
+    render(<TemplateBuilder initial={sixInARow} onSave={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(badgeLabels()).toEqual([
+      'Superset A · 1 of 2', 'Superset A · 2 of 2',
+      'Superset B · 1 of 2', 'Superset B · 2 of 2',
+      'Superset C · 1 of 2', 'Superset C · 2 of 2',
+    ]);
+    expect(new Set(tintOf()).size).toBe(3);
   });
 });
 

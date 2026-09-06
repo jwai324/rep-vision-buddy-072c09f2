@@ -144,3 +144,32 @@ export function resolveTemplateSupersets<T extends SupersetCarrier>(exercises: T
 
   return withoutLoneSupersets(changed ? resolved : exercises);
 }
+
+/**
+ * A one-line reading order for a template: superset members joined with "+",
+ * everything else with an arrow, so "A + B → C" says at a glance which
+ * exercises are done back-to-back and how many are in each pairing.
+ *
+ * Groups are read where they first appear, so a non-adjacent pair still reads
+ * as one bracket.
+ */
+export function describeSupersetOrder<T extends SupersetCarrier>(
+  exercises: T[],
+  nameOf: (exercise: T, index: number) => string,
+): string {
+  const taken = new Set<number>();
+  const parts: string[] = [];
+  exercises.forEach((ex, i) => {
+    if (taken.has(i)) return;
+    taken.add(i);
+    if (ex.supersetGroup === undefined) { parts.push(nameOf(ex, i)); return; }
+    const names = [nameOf(ex, i)];
+    exercises.forEach((other, j) => {
+      if (j <= i || taken.has(j) || other.supersetGroup !== ex.supersetGroup) return;
+      taken.add(j);
+      names.push(nameOf(other, j));
+    });
+    parts.push(names.length > 1 ? names.join(' + ') : names[0]);
+  });
+  return parts.join(' → ');
+}

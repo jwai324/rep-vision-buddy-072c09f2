@@ -18,7 +18,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableExerciseItem } from '@/components/SortableExerciseItem';
 import { SupersetLinker } from '@/components/SupersetLinker';
-import { supersetColorClass } from '@/types/activeSession';
+import { supersetInfo } from '@/types/activeSession';
 import { groupAdjacentSupersets, linkedSetType, resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
 
 /** A hold takes a load next to its duration; distance work never does. */
@@ -399,12 +399,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
       <div className="flex-1 overflow-y-auto px-4 pb-24 space-y-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
           <SortableContext items={blocks.map(b => b.exerciseId)} strategy={verticalListSortingStrategy}>
-            {blocks.map((block, blockIdx) => (
+            {blocks.map((block, blockIdx) => {
+              const superset = supersetInfo(blocks, blockIdx);
+              return (
               <SortableExerciseItem key={block.exerciseId} id={block.exerciseId}>
-                <div className={`rounded-lg ${supersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
-                  {block.supersetGroup !== undefined && (
+                <div className={`rounded-lg ${superset?.colorClass ?? ''} ${superset ? 'p-2' : ''}`}>
+                  {superset && (
                     <div className="mb-1">
-                      <SupersetBadge group={block.supersetGroup} onClick={() => setShowSupersetLinker(true)} />
+                      <SupersetBadge info={superset} onClick={() => setShowSupersetLinker(true)} />
                     </div>
                   )}
 
@@ -588,7 +590,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                   </button>
                 </div>
               </SortableExerciseItem>
-            ))}
+              );
+            })}
           </SortableContext>
         </DndContext>
 

@@ -10,7 +10,8 @@ import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, formatSet
 import { formatMmSs } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
-import { supersetColorClass } from '@/types/activeSession';
+import { supersetInfo } from '@/types/activeSession';
+import { SupersetBadge } from '@/components/SupersetBadge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
@@ -387,8 +388,15 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             }
           })();
 
+          const superset = supersetInfo(exercisesWithGroups, i);
+
           return (
-          <div key={i} className={`rounded-xl p-4 border border-border ${ex.supersetGroup !== undefined ? supersetColorClass(ex.supersetGroup) : 'bg-card'}`}>
+          <div key={i} className={`rounded-xl p-4 border border-border ${superset ? superset.colorClass : 'bg-card'}`}>
+            {superset && (
+              <div className="mb-2">
+                <SupersetBadge info={superset} />
+              </div>
+            )}
             <div className="flex items-center gap-2 mb-3">
               <span className="text-xl">{icon}</span>
               <h3 className="font-semibold text-foreground">{exerciseLookup[ex.exerciseId] ?? ex.exerciseName}</h3>

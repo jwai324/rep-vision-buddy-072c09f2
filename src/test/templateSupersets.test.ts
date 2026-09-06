@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { groupAdjacentSupersets, linkedSetType, resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
+import { describeSupersetOrder, groupAdjacentSupersets, linkedSetType, resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
 import type { TemplateExercise } from '@/types/workout';
+import { supersetInfo } from '@/types/activeSession';
 
 function ex(overrides: Partial<TemplateExercise> = {}): TemplateExercise {
   return {
@@ -172,5 +173,68 @@ describe('groupAdjacentSupersets', () => {
       ex({ exerciseId: 'c' }),
     ];
     expect(groupAdjacentSupersets(exercises)).toBe(exercises);
+  });
+});
+
+describe('supersetInfo', () => {
+  const at = (groups: (number | undefined)[]) => groups.map(g => ({ supersetGroup: g }));
+
+  it('letters groups by where they appear, not by their stored id', () => {
+    // Ids go sparse as supersets are made and unmade; the labels must not.
+    const items = at([7, 7, undefined, 2, 2]);
+    expect(supersetInfo(items, 0)?.letter).toBe('A');
+    expect(supersetInfo(items, 3)?.letter).toBe('B');
+    expect(supersetInfo(items, 2)).toBeNull();
+  });
+
+  it('reports where an exercise sits in its group and how big the group is', () => {
+    const items = at([1, 1, 1, undefined]);
+    expect(supersetInfo(items, 0)).toMatchObject({ position: 1, size: 3 });
+    expect(supersetInfo(items, 2)).toMatchObject({ position: 3, size: 3 });
+  });
+
+  it('gives the same colour to the letter on every surface', () => {
+    const a = supersetInfo(at([4, 4]), 0)!;
+    const b = supersetInfo(at([9, 9]), 0)!;
+    expect(a.letter).toBe(b.letter);
+    expect(a.colorClass).toBe(b.colorClass);
+  });
+
+  it('counts members that are not adjacent', () => {
+    expect(supersetInfo(at([1, undefined, 1]), 0)).toMatchObject({ position: 1, size: 2 });
+  });
+});
+
+describe('describeSupersetOrder', () => {
+  const name = (e: TemplateExercise) => e.exerciseId;
+
+  it('joins a superset with + and everything else with an arrow', () => {
+    const line = describeSupersetOrder(resolveTemplateSupersets([
+      ex({ exerciseId: 'bench', setType: 'superset' }),
+      ex({ exerciseId: 'row', setType: 'superset' }),
+      ex({ exerciseId: 'plank' }),
+    ]), name);
+    expect(line).toBe('bench + row → plank');
+  });
+
+  it('brackets each pair of a long run separately', () => {
+    const line = describeSupersetOrder(resolveTemplateSupersets(
+      ['a', 'b', 'c', 'd'].map(id => ex({ exerciseId: id, setType: 'superset' })),
+    ), name);
+    expect(line).toBe('a + b → c + d');
+  });
+
+  it('reads a non-adjacent pair as one bracket, where it first appears', () => {
+    const line = describeSupersetOrder([
+      ex({ exerciseId: 'a', supersetGroup: 1 }),
+      ex({ exerciseId: 'b' }),
+      ex({ exerciseId: 'c', supersetGroup: 1 }),
+    ], name);
+    expect(line).toBe('a + c → b');
+  });
+
+  it('leaves a template with no supersets exactly as it read before', () => {
+    const line = describeSupersetOrder(['a', 'b'].map(id => ex({ exerciseId: id })), name);
+    expect(line).toBe('a → b');
   });
 });

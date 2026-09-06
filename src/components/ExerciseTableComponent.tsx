@@ -13,6 +13,7 @@ import type { PreviousSet } from '@/utils/previousPerformance';
 import { getSetFieldErrors, hasFieldErrors, type SetFieldErrors } from '@/utils/setValidation';
 import type { WeightUnit } from '@/hooks/useStorage';
 import type { ExerciseBlock, SetRow, DropRow, PersistedTimer, RunningSetState } from '@/types/activeSession';
+import { supersetInfo } from '@/types/activeSession';
 import { SupersetBadge } from '@/components/SupersetBadge';
 
 export const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
@@ -414,11 +415,12 @@ export interface ExerciseTableProps {
 export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, weightUnit, distanceUnit, blocks, stickyNote, activeTimer, restRecords, previousSets, previousDate, inputMode, onUpdateSet, onToggleComplete, onAddSet, onAddDrop, onUpdateDrop, onRemoveSet, onRemoveDrop, onMenuAction, onStartTimer, onSkipTimer, onExtendTimer, onTitleTap, isEditMode, runningSet, onStartNextSet, onStopSet, hideHeaderName, hideTimers }) => {
   const isRunningHere = runningSet?.blockIdx === blockIdx;
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const superset = supersetInfo(blocks, blockIdx);
   return (
     <div>
-      {block.supersetGroup !== undefined && (
+      {superset && (
         <div className="mb-1">
-          <SupersetBadge group={block.supersetGroup} onClick={() => onMenuAction('Create Superset', blockIdx)} />
+          <SupersetBadge info={superset} onClick={() => onMenuAction('Create Superset', blockIdx)} />
         </div>
       )}
 

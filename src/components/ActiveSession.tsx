@@ -62,7 +62,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 // Re-export shared types from dedicated module
 export type { TimerStatus, PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import type { PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
-import { supersetColorClass } from '@/types/activeSession';
+import { supersetInfo } from '@/types/activeSession';
 import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
@@ -1382,7 +1382,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 )}
                 <div ref={el => { blockRefs.current[blockIdx] = el; }}>
                   <SortableExerciseItem id={block.exerciseId}>
-                    <div className={`rounded-lg ${supersetColorClass(block.supersetGroup)} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
+                    <div className={`rounded-lg ${supersetInfo(blocks, blockIdx)?.colorClass ?? ''} ${block.supersetGroup !== undefined ? 'p-2' : ''}`}>
                       <ExerciseTable
                         block={block}
                         blockIdx={blockIdx}

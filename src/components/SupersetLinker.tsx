@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
-import { supersetColorClass, supersetDotClass, supersetLabel } from '@/types/activeSession';
+import { supersetInfo } from '@/types/activeSession';
 
 interface ExerciseItem {
   exerciseId: string;
@@ -68,7 +68,10 @@ export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSav
         {exercises.map((ex, idx) => {
           const isSelected = selected.has(idx);
           const groupId = groups[ex.exerciseId];
-          const colorClass = supersetColorClass(groupId);
+          // Read the pairing off the edit in progress, not the saved state, so
+          // the rows recolour as the user links and unlinks.
+          const info = supersetInfo(exercises.map(e => ({ supersetGroup: groups[e.exerciseId] })), idx);
+          const colorClass = info?.colorClass ?? '';
 
           return (
             <button
@@ -89,10 +92,10 @@ export const SupersetLinker: React.FC<SupersetLinkerProps> = ({ exercises, onSav
               </div>
               <div className="flex-1">
                 <span className="text-sm font-medium text-foreground">{ex.exerciseName}</span>
-                {groupId !== undefined && (
+                {info && (
                   <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className={`w-1.5 h-1.5 rounded-full ${supersetDotClass(groupId)}`} />
-                    Superset {supersetLabel(groupId)}
+                    <span className={`w-1.5 h-1.5 rounded-full ${info.dotClass}`} />
+                    Superset {info.letter} · {info.position} of {info.size}
                   </span>
                 )}
               </div>
