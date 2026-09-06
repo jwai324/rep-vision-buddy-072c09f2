@@ -75,10 +75,10 @@ One-shot, non-streaming. Returns JSON. The system prompt has `cache_control: { t
 
 Default model is `claude-opus-4-7` (the most capable model in the Claude 4.x family). If responses are too expensive, swap to `claude-sonnet-4-6` — both edge functions have a `MODEL` constant at the top.
 
-## Voice input (AI coach chat)
+## Voice input (AI coach chat, bug report sheet)
 
-`src/utils/speechToText.ts` drives the mic button in `AIChatBubble`, via
-`useSpeechToText`. It was rebuilt from scratch after two designs built on
+`src/utils/speechToText.ts` drives the mic buttons in `AIChatBubble` and
+`ErrorReportButton`, via `useSpeechToText`. It was rebuilt from scratch after two designs built on
 continuous-mode sessions kept duplicating words ("add three sets three sets of
 squats"). Three rules hold it together:
 
@@ -141,9 +141,24 @@ spoken in the instant after a pause can be missed (pause, then continue), and
 Android plays its start sound at the top of every session. Both are the price
 of a mode that cannot double a word.
 
+The bug-report sheet dictates into both of its boxes on the same rules, and
+`withSpoken` / `SPEECH_ERROR_MESSAGES` are shared with the chat so the two say
+and compose the same thing. One engine serves both boxes, because the browser
+runs one recognizer at a time and a single run is what keeps a sentence from
+being split across two of them: `voiceField` says which box the run writes
+into, and it only changes once a run has handed its words over — a mic tapped
+on the other box ends the run first and is queued (`queuedField`) until the
+engine is idle *and* its transcript is empty, which is the point at which the
+words have landed. Typing takes over from talking in the box being dictated
+into only; typing in the other one leaves the run alone. Send banks the spoken
+words as ordinary text before dropping the run, so a failed send keeps
+everything that was on screen.
+
 Tests: `src/test/speechToText.test.ts` (engine, including seeded browser
-"personalities" that replay, duplicate and cumulate) and
-`src/test/aiChatSpeech.test.tsx` (panel integration, including StrictMode).
+"personalities" that replay, duplicate and cumulate),
+`src/test/aiChatSpeech.test.tsx` (panel integration, including StrictMode) and
+`src/test/errorReportSpeech.test.tsx` (both report boxes, including the
+hand-over when the mic moves between them).
 `src/test/helpers/fakeSpeechRecognition.ts` is the shared fake.
 
 ## OAuth

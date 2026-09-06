@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Bug, Send } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Bug, Mic, Send, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { useSpeechToText, type SpeechToTextError } from '@/hooks/useSpeechToText';
+import { SPEECH_ERROR_MESSAGES, withSpoken } from '@/utils/speechToText';
 import {
   useErrorReports,
   MAX_DESCRIPTION_CHARS,
@@ -27,6 +29,17 @@ const STATUS_LABEL: Record<ErrorReportStatus, string> = {
 };
 
 const DRAFT_STORAGE_KEY = 'error-report-draft';
+
+/** The two boxes that can be dictated into, and the caps they hold text to. */
+type VoiceField = 'description' | 'expected';
+const FIELD_LIMIT: Record<VoiceField, number> = {
+  description: MAX_DESCRIPTION_CHARS,
+  expected: MAX_EXPECTED_CHARS,
+};
+const FIELD_LABEL: Record<VoiceField, string> = {
+  description: 'What happened',
+  expected: 'What should happen instead',
+};
 
 function readDraft(): string {
   try {
@@ -69,11 +82,101 @@ export const ErrorReportButton: React.FC<ErrorReportButtonProps> = ({ screen }) 
     }
   }, [description]);
 
-  const canSubmit = description.trim().length > 0 && !submitting;
+  // Which box a voice run writes into. One engine serves both: the browser runs
+  // one recognizer at a time, and a single run is what keeps a sentence from
+  // being split across two boxes. `description` and `expected` hold what was
+  // typed; while a run is on, the box it opened on shows the two composed at
+  // render time, so what is on screen is the whole of what the engine has
+  // heard. The run hands its words over once, and they become ordinary text.
+  const [voiceField, setVoiceField] = useState<VoiceField | null>(null);
+  // A mic tapped on the other box while a run is on: that run ends first and
+  // the queued box opens once its words have been handed over.
+  const queuedField = useRef<VoiceField | null>(null);
+
+  const speech = useSpeechToText({
+    onEnd: useCallback(
+      (words: string) => {
+        // The field this run opened on: it only ever changes once a run has
+        // finished handing its words over (see the hand-off effect below).
+        if (!voiceField) return;
+        const apply = voiceField === 'expected' ? setExpected : setDescription;
+        apply(prev => withSpoken(prev, words, FIELD_LIMIT[voiceField]));
+      },
+      [voiceField],
+    ),
+    onError: useCallback((error: SpeechToTextError) => toast.error(SPEECH_ERROR_MESSAGES[error.reason]), []),
+  });
+  const { listening, transcript, supported, start: startListening, stop: stopListening, cancel: cancelListening } = speech;
+
+  const descriptionValue = withSpoken(
+    description,
+    voiceField === 'description' ? transcript : '',
+    MAX_DESCRIPTION_CHARS,
+  );
+  const expectedValue = withSpoken(expected, voiceField === 'expected' ? transcript : '', MAX_EXPECTED_CHARS);
+
+  // The queued box opens only once the run before it is completely done.
+  // `listening` goes false the moment the mic button ends a run, but its words
+  // are still with the engine until the phrase in flight finalizes, and the
+  // field they are destined for must not change under them.
+  useEffect(() => {
+    const next = queuedField.current;
+    if (!next || listening || transcript) return;
+    queuedField.current = null;
+    setVoiceField(next);
+    startListening();
+  }, [listening, transcript, startListening]);
+
+  // Leaving the microphone live behind a dismissed sheet would give no sign it
+  // was still recording; stopping folds the words into the persisted draft.
+  useEffect(() => {
+    if (!open) {
+      queuedField.current = null;
+      stopListening();
+    }
+  }, [open, stopListening]);
+
+  const handleMic = (field: VoiceField) => {
+    if (navigator.vibrate) navigator.vibrate(5);
+    if (listening) {
+      // Ending the run hands its words to the box it opened on; a tap on the
+      // other box's mic queues that box to open next.
+      queuedField.current = voiceField === field ? null : field;
+      stopListening();
+      return;
+    }
+    queuedField.current = null;
+    setVoiceField(field);
+    startListening();
+  };
+
+  const editField = (field: VoiceField, next: string) => {
+    if (field === 'expected') setExpected(next);
+    else setDescription(next);
+    // The box already shows everything spoken so far, so the edited text is the
+    // new baseline and the run's words are dropped rather than handed over on
+    // top of it. Typing takes over from talking — in that box only.
+    if (voiceField === field) {
+      queuedField.current = null;
+      cancelListening();
+    }
+  };
+
+  const micFor = (field: VoiceField) =>
+    supported ? { listening: listening && voiceField === field, onToggle: () => handleMic(field) } : undefined;
+
+  const canSubmit = descriptionValue.trim().length > 0 && !submitting;
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return;
-    const ok = await submitReport({ kind, description, expected, screen });
+    // The spoken words go out with the report, so they are banked as ordinary
+    // text first and the run is dropped rather than handed over on top of it —
+    // a failed send has to keep everything the user could see.
+    setDescription(descriptionValue);
+    setExpected(expectedValue);
+    queuedField.current = null;
+    cancelListening();
+    const ok = await submitReport({ kind, description: descriptionValue, expected: expectedValue, screen });
     if (!ok) {
       toast.error("Couldn't send the report. Check your connection and try again — your text is kept.");
       return;
@@ -83,7 +186,7 @@ export const ErrorReportButton: React.FC<ErrorReportButtonProps> = ({ screen }) 
     setExpected('');
     setKind('bug');
     setOpen(false);
-  }, [canSubmit, submitReport, kind, description, expected, screen]);
+  }, [canSubmit, cancelListening, submitReport, kind, descriptionValue, expectedValue, screen]);
 
   const recentErrorCount = open ? getRecentErrors().length : 0;
 
@@ -135,23 +238,21 @@ export const ErrorReportButton: React.FC<ErrorReportButtonProps> = ({ screen }) 
               ))}
             </div>
 
-            <Textarea
-              aria-label="What happened"
-              value={description}
-              onChange={e => setDescription(e.target.value.slice(0, MAX_DESCRIPTION_CHARS))}
-              maxLength={MAX_DESCRIPTION_CHARS}
+            <DictatedField
+              field="description"
+              value={descriptionValue}
+              onChange={editField}
               rows={4}
               placeholder="What happened? Say what you tapped and what you saw."
-              className="resize-none"
+              mic={micFor('description')}
             />
-            <Textarea
-              aria-label="What should happen instead"
-              value={expected}
-              onChange={e => setExpected(e.target.value.slice(0, MAX_EXPECTED_CHARS))}
-              maxLength={MAX_EXPECTED_CHARS}
+            <DictatedField
+              field="expected"
+              value={expectedValue}
+              onChange={editField}
               rows={2}
               placeholder="What should happen instead? (optional)"
-              className="resize-none"
+              mic={micFor('expected')}
             />
 
             <p className="text-[11px] text-muted-foreground">
@@ -188,6 +289,59 @@ export const ErrorReportButton: React.FC<ErrorReportButtonProps> = ({ screen }) 
         </SheetContent>
       </Sheet>
     </>
+  );
+};
+
+interface DictatedFieldProps {
+  field: VoiceField;
+  value: string;
+  onChange: (field: VoiceField, next: string) => void;
+  rows: number;
+  placeholder: string;
+  /** Absent on a browser with no recognizer — the box is then a plain one. */
+  mic?: { listening: boolean; onToggle: () => void };
+}
+
+/** A report box with the mic button the AI coach's composer uses, in-corner. */
+const DictatedField: React.FC<DictatedFieldProps> = ({ field, value, onChange, rows, placeholder, mic }) => {
+  const label = FIELD_LABEL[field];
+  return (
+    <div className="relative">
+      <Textarea
+        aria-label={label}
+        value={value}
+        onChange={e => onChange(field, e.target.value.slice(0, FIELD_LIMIT[field]))}
+        maxLength={FIELD_LIMIT[field]}
+        rows={rows}
+        placeholder={placeholder}
+        className={cn('resize-none', mic && 'pr-12')}
+      />
+      {mic && (
+        <button
+          type="button"
+          onClick={mic.onToggle}
+          aria-label={`${mic.listening ? 'Stop' : 'Start'} voice input for ${label}`}
+          aria-pressed={mic.listening}
+          className={cn(
+            'absolute right-2 bottom-2 w-9 h-9 rounded-lg flex items-center justify-center transition-all',
+            mic.listening
+              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/40'
+              : 'bg-secondary text-foreground hover:bg-secondary/70 hover:text-primary',
+          )}
+        >
+          {mic.listening ? <Square className="w-3.5 h-3.5 fill-current" /> : <Mic className="w-4 h-4" />}
+        </button>
+      )}
+      {mic?.listening && (
+        <p className="mt-1 flex items-center gap-2 text-[11px] text-primary">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+          </span>
+          Listening — tap the mic or pause when you're done
+        </p>
+      )}
+    </div>
   );
 };
 

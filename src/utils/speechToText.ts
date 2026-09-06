@@ -1,5 +1,6 @@
 /**
- * Speech-to-text for the AI coach chat, over the browser's SpeechRecognition.
+ * Speech-to-text over the browser's SpeechRecognition, behind the mic buttons
+ * in the AI coach chat and the bug-report sheet.
  *
  * The one job here is to never write a word twice and never lose one the user
  * watched appear. Three decisions do that work:
@@ -100,6 +101,28 @@ export interface SpeechToTextError {
     | 'recognizer-error'; // anything else the browser reported
   /** The raw SpeechRecognitionErrorEvent.error, when the browser gave one. */
   code?: string;
+}
+
+/** What each failure reason says to the user; exhaustive over `reason`. */
+export const SPEECH_ERROR_MESSAGES: Record<SpeechToTextError['reason'], string> = {
+  unsupported: "This browser can't do voice input.",
+  denied: 'Microphone access is blocked. Allow it in your browser settings to dictate.',
+  'no-microphone': "Couldn't find a microphone to record from.",
+  'no-start': "Voice input didn't start. Tap the mic to try again.",
+  'recognizer-error': 'Voice input stopped unexpectedly.',
+};
+
+/**
+ * Put spoken words after whatever is already typed. The recognizer reports
+ * phrases without surrounding whitespace, so the separating space is added
+ * here; an empty box keeps the spoken text flush against the left. The result
+ * is held to the same cap the field enforces on typing, so dictation can't
+ * overrun a limit the keyboard respects.
+ */
+export function withSpoken(typed: string, spoken: string, maxChars: number): string {
+  if (!spoken) return typed;
+  const base = typed.trimEnd();
+  return (base ? `${base} ${spoken}` : spoken).slice(0, maxChars);
 }
 
 export interface SpeechToTextOptions {
