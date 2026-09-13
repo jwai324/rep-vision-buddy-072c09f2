@@ -39,16 +39,22 @@ function workingSets(sets: WorkoutSession['exercises'][number]['sets']): Previou
  * earlier day (a backfill, or a workout edited after the fact) lands at the
  * front of the list, and taking the first match would show those numbers as
  * "previous" ahead of a genuinely more recent session.
+ *
+ * `before` is the session being edited, when there is one: "previous" then
+ * means what came before that workout, not the workout itself (which is in
+ * `history` too) or anything logged since.
  */
 export function findPreviousPerformance(
   history: readonly WorkoutSession[],
   exerciseId: ExerciseId,
+  before?: WorkoutSession | null,
 ): PreviousPerformance {
   let best: WorkoutSession | null = null;
   let bestSets: PreviousSet[] = [];
 
   for (const session of history) {
     if (session.isRestDay) continue;
+    if (before && (session.id === before.id || !isNewer(before, session))) continue;
     const log = session.exercises.find(e => e.exerciseId === exerciseId);
     if (!log) continue;
     const sets = workingSets(log.sets);

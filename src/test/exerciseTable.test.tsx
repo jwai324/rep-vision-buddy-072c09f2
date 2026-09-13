@@ -311,6 +311,34 @@ describe('ExerciseTable previous column', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
+  describe('band exercises', () => {
+    it('names the band level, whether the row stored the level or its lbs-to-kg conversion', () => {
+      // Level 6 picked by an lbs user used to be saved as 2.72 (6 / 2.20462),
+      // and the column read that back as "Level 2.72".
+      renderWithPrevious({
+        inputMode: 'band',
+        previousSets: [
+          { weight: 2.72, reps: 10 },
+          { weight: 3, reps: 8 },
+        ],
+      });
+
+      expect(screen.getByText('Monster × 10')).toBeInTheDocument();
+      expect(screen.getByText('Medium × 8')).toBeInTheDocument();
+    });
+
+    it('copies the level the select understands, not the stored number', () => {
+      const onUpdateSet = renderWithPrevious({
+        inputMode: 'band',
+        previousSets: [{ weight: 0.91, reps: 12 }],
+      });
+
+      fireEvent.click(screen.getByText('Light × 12'));
+      expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'weight', '2');
+      expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'reps', '12');
+    });
+  });
+
   it('keeps a half-kilo increment instead of rounding it away', () => {
     const onUpdateSet = renderWithPrevious(
       { previousSets: [{ weight: 62.5, reps: 5 }], weightUnit: 'kg' },

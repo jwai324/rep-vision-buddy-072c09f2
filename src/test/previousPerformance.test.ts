@@ -135,6 +135,33 @@ describe('findPreviousPerformance', () => {
     expect(findPreviousPerformance(history, SQUAT).date).toBe('2026-08-18');
   });
 
+  describe('while editing a past workout', () => {
+    // The workout being edited sits in history itself, as does anything logged
+    // after it — neither is "previous" to it.
+    const edited = session('2026-08-21', [set({ setNumber: 1, weight: 100 })], { startedAt: '2026-08-21T22:50:00Z' });
+    const history = [
+      session('2026-08-29', [set({ setNumber: 1, weight: 110 })]),
+      edited,
+      session('2026-08-21', [set({ setNumber: 1, weight: 95 })], { id: 'earlier-same-day', startedAt: '2026-08-21T07:00:00Z' }),
+      session('2026-08-11', [set({ setNumber: 1, weight: 90 })]),
+    ];
+
+    it('quotes the session before the one being edited, not it or a later one', () => {
+      expect(findPreviousPerformance(history, SQUAT, edited)).toMatchObject({
+        date: '2026-08-21',
+        sets: [{ weight: 95, reps: 5 }],
+      });
+    });
+
+    it('still quotes the newest session when nothing is being edited', () => {
+      expect(findPreviousPerformance(history, SQUAT, null).date).toBe('2026-08-29');
+    });
+
+    it('reports nothing when the edited workout was the first time', () => {
+      expect(findPreviousPerformance([edited], SQUAT, edited)).toEqual({ date: null, sets: [] });
+    });
+  });
+
   it('carries rpe and time through for the modes that show them', () => {
     const history = [
       session('2026-08-18', [set({ setNumber: 1, weight: 40, reps: 1, rpe: 8, time: 45 })]),

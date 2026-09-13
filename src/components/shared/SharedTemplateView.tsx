@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import type { SharedCustomExercise, SharedExerciseMeta } from '@/types/share';
 import type { WorkoutTemplate } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { formatWeightString } from '@/utils/weightConversion';
+import { formatWeightString, storedBandLevel } from '@/utils/weightConversion';
 import { getBandLevelShortLabel, getExerciseInputMode } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 
@@ -64,7 +64,7 @@ export const SharedTemplateView: React.FC<SharedTemplateViewProps> = ({
               ex.targetWeight == null
                 ? null
                 : mode === 'band'
-                  ? getBandLevelShortLabel(ex.targetWeight)
+                  ? getBandLevelShortLabel(storedBandLevel(ex.targetWeight))
                   : formatWeightString(ex.targetWeight, unit);
 
             return (

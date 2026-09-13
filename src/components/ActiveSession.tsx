@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, distanceUnitFromWeightUnit, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
-import { toKg, fromKg, targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
+import { targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors } from '@/utils/setValidation';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { findPreviousPerformance } from '@/utils/previousPerformance';
@@ -128,12 +128,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return (exerciseId: ExerciseId) => {
       let found = cache.get(exerciseId);
       if (!found) {
-        found = findPreviousPerformance(history, exerciseId);
+        found = findPreviousPerformance(history, exerciseId, editSession);
         cache.set(exerciseId, found);
       }
       return found;
     };
-  }, [history]);
+  }, [history, editSession]);
   const { exercises: customExercises } = useCustomExercisesContext();
   const { active: tutorialActive } = useTutorial();
   // Convert saved session exercises back to blocks for editing.
@@ -142,6 +142,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const editBlocks = useMemo<ExerciseBlock[] | null>(() => {
     if (!editSession) return null;
     return editSession.exercises.map(ex => {
+      const isBand = getExerciseInputMode(ex.exerciseId, customExercises) === 'band';
       // Repair flat sets: if the first row of a setNumber is 'dropset' (legacy
       // bug), coerce it to a real parent so we have something to nest under.
       const seenParent = new Set<number>();
@@ -163,7 +164,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           const parent = rows[rows.length - 1];
           parent.drops = parent.drops ?? [];
           parent.drops.push({
-            weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
+            weight: targetWeightToInput(s.weight, weightUnit, isBand),
             reps: s.reps.toString(),
             rpe: s.rpe?.toString() ?? '',
             completed: true,
@@ -172,7 +173,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         } else {
           rows.push({
             setNumber: s.setNumber,
-            weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
+            weight: targetWeightToInput(s.weight, weightUnit, isBand),
             reps: s.reps.toString(),
             completed: true,
             type: s.type,
@@ -191,7 +192,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         note: ex.note,
       };
     });
-  }, [editSession, weightUnit, defaultRestSeconds]);
+  }, [editSession, weightUnit, defaultRestSeconds, customExercises]);
 
   // A template can express a superset two ways (an explicit group id, or the
   // older setType-only form the AI tools still write); the session only
@@ -1020,11 +1021,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         b.sets.filter(s => s.completed).forEach(s => {
           const seconds = timeToSeconds(s.time);
           const distMeters = s.distance ? toMeters(parseFloat(s.distance) || 0, distanceUnit) : undefined;
+          // The same input → storage rule a template target follows, so a band
+          // level lands as the level and not as a converted "mass".
+          const isBand = mode === 'band';
           sets.push({
             setNumber: s.setNumber,
             type: s.type,
             reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(s.reps) || 0),
-            weight: usesWeight(mode) ? (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined) : undefined,
+            weight: usesWeight(mode) ? inputToTargetWeight(s.weight, weightUnit, isBand) : undefined,
             rpe: s.rpe ? parseFloat(s.rpe) : undefined,
             time: seconds > 0 ? seconds : (isTimeBased(mode) ? (parseInt(s.reps) || 0) : undefined),
             distance: distMeters && distMeters > 0 ? distMeters : undefined,
@@ -1037,7 +1041,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               setNumber: s.setNumber,
               type: 'dropset',
               reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(d.reps) || 0),
-              weight: usesWeight(mode) ? (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined) : undefined,
+              weight: usesWeight(mode) ? inputToTargetWeight(d.weight, weightUnit, isBand) : undefined,
               rpe: d.rpe ? parseFloat(d.rpe) : undefined,
               time: dSeconds > 0 ? dSeconds : undefined,
               distance: dDistMeters && dDistMeters > 0 ? dDistMeters : undefined,
