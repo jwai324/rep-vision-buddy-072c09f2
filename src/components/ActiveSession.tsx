@@ -128,12 +128,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return (exerciseId: ExerciseId) => {
       let found = cache.get(exerciseId);
       if (!found) {
-        found = findPreviousPerformance(history, exerciseId);
+        found = findPreviousPerformance(history, exerciseId, editSession);
         cache.set(exerciseId, found);
       }
       return found;
     };
-  }, [history]);
+  }, [history, editSession]);
   const { exercises: customExercises } = useCustomExercisesContext();
   const { active: tutorialActive } = useTutorial();
   // Convert saved session exercises back to blocks for editing.
