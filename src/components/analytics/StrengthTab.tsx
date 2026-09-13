@@ -13,7 +13,7 @@ import {
   getBandLevelShortLabel,
 } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
-import { fromKg } from '@/utils/weightConversion';
+import { fromKg, storedBandLevel } from '@/utils/weightConversion';
 
 function hasDataForMode(set: WorkoutSet, mode: ExerciseInputMode): boolean {
   switch (mode) {
@@ -59,7 +59,7 @@ function getMetricForKey(key: PanelKey, weightUnit: WeightUnit): MetricConfig {
     case 'band':
       return {
         label: 'Top Band Level',
-        getValue: s => (s.weight && s.weight > 0 ? s.weight : null),
+        getValue: s => (s.weight && s.weight > 0 ? storedBandLevel(s.weight) : null),
         formatValue: v => `Lv ${v} · ${getBandLevelShortLabel(v)}`,
         formatTick: v => `Lv ${v}`,
       };

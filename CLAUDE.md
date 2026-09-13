@@ -286,6 +286,16 @@ Practical consequence: `'time'` renders like `'weight-time'` and `'reps'` like
 `'reps-weight'`, so those switch cases are deliberately merged. Keep them
 merged — splitting them back out is how the weight field goes missing again.
 
+**Band levels are stored raw.** A band set's weight field holds its level
+(1–6), never a mass, in sessions and templates alike: the finish path and the
+edit path go through `inputToTargetWeight` / `targetWeightToInput`, which skip
+the unit conversion for band work. Rows saved before September 2026 by an lbs
+user hold the level divided by 2.20462 instead (level 6 = 2.72), so every
+reader of a band level goes through `storedBandLevel`, which maps either
+encoding back to the level. Never hand a stored band weight straight to
+`getBandLevelShortLabel` — that is how the Previous column, the summary and
+the strength chart came to say "Level 2.72".
+
 ## Supersets are links, not a set type
 
 A superset is `supersetGroup` shared by two or more exercises; it is made from

@@ -60,7 +60,7 @@ export function targetWeightToInput(
   isBand: boolean,
 ): string {
   if (targetWeight == null || isNaN(targetWeight)) return '';
-  if (isBand) return String(targetWeight);
+  if (isBand) return String(storedBandLevel(targetWeight));
   return String(fromKg(targetWeight, unit));
 }
 
@@ -74,6 +74,22 @@ export function inputToTargetWeight(
   const parsed = parseFloat(input);
   if (isNaN(parsed)) return undefined;
   return isBand ? parsed : toKg(parsed, unit);
+}
+
+/**
+ * The band level a stored weight stands for.
+ *
+ * Band work keeps its level (1–6) in the weight field rather than a mass, and
+ * a template target has always held it raw. Session sets did not: the finish
+ * path ran the level through the lbs → kg conversion like any other load, so
+ * an lbs user's level 6 was saved as 2.72 and every screen that read it back
+ * said "Level 2.72". A converted level is never a whole number (0.45, 0.91,
+ * 1.36, 1.81, 2.27, 2.72) and a raw one always is, so the two encodings are
+ * told apart without knowing which unit the writer had.
+ */
+export function storedBandLevel(weight: number): number {
+  if (Number.isInteger(weight)) return weight;
+  return Math.round(fromKg(weight, 'lbs'));
 }
 
 /**
