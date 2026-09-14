@@ -43,13 +43,13 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 That workflow took its project ref from a `SUPABASE_PROJECT_REF` secret that was never set, so from 2026-07-16 (when it was added) to 2026-09-06 all 20 of its runs died on "Cannot find project ref" and it deployed nothing, ever. It now reads the ref from `supabase/config.toml`, which is the single source of truth. Nothing was watching it fail: the error-triage routine's post-commit check is scoped to `ci.yml` by design, and this workflow never even runs on a triage commit because `supabase/functions/**` is on that routine's never-touch list. The routine's §4 health sweep now reports any red workflow on `main`.
 
-Deploy state as of 2026-09-14 (read from the API, not assumed): `ai-coach` is
-at version 4, deployed 2026-09-06, and byte-identical to this repo.
-`generate-program` is at version 2, last deployed **2026-05-18**, and behind by
-one commit (`4f89d78`) — live still hard-codes `"superset_group": null` in the
-output schema, so the program builder in production cannot pair exercises no
-matter what the repo prompt says. Confirm with the MCP server's
-`get_edge_function` and diff against the file rather than assuming.
+Deploy state as of 2026-09-14 (read from the API, not assumed): both functions
+are current with `main`. `ai-coach` is at version 4 (2026-09-06);
+`generate-program` was on version 2 from **2026-05-18** — four months and one
+commit behind, still hard-coding `"superset_group": null` so the program builder
+could not pair exercises — and was redeployed to version 3 once the workflow
+above was fixed. Version numbers rot; confirm with the MCP server's
+`get_edge_function` and diff against the file rather than trusting this line.
 
 ## AI integration
 
