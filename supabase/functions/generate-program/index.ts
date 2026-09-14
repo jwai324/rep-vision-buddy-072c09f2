@@ -72,7 +72,7 @@ JSON SCHEMA:
           "rest_seconds": number,
           "set_type": "normal | superset | dropset",
           "order": number,
-          "superset_group": "number or null — the SAME integer on exercises performed back-to-back (2 per group is the norm, 3 only for a genuine tri-set), listed next to each other. null for an exercise done on its own. Never give a group to a single exercise.
+          "superset_group": "number or null — the SAME integer on exercises performed back-to-back (2 per group is the norm, 3 only for a genuine tri-set), listed next to each other. null for an exercise done on its own. Never give a group to a single exercise."
         }
       ]
     }
