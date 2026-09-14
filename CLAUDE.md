@@ -39,11 +39,16 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 ## Deploying edge functions
 
-Like migrations, edits under `supabase/functions/` do NOT ship on their own — the frontend auto-deploys, the functions do not. After changing either function run `supabase functions deploy <name>` (or deploy via the Supabase MCP server) and check the deployed version, because a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces".
+`.github/workflows/deploy-supabase-functions.yml` deploys both functions on every push to `main` that touches `supabase/functions/**` or `supabase/config.toml`. Treat that as the deploy path, but **verify the run went green** — a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces". To deploy by hand (or after a red run) use `supabase functions deploy <name>`, or the Supabase MCP server, and check the deployed version.
 
-Deploy state as of 2026-09-06: `ai-coach` is at version 4 and byte-identical to
-this repo. `generate-program` is at version 2 and **behind** — the superset
-prompt change is in the repo but not live. Confirm with the MCP server's
+That workflow took its project ref from a `SUPABASE_PROJECT_REF` secret that was never set, so from 2026-07-16 (when it was added) to 2026-09-06 all 20 of its runs died on "Cannot find project ref" and it deployed nothing, ever. It now reads the ref from `supabase/config.toml`, which is the single source of truth. Nothing was watching it fail: the error-triage routine's post-commit check is scoped to `ci.yml` by design, and this workflow never even runs on a triage commit because `supabase/functions/**` is on that routine's never-touch list. The routine's §4 health sweep now reports any red workflow on `main`.
+
+Deploy state as of 2026-09-14 (read from the API, not assumed): `ai-coach` is
+at version 4, deployed 2026-09-06, and byte-identical to this repo.
+`generate-program` is at version 2, last deployed **2026-05-18**, and behind by
+one commit (`4f89d78`) — live still hard-codes `"superset_group": null` in the
+output schema, so the program builder in production cannot pair exercises no
+matter what the repo prompt says. Confirm with the MCP server's
 `get_edge_function` and diff against the file rather than assuming.
 
 ## AI integration

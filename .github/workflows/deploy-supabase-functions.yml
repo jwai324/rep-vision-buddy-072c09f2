@@ -9,18 +9,35 @@ on:
       - '.github/workflows/deploy-supabase-functions.yml'
   workflow_dispatch:
 
+concurrency:
+  group: deploy-supabase-functions
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+
+      # The ref is not a secret — it is committed in supabase/config.toml and
+      # ships in the public API URL of every client request. It used to come
+      # from a SUPABASE_PROJECT_REF secret that was never actually set, so
+      # every run from 2026-07-16 to 2026-09-06 deployed nothing and died on
+      # "Cannot find project ref". Reading it from the repo keeps one source of
+      # truth and removes the thing that can silently be empty.
+      - name: Resolve deploy target
+        run: |
+          ref="$(sed -n 's/^project_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' supabase/config.toml)"
+          [ -n "$ref" ] || { echo "::error::supabase/config.toml has no project_id"; exit 1; }
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || { echo "::error::SUPABASE_ACCESS_TOKEN secret is not set"; exit 1; }
+          echo "Deploying to $ref"
+          echo "SUPABASE_PROJECT_REF=$ref" >> "$GITHUB_ENV"
 
       - name: Deploy ai-coach
         run: supabase functions deploy ai-coach --project-ref "$SUPABASE_PROJECT_REF"
