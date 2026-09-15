@@ -78,6 +78,17 @@ function safeWriteCache(cache: ActiveSessionCache) {
   }
 }
 
+// The weight column a finished set stores, per input mode:
+//   distance-only modes  -> no weight at all
+//   band                 -> the level as chosen, never unit-converted
+//   everything else      -> the typed display value converted to kg
+function setWeightFor(mode: ExerciseInputMode, raw: string | undefined, weightUnit: WeightUnit): number | undefined {
+  if (!usesWeight(mode) || !raw) return undefined;
+  const value = parseFloat(raw);
+  if (Number.isNaN(value)) return undefined;
+  return mode === 'band' ? value : toKg(value, weightUnit);
+}
+
 export function clearSessionCache() {
   localStorage.removeItem(CACHE_KEY);
 }
@@ -118,8 +129,18 @@ interface ActiveSessionProps {
 
 // normalizeBlocks is imported from useBlockMutations
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession: cachedSessionProp, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
+  // A cache belongs to the workout it was written for. Mounting one whose
+  // template differs from the screen's is how starting a workout on top of a
+  // minimized one used to carry the previous workout's blocks, name, timer and
+  // template snapshot into the new template — which then offered to overwrite
+  // that template with the old workout's exercises. Index only hands the cache
+  // to a screen that is resuming; this is the backstop for any path that
+  // forgets to.
+  const cachedSession = cachedSessionProp && (cachedSessionProp.templateId ?? null) === (templateId ?? null)
+    ? cachedSessionProp
+    : null;
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   // Scanning every logged session per exercise, on a component that re-renders
   // on each keystroke, adds up — so the answers are cached until history moves.
@@ -157,27 +178,39 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         return s;
       });
 
+      // A band's stored "weight" is a level from a fixed list, not a load, so
+      // it must not go through the kg/lb conversion in either direction.
+      const editMode = getExerciseInputMode(ex.exerciseId, customExercises);
+      const displayWeight = (w: number | null | undefined) =>
+        w == null ? '' : String(editMode === 'band' ? w : fromKg(w, weightUnit));
+      // Stored in metres; the input holds the user's unit. Omitting this is
+      // what silently erased every distance when a session was edited and saved.
+      const displayDistance = (d: number | null | undefined) =>
+        d == null ? '' : String(fromMeters(d, distanceUnit));
+
       const rows: SetRow[] = [];
       for (const s of repaired) {
         if (s.type === 'dropset' && rows.length > 0) {
           const parent = rows[rows.length - 1];
           parent.drops = parent.drops ?? [];
           parent.drops.push({
-            weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
+            weight: displayWeight(s.weight),
             reps: s.reps.toString(),
             rpe: s.rpe?.toString() ?? '',
             completed: true,
             time: s.time != null ? String(s.time) : '',
+            distance: displayDistance(s.distance),
           });
         } else {
           rows.push({
             setNumber: s.setNumber,
-            weight: s.weight != null ? String(fromKg(s.weight, weightUnit)) : '',
+            weight: displayWeight(s.weight),
             reps: s.reps.toString(),
             completed: true,
             type: s.type,
             rpe: s.rpe?.toString() ?? '',
             time: s.time != null ? String(s.time) : '',
+            distance: displayDistance(s.distance),
           });
         }
       }
@@ -1024,7 +1057,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             setNumber: s.setNumber,
             type: s.type,
             reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(s.reps) || 0),
-            weight: usesWeight(mode) ? (s.weight ? toKg(parseFloat(s.weight), weightUnit) : undefined) : undefined,
+            // Band level is an index into a fixed list, not a load: running it
+            // through toKg stored lbs users a level of 1.36 for level 3, which
+            // every read-back screen then rendered as "Level 1.36". The
+            // update-template path 100 lines below already guards this via
+            // inputToTargetWeight(..., mode === 'band').
+            weight: setWeightFor(mode, s.weight, weightUnit),
             rpe: s.rpe ? parseFloat(s.rpe) : undefined,
             time: seconds > 0 ? seconds : (isTimeBased(mode) ? (parseInt(s.reps) || 0) : undefined),
             distance: distMeters && distMeters > 0 ? distMeters : undefined,
@@ -1037,7 +1075,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               setNumber: s.setNumber,
               type: 'dropset',
               reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(d.reps) || 0),
-              weight: usesWeight(mode) ? (d.weight ? toKg(parseFloat(d.weight), weightUnit) : undefined) : undefined,
+              weight: setWeightFor(mode, d.weight, weightUnit),
               rpe: d.rpe ? parseFloat(d.rpe) : undefined,
               time: dSeconds > 0 ? dSeconds : undefined,
               distance: dDistMeters && dDistMeters > 0 ? dDistMeters : undefined,

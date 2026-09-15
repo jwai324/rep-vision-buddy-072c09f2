@@ -6,18 +6,38 @@
 // always rounds in our favor.
 //
 // VERIFY against https://www.anthropic.com/pricing at execution/deploy time —
-// model pricing drifts. These are the documented claude-opus-4-7 (Opus 4.x)
-// list rates as of plan authoring:
-//   input            $15   / MTok
-//   output           $75   / MTok
-//   cache write (5m) $18.75 / MTok  (1.25x input)
-//   cache read       $1.50 / MTok   (0.10x input)
-export const RATES_MICROS_PER_MTOK = {
-  input: 15_000_000,
-  output: 75_000_000,
-  cache_write: 18_750_000,
-  cache_read: 1_500_000,
+// model pricing drifts. These are the claude-opus-4-7 list rates:
+//   input            $5    / MTok
+//   output           $25   / MTok
+//   cache write (5m) $6.25 / MTok  (1.25x input)
+//   cache read       $0.50 / MTok  (0.10x input)
+//
+// These were $15/$75 (the Opus 4 / 4.1 rates) until 2026-09-15, so every debit,
+// every allowance and the operator cost view were 3x the real spend. Ledger rows
+// store only micro-dollars and not token counts, so history before that date
+// cannot be re-priced — treat pre-2026-09-15 ledger totals as 3x inflated.
+//
+// RATES_BY_MODEL is keyed so a model swap cannot silently leave the price
+// behind: MODEL in each edge function must have an entry here.
+export const RATES_BY_MODEL = {
+  "claude-opus-4-7": { input: 5_000_000, output: 25_000_000, cache_write: 6_250_000, cache_read: 500_000 },
+  "claude-sonnet-4-6": { input: 3_000_000, output: 15_000_000, cache_write: 3_750_000, cache_read: 300_000 },
 } as const;
+
+export type PricedModel = keyof typeof RATES_BY_MODEL;
+
+export function ratesForModel(model: string) {
+  const rates = (RATES_BY_MODEL as Record<string, typeof RATES_BY_MODEL[PricedModel]>)[model];
+  if (!rates) {
+    // Bill at the most expensive known rate rather than under-charging, and make
+    // the omission loud in the function logs.
+    console.error(`pricing: no rate table for model "${model}" — billing at the highest known rate`);
+    return RATES_BY_MODEL["claude-opus-4-7"];
+  }
+  return rates;
+}
+
+export const RATES_MICROS_PER_MTOK = RATES_BY_MODEL["claude-opus-4-7"];
 
 export interface AnthropicUsage {
   input_tokens?: number | null;
@@ -26,19 +46,21 @@ export interface AnthropicUsage {
   cache_read_input_tokens?: number | null;
 }
 
-// Deterministic integer µ$ cost for one Anthropic API call.
-export function costMicros(usage: AnthropicUsage | null | undefined): number {
+// Deterministic integer µ$ cost for one Anthropic API call. Pass the model that
+// produced the usage; it defaults to the Opus rate table for older callers.
+export function costMicros(usage: AnthropicUsage | null | undefined, model?: string): number {
   if (!usage) return 0;
+  const rates = model ? ratesForModel(model) : RATES_MICROS_PER_MTOK;
   const input = Math.max(0, usage.input_tokens ?? 0);
   const output = Math.max(0, usage.output_tokens ?? 0);
   const cacheWrite = Math.max(0, usage.cache_creation_input_tokens ?? 0);
   const cacheRead = Math.max(0, usage.cache_read_input_tokens ?? 0);
 
   const totalMicrosTimesM =
-    input * RATES_MICROS_PER_MTOK.input +
-    output * RATES_MICROS_PER_MTOK.output +
-    cacheWrite * RATES_MICROS_PER_MTOK.cache_write +
-    cacheRead * RATES_MICROS_PER_MTOK.cache_read;
+    input * rates.input +
+    output * rates.output +
+    cacheWrite * rates.cache_write +
+    cacheRead * rates.cache_read;
 
   return Math.ceil(totalMicrosTimesM / 1_000_000);
 }

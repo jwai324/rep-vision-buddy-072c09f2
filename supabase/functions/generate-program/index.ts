@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
-import { costMicros } from "../_shared/pricing.ts";
-import { consume, gate, getOrInitBalance, applyLazyMonthlyReset, recordUsageAggregate } from "../_shared/balance.ts";
+import { costMicros, RESERVE_MICROS } from "../_shared/pricing.ts";
+import { consume, recordUsageAggregate } from "../_shared/balance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,20 +110,50 @@ serve(async (req) => {
 
     const { userInputs, exercises } = await req.json();
 
-    // Pre-call balance gate. Real cost is deducted after the call. The monthly
-    // allowance is tier-based (premium gets a larger bucket; see balance.ts).
-    if (userId) {
-      const balance = applyLazyMonthlyReset(await getOrInitBalance(supabase, userId));
-      if (!gate(balance).allowed) {
-        return new Response(JSON.stringify({
-          error: "You're out of AI credits.",
-          balance_exhausted: true,
-        }), {
-          status: 402,
+    // Pre-call balance gate. Taken under the same row lock as the debit, so
+    // concurrent generations cannot all pass on one reserve — reading the
+    // balance and then deciding was a check-then-act race. `turnHeld` says
+    // whether we owe a release.
+    let turnHeld = false;
+    {
+      const { data, error } = await supabase.rpc("begin_ai_turn", {
+        p_user_id: userId,
+        p_reserve_micros: RESERVE_MICROS,
+        p_max_concurrent: 1,
+      });
+      if (error) {
+        // Fail closed: a metering outage must not read as free usage.
+        console.error("begin_ai_turn failed:", error);
+        return new Response(JSON.stringify({ error: "Couldn't check your credit balance. Please try again." }), {
+          status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.allowed) {
+        const busy = (row?.in_flight ?? 0) >= 1;
+        return new Response(JSON.stringify(
+          busy
+            ? { error: "A program is already being generated. Wait for it to finish." }
+            : { error: "You're out of AI credits.", balance_exhausted: true },
+        ), {
+          status: busy ? 429 : 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      turnHeld = true;
     }
+
+    // Every exit below this point goes through here, so the slot is never
+    // stranded for the five minutes the staleness backstop would otherwise take.
+    const releaseTurn = async () => {
+      if (!turnHeld) return;
+      turnHeld = false;
+      try {
+        await supabase.rpc("end_ai_turn", { p_user_id: userId });
+      } catch (e) {
+        console.error("end_ai_turn failed:", e);
+      }
+    };
 
     const customNotes = userInputs.custom_notes ? `\n- Additional notes from user: ${userInputs.custom_notes}` : '';
     const programWeeks = parseInt(String(userInputs.programDuration)) || 4;
@@ -181,14 +211,14 @@ ${exercises.map((e: ExerciseSummary) => `- ${e.name} (${e.primaryBodyPart}, ${e.
     // Meter real token usage. The call succeeded and Anthropic billed us, so we
     // consume even if the JSON later fails to parse (deters abuse via repeated
     // failing prompts). Never let a metering failure break the response.
-    if (userId) {
-      try {
-        const cost = costMicros(message.usage);
-        await consume(supabase, userId, cost, "generate_program", `generate-program:${userId}:${Date.now()}`);
-        await recordUsageAggregate(supabase, userId, message.usage, cost);
-      } catch (e) {
-        console.error("generate-program metering failed:", e);
-      }
+    try {
+      const cost = costMicros(message.usage, MODEL);
+      await consume(supabase, userId, cost, "generate_program", `generate-program:${userId}:${Date.now()}`);
+      await recordUsageAggregate(supabase, userId, message.usage, cost);
+    } catch (e) {
+      console.error("generate-program metering failed:", e);
+    } finally {
+      await releaseTurn();
     }
 
     if (message.stop_reason === "max_tokens") {

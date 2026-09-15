@@ -5,6 +5,7 @@ import { getExerciseInputMode, isTimeBased, isDistanceBased, usesWeight, formatD
 import { formatMmSs } from '@/utils/timeFormat';
 import { formatWeightString } from '@/utils/weightConversion';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 
 interface WorkoutLogProps {
   logs: ExerciseLog[];
@@ -14,6 +15,9 @@ interface WorkoutLogProps {
 export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' }) => {
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const exerciseLookup = useExerciseLookup();
+  // Without this a custom timed exercise resolves to the reps-and-weight
+  // default and renders as "3 sets · 0 reps".
+  const { exercises: customExercises } = useCustomExercisesContext();
   const hasAnyData = logs.some(l => l.sets.length > 0);
   if (!hasAnyData) return null;
 
@@ -22,7 +26,7 @@ export const WorkoutLog: React.FC<WorkoutLogProps> = ({ logs, weightUnit = 'kg' 
       <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Workout Log</h3>
       <div className="space-y-1.5">
         {logs.filter(l => l.sets.length > 0).map((log, i) => {
-          const mode = getExerciseInputMode(log.exerciseId);
+          const mode = getExerciseInputMode(log.exerciseId, customExercises);
           const totalSeconds = log.sets.reduce((s, set) => s + (set.time ?? 0), 0);
           const totalDistance = log.sets.reduce((s, set) => s + (set.distance ?? 0), 0);
           const topWeight = log.sets.reduce((s, set) => Math.max(s, set.weight ?? 0), 0);

@@ -1,4 +1,4 @@
-import { addDays, addWeeks, format, startOfWeek } from 'date-fns';
+import { addDays, addWeeks, differenceInCalendarDays, format, startOfWeek } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
 import type { WorkoutSession } from '@/types/workout';
 
@@ -26,9 +26,14 @@ export function getLongestDailyStreak(sessions: WorkoutSession[]): number {
   const dates = Array.from(new Set(sessions.map(s => format(parseLocalDate(s.date), 'yyyy-MM-dd')))).sort();
   let longest = 1, temp = 1;
   for (let i = 1; i < dates.length; i++) {
-    const prev = new Date(dates[i - 1] + 'T00:00:00').getTime();
-    const cur = new Date(dates[i] + 'T00:00:00').getTime();
-    if ((cur - prev) / 86400000 === 1) { temp++; longest = Math.max(longest, temp); }
+    // Calendar days, not elapsed milliseconds. Local midnights are 23 or 25
+    // hours apart across a daylight-saving transition, so an exact 24h test
+    // cut every streak spanning one — and getDailyStreak, which steps with
+    // addDays, did not, so the same screen could show a current streak longer
+    // than the longest streak.
+    const prev = new Date(dates[i - 1] + 'T00:00:00');
+    const cur = new Date(dates[i] + 'T00:00:00');
+    if (differenceInCalendarDays(cur, prev) === 1) { temp++; longest = Math.max(longest, temp); }
     else temp = 1;
   }
   return longest;
@@ -125,7 +130,9 @@ export function computeDisplayedStreak(
   const setAt = parseLocalDate(adjustmentSetAt);
   const todayStart = new Date(format(today, 'yyyy-MM-dd') + 'T00:00:00');
   const periodElapsed = mode === 'daily'
-    ? todayStart.getTime() - setAt.getTime() >= 2 * 86400000
+    // Calendar days rather than elapsed ms, for the same reason as
+    // getLongestDailyStreak: a DST transition makes this span 23 or 25 hours.
+    ? differenceInCalendarDays(todayStart, setAt) >= 2
     : startOfWeek(todayStart, { weekStartsOn: 1 }).getTime()
         > startOfWeek(setAt, { weekStartsOn: 1 }).getTime();
 

@@ -57,5 +57,9 @@ jobs:
       - name: Deploy generate-program
         run: supabase functions deploy generate-program --project-ref "$PROJECT_REF"
 
-      - name: Deploy grant-tokens
-        run: supabase functions deploy grant-tokens --project-ref "$PROJECT_REF"
+      # grant-tokens is deliberately NOT deployed from CI. It grants an uncapped
+      # amount of credit to an arbitrary target_user_id and its only gate is a
+      # static header secret, so putting it behind an automatic deploy would put
+      # an unauthenticated credit faucet one leaked header away from production.
+      # It stays a hand-deployed operator tool until it verifies a real receipt
+      # and checks the caller's identity server-side.

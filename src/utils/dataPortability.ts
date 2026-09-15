@@ -138,45 +138,94 @@ function stripServerColumns(row: BackupRow): BackupRow {
   return rest;
 }
 
+export interface ImportResult {
+  success: boolean;
+  error?: string;
+  /** Rows written per table, in the order they were written. */
+  imported?: Record<string, number>;
+}
+
+// PostgREST caps the request body, and one rejected row fails its whole batch,
+// so keep batches small enough that a failure names a narrow slice of the file.
+const IMPORT_BATCH_SIZE = 200;
+
+type UpsertError = { message?: string; code?: string; details?: string } | null;
+
+function describeFailure(table: string, error: UpsertError, imported: Record<string, number>): string {
+  // 42501 is what a backup exported from a different account produces: rows
+  // keep their original ids, so `ON CONFLICT (id) DO UPDATE` targets rows the
+  // other account still owns and the owner-only policy rejects the update.
+  const reason = error?.code === '42501'
+    ? 'the database refused them — rows in this backup are still owned by the account it was exported from. Restore it into that account, or into a fresh project.'
+    : (error?.message || 'the request failed. Check your connection and try again.');
+  const done = Object.entries(imported).map(([t, n]) => `${t} ${n}`).join(', ');
+  const partial = done
+    ? ` Already restored before this point: ${done}. Nothing after it was written, so your account is partially restored — keep the backup file and re-run the import once the cause is fixed.`
+    : ' Nothing was written.';
+  return `Importing ${table} failed: ${reason}${partial}`;
+}
+
 export async function importUserData(
   supabase: SupabaseClient,
   userId: string,
   backup: RepVisionBackup
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ImportResult> {
+  const imported: Record<string, number> = {};
+
+  // postgrest-js resolves rather than rejects on transport failures too, so
+  // every write has to be checked; the old code read none of them and reported
+  // success over an account where nothing had landed.
+  const upsert = async (table: string, rows: BackupRow[], onConflict: string): Promise<UpsertError> => {
+    for (let i = 0; i < rows.length; i += IMPORT_BATCH_SIZE) {
+      const batch = rows.slice(i, i + IMPORT_BATCH_SIZE);
+      const { error } = await (supabase
+        .from(table as never)
+        .upsert(batch as never, { onConflict }) as unknown as Promise<{ error: UpsertError }>);
+      if (error) return error;
+    }
+    return null;
+  };
+
   try {
-    // Settings
     if (backup.data.user_settings) {
       const s = stripServerColumns({ ...backup.data.user_settings, user_id: userId });
       delete (s as { id?: unknown }).id;
-      await supabase.from('user_settings').upsert(s as never, { onConflict: 'user_id' });
+      const error = await upsert('user_settings', [s], 'user_id');
+      if (error) return { success: false, error: describeFailure('user_settings', error, imported), imported };
+      imported.user_settings = 1;
     }
 
-    // Profile
     if (backup.data.profile) {
       const p = stripServerColumns({ ...backup.data.profile, user_id: userId });
       delete (p as { id?: unknown }).id;
-      await supabase.from('profiles').upsert(p as never, { onConflict: 'user_id' });
+      const error = await upsert('profiles', [p], 'user_id');
+      if (error) return { success: false, error: describeFailure('profiles', error, imported), imported };
+      imported.profile = 1;
     }
 
-    const upsertTable = async (table: string, rows: BackupRow[]) => {
-      if (rows.length === 0) return;
+    // Templates before programs and sessions: programs reference template ids,
+    // so stopping partway through this order leaves the fewest dangling rows.
+    const tables: Array<[string, BackupRow[]]> = [
+      ['workout_templates', backup.data.workout_templates],
+      ['workout_programs', backup.data.workout_programs],
+      ['workout_sessions', backup.data.workout_sessions],
+      ['future_workouts', backup.data.future_workouts],
+      ['custom_exercises', backup.data.custom_exercises],
+      // v2+ backups only; v1 backups have this normalized to [] by validateBackup.
+      ['body_measurements', backup.data.body_measurements],
+    ];
+
+    for (const [table, rows] of tables) {
+      if (!rows || rows.length === 0) continue;
       const stamped = stampUserId(rows, userId).map(stripServerColumns);
-      for (const row of stamped) {
-        await supabase.from(table as never).upsert(row as never, { onConflict: 'id' });
-      }
-    };
+      const error = await upsert(table, stamped, 'id');
+      if (error) return { success: false, error: describeFailure(table, error, imported), imported };
+      imported[table] = stamped.length;
+    }
 
-    await upsertTable('workout_templates', backup.data.workout_templates);
-    await upsertTable('workout_programs', backup.data.workout_programs);
-    await upsertTable('workout_sessions', backup.data.workout_sessions);
-    await upsertTable('future_workouts', backup.data.future_workouts);
-    await upsertTable('custom_exercises', backup.data.custom_exercises);
-    // v2+ backups only; v1 backups have this normalized to [] by validateBackup.
-    await upsertTable('body_measurements', backup.data.body_measurements);
-
-    return { success: true };
+    return { success: true, imported };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Import failed';
-    return { success: false, error: message };
+    return { success: false, error: message, imported };
   }
 }

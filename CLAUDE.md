@@ -41,14 +41,23 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 Like migrations, edits under `supabase/functions/` do NOT ship on their own — the frontend auto-deploys, the functions do not. After changing either function run `supabase functions deploy <name>` (or deploy via the Supabase MCP server) and check the deployed version, because a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces".
 
-Deploy state as of 2026-09-15: `ai-coach` is at version 4 and **behind** — the
-metering-bypass fix (see "The AI coach metering bypass" below) is in this repo
-but not live, so until it ships any signed-in user can still run the coach
-unmetered. `generate-program` is at version 2 and behind by both the superset
-prompt change and the `if (!userId)` 401 guard, so it currently runs unmetered
-for anyone holding the publishable key. `grant-tokens` has never been deployed.
+Deploy state as of 2026-09-15: **both functions are behind this repo and every
+one of the server-side audit fixes is inert until they are deployed by hand.**
+`ai-coach` is at version 4, missing the metering-bypass fix, the corrected token
+price, the atomic credit gate, the disconnect-billing fix, the prompt-cache split
+and the message-window repair. `generate-program` is at version 2, missing the
+superset prompt change, the `if (!userId)` 401 guard and the same price and gate
+fixes — so it currently runs unmetered for anyone holding the publishable key.
+`grant-tokens` has never been deployed and deliberately is not deployed from CI.
 Confirm with the MCP server's `get_edge_function` and diff against the file
 rather than assuming.
+
+Both functions call the `begin_ai_turn` / `end_ai_turn` RPCs, which arrived in
+`20260915182136_atomic_ai_turn_gate.sql`. That migration is already applied, so
+there is nothing to sequence today — but if you ever rebuild this project from
+the migration files, apply them **before** deploying the functions. The gate
+fails closed: a missing RPC 503s every coach turn rather than letting it through
+unmetered.
 
 ## AI integration
 
@@ -258,9 +267,30 @@ are easy to break by accident:
   `refreshing` means "data on screen, network in flight" — gate full-screen
   spinners on `loading` only.
 
+- **A load is only trusted when every query came back clean.** postgrest-js
+  resolves `{ data: null, error }` rather than throwing — for a 5xx, an expired
+  token and an offline fetch alike — so nothing reaches the `catch`. The load
+  checks `.error` on all seven queries and only then sets `loadedOk`. Two things
+  gate on that flag rather than on `loading`: the localStorage snapshot write
+  (allowed also when the screen was painted from the cache, since that content is
+  already trusted) and the two effects that write back to the database — the
+  program-day repair and the streak-adjustment clear. Gating those on `!loading`
+  is what let a failed sessions query read as "the streak broke" and clear a real
+  adjustment permanently. Tests: `src/test/storageLoadErrors.test.tsx`.
+
 If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
+
+`saveSession` resolves `false` rather than throwing when the write does not
+land, so the caller can keep the summary screen and the local session cache
+alive for a retry; every call site in `Index.tsx` awaits it and bails on false.
+Writes to the *same* session id are chained, not raced — the summary's
+recovery-activity chips fire one save per tap and two in flight at once can
+arrive out of order, leaving the row holding the earlier one. The Save buttons
+themselves are covered by a single in-flight guard in `Index.tsx` (`guardedSave`)
+because a template and a rest-day session are built fresh per tap, so a second
+tap would write a duplicate row rather than retry the first.
 
 `saveTemplate` is the one write that survives a failure. It resolves
 `false` rather than throwing, applies the edit locally anyway, and parks the
@@ -273,6 +303,29 @@ still saved, because the user was sitting on the summary screen and could
 press Save again. Anything that resolves a template's fate (a later
 successful save, a delete) must clear its queued entry, or the replay
 resurrects it.
+
+## The session cache belongs to one workout
+
+`ActiveSession` rebuilds a workout from `ActiveSessionCache` — blocks, name,
+elapsed timer, `templateSnapshot`. That cache is only ever valid for the workout
+it was written for, and two rules keep it that way:
+
+- **`Index.tsx` hands the cache only to a screen that is resuming one.** The
+  `activeSession` screen carries a `resumed` flag, set by the cold-start restore
+  (`restoredSessionScreen`) and by `handleExpand`; `cachedSession` is
+  `screen.resumed ? getSessionCache() : null`. Reading `getSessionCache()`
+  unconditionally is how starting Push Day while Leg Day was minimized mounted
+  Leg Day's exercises and timer under Push Day's identity — and then offered to
+  overwrite Push Day with them, and marked Push Day's scheduled entry done.
+- **`ActiveSession` refuses a cache whose `templateId` does not match its own.**
+  A backstop for any path that forgets the first rule.
+
+Starting a new workout while one is in progress now asks first
+(`openSession` → the confirm dialog), keyed on the cache rather than on
+`minimizedSession`, because desktop sidebar navigation and the coach's credits
+link used to change screen without minimizing — leaving a live session with no
+bar and no way back short of a reload. Both now minimize first. Tests:
+`src/test/activeSessionStaleCache.test.tsx`.
 
 ## Exercise names are resolved, never trusted
 
@@ -444,9 +497,10 @@ red, so keep the workflow's steps identical to the local gate.
 `docs/audit-2026-09.md` is the current audit (commit efffcd8): 193 verified findings,
 each traced to a file and line by one reviewer and re-checked by another, with the
 critical and high ones also given to a reviewer told to disprove them. Start there.
-Its "Recommended order of work" is the short list; the four critical items are three
-independent ways to spend the Anthropic key for free, plus a path that loses a
-finished workout when the network is down.
+
+**All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`;
+the audit's status note says which ship where. 73 medium and 98 low findings remain
+open — its "Everything else" section is the backlog, grouped by area.
 
 Two facts from that audit change how you work in this repo:
 
@@ -461,7 +515,14 @@ Two facts from that audit change how you work in this repo:
   the documented `supabase db push` against the linked project will fail until the
   versions are repaired. When you apply through the MCP server, read the version it
   recorded and rename the local file to match, as
-  `20260915170641_lock_down_token_credits.sql` does.
+  `20260915170641_lock_down_token_credits.sql` and
+  `20260915182136_atomic_ai_turn_gate.sql` do.
+- **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
+  Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). `token_ledger`
+  stores micro-dollars and not token counts, so those rows cannot be re-priced — treat
+  every pre-2026-09-15 balance, allowance and cost figure as 3x inflated. Rates now
+  live in `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap that has no entry
+  bills at the highest known rate and logs loudly instead of silently under-charging.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
 gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated

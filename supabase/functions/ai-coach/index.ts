@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
-import { costMicros } from "../_shared/pricing.ts";
-import { consume, gate, getOrInitBalance, applyLazyMonthlyReset, recordUsageAggregate, type SupabaseLike } from "../_shared/balance.ts";
+import { costMicros, RESERVE_MICROS } from "../_shared/pricing.ts";
+import { consume, recordUsageAggregate, type SupabaseLike } from "../_shared/balance.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -20,6 +20,11 @@ const MODEL = "claude-opus-4-7";
 // holding a half-written JSON string it can't parse — which surfaced as a
 // bogus "Template requires a name and at least one exercise" rejection.
 const MAX_TOKENS = 8000;
+
+// Turns one user may have in flight at once. The gate holds a reserve per
+// in-flight turn, so this also bounds how far a balance can be overshot by
+// requests fired in parallel.
+const MAX_CONCURRENT_TURNS = 3;
 
 // Not a secret. The phrase ships in the client bundle and this repo is public,
 // so it is only a convenient way for an operator to ASK for the bypass. Whether
@@ -557,40 +562,95 @@ serve(async (req) => {
       });
     }
 
-    const { messages, context, action_results, god_mode } = await req.json();
+    const { messages, context, action_results } = await req.json();
 
-    // The metering bypass is an operator switch, not a client capability. The
-    // request may ASK for it — both `god_mode` and the phrase ship in the public
-    // client bundle, so neither is a secret — but only a user id listed in the
-    // METERING_BYPASS_USER_IDS function secret is granted it. With that secret
-    // unset (the default) the switch is off for everyone, including the owner.
+    // The metering bypass is an operator switch, not a client capability. A
+    // request may ASK for it by containing the phrase, which ships in the public
+    // client bundle and is therefore not a secret; it is granted only to a user
+    // id listed in the METERING_BYPASS_USER_IDS function secret. With that
+    // secret unset (the default) the switch is off for everyone, including the
+    // owner. There is deliberately no request-body flag: the client used to send
+    // `god_mode` and the server used to believe it.
     const lastUser = [...(messages ?? [])].reverse().find((m: OpenAIMessage) => m.role === "user");
     const phraseInMsg = String(lastUser?.content ?? "").trim().toLowerCase() === GOD_MODE_PHRASE;
-    const bypassRequested = god_mode === true || phraseInMsg;
-    const bypassMetering = bypassRequested && isMeteringBypassUser(userId);
+    const bypassMetering = phraseInMsg && isMeteringBypassUser(userId);
 
-    // Pre-call gate. Exact cost is unknowable before the call, so we require a
-    // small reserve and deduct the real cost afterward (bounded ~1-turn
-    // overshoot). god-mode bypasses the gate but its usage is still logged.
-    if (userId && !bypassMetering) {
-      const balance = applyLazyMonthlyReset(await getOrInitBalance(supabase, userId));
-      if (!gate(balance).allowed) {
-        return new Response(JSON.stringify({
-          error: "You're out of AI credits.",
-          balance_exhausted: true,
-        }), {
-          status: 402,
+    // Pre-call gate. The exact cost is unknowable before the call, so a small
+    // reserve is held and the real cost deducted afterwards. The hold is taken
+    // under the same row lock as the debit: reading the balance and then
+    // deciding was a check-then-act race, and concurrent requests all passed it
+    // on one reserve. `turnHeld` says whether we owe a release.
+    let turnHeld = false;
+    if (!bypassMetering) {
+      const { data, error } = await supabase.rpc("begin_ai_turn", {
+        p_user_id: userId,
+        p_reserve_micros: RESERVE_MICROS,
+        p_max_concurrent: MAX_CONCURRENT_TURNS,
+      });
+      if (error) {
+        // Fail closed. Letting the turn through on a gate error is what makes a
+        // metering outage indistinguishable from free usage.
+        console.error("begin_ai_turn failed:", error);
+        return new Response(JSON.stringify({ error: "Couldn't check your credit balance. Please try again." }), {
+          status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.allowed) {
+        const busy = (row?.in_flight ?? 0) >= MAX_CONCURRENT_TURNS;
+        return new Response(JSON.stringify(
+          busy
+            ? { error: "You already have a coach reply in progress. Wait for it to finish." }
+            : { error: "You're out of AI credits.", balance_exhausted: true },
+        ), {
+          status: busy ? 429 : 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      turnHeld = true;
     }
 
-    let contextContent = "";
-    if (context) {
-      contextContent = `\n\nCURRENT APP CONTEXT:\n${JSON.stringify(context, null, 0)}`;
+    // Prompt caching is an exact prefix match up to the cache_control marker.
+    // The whole context object used to sit inside the cached system block, and
+    // it carries elapsed_seconds, the rest-timer countdown and the current
+    // screen's data — so during a workout, the coach's headline use case, no two
+    // turns shared a prefix and the ~20k-token block was re-written at the
+    // cache-WRITE rate every single turn instead of read at a tenth of it.
+    // Stable keys stay in the cached block; everything else moves to a second,
+    // unmarked block after it.
+    const VOLATILE_CONTEXT_KEYS = new Set([
+      "active_session",
+      "current_screen",
+      "current_data",
+      "user_templates",
+      "user_programs",
+      "active_rest_timer",
+    ]);
+    let stableContext = "";
+    let volatileContext = "";
+    if (context && typeof context === "object") {
+      const stable: Record<string, unknown> = {};
+      const volatile: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(context as Record<string, unknown>)) {
+        (VOLATILE_CONTEXT_KEYS.has(k) ? volatile : stable)[k] = v;
+      }
+      if (Object.keys(stable).length) {
+        stableContext = `\n\nCURRENT APP CONTEXT:\n${JSON.stringify(stable, null, 0)}`;
+      }
+      if (Object.keys(volatile).length) {
+        volatileContext = `\n\nLIVE STATE (changes every turn):\n${JSON.stringify(volatile, null, 0)}`;
+      }
     }
 
+    // The Messages API rejects a request whose first message is an assistant
+    // turn with a 400, which reaches the user as a generic "the reply failed"
+    // and repeats on every retry because the window is the same. The chat array
+    // grows by one user and one assistant message per exchange, so a plain
+    // slice lands on an assistant turn from the sixth message onward.
     const windowedMessages = (messages || []).slice(-10);
+    while (windowedMessages.length && windowedMessages[0].role !== "user") {
+      windowedMessages.shift();
+    }
     const allOpenAiMessages = [...windowedMessages];
     if (action_results && action_results.length > 0) {
       for (const result of action_results) {
@@ -612,11 +672,16 @@ serve(async (req) => {
       model: MODEL,
       max_tokens: MAX_TOKENS,
       system: [
+        // Cached prefix: the prompt and the stable context (the exercise library
+        // dominates it). Identical across turns, so this should read from cache.
         {
           type: "text",
-          text: SYSTEM_PROMPT + contextContent,
+          text: SYSTEM_PROMPT + stableContext,
           cache_control: { type: "ephemeral" },
         },
+        // Deliberately unmarked: everything after the last cache_control marker
+        // is uncached, which is exactly what per-turn state should be.
+        ...(volatileContext ? [{ type: "text" as const, text: volatileContext }] : []),
       ],
       tools: tools.map((t, i) =>
         i === tools.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t
@@ -625,58 +690,95 @@ serve(async (req) => {
     });
 
     const encoder = new TextEncoder();
+
+    // Metering is attached to the ANTHROPIC stream, not to the response body.
+    // It used to live in the body stream's `finally`, after controller.close().
+    // When a client disconnects the runtime cancels the body, the enqueue
+    // throws, the catch block's own enqueue throws, and close() throws — so the
+    // metering closure was never even constructed, while Anthropic had already
+    // billed the call. Kicking it off here means a cancelled body cannot skip
+    // it, and `settleOnce` keeps it to exactly one settlement per request.
+    let settled = false;
+    const settleTurn = async () => {
+      if (settled) return;
+      settled = true;
+      try {
+        const finalMsg = await stream.finalMessage().catch(() => null);
+        const usage = finalMsg?.usage;
+        if (usage) {
+          const cost = costMicros(usage, MODEL);
+          if (bypassMetering) {
+            // Operator bypass: usage is recorded for audit, nothing is deducted.
+            await recordUsageAggregate(supabase, userId, usage, cost);
+            await supabase.from("token_ledger").insert({
+              user_id: userId,
+              delta_micros: 0,
+              reason: "ai_coach",
+              reference: "metering_bypass",
+              balance_after_micros: 0,
+            });
+          } else {
+            await consume(supabase, userId, cost, "ai_coach", `ai-coach:${userId}:${Date.now()}`);
+            await recordUsageAggregate(supabase, userId, usage, cost);
+          }
+        }
+      } catch (e) {
+        console.error("ai-coach metering failed:", e);
+      } finally {
+        // Release the concurrency slot whatever happened above, or the user is
+        // locked out of their own coach until the staleness window expires.
+        if (turnHeld) {
+          try {
+            await supabase.rpc("end_ai_turn", { p_user_id: userId });
+          } catch (e) {
+            console.error("end_ai_turn failed:", e);
+          }
+        }
+      }
+    };
+    const keepAlive = (p: Promise<unknown>) => {
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p);
+    };
+    keepAlive(settleTurn());
+
     const body = new ReadableStream({
       async start(controller) {
+        // A disconnected client makes every controller call throw; that must not
+        // take down the loop before the stream has been consumed.
+        let open = true;
+        const push = (text: string) => {
+          if (!open) return;
+          try {
+            controller.enqueue(encoder.encode(text));
+          } catch {
+            open = false;
+          }
+        };
         try {
           for await (const chunk of translateStream(stream)) {
-            controller.enqueue(encoder.encode(chunk));
+            push(chunk);
+            if (!open) break;
           }
         } catch (err) {
           console.error("Stream translation error:", err);
           await logError(supabase, userId, "stream_error", String(err));
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: streamErrorMessage(err) })}\n\n`));
+          push(`data: ${JSON.stringify({ error: streamErrorMessage(err) })}\n\n`);
           // Terminate the SSE stream properly — without it the client sits in
           // its read loop until the body closes and reports nothing at all.
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          push("data: [DONE]\n\n");
         } finally {
-          controller.close();
-
-          // Meter real token usage AFTER the response is fully streamed. Wrap
-          // in EdgeRuntime.waitUntil so the isolate isn't reclaimed before the
-          // DB write finishes once the response body ends. A metering failure
-          // must never break the user's reply.
-          const meter = (async () => {
-            try {
-              if (!userId) return;
-              const finalMsg = await stream.finalMessage();
-              const usage = finalMsg?.usage;
-              if (!usage) return;
-              const cost = costMicros(usage);
-              if (bypassMetering) {
-                // god-mode: log usage for audit, but do not deduct.
-                await recordUsageAggregate(supabase, userId, usage, cost);
-                await supabase.from("token_ledger").insert({
-                  user_id: userId,
-                  delta_micros: 0,
-                  reason: "ai_coach",
-                  reference: "god_mode",
-                  balance_after_micros: 0,
-                });
-              } else {
-                await consume(supabase, userId, cost, "ai_coach", `ai-coach:${userId}:${Date.now()}`);
-                await recordUsageAggregate(supabase, userId, usage, cost);
-              }
-            } catch (e) {
-              console.error("ai-coach metering failed:", e);
-            }
-          })();
-
-          if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
-            EdgeRuntime.waitUntil(meter);
-          } else {
-            await meter;
+          try {
+            controller.close();
+          } catch {
+            // Already cancelled by the client; nothing to close.
           }
+          keepAlive(settleTurn());
         }
+      },
+      cancel() {
+        // The client went away. The Anthropic call is already running and will
+        // still be billed, so settle it rather than letting it go free.
+        keepAlive(settleTurn());
       },
     });
 

@@ -3,7 +3,10 @@ import { format } from 'date-fns';
 import { ArrowLeft, Check, ChevronRight, Eye, EyeOff, Play } from 'lucide-react';
 import type { WorkoutSession, WorkoutTemplate, FutureWorkout } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
-import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
+import { formatMmSs } from '@/utils/timeFormat';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import type { WeightUnit } from '@/hooks/useStorage';
 import { parseLocalDate } from '@/utils/dateUtils';
 
 interface ActivityScreenProps {
@@ -16,6 +19,7 @@ interface ActivityScreenProps {
   onBack: () => void;
   initialTab?: 'history' | 'future';
   filterDate?: string;
+  weightUnit?: WeightUnit;
 }
 
 function formatDuration(s: number) {
@@ -24,9 +28,11 @@ function formatDuration(s: number) {
 }
 
 export const ActivityScreen: React.FC<ActivityScreenProps> = ({
-  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onStartTemplate, onBack, initialTab = 'future', filterDate,
+  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onStartTemplate, onBack, initialTab = 'future', filterDate, weightUnit = 'kg',
 }) => {
   const exerciseLookup = useExerciseLookup();
+  const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
+  const { exercises: customExercises } = useCustomExercisesContext();
   const [tab, setTab] = useState<'history' | 'future'>(initialTab);
   const [showRestDays, setShowRestDays] = useState(!!filterDate);
 
@@ -221,16 +227,20 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
                   <>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span>{s.exercises.map(e => {
-                        const mode = getExerciseInputMode(e.exerciseId);
+                        // `time` is stored in seconds and `distance` in metres.
+                        // This printed the raw seconds with a "min" label (a
+                        // 25:00 run read "1500 min") and always formatted
+                        // distance in km regardless of the user's unit.
+                        const mode = getExerciseInputMode(e.exerciseId, customExercises);
                         if (isTimeBased(mode)) {
                           const totalTime = e.sets.reduce((acc, set) => acc + (set.time ?? 0), 0);
                           const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);
-                          const distStr = isDistanceBased(mode) && totalDist > 0 ? ` · ${formatDistance(totalDist)}` : '';
-                          return `${exerciseLookup[e.exerciseId] ?? e.exerciseName} (${totalTime} min${distStr})`;
+                          const distStr = isDistanceBased(mode) && totalDist > 0 ? ` · ${formatDistance(totalDist, distanceUnit)}` : '';
+                          return `${exerciseLookup[e.exerciseId] ?? e.exerciseName} (${formatMmSs(totalTime)}${distStr})`;
                         }
                         if (mode === 'distance') {
                           const totalDist = e.sets.reduce((acc, set) => acc + (set.distance ?? 0), 0);
-                          return `${exerciseLookup[e.exerciseId] ?? e.exerciseName} (${totalDist > 0 ? formatDistance(totalDist) : '—'})`;
+                          return `${exerciseLookup[e.exerciseId] ?? e.exerciseName} (${totalDist > 0 ? formatDistance(totalDist, distanceUnit) : '—'})`;
                         }
                         return exerciseLookup[e.exerciseId] ?? e.exerciseName;
                       }).join(', ')}</span>

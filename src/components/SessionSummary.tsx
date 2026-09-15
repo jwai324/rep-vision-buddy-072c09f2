@@ -7,6 +7,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeight, formatWeightString, formatVolumeFromKg } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon, Share2 } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
+import type { MeasurementType } from '@/data/exercises';
 import { formatMmSs } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { repairFlatSets } from '@/utils/dropsetRepair';
@@ -55,6 +56,13 @@ interface SessionSummaryProps {
   onReperform?: (session: WorkoutSession) => void;
   onShare?: (session: WorkoutSession) => void;
   isViewMode?: boolean;
+  /**
+   * Custom-exercise definitions to resolve input modes against. Supplied by the
+   * public share page, which renders this component outside the app's provider
+   * and carries its own definitions in the snapshot. Omit inside the app and
+   * the signed-in user's own list is used.
+   */
+  customExercises?: { id: string; primaryBodyPart: string; equipment: string; measurementType?: MeasurementType | null }[];
 }
 
 function formatDuration(s: number) {
@@ -63,14 +71,19 @@ function formatDuration(s: number) {
   return `${m}m ${sec}s`;
 }
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, onShare, isViewMode }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, onShare, isViewMode, customExercises: customExercisesProp }) => {
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState('');
 
-  const { exercises: customExercises } = useCustomExercisesContext();
+  const { exercises: contextCustomExercises } = useCustomExercisesContext();
+  const customExercises = contextCustomExercises;
+  // Resolving an input mode without this list makes every custom time, distance
+  // or band exercise fall back to the reps-and-weight branch, so a workout that
+  // logged correctly renders as weight x reps the moment it is read back.
+  const inputModeExercises = customExercisesProp ?? contextCustomExercises;
   const exerciseLookup = useExerciseLookup();
 
   const allRestDayExercises = useMemo(() => {
@@ -344,7 +357,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
       {/* Exercise breakdown */}
       <div className="flex flex-col gap-3">
         {exercisesWithGroups.map((ex, i) => {
-          const mode = getExerciseInputMode(ex.exerciseId);
+          const mode = getExerciseInputMode(ex.exerciseId, inputModeExercises);
           const icon = EXERCISES[ex.exerciseId]?.icon ?? '🏋️';
 
           // Build set-number labels matching ActiveSession (W1, 1, 2, 1D1, 1D2...)
@@ -417,7 +430,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                     case 'time-distance':
                       return (
                         <>
-                          <span className="text-center">{set.time ?? 0} min</span>
+                          <span className="text-center">{formatMmSs(set.time ?? 0)}</span>
                           <span className="text-center">{set.distance ? formatDistance(set.distance, distanceUnit) : '—'}</span>
                         </>
                       );

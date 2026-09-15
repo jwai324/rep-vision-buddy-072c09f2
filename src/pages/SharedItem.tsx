@@ -129,6 +129,17 @@ const SharedItem: React.FC = () => {
   const sharedBy = snapshot.sharedBy?.trim() || 'a RepVision user';
   const importable = snapshot.kind !== 'session' || snapshot.session.exercises.length > 0;
 
+  // SharedCustomExercise uses `sourceId`; getExerciseInputMode wants `id`.
+  // A plain map rather than useMemo: this sits below the early returns above,
+  // so a hook here would break the rules-of-hooks ordering, and the list is a
+  // handful of rows.
+  const sharedCustomLite = (snapshot?.customExercises ?? []).map(c => ({
+    id: c.sourceId,
+    primaryBodyPart: c.primaryBodyPart,
+    equipment: c.equipment,
+    measurementType: c.measurementType,
+  }));
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto p-4 flex flex-col gap-4">
@@ -155,7 +166,15 @@ const SharedItem: React.FC = () => {
         {/* A snapshot written by a different build shouldn't white-screen the page. */}
         <ErrorBoundary fallbackTitle="Couldn't display this">
           {snapshot.kind === 'session' && (
-            <SessionSummary session={snapshot.session} weightUnit={unit} isViewMode />
+            <SessionSummary
+              session={snapshot.session}
+              weightUnit={unit}
+              isViewMode
+              // The snapshot carries its own custom-exercise definitions; the
+              // app's provider is not mounted on this route, so without these a
+              // shared custom time or distance exercise renders as weight x reps.
+              customExercises={sharedCustomLite}
+            />
           )}
           {snapshot.kind === 'template' && (
             <SharedTemplateView

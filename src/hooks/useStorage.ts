@@ -327,9 +327,21 @@ export function useStorage() {
   // True while a load runs behind already-visible data. Callers that gate a
   // full-screen spinner should watch `loading`; this is for subtler hints.
   const [refreshing, setRefreshing] = useState(false);
+  // True only once every query in a load has come back without an error.
+  // Effects that write back to the database must gate on this rather than on
+  // `loading`: a failed load also flips `loading` false, and acting on the
+  // empty state it leaves behind is how a transient 5xx used to clear a
+  // real streak permanently.
+  const [loadedOk, setLoadedOk] = useState(false);
+  // Whether anything on screen came from the local snapshot. A snapshot is
+  // safe to re-write when it is what we painted from, even if the refresh
+  // behind it failed; it is not safe to write a blank first-open state.
+  const hydratedFromCache = useRef(false);
 
   // Load all data from Supabase on mount / user change
   useEffect(() => {
+    setLoadedOk(false);
+    hydratedFromCache.current = false;
     if (!userId) {
       setHistory([]);
       setTemplates([]);
@@ -354,6 +366,7 @@ export function useStorage() {
       setProfileState(cached.profile);
       setBodyMeasurements(cached.bodyMeasurements);
       setLoading(false);
+      hydratedFromCache.current = true;
     }
 
     // A user switch mid-flight would otherwise let a stale response overwrite
@@ -377,6 +390,19 @@ export function useStorage() {
           supabase.from('body_measurements').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
         ]);
         if (cancelled) return;
+
+        // postgrest-js resolves with an `error` payload rather than throwing,
+        // so nothing above reaches the catch. Reading only `.data` meant a
+        // failed load painted — and then cached — an empty account.
+        const failures = ([
+          ['workouts', sessionsRes.error],
+          ['templates', templatesRes.error],
+          ['programs', programsRes.error],
+          ['schedule', futureRes.error],
+          ['settings', settingsRes.error],
+          ['profile', profileRes.error],
+          ['measurements', measurementsRes.error],
+        ] as const).filter(([, error]) => error != null);
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
         if (templatesRes.data) {
@@ -410,12 +436,28 @@ export function useStorage() {
             subscriptionTier: (row.subscription_tier as SubscriptionTier) ?? 'premium',
           });
         }
-        if (measurementsRes?.data) {
+        if (measurementsRes.data) {
           setBodyMeasurements(measurementsRes.data.map(r => ({
             id: r.id,
             date: r.date,
             weightKg: Number(r.weight_kg),
           })));
+        }
+
+        if (failures.length) {
+          for (const [label, error] of failures) {
+            console.error(`[useStorage] Failed to load ${label}:`, error);
+          }
+          // Said even when cached data is on screen: without it a stale
+          // snapshot is indistinguishable from live data, and the user can
+          // edit against numbers the server never confirmed.
+          toast.error(
+            hydratedFromCache.current
+              ? "Couldn't refresh your data — showing what was last saved."
+              : 'Failed to load your data',
+          );
+        } else {
+          setLoadedOk(true);
         }
       } catch (e) {
         if (cancelled) return;
@@ -440,12 +482,17 @@ export function useStorage() {
   // as the user edits.
   useEffect(() => {
     if (!userId || loading) return;
+    // Only ever persist a snapshot we can stand behind: one the network
+    // confirmed, or the one we painted from and have only edited since. A
+    // first open whose load failed has neither, and caching its blank state
+    // as last-known-good is what re-ran the tutorial over a real account.
+    if (!loadedOk && !hydratedFromCache.current) return;
     const snapshot: CachedStorage = {
       history, templates, programs, activeProgramId,
       futureWorkouts, preferences, profile, bodyMeasurements,
     };
     writeStorageCache(userId, snapshot);
-  }, [userId, loading, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
+  }, [userId, loading, loadedOk, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
 
   const setActiveProgramId = useCallback((id: string | null) => {
     setActiveProgramIdState(id);
@@ -461,7 +508,7 @@ export function useStorage() {
   // never throws: an offline fetch rejects rather than resolving with an error
   // payload, and an unhandled rejection here used to leave the caller believing
   // the save had succeeded while it tore down the only other copy.
-  const saveSession = useCallback(async (session: WorkoutSession, origin: { templateId?: string | null } = {}): Promise<boolean> => {
+  const saveSessionNow = useCallback(async (session: WorkoutSession, origin: { templateId?: string | null } = {}): Promise<boolean> => {
     if (!user) return false;
     let error: unknown = null;
     try {
@@ -519,6 +566,23 @@ export function useStorage() {
     }
     return true;
   }, [user, futureWorkouts, templates]);
+
+  // Writes to one session row are chained rather than raced. The summary's
+  // recovery-activity chips fire a save per tap, and two in flight at once
+  // can arrive at the server out of order, leaving the row holding the
+  // earlier of the two. Chained, not deduped: each call carries different
+  // data, so all of them have to land — just in order.
+  const saveChains = useRef<Map<string, Promise<boolean>>>(new Map());
+  const saveSession = useCallback((session: WorkoutSession, origin: { templateId?: string | null } = {}): Promise<boolean> => {
+    const prior = saveChains.current.get(session.id) ?? Promise.resolve(true);
+    // saveSessionNow never rejects, so the chain can't be poisoned.
+    const next = prior.then(() => saveSessionNow(session, origin));
+    saveChains.current.set(session.id, next);
+    void next.then(() => {
+      if (saveChains.current.get(session.id) === next) saveChains.current.delete(session.id);
+    });
+    return next;
+  }, [saveSessionNow]);
 
   const applyTemplateLocally = useCallback((template: WorkoutTemplate) => {
     setTemplates(prev => {
@@ -660,7 +724,9 @@ export function useStorage() {
   // ref keeps us from re-firing for the same program id if state churns.
   const repairedProgramIds = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!user || loading) return;
+    // loadedOk, not !loading: this writes back to the database, so it must
+    // never run against a hydrated-only or partially-failed load.
+    if (!user || !loadedOk) return;
     for (const p of programs) {
       if (repairedProgramIds.current.has(p.id)) continue;
       const { days, changed } = normalizeProgramDays(p.days);
@@ -668,7 +734,7 @@ export function useStorage() {
       repairedProgramIds.current.add(p.id);
       saveProgram({ ...p, days });
     }
-  }, [user, loading, programs, saveProgram]);
+  }, [user, loadedOk, programs, saveProgram]);
 
   // Auto-clear of the streak adjustment when the new mode has actually
   // produced a break is set up further below, after updatePreferences is
@@ -873,7 +939,10 @@ export function useStorage() {
   // if history/preferences churn without the underlying signal changing.
   const clearedAdjustmentAt = useRef<string | null>(null);
   useEffect(() => {
-    if (!user || loading) return;
+    // loadedOk, not !loading: an empty `history` left by a failed sessions
+    // query looks exactly like a broken streak, and this clears the
+    // adjustment in the database on the strength of it.
+    if (!user || !loadedOk) return;
     if (preferences.streakAdjustment === 0 && preferences.streakAdjustmentSetAt === null) return;
     const { shouldClearAdjustment } = computeDisplayedStreak(
       history,
@@ -887,7 +956,7 @@ export function useStorage() {
     if (clearedAdjustmentAt.current === key) return;
     clearedAdjustmentAt.current = key;
     updatePreferences({ streakAdjustment: 0, streakAdjustmentSetAt: null });
-  }, [user, loading, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
+  }, [user, loadedOk, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;

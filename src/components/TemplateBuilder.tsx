@@ -196,10 +196,17 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
   const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof TemplateSetRow, value: string) => {
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => si === setIdx ? { ...set, [field]: value } : set),
-      };
+      const sets = block.sets.map((set, si) => si === setIdx ? { ...set, [field]: value } : set);
+      // `repsToFailure` is what makes blockToExercise emit 'failure' instead of
+      // the typed number, and nothing else ever cleared it, so a template that
+      // had once been set to failure silently discarded every rep count typed
+      // into it afterwards. Typing a value is the user saying "not to failure";
+      // clearing the cell is them saying it is. Timed exercises bind their
+      // minutes to this same field, so they were stuck in the same way.
+      const repsToFailure = field === 'targetReps'
+        ? value.trim() === ''
+        : block.repsToFailure;
+      return { ...block, sets, repsToFailure };
     }));
   }, []);
 
