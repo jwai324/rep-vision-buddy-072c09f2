@@ -237,7 +237,7 @@ export interface BodyMeasurement {
   weightKg: number;
 }
 
-const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, streakAdjustment: 0, streakAdjustmentSetAt: null, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'], stickyNotes: {} };
+export const DEFAULT_PREFERENCES: UserPreferences = { weightUnit: 'lbs', defaultRestSeconds: 90, defaultDropSetsEnabled: false, streakMode: 'daily', streakWeeklyTarget: 3, streakAdjustment: 0, streakAdjustmentSetAt: null, tutorialCompleted: false, hideTimers: false, customLocations: ['Home Gym'], stickyNotes: {} };
 const DEFAULT_PROFILE: UserProfile = {
   displayName: null,
   goal: null,
@@ -333,15 +333,18 @@ export function useStorage() {
   // empty state it leaves behind is how a transient 5xx used to clear a
   // real streak permanently.
   const [loadedOk, setLoadedOk] = useState(false);
-  // Whether anything on screen came from the local snapshot. A snapshot is
-  // safe to re-write when it is what we painted from, even if the refresh
-  // behind it failed; it is not safe to write a blank first-open state.
-  const hydratedFromCache = useRef(false);
+  // True when what is on screen belongs to this account: the network confirmed
+  // it, or we painted it from this user's own snapshot. False is the dangerous
+  // state — a first open whose load failed, where every value is a DEFAULT_*
+  // placeholder that looks exactly like a real empty account. Returned as
+  // `dataTrusted` because callers outside the hook write whole rows from this
+  // state and would otherwise overwrite the real ones with placeholders.
+  const [snapshotTrusted, setSnapshotTrusted] = useState(false);
 
   // Load all data from Supabase on mount / user change
   useEffect(() => {
     setLoadedOk(false);
-    hydratedFromCache.current = false;
+    setSnapshotTrusted(false);
     if (!userId) {
       setHistory([]);
       setTemplates([]);
@@ -366,7 +369,7 @@ export function useStorage() {
       setProfileState(cached.profile);
       setBodyMeasurements(cached.bodyMeasurements);
       setLoading(false);
-      hydratedFromCache.current = true;
+      setSnapshotTrusted(true);
     }
 
     // A user switch mid-flight would otherwise let a stale response overwrite
@@ -452,12 +455,13 @@ export function useStorage() {
           // snapshot is indistinguishable from live data, and the user can
           // edit against numbers the server never confirmed.
           toast.error(
-            hydratedFromCache.current
+            cached
               ? "Couldn't refresh your data — showing what was last saved."
               : 'Failed to load your data',
           );
         } else {
           setLoadedOk(true);
+          setSnapshotTrusted(true);
         }
       } catch (e) {
         if (cancelled) return;
@@ -482,17 +486,16 @@ export function useStorage() {
   // as the user edits.
   useEffect(() => {
     if (!userId || loading) return;
-    // Only ever persist a snapshot we can stand behind: one the network
-    // confirmed, or the one we painted from and have only edited since. A
-    // first open whose load failed has neither, and caching its blank state
-    // as last-known-good is what re-ran the tutorial over a real account.
-    if (!loadedOk && !hydratedFromCache.current) return;
+    // Only ever persist a snapshot we can stand behind. A first open whose
+    // load failed has nothing but placeholders, and caching those as
+    // last-known-good is what re-ran the tutorial over a real account.
+    if (!snapshotTrusted) return;
     const snapshot: CachedStorage = {
       history, templates, programs, activeProgramId,
       futureWorkouts, preferences, profile, bodyMeasurements,
     };
     writeStorageCache(userId, snapshot);
-  }, [userId, loading, loadedOk, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
+  }, [userId, loading, snapshotTrusted, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
 
   const setActiveProgramId = useCallback((id: string | null) => {
     setActiveProgramIdState(id);
@@ -877,6 +880,15 @@ export function useStorage() {
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
     if (!user) return;
+    // This upserts the whole settings row from local state. After a load that
+    // failed with nothing cached, that state is DEFAULT_PREFERENCES, so writing
+    // it would replace the user's real streak mode, target and unit with
+    // placeholders — the finished form of the bug where a failed load cleared a
+    // streak permanently.
+    if (!snapshotTrusted) {
+      toast.error("Your settings haven't loaded yet — try again in a moment.");
+      return;
+    }
     const previous = preferences;
     let updated = { ...preferences, ...prefs };
 
@@ -930,7 +942,7 @@ export function useStorage() {
       toast.error('Failed to save preferences');
       setPreferencesState(previous); // rollback
     }
-  }, [user, preferences, activeProgramId, history]);
+  }, [user, preferences, activeProgramId, history, snapshotTrusted]);
 
   // Once the new streak mode has produced an actual break (raw=0 for at
   // least one period past the day the adjustment was set), clear the
@@ -960,6 +972,12 @@ export function useStorage() {
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
     if (!user) return;
+    // Same whole-row hazard as updatePreferences: DEFAULT_PROFILE would blank
+    // goal, equipment, injuries, age, height and drop the subscription tier.
+    if (!snapshotTrusted) {
+      toast.error("Your profile hasn't loaded yet — try again in a moment.");
+      return;
+    }
     const merged = { ...profile, ...updates };
     // Hybrid sub-goals only apply when goal === 'hybrid'; wipe them otherwise
     // so a user toggling off hybrid doesn't leave a stale array behind.
@@ -990,7 +1008,7 @@ export function useStorage() {
       toast.error('Failed to save profile');
       setProfileState(previous); // rollback
     }
-  }, [user, profile]);
+  }, [user, profile, snapshotTrusted]);
 
   const addBodyMeasurement = useCallback(async (weightKg: number, date?: string): Promise<boolean> => {
     if (!user) return false;
@@ -1026,6 +1044,10 @@ export function useStorage() {
 
   return {
     history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements, loading, refreshing,
+    // `loading` false does NOT mean the data is real — a failed load also ends
+    // loading. Anything that acts on the data's *content* (starting the
+    // tutorial because tutorialCompleted is false, say) must gate on this.
+    dataTrusted: snapshotTrusted,
     saveSession, saveTemplate, deleteTemplate,
     saveProgram, deleteProgram, setActiveProgram, deleteSession, updateFutureWorkout,
     deleteFutureWorkout, pushProgramBack, updatePreferences,

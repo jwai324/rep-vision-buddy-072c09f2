@@ -95,6 +95,17 @@ export function gate(row: BalanceRow): { allowed: boolean; available: number } {
   return { allowed: available >= RESERVE_MICROS, available };
 }
 
+// What a ledger row needs to be re-priced if the rates change again. The 3x
+// overcharge found on 2026-09-15 could not be corrected because rows held only
+// micro-dollars; the token counts behind them were gone.
+export interface LedgerTokens {
+  model: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_write_tokens: number | null;
+  cache_read_tokens: number | null;
+}
+
 // Atomic free-then-paid deduction + ledger insert (Postgres RPC, FOR UPDATE).
 export async function consume(
   supabase: SupabaseLike,
@@ -102,12 +113,18 @@ export async function consume(
   cost: number,
   reason: string,
   reference: string,
+  tokens?: LedgerTokens,
 ): Promise<void> {
   const { error } = await supabase.rpc("consume_tokens", {
     p_user_id: userId,
     p_cost_micros: cost,
     p_reason: reason,
     p_reference: reference,
+    p_model: tokens?.model ?? null,
+    p_input_tokens: tokens?.input_tokens ?? null,
+    p_output_tokens: tokens?.output_tokens ?? null,
+    p_cache_write_tokens: tokens?.cache_write_tokens ?? null,
+    p_cache_read_tokens: tokens?.cache_read_tokens ?? null,
   });
   if (error) throw new Error(`consume_tokens failed: ${error.message}`);
 }

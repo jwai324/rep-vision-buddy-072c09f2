@@ -158,10 +158,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
   }, [screen.type, registerScreen]);
 
-  // Auto-start tutorial for first-time users
+  // Auto-start tutorial for first-time users.
+  //
+  // Gated on dataTrusted, not on loading: a load that failed also ends loading,
+  // and it leaves tutorialCompleted at its DEFAULT_PREFERENCES false. Starting
+  // the tutorial there runs it over an account with months of history, and
+  // finishing it writes a whole settings row built from those placeholders.
   const autoStartedRef = React.useRef(false);
   useEffect(() => {
-    if (storage.loading) return;
+    if (!storage.dataTrusted) return;
     if (autoStartedRef.current) return;
     if (!storage.preferences.tutorialCompleted) {
       autoStartedRef.current = true;
@@ -169,7 +174,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       setScreen({ type: 'dashboard' });
       tutorial.start();
     }
-  }, [storage.loading, storage.preferences.tutorialCompleted, tutorial]);
+  }, [storage.dataTrusted, storage.preferences.tutorialCompleted, tutorial]);
 
   // When entering active session during tutorial, jump to session steps
   useEffect(() => {

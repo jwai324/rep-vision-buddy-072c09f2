@@ -203,14 +203,16 @@ export async function importUserData(
       imported.profile = 1;
     }
 
-    // Templates before programs and sessions: programs reference template ids,
-    // so stopping partway through this order leaves the fewest dangling rows.
+    // Referenced-before-referencing, so stopping partway leaves the fewest
+    // dangling rows: custom exercises are named by `custom-<uuid>` inside every
+    // template, program, session and scheduled workout, and templates are named
+    // by programs and scheduled workouts.
     const tables: Array<[string, BackupRow[]]> = [
+      ['custom_exercises', backup.data.custom_exercises],
       ['workout_templates', backup.data.workout_templates],
       ['workout_programs', backup.data.workout_programs],
       ['workout_sessions', backup.data.workout_sessions],
       ['future_workouts', backup.data.future_workouts],
-      ['custom_exercises', backup.data.custom_exercises],
       // v2+ backups only; v1 backups have this normalized to [] by validateBackup.
       ['body_measurements', backup.data.body_measurements],
     ];

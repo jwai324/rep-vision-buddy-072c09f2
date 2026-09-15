@@ -351,14 +351,14 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
           {creditsBalance.exhausted && (
             <div className="px-4 pb-2 flex-shrink-0 flex flex-col items-center gap-2">
               <p className="text-xs text-center text-destructive font-medium">
-                You've used your AI allowance for this month. Top up or check your plan to keep chatting.
+                You've used your AI allowance for this month. It resets at the start of next month.
               </p>
               {onOpenCredits && (
                 <button
                   onClick={() => { setOpen(false); onOpenCredits(); }}
                   className="text-xs font-semibold px-4 py-2 rounded-full gradient-green text-primary-foreground"
                 >
-                  Top up or manage plan
+                  See usage and plan
                 </button>
               )}
             </div>

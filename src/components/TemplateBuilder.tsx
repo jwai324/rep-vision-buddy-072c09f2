@@ -59,7 +59,6 @@ interface TemplateBlock {
    * no reps (templateDiff.ts), and rebuilding the target from the set type
    * alone turned that back into 10 on the next save.
    */
-  repsToFailure: boolean;
 }
 
 type CustomExerciseLite = Parameters<typeof getExerciseInputMode>[1];
@@ -75,6 +74,7 @@ function exerciseToBlock(
   customExercises?: CustomExerciseLite,
 ): TemplateBlock {
   const name = lookup?.[ex.exerciseId] ?? EXERCISES[ex.exerciseId]?.name ?? ex.exerciseId;
+  const mode = getExerciseInputMode(ex.exerciseId, customExercises);
   const weightInput = targetWeightToInput(ex.targetWeight, weightUnit, isBandExercise(ex.exerciseId, customExercises));
   return {
     exerciseId: ex.exerciseId,
@@ -82,11 +82,12 @@ function exerciseToBlock(
     setType: ex.setType,
     restSeconds: ex.restSeconds,
     supersetGroup: ex.supersetGroup,
-    repsToFailure: ex.targetReps === 'failure' || ex.setType === 'failure',
     sets: Array.from({ length: ex.sets }, (_, i) => ({
       setNumber: i + 1,
       targetWeight: weightInput,
-      targetReps: ex.targetReps === 'failure' ? '' : ex.targetReps.toString(),
+      // Blanked only for the modes that render this cell; distance-only work
+      // has no input bound to it, so its stored value rides through untouched.
+      targetReps: ex.targetReps === 'failure' && mode !== 'distance' ? '' : ex.targetReps.toString(),
       targetRpe: ex.targetRpe?.toString() ?? '',
     })),
   };
@@ -98,8 +99,16 @@ function blockToExercise(
   customExercises?: CustomExerciseLite,
 ): TemplateExercise {
   const firstSet = block.sets[0];
-  const reps = block.repsToFailure ? 'failure' as const : (parseInt(firstSet?.targetReps) || 10);
   const mode = getExerciseInputMode(block.exerciseId, customExercises);
+  // Only the first set's cell decides the saved rep count, so only it can decide
+  // "to failure" — a block-level flag written by whichever row was last edited
+  // made clearing set 3 of an ordinary template mark the whole exercise to
+  // failure. Distance-only work renders no cell at all, so `exerciseToBlock`
+  // leaves the literal 'failure' in it and it round-trips here rather than
+  // being read as a blank and defaulting to 10.
+  const cell = (firstSet?.targetReps ?? '').trim();
+  const toFailure = cell === 'failure' || cell === '';
+  const reps = toFailure ? 'failure' as const : (parseInt(cell) || 10);
   return {
     exerciseId: block.exerciseId,
     sets: block.sets.length,
@@ -130,12 +139,8 @@ function loadDraft(
       // Only restore if editing the same template (or both are new)
       if ((draft.id ?? null) === (initialTemplate?.id ?? null)) {
         // A draft from before supersets became links may still carry the
-        // old per-exercise pill, so it is resolved the same way a template is;
-        // one from before repsToFailure existed still has the flag in its set
-        // type, which is where it used to live.
-        const blocks: TemplateBlock[] = (draft.blocks ?? []).map((b: TemplateBlock) => (
-          b.repsToFailure === undefined ? { ...b, repsToFailure: b.setType === 'failure' } : b
-        ));
+        // old per-exercise pill, so it is resolved the same way a template is.
+        const blocks: TemplateBlock[] = draft.blocks ?? [];
         return { name: draft.name ?? '', blocks: resolveTemplateSupersets(blocks) };
       }
     }
@@ -197,16 +202,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
     setBlocks(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
       const sets = block.sets.map((set, si) => si === setIdx ? { ...set, [field]: value } : set);
-      // `repsToFailure` is what makes blockToExercise emit 'failure' instead of
-      // the typed number, and nothing else ever cleared it, so a template that
-      // had once been set to failure silently discarded every rep count typed
-      // into it afterwards. Typing a value is the user saying "not to failure";
-      // clearing the cell is them saying it is. Timed exercises bind their
-      // minutes to this same field, so they were stuck in the same way.
-      const repsToFailure = field === 'targetReps'
-        ? value.trim() === ''
-        : block.repsToFailure;
-      return { ...block, sets, repsToFailure };
+      return { ...block, sets };
     }));
   }, []);
 
@@ -263,7 +259,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
           exerciseId: id,
           exerciseName: exerciseLookup[id] ?? id,
           setType: 'normal' as SetType,
-          repsToFailure: false,
           restSeconds: defaultRestSeconds,
           sets: Array.from({ length: 3 }, (_, i) => ({
             setNumber: i + 1,
@@ -573,7 +568,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weigh
                             {showReps && !isTime && mode !== 'distance' && (
                               <input type="number" inputMode="numeric" value={set.targetReps}
                                 onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
-                                placeholder={block.repsToFailure ? 'Fail' : '—'}
+                                placeholder={(block.sets[0]?.targetReps ?? '').trim() === '' ? 'Fail' : '—'}
                                 className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
                             )}
                             <RpePickerButton

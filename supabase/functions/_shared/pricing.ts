@@ -27,7 +27,11 @@ export const RATES_BY_MODEL = {
 export type PricedModel = keyof typeof RATES_BY_MODEL;
 
 export function ratesForModel(model: string) {
-  const rates = (RATES_BY_MODEL as Record<string, typeof RATES_BY_MODEL[PricedModel]>)[model];
+  // Own-property only: a bare index would resolve "constructor", "toString" and
+  // friends to a function, skip the fallback below, and multiply tokens by a
+  // non-number — sending NaN micro-dollars into consume_tokens.
+  const table = RATES_BY_MODEL as Record<string, typeof RATES_BY_MODEL[PricedModel]>;
+  const rates = Object.prototype.hasOwnProperty.call(table, model) ? table[model] : undefined;
   if (!rates) {
     // Bill at the most expensive known rate rather than under-charging, and make
     // the omission loud in the function logs.

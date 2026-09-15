@@ -82,6 +82,19 @@ function safeWriteCache(cache: ActiveSessionCache) {
 //   distance-only modes  -> no weight at all
 //   band                 -> the level as chosen, never unit-converted
 //   everything else      -> the typed display value converted to kg
+// Band sets logged before the level/kilogram mix-up was fixed are stored as the
+// converted number, which matches no entry in the level picker and would render
+// it blank. A value that is not already a level is read back through the same
+// conversion that produced it. Levels are 1-6, so the two cases cannot collide:
+// the smallest converted value an lbs user could have stored is level 1 at
+// 0.45 kg, and a kg user's values were never converted at all.
+function bandLevelFrom(stored: number, weightUnit: WeightUnit): number {
+  const levels = BAND_LEVELS.map(b => b.level);
+  if (levels.includes(stored)) return stored;
+  const recovered = Math.round(fromKg(stored, weightUnit));
+  return levels.includes(recovered) ? recovered : stored;
+}
+
 function setWeightFor(mode: ExerciseInputMode, raw: string | undefined, weightUnit: WeightUnit): number | undefined {
   if (!usesWeight(mode) || !raw) return undefined;
   const value = parseFloat(raw);
@@ -182,7 +195,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       // it must not go through the kg/lb conversion in either direction.
       const editMode = getExerciseInputMode(ex.exerciseId, customExercises);
       const displayWeight = (w: number | null | undefined) =>
-        w == null ? '' : String(editMode === 'band' ? w : fromKg(w, weightUnit));
+        w == null ? '' : String(editMode === 'band' ? bandLevelFrom(w, weightUnit) : fromKg(w, weightUnit));
       // Stored in metres; the input holds the user's unit. Omitting this is
       // what silently erased every distance when a session was edited and saved.
       const displayDistance = (d: number | null | undefined) =>
@@ -224,7 +237,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         note: ex.note,
       };
     });
-  }, [editSession, weightUnit, defaultRestSeconds]);
+  }, [editSession, weightUnit, defaultRestSeconds, customExercises]);
 
   // A template can express a superset two ways (an explicit group id, or the
   // older setType-only form the AI tools still write); the session only
@@ -1093,7 +1106,21 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
     const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
-    const totalVolume = allSets.reduce((s, set) => s + set.reps * (set.weight ?? 0), 0);
+    // A band's "weight" is a level from a picker, not kilograms, so it is left
+    // out of volume rather than multiplied into it — level 3 is not 3 kg by any
+    // reading, and before the level/kg mix-up was fixed the same set scored
+    // differently for a kg user and an lbs user.
+    const bandExerciseIds = new Set(
+      exerciseLogs
+        .filter(l => getExerciseInputMode(l.exerciseId, customExercises) === 'band')
+        .map(l => l.exerciseId),
+    );
+    const totalVolume = exerciseLogs.reduce(
+      (sum, log) => bandExerciseIds.has(log.exerciseId)
+        ? sum
+        : sum + log.sets.reduce((s, set) => s + set.reps * (set.weight ?? 0), 0),
+      0,
+    );
     const rpeSets = allSets.filter(s => s.rpe !== undefined && s.type !== 'warmup');
     const averageRpe = rpeSets.length > 0 ? rpeSets.reduce((s, set) => s + (set.rpe ?? 0), 0) / rpeSets.length : undefined;
 

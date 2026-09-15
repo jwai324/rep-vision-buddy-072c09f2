@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { writeStorageCache, readStorageCache, type CachedStorage } from '@/utils/storageCache';
 import type { WorkoutSession } from '@/types/workout';
 
@@ -18,8 +18,14 @@ const LOAD_ERROR = { code: '500', message: 'server error' };
 
 const upserts: Array<{ table: string; payload: Record<string, unknown> }> = [];
 
+/** Rows a table should return instead of failing. Tables absent from it fail. */
+let succeedWith: Record<string, unknown> = {};
+
 function makeBuilder(table: string) {
-  const result = Promise.resolve({ data: null, error: LOAD_ERROR });
+  const ok = Object.prototype.hasOwnProperty.call(succeedWith, table);
+  const result = Promise.resolve(
+    ok ? { data: succeedWith[table], error: null } : { data: null, error: LOAD_ERROR },
+  );
   const builder: Record<string, unknown> = {
     then: (...args: Parameters<Promise<unknown>['then']>) => result.then(...args),
     upsert: (payload: Record<string, unknown>) => {
@@ -67,6 +73,7 @@ beforeEach(() => {
   localStorage.clear();
   toastError.mockClear();
   upserts.length = 0;
+  succeedWith = {};
 });
 
 describe('useStorage load failures', () => {
@@ -99,22 +106,59 @@ describe('useStorage load failures', () => {
     );
   });
 
-  it('does not clear a streak adjustment off the back of an empty history', async () => {
-    // The sessions query fails, so history is empty; a real adjustment set two
-    // weeks ago is still in preferences. The clear effect used to fire here.
-    writeStorageCache(USER_ID, snapshot({
-      history: [],
-      preferences: {
-        ...snapshot().preferences,
-        streakAdjustment: 12,
-        streakAdjustmentSetAt: '2026-09-01',
+  it('does not clear a streak adjustment off the back of a half-loaded account', async () => {
+    // The audit's partial-failure case, and the one that cost a real streak:
+    // the 500-row workout_sessions read times out while user_settings succeeds
+    // and returns a genuine adjustment set two weeks ago. There is no cache, so
+    // history is [] purely because of the failure — which the streak maths
+    // reads as "the streak broke".
+    succeedWith = {
+      user_settings: {
+        user_id: USER_ID, weight_unit: 'kg', default_rest_seconds: 90,
+        default_drop_sets_enabled: false, streak_mode: 'daily',
+        streak_weekly_target: 3, streak_adjustment: 12,
+        streak_adjustment_set_at: '2026-09-01', tutorial_completed: true,
+        hide_timers: false, custom_locations: ['Home Gym'], sticky_notes: {},
+        active_program_id: null,
       },
-    }));
+    };
 
     const { result } = renderHook(() => useStorage());
 
-    await waitFor(() => expect(result.current.refreshing).toBe(false));
-    expect(upserts.filter(u => u.table === 'user_settings')).toHaveLength(0);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.history).toHaveLength(0);
     expect(result.current.preferences.streakAdjustment).toBe(12);
+    // Nothing may be written back on the strength of that empty history.
+    expect(upserts.filter(u => u.table === 'user_settings')).toHaveLength(0);
+  });
+
+  it('refuses whole-row writes built from placeholder state', async () => {
+    const { result } = renderHook(() => useStorage());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.dataTrusted).toBe(false);
+
+    // Finishing the tutorial, or the coach writing one profile field, upserts
+    // the whole row from local state — which is DEFAULT_* here.
+    await act(async () => { await result.current.updatePreferences({ tutorialCompleted: true }); });
+    await act(async () => { await result.current.updateProfile({ goal: 'strength' }); });
+
+    expect(upserts).toHaveLength(0);
+  });
+
+  it('trusts a successful load even when the account is genuinely empty', async () => {
+    succeedWith = {
+      workout_sessions: [], workout_templates: [], workout_programs: [],
+      future_workouts: [], user_settings: null, profiles: null,
+      body_measurements: [],
+    };
+
+    const { result } = renderHook(() => useStorage());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.dataTrusted).toBe(true);
+    expect(toastError).not.toHaveBeenCalled();
+    // A real empty account is still worth caching as last-known-good.
+    expect(readStorageCache(USER_ID)).not.toBeNull();
   });
 });

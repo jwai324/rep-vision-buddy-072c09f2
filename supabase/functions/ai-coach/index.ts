@@ -436,8 +436,15 @@ function streamErrorMessage(err: unknown): string {
 function toAnthropicMessages(openaiMessages: OpenAIMessage[]): AnthropicMessage[] {
   const out: AnthropicMessage[] = [];
   for (const m of openaiMessages) {
+    if (!m || typeof m !== "object") continue;
     if (m.role === "user") {
-      out.push({ role: "user", content: m.content });
+      // Consecutive user turns are as illegal as consecutive assistant ones.
+      const last = out[out.length - 1];
+      if (last && last.role === "user" && typeof last.content === "string" && typeof m.content === "string") {
+        last.content = `${last.content}\n\n${m.content}`;
+      } else {
+        out.push({ role: "user", content: m.content });
+      }
     } else if (m.role === "assistant") {
       const blocks: AnthropicBlock[] = [];
       if (m.content) blocks.push({ type: "text", text: m.content });
@@ -445,10 +452,22 @@ function toAnthropicMessages(openaiMessages: OpenAIMessage[]): AnthropicMessage[
         for (const tc of m.tool_calls) {
           let input: Record<string, unknown> = {};
           try { input = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {}; } catch { /* keep {} */ }
-          blocks.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
+          blocks.push({ type: "tool_use", id: tc.id, name: tc.function?.name ?? "", input });
         }
       }
-      out.push({ role: "assistant", content: blocks.length ? blocks : (m.content ?? "") });
+      // The Messages API rejects two assistant turns in a row with a 400, and
+      // the client writes one whenever a proposal is applied or discarded
+      // ("_Applied: …_" straight after the reply that proposed it). Merging
+      // here means the chat cannot be bricked by a client that forgets.
+      const last = out[out.length - 1];
+      if (last && last.role === "assistant") {
+        const lastBlocks: AnthropicBlock[] = Array.isArray(last.content)
+          ? last.content
+          : (last.content ? [{ type: "text", text: last.content as string }] : []);
+        last.content = [...lastBlocks, ...blocks];
+      } else {
+        out.push({ role: "assistant", content: blocks.length ? blocks : (m.content ?? "") });
+      }
     } else if (m.role === "tool") {
       // Merge consecutive tool results into a single user message of tool_result blocks.
       const block: AnthropicBlock = {
@@ -534,6 +553,21 @@ async function* translateStream(stream: AsyncIterable<AnthropicStreamEvent>): As
 }
 
 serve(async (req) => {
+  // Declared outside the try so every exit path can release the concurrency
+  // slot. Holding it is the failure mode that matters: a leaked slot costs the
+  // user their own coach until the staleness window expires, and each request
+  // inside that window used to push the window forward.
+  const slot: { supabase: { rpc(fn: string, args: Record<string, unknown>): Promise<unknown> } | null; userId: string | null; held: boolean; handedOff: boolean } =
+    { supabase: null, userId: null, held: false, handedOff: false };
+  const releaseSlot = async () => {
+    if (!slot.held || !slot.supabase || !slot.userId) return;
+    slot.held = false;
+    try {
+      await slot.supabase.rpc("end_ai_turn", { p_user_id: slot.userId });
+    } catch (e) {
+      console.error("end_ai_turn failed:", e);
+    }
+  };
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -544,12 +578,14 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    slot.supabase = supabase;
 
     let userId: string | null = null;
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
       const { data: { user } } = await supabase.auth.getUser(token);
       userId = user?.id ?? null;
+      slot.userId = userId;
     }
 
     // Require a signed-in user. Without this the anon key (public in the
@@ -571,7 +607,11 @@ serve(async (req) => {
     // secret unset (the default) the switch is off for everyone, including the
     // owner. There is deliberately no request-body flag: the client used to send
     // `god_mode` and the server used to believe it.
-    const lastUser = [...(messages ?? [])].reverse().find((m: OpenAIMessage) => m.role === "user");
+    // Everything below indexes and mutates this, and a slot is already held by
+    // the time it does — a non-array body used to throw straight past the
+    // release. Normalised once, here.
+    const chatMessages: OpenAIMessage[] = Array.isArray(messages) ? messages : [];
+    const lastUser = [...chatMessages].reverse().find((m: OpenAIMessage) => m?.role === "user");
     const phraseInMsg = String(lastUser?.content ?? "").trim().toLowerCase() === GOD_MODE_PHRASE;
     const bypassMetering = phraseInMsg && isMeteringBypassUser(userId);
 
@@ -579,8 +619,7 @@ serve(async (req) => {
     // reserve is held and the real cost deducted afterwards. The hold is taken
     // under the same row lock as the debit: reading the balance and then
     // deciding was a check-then-act race, and concurrent requests all passed it
-    // on one reserve. `turnHeld` says whether we owe a release.
-    let turnHeld = false;
+    // on one reserve.
     if (!bypassMetering) {
       const { data, error } = await supabase.rpc("begin_ai_turn", {
         p_user_id: userId,
@@ -597,7 +636,11 @@ serve(async (req) => {
       }
       const row = Array.isArray(data) ? data[0] : data;
       if (!row?.allowed) {
-        const busy = (row?.in_flight ?? 0) >= MAX_CONCURRENT_TURNS;
+        // The refusal reason comes from the gate rather than being inferred
+        // here: guessing from in_flight reported a credit refusal as "busy"
+        // and, worse, a busy refusal as "out of credits" — which the client
+        // latches into an exhausted-balance UI that blocks the composer.
+        const busy = row?.reason === "busy";
         return new Response(JSON.stringify(
           busy
             ? { error: "You already have a coach reply in progress. Wait for it to finish." }
@@ -607,7 +650,7 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      turnHeld = true;
+      slot.held = true;
     }
 
     // Prompt caching is an exact prefix match up to the cache_control marker.
@@ -647,8 +690,8 @@ serve(async (req) => {
     // and repeats on every retry because the window is the same. The chat array
     // grows by one user and one assistant message per exchange, so a plain
     // slice lands on an assistant turn from the sixth message onward.
-    const windowedMessages = (messages || []).slice(-10);
-    while (windowedMessages.length && windowedMessages[0].role !== "user") {
+    const windowedMessages = chatMessages.slice(-10);
+    while (windowedMessages.length && windowedMessages[0]?.role !== "user") {
       windowedMessages.shift();
     }
     const allOpenAiMessages = [...windowedMessages];
@@ -703,10 +746,22 @@ serve(async (req) => {
       if (settled) return;
       settled = true;
       try {
+        // currentMessage is the snapshot the SDK accumulates as events arrive —
+        // input_tokens from message_start, output_tokens from message_delta. It
+        // is the fallback for a stream we deliberately abandoned, where
+        // finalMessage() rejects with an abort error but Anthropic has already
+        // billed everything generated so far.
         const finalMsg = await stream.finalMessage().catch(() => null);
-        const usage = finalMsg?.usage;
+        const usage = finalMsg?.usage ?? stream.currentMessage?.usage;
         if (usage) {
           const cost = costMicros(usage, MODEL);
+          const tokens = {
+            model: MODEL,
+            input_tokens: usage.input_tokens ?? null,
+            output_tokens: usage.output_tokens ?? null,
+            cache_write_tokens: usage.cache_creation_input_tokens ?? null,
+            cache_read_tokens: usage.cache_read_input_tokens ?? null,
+          };
           if (bypassMetering) {
             // Operator bypass: usage is recorded for audit, nothing is deducted.
             await recordUsageAggregate(supabase, userId, usage, cost);
@@ -716,24 +771,23 @@ serve(async (req) => {
               reason: "ai_coach",
               reference: "metering_bypass",
               balance_after_micros: 0,
+              ...tokens,
             });
           } else {
-            await consume(supabase, userId, cost, "ai_coach", `ai-coach:${userId}:${Date.now()}`);
+            await consume(supabase, userId, cost, "ai_coach", `ai-coach:${userId}:${Date.now()}`, tokens);
             await recordUsageAggregate(supabase, userId, usage, cost);
           }
+        } else {
+          // Nothing to bill means the call never reported usage at all; say so,
+          // because an unbilled turn that leaves no trace anywhere is exactly
+          // what made the free-usage loop invisible before.
+          console.error("ai-coach: turn settled with no usage reported");
+          await logError(supabase, userId, "no_usage", "settleTurn found no usage on the stream");
         }
       } catch (e) {
         console.error("ai-coach metering failed:", e);
       } finally {
-        // Release the concurrency slot whatever happened above, or the user is
-        // locked out of their own coach until the staleness window expires.
-        if (turnHeld) {
-          try {
-            await supabase.rpc("end_ai_turn", { p_user_id: userId });
-          } catch (e) {
-            console.error("end_ai_turn failed:", e);
-          }
-        }
+        await releaseSlot();
       }
     };
     const keepAlive = (p: Promise<unknown>) => {
@@ -752,12 +806,17 @@ serve(async (req) => {
             controller.enqueue(encoder.encode(text));
           } catch {
             open = false;
+            console.error("ai-coach: client disconnected mid-reply; draining upstream to bill it");
           }
         };
         try {
           for await (const chunk of translateStream(stream)) {
             push(chunk);
-            if (!open) break;
+            // Deliberately no `break` when the client is gone. Breaking returns
+            // the generator, which aborts the Anthropic stream, which makes
+            // finalMessage() reject — and the turn went unbilled even though
+            // Anthropic had already charged for it. Draining to the end costs
+            // nothing extra and is what makes a disconnect billable.
           }
         } catch (err) {
           console.error("Stream translation error:", err);
@@ -782,6 +841,7 @@ serve(async (req) => {
       },
     });
 
+    slot.handedOff = true;
     return new Response(body, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
@@ -801,5 +861,13 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } finally {
+    // Only for exits that never handed a stream to the client. Once the body is
+    // returned the turn is still live, and settleTurn owns the release; letting
+    // this run there would free the slot before the reply had been billed.
+    // Without it, any throw between taking the slot and constructing the stream
+    // (a malformed `messages`, an isolate killed on the CPU limit) stranded it,
+    // and three of those locked the user out of their own coach.
+    if (!slot.handedOff) await releaseSlot();
   }
 });

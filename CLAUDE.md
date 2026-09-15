@@ -52,12 +52,13 @@ fixes — so it currently runs unmetered for anyone holding the publishable key.
 Confirm with the MCP server's `get_edge_function` and diff against the file
 rather than assuming.
 
-Both functions call the `begin_ai_turn` / `end_ai_turn` RPCs, which arrived in
-`20260915182136_atomic_ai_turn_gate.sql`. That migration is already applied, so
-there is nothing to sequence today — but if you ever rebuild this project from
-the migration files, apply them **before** deploying the functions. The gate
-fails closed: a missing RPC 503s every coach turn rather than letting it through
-unmetered.
+Both functions call the `begin_ai_turn` / `end_ai_turn` RPCs, added by
+`20260915182136_atomic_ai_turn_gate.sql` and corrected by
+`20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql`. Both are
+already applied, so there is nothing to sequence today — but if you ever rebuild
+this project from the migration files, apply them **before** deploying the
+functions. The gate fails closed: a missing RPC 503s every coach turn rather
+than letting it through unmetered.
 
 ## AI integration
 
@@ -78,7 +79,45 @@ Template mutations come in two flavours, and the split exists for output-budget 
 
 A stream that dies after it has started (upstream billing, rate limit, dropped connection) is reported as a bare `data: {"error": "<plain sentence>"}` chunk with no `choices`. The client surfaces that sentence as the coach's reply — before this it skipped the payload and rendered an empty bubble, so an out-of-credits API key looked like the app silently doing nothing.
 
-**Prompt caching** is enabled on the system prompt and on the last tool definition (Anthropic caches everything up through the last `cache_control` marker). Both are stable across a session, so most turns should hit the cache.
+**Prompt caching** is enabled on the system prompt and on the last tool
+definition (Anthropic caches everything up through the last `cache_control`
+marker). The system array is **two blocks**, and the split is what makes the
+cache hit at all: block 0 is `SYSTEM_PROMPT` plus the *stable* context keys and
+carries the marker; block 1 holds the per-turn state and is deliberately
+unmarked. A cache entry is an exact prefix match, so anything that changes
+between turns inside block 0 rewrites the whole ~23k-token prefix at the
+cache-write rate every single turn — which is what `active_session`,
+`current_screen` and the rest were doing mid-workout, the coach's headline use
+case.
+
+`VOLATILE_CONTEXT_KEYS` in `ai-coach/index.ts` is that split, and it is a
+**deny-list**: a key `buildContext` (`ChatContext.tsx`) adds later goes into the
+*cached* block by default. Any new key carrying per-turn state has to be added
+there, or the cache silently stops hitting with nothing failing.
+
+**Concurrency and the slot.** Every metered turn takes an `in_flight` slot
+through `begin_ai_turn` and must release it through `end_ai_turn`. In `ai-coach`
+the release lives in `settleTurn` for a turn that actually streamed, and in the
+handler's outer `finally` for every exit that never handed a body to the client
+(`slot.handedOff` tells them apart); `generate-program` releases in its outer
+`finally`. Getting this wrong is not a leak that cleans itself up: the five-
+minute staleness reclaim is anchored to the *oldest* unreleased turn, so a
+stranded slot costs the user their own coach until they stop using it.
+
+**Billing survives a disconnect.** Metering is attached to the Anthropic stream,
+not to the response body, and the body loop deliberately does **not** `break`
+when the client goes away — breaking returns the generator, which aborts the
+upstream, which makes `finalMessage()` reject, and the call goes unbilled after
+Anthropic has already charged for it. Draining to the end is what makes a
+disconnect billable; `stream.currentMessage?.usage` is the fallback if
+`finalMessage()` still rejects.
+
+**Message shape.** The Messages API rejects two same-role turns in a row with a
+400, and the client writes a second assistant message whenever a proposal is
+applied or discarded. `toAnthropicMessages` merges consecutive assistant turns
+(and consecutive user turns) for that reason, and the window is trimmed to start
+on a user turn. Neither is cosmetic — a 400 here surfaces as "the reply failed
+partway through" and repeats on every retry, because the window is the same.
 
 ### `generate-program`
 
@@ -518,11 +557,16 @@ Two facts from that audit change how you work in this repo:
   `20260915170641_lock_down_token_credits.sql` and
   `20260915182136_atomic_ai_turn_gate.sql` do.
 - **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
-  Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). `token_ledger`
-  stores micro-dollars and not token counts, so those rows cannot be re-priced — treat
-  every pre-2026-09-15 balance, allowance and cost figure as 3x inflated. Rates now
-  live in `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap that has no entry
-  bills at the highest known rate and logs loudly instead of silently under-charging.
+  Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). Rates now live in
+  `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap with no entry bills at the
+  highest known rate and logs loudly instead of silently under-charging.
+
+  `token_ledger` now records `model` and the four token counts per row, so the next
+  rate change is correctable. Rows written **before 2026-09-15 have those columns
+  null** and cannot be re-priced from the ledger — treat every pre-2026-09-15 balance,
+  allowance and cost figure as 3x inflated. `user_ai_usage` does hold per-day token
+  counts going back further, so a correction pass is possible there; nothing has run
+  one, and `ai_usage_daily_summary.cost_usd` still overstates historical spend 3x.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
 gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated

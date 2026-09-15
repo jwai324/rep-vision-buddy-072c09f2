@@ -6,7 +6,7 @@ import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { getExerciseInputMode, isTimeBased, isDistanceBased, formatDistance, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
-import type { WeightUnit } from '@/hooks/useStorage';
+import { DEFAULT_PREFERENCES, type WeightUnit } from '@/hooks/useStorage';
 import { parseLocalDate } from '@/utils/dateUtils';
 
 interface ActivityScreenProps {
@@ -28,7 +28,7 @@ function formatDuration(s: number) {
 }
 
 export const ActivityScreen: React.FC<ActivityScreenProps> = ({
-  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onStartTemplate, onBack, initialTab = 'future', filterDate, weightUnit = 'kg',
+  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onStartTemplate, onBack, initialTab = 'future', filterDate, weightUnit = DEFAULT_PREFERENCES.weightUnit,
 }) => {
   const exerciseLookup = useExerciseLookup();
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
