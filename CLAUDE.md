@@ -414,15 +414,30 @@ red, so keep the workflow's steps identical to the local gate.
 
 ## Known issues / deferred work
 
-`.lovable/plan.md` contains an audit of pre-existing issues that were not part of the migration. Highest priority (per that doc):
+`docs/audit-2026-09.md` is the current audit (commit efffcd8): 193 verified findings,
+each traced to a file and line by one reviewer and re-checked by another, with the
+critical and high ones also given to a reviewer told to disprove them. Start there.
+Its "Recommended order of work" is the short list; the four critical items are three
+independent ways to spend the Anthropic key for free, plus a path that loses a
+finished workout when the network is down.
 
-- `useStorage.ts` does `select('*')` on `workout_sessions` with no pagination — silently loses rows above the 1000-row default limit.
-- A fire-and-forget delete inside `setFutureWorkouts` callback has no error handling.
-- 22 `as any` casts in `useStorage.ts` defeat the generated Supabase types.
-- `ActiveSession.tsx` is 2,737 lines with 38 `useState` hooks — needs decomposition.
-- `Index.tsx` is a 694-line god-router.
+Two facts from that audit change how you work in this repo:
 
-These are tracked but not yet fixed.
+- **Deploys of the edge functions have been failing since 2026-05-15.** Every run of
+  `.github/workflows/deploy-supabase-functions.yml` has gone red because the
+  `SUPABASE_PROJECT_REF` secret is empty, which is the real reason `generate-program`
+  is still on the May build. Until that secret is set, an edit under
+  `supabase/functions/` ships only if you deploy it by hand.
+- **The repo's migration filenames no longer match the live migration history.** Eight
+  were applied through the Supabase MCP server, which stamps its own version. Running
+  the documented `supabase db push` against the linked project will fail until the
+  versions are repaired.
+
+`.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
+gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated
+`workout_sessions` read is now an explicit, documented 500-row cap. Its two surviving
+items are `Index.tsx` (724 lines, still a god-router) and the decomposition of
+`ActiveSession.tsx`.
 
 ## Conventions
 
