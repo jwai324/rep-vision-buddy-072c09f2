@@ -11,6 +11,8 @@ interface SharedProgramViewProps {
   exerciseMeta: SharedExerciseMeta[];
   customExercises: SharedCustomExercise[];
   unit: WeightUnit;
+  /** Rendered under a screen header that already shows the name. */
+  hideName?: boolean;
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -28,7 +30,7 @@ function describeFrequency(day: WorkoutProgram['days'][number]): string | null {
  * snapshot, so nothing is looked up from the viewer's own library.
  */
 export const SharedProgramView: React.FC<SharedProgramViewProps> = ({
-  program, templates, exerciseMeta, customExercises, unit,
+  program, templates, exerciseMeta, customExercises, unit, hideName,
 }) => {
   const [expanded, setExpanded] = useState<number | null>(null);
   const byId = useMemo(
@@ -42,7 +44,7 @@ export const SharedProgramView: React.FC<SharedProgramViewProps> = ({
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <h2 className="text-xl font-extrabold text-foreground">{program.name}</h2>
+        {!hideName && <h2 className="text-xl font-extrabold text-foreground">{program.name}</h2>}
         <p className="text-xs text-muted-foreground">
           {program.days.length} days — {trainingDays} training, {restDays} rest
           {program.durationWeeks ? ` · ${program.durationWeeks} weeks` : ''}
@@ -54,7 +56,12 @@ export const SharedProgramView: React.FC<SharedProgramViewProps> = ({
           const isRest = day.templateId === 'rest';
           const template = isRest ? null : byId[day.templateId];
           const open = expanded === i;
-          const frequency = describeFrequency(day);
+          const dayName = isRest ? 'Rest' : template?.name ?? 'Unavailable';
+          // A day named after its template ("Rest", "Full Body A") would
+          // otherwise read the same word twice, one line under the other.
+          const subtitle = [day.label === dayName ? null : day.label, describeFrequency(day)]
+            .filter(Boolean)
+            .join(' · ');
 
           return (
             <div key={i} className="bg-card rounded-xl border border-border overflow-hidden">
@@ -66,12 +73,11 @@ export const SharedProgramView: React.FC<SharedProgramViewProps> = ({
               >
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground truncate">
-                    Day {i + 1}: {isRest ? 'Rest' : template?.name ?? 'Unavailable'}
+                    Day {i + 1}: {dayName}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {day.label}
-                    {frequency ? ` · ${frequency}` : ''}
-                  </p>
+                  {subtitle && (
+                    <p className="text-xs text-muted-foreground truncate">{subtitle}</p>
+                  )}
                 </div>
                 {template && (
                   open
