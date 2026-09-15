@@ -5,7 +5,7 @@ import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
 import { BAND_LEVELS, getBandLevelLabel, getBandLevelShortLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
-import { formatWeight } from '@/utils/weightConversion';
+import { formatWeight, storedBandLevel } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { format, differenceInCalendarDays } from 'date-fns';
@@ -182,15 +182,17 @@ const TimerHeaderPopover: React.FC = () => (
  * Rounding to a whole number here used to turn 62.5 kg into "63" — and, since
  * the cell copies its own value into the live set, wrote 63 as well. Band
  * exercises store a level rather than a mass, so they never go through the
- * unit conversion.
+ * unit conversion — but older rows hold a converted level (see
+ * storedBandLevel), which read as "Level 2.72" and copied a value the band
+ * picker has no option for.
  */
 function previousWeightText(weightKg: number, unit: WeightUnit, isBand: boolean): string {
-  return isBand ? getBandLevelShortLabel(weightKg) : formatWeight(weightKg, unit).display;
+  return isBand ? getBandLevelShortLabel(storedBandLevel(weightKg)) : formatWeight(weightKg, unit).display;
 }
 
 /** What tapping the cell puts in the weight input. */
 function previousWeightValue(weightKg: number, unit: WeightUnit, isBand: boolean): string {
-  return isBand ? String(weightKg) : formatWeight(weightKg, unit).display;
+  return isBand ? String(storedBandLevel(weightKg)) : formatWeight(weightKg, unit).display;
 }
 
 /**

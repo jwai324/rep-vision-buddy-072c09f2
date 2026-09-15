@@ -1,6 +1,7 @@
 import { EXERCISE_DATABASE, type Exercise, type MeasurementType } from '@/data/exercises';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatMmSs } from '@/utils/timeFormat';
+import { storedBandLevel } from '@/utils/weightConversion';
 
 export type ExerciseInputMode = 'reps' | 'reps-weight' | 'time' | 'distance' | 'time-distance' | 'weight-time' | 'band';
 
@@ -163,7 +164,7 @@ export function formatSetDisplay(
       return set.weight ? `${set.weight} ${unit} · ${timePart}` : timePart;
     }
     case 'band':
-      return `${getBandLevelShortLabel(set.weight ?? 0)} × ${set.reps}`;
+      return `${getBandLevelShortLabel(storedBandLevel(set.weight ?? 0))} × ${set.reps}`;
     case 'reps':
     case 'reps-weight':
     default:

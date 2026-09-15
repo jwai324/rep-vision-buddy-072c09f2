@@ -39,26 +39,29 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 ## Deploying edge functions
 
-Like migrations, edits under `supabase/functions/` do NOT ship on their own — the frontend auto-deploys, the functions do not. After changing either function run `supabase functions deploy <name>` (or deploy via the Supabase MCP server) and check the deployed version, because a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces".
+`.github/workflows/deploy-supabase-functions.yml` deploys both functions on every push to `main` that touches `supabase/functions/**` or `supabase/config.toml`. Treat that as the deploy path, but **verify the run went green** — a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces". To deploy by hand (or after a red run) use `supabase functions deploy <name>`, or the Supabase MCP server, and check the deployed version.
 
-Deploy state as of 2026-09-15: **both functions are behind this repo and every
-one of the server-side audit fixes is inert until they are deployed by hand.**
-`ai-coach` is at version 4, missing the metering-bypass fix, the corrected token
-price, the atomic credit gate, the disconnect-billing fix, the prompt-cache split
-and the message-window repair. `generate-program` is at version 2, missing the
-superset prompt change, the `if (!userId)` 401 guard and the same price and gate
-fixes — so it currently runs unmetered for anyone holding the publishable key.
-`grant-tokens` has never been deployed and deliberately is not deployed from CI.
-Confirm with the MCP server's `get_edge_function` and diff against the file
-rather than assuming.
+That workflow took its project ref from a `SUPABASE_PROJECT_REF` secret that was never set, so from 2026-07-16 (when it was added) to 2026-09-06 all 20 of its runs died on "Cannot find project ref" and it deployed nothing, ever. It now reads the ref from `supabase/config.toml`, which is the single source of truth. Nothing was watching it fail: the error-triage routine's post-commit check is scoped to `ci.yml` by design, and this workflow never even runs on a triage commit because `supabase/functions/**` is on that routine's never-touch list. The routine's §4 health sweep now reports any red workflow on `main`.
 
-Both functions call the `begin_ai_turn` / `end_ai_turn` RPCs, added by
-`20260915182136_atomic_ai_turn_gate.sql` and corrected by
-`20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql`. Both are
-already applied, so there is nothing to sequence today — but if you ever rebuild
-this project from the migration files, apply them **before** deploying the
-functions. The gate fails closed: a missing RPC 503s every coach turn rather
-than letting it through unmetered.
+**A merge to `main` that touches `supabase/functions/**` now deploys both
+functions.** That is new as of 2026-09-14 and it changes how to think about
+server-side changes here: they are no longer inert until someone remembers, but
+they also go live the moment the PR lands, with no separate gate. A migration a
+function depends on must therefore be applied *before* the merge, not after.
+Both gate RPCs (`begin_ai_turn` / `end_ai_turn`, from
+`20260915182136_atomic_ai_turn_gate.sql` and
+`20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql`) are already
+applied, so there is nothing to sequence today. The gate fails closed: a missing
+RPC 503s every coach turn rather than letting it through unmetered.
+
+Deploy state as of 2026-09-15, read from the API rather than assumed: `ai-coach`
+is at version 5 and `generate-program` at version 4, both deployed from CI on
+2026-09-14 and both current with `main`. Version numbers rot; confirm with the
+MCP server's `get_edge_function` and diff against the file rather than trusting
+this line.
+
+`grant-tokens` has never been deployed and is deliberately left out of that
+workflow — see the comment at the end of the file for why.
 
 ## AI integration
 
@@ -404,6 +407,16 @@ weight *error* even though `usesWeight('band')` is true.
 Practical consequence: `'time'` renders like `'weight-time'` and `'reps'` like
 `'reps-weight'`, so those switch cases are deliberately merged. Keep them
 merged — splitting them back out is how the weight field goes missing again.
+
+**Band levels are stored raw.** A band set's weight field holds its level
+(1–6), never a mass, in sessions and templates alike: the finish path and the
+edit path go through `inputToTargetWeight` / `targetWeightToInput`, which skip
+the unit conversion for band work. Rows saved before September 2026 by an lbs
+user hold the level divided by 2.20462 instead (level 6 = 2.72), so every
+reader of a band level goes through `storedBandLevel`, which maps either
+encoding back to the level. Never hand a stored band weight straight to
+`getBandLevelShortLabel` — that is how the Previous column, the summary and
+the strength chart came to say "Level 2.72".
 
 ## Supersets are links, not a set type
 

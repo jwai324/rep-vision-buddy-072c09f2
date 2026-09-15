@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fromKg, toKg, formatWeight, formatWeightString, formatVolume, formatVolumeFromKg, targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
+import { fromKg, toKg, formatWeight, formatWeightString, formatVolume, formatVolumeFromKg, targetWeightToInput, inputToTargetWeight, storedBandLevel } from '@/utils/weightConversion';
 
 describe('template target weight round-trip', () => {
   it('shows a kg target unchanged in kg', () => {
@@ -28,6 +28,24 @@ describe('template target weight round-trip', () => {
     expect(targetWeightToInput(undefined, 'kg', false)).toBe('');
     expect(inputToTargetWeight('', 'kg', false)).toBeUndefined();
     expect(inputToTargetWeight('abc', 'kg', false)).toBeUndefined();
+  });
+});
+
+describe('storedBandLevel', () => {
+  it('keeps a level that was stored as the level', () => {
+    for (const level of [1, 2, 3, 4, 5, 6]) expect(storedBandLevel(level)).toBe(level);
+  });
+
+  it('recovers the level from a row an lbs user saved through the kg conversion', () => {
+    // Level ÷ 2.20462, as the finish path used to store it — rounded to 0.01
+    // by the app at the time, and at full precision by the later one.
+    expect([0.45, 0.91, 1.36, 1.81, 2.27, 2.72].map(storedBandLevel)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(storedBandLevel(2.721554)).toBe(6);
+  });
+
+  it('prefills the band picker with a level it has, whichever way the target was stored', () => {
+    expect(targetWeightToInput(2.72, 'lbs', true)).toBe('6');
+    expect(targetWeightToInput(6, 'kg', true)).toBe('6');
   });
 });
 

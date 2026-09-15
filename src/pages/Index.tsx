@@ -20,6 +20,7 @@ import { CreditsScreen } from '@/components/CreditsScreen';
 import { TemplatesScreen } from '@/components/TemplatesScreen';
 import { TemplateBuilder } from '@/components/TemplateBuilder';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
+import { ProgramView } from '@/components/ProgramView';
 import { ProgramBuilder } from '@/components/ProgramBuilder';
 import { AIProgramBuilder } from '@/components/AIProgramBuilder';
 import { CustomExercisesScreen } from '@/components/CustomExercisesScreen';
@@ -68,6 +69,7 @@ type Screen =
   | { type: 'templates' }
   | { type: 'templateBuilder'; template?: WorkoutTemplate }
   | { type: 'programs' }
+  | { type: 'programView'; programId: string }
   | { type: 'programBuilder'; program?: WorkoutProgram }
   | { type: 'settings' }
   | { type: 'profile' }
@@ -151,7 +153,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       activeSession: 'active_workout', editSession: 'active_workout',
       summary: 'dashboard', sessionDetail: 'activity', activity: 'activity',
       futureWorkoutDetail: 'activity', templates: 'templates', templateBuilder: 'templates',
-      programs: 'programs', programBuilder: 'programs', settings: 'settings',
+      programs: 'programs', programView: 'programs', programBuilder: 'programs', settings: 'settings',
       profile: 'profile', sharedLinks: 'settings',
       analytics: 'analytics', aiProgramBuilder: 'programs',
     };
@@ -631,6 +633,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           templates={storage.templates}
           activeProgramId={storage.activeProgramId}
           onSetActive={storage.setActiveProgram}
+          onView={(p) => setScreen({ type: 'programView', programId: p.id })}
           onEdit={(p) => setScreen({ type: 'programBuilder', program: p })}
           onDelete={storage.deleteProgram}
           onShare={(p) => setShareTarget({
@@ -641,6 +644,16 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           })}
           onCreate={() => setScreen({ type: 'programBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}
+        />
+      )}
+
+      {screen.type === 'programView' && (
+        <ProgramView
+          program={storage.programs.find(p => p.id === screen.programId)}
+          templates={storage.templates}
+          customExercises={customExercises}
+          weightUnit={storage.preferences.weightUnit}
+          onBack={() => setScreen({ type: 'programs' })}
         />
       )}
 

@@ -4,7 +4,7 @@ import { SET_TYPE_CONFIG, EXERCISES } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { formatWeight, formatWeightString, formatVolumeFromKg } from '@/utils/weightConversion';
+import { formatWeight, formatWeightString, formatVolumeFromKg, storedBandLevel } from '@/utils/weightConversion';
 import { ArrowLeft, FileText, Plus, X, Check, Search, CalendarIcon, Share2 } from 'lucide-react';
 import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, formatSetDisplay, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
 import type { MeasurementType } from '@/data/exercises';
@@ -447,7 +447,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                     case 'band':
                       return (
                         <>
-                          <span className="text-center">{getBandLevelShortLabel(set.weight ?? 0)}</span>
+                          <span className="text-center">{getBandLevelShortLabel(storedBandLevel(set.weight ?? 0))}</span>
                           <span className="text-center">{set.reps}</span>
                         </>
                       );

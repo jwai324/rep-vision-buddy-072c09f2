@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import type { ExerciseId, ExerciseLog, SetType, WorkoutSession, WorkoutSet, TemplateExercise } from '@/types/workout';
 import { getExerciseInputMode, BAND_LEVELS, getBandLevelLabel, isTimeBased, isDistanceBased, usesReps, usesWeight, fromMeters, toMeters, distanceUnitFromWeightUnit, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { EXERCISES } from '@/types/workout';
-import { toKg, fromKg, targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
+import { targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
 import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldErrors } from '@/utils/setValidation';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { findPreviousPerformance } from '@/utils/previousPerformance';
@@ -82,26 +82,6 @@ function safeWriteCache(cache: ActiveSessionCache) {
 //   distance-only modes  -> no weight at all
 //   band                 -> the level as chosen, never unit-converted
 //   everything else      -> the typed display value converted to kg
-// Band sets logged before the level/kilogram mix-up was fixed are stored as the
-// converted number, which matches no entry in the level picker and would render
-// it blank. A value that is not already a level is read back through the same
-// conversion that produced it. Levels are 1-6, so the two cases cannot collide:
-// the smallest converted value an lbs user could have stored is level 1 at
-// 0.45 kg, and a kg user's values were never converted at all.
-function bandLevelFrom(stored: number, weightUnit: WeightUnit): number {
-  const levels = BAND_LEVELS.map(b => b.level);
-  if (levels.includes(stored)) return stored;
-  const recovered = Math.round(fromKg(stored, weightUnit));
-  return levels.includes(recovered) ? recovered : stored;
-}
-
-function setWeightFor(mode: ExerciseInputMode, raw: string | undefined, weightUnit: WeightUnit): number | undefined {
-  if (!usesWeight(mode) || !raw) return undefined;
-  const value = parseFloat(raw);
-  if (Number.isNaN(value)) return undefined;
-  return mode === 'band' ? value : toKg(value, weightUnit);
-}
-
 export function clearSessionCache() {
   localStorage.removeItem(CACHE_KEY);
 }
@@ -162,12 +142,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     return (exerciseId: ExerciseId) => {
       let found = cache.get(exerciseId);
       if (!found) {
-        found = findPreviousPerformance(history, exerciseId);
+        found = findPreviousPerformance(history, exerciseId, editSession);
         cache.set(exerciseId, found);
       }
       return found;
     };
-  }, [history]);
+  }, [history, editSession]);
   const { exercises: customExercises } = useCustomExercisesContext();
   const { active: tutorialActive } = useTutorial();
   // Convert saved session exercises back to blocks for editing.
@@ -176,6 +156,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const editBlocks = useMemo<ExerciseBlock[] | null>(() => {
     if (!editSession) return null;
     return editSession.exercises.map(ex => {
+      const isBand = getExerciseInputMode(ex.exerciseId, customExercises) === 'band';
       // Repair flat sets: if the first row of a setNumber is 'dropset' (legacy
       // bug), coerce it to a real parent so we have something to nest under.
       const seenParent = new Set<number>();
@@ -191,11 +172,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         return s;
       });
 
-      // A band's stored "weight" is a level from a fixed list, not a load, so
-      // it must not go through the kg/lb conversion in either direction.
-      const editMode = getExerciseInputMode(ex.exerciseId, customExercises);
-      const displayWeight = (w: number | null | undefined) =>
-        w == null ? '' : String(editMode === 'band' ? bandLevelFrom(w, weightUnit) : fromKg(w, weightUnit));
       // Stored in metres; the input holds the user's unit. Omitting this is
       // what silently erased every distance when a session was edited and saved.
       const displayDistance = (d: number | null | undefined) =>
@@ -207,7 +183,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           const parent = rows[rows.length - 1];
           parent.drops = parent.drops ?? [];
           parent.drops.push({
-            weight: displayWeight(s.weight),
+            weight: targetWeightToInput(s.weight, weightUnit, isBand),
             reps: s.reps.toString(),
             rpe: s.rpe?.toString() ?? '',
             completed: true,
@@ -217,7 +193,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         } else {
           rows.push({
             setNumber: s.setNumber,
-            weight: displayWeight(s.weight),
+            weight: targetWeightToInput(s.weight, weightUnit, isBand),
             reps: s.reps.toString(),
             completed: true,
             type: s.type,
@@ -1066,16 +1042,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         b.sets.filter(s => s.completed).forEach(s => {
           const seconds = timeToSeconds(s.time);
           const distMeters = s.distance ? toMeters(parseFloat(s.distance) || 0, distanceUnit) : undefined;
+          // The same input → storage rule a template target follows, so a band
+          // level lands as the level and not as a converted "mass".
+          const isBand = mode === 'band';
           sets.push({
             setNumber: s.setNumber,
             type: s.type,
             reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(s.reps) || 0),
-            // Band level is an index into a fixed list, not a load: running it
-            // through toKg stored lbs users a level of 1.36 for level 3, which
-            // every read-back screen then rendered as "Level 1.36". The
-            // update-template path 100 lines below already guards this via
-            // inputToTargetWeight(..., mode === 'band').
-            weight: setWeightFor(mode, s.weight, weightUnit),
+            weight: usesWeight(mode) ? inputToTargetWeight(s.weight, weightUnit, isBand) : undefined,
             rpe: s.rpe ? parseFloat(s.rpe) : undefined,
             time: seconds > 0 ? seconds : (isTimeBased(mode) ? (parseInt(s.reps) || 0) : undefined),
             distance: distMeters && distMeters > 0 ? distMeters : undefined,
@@ -1088,7 +1062,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               setNumber: s.setNumber,
               type: 'dropset',
               reps: isTimeBased(mode) && !usesReps(mode) ? 1 : (parseInt(d.reps) || 0),
-              weight: setWeightFor(mode, d.weight, weightUnit),
+              weight: usesWeight(mode) ? inputToTargetWeight(d.weight, weightUnit, isBand) : undefined,
               rpe: d.rpe ? parseFloat(d.rpe) : undefined,
               time: dSeconds > 0 ? dSeconds : undefined,
               distance: dDistMeters && dDistMeters > 0 ? dDistMeters : undefined,

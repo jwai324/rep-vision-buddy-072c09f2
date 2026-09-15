@@ -12,6 +12,7 @@ interface ProgramsScreenProps {
   templates: WorkoutTemplate[];
   activeProgramId: string | null;
   onSetActive: (id: string | null) => void;
+  onView: (program: WorkoutProgram) => void;
   onEdit: (program: WorkoutProgram) => void;
   onDelete: (id: string) => void;
   onShare: (program: WorkoutProgram) => void;
@@ -20,7 +21,7 @@ interface ProgramsScreenProps {
 }
 
 export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
-  programs, templates, activeProgramId, onSetActive, onEdit, onDelete, onShare, onCreate, onBack
+  programs, templates, activeProgramId, onSetActive, onView, onEdit, onDelete, onShare, onCreate, onBack
 }) => {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
@@ -57,11 +58,12 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
                   );
                 })}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant={activeProgramId === p.id ? 'outline' : 'neon'} size="sm"
                   onClick={() => onSetActive(activeProgramId === p.id ? null : p.id)}>
                   {activeProgramId === p.id ? 'Deactivate' : 'Set Active'}
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => onView(p)}>View</Button>
                 <Button variant="outline" size="sm" onClick={() => onEdit(p)}>Edit</Button>
                 <Button variant="ghost" size="sm" onClick={() => onShare(p)} aria-label={`Share ${p.name}`}>
                   <Share2 className="w-4 h-4" />
