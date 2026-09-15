@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ProgramsScreen } from '@/components/ProgramsScreen';
 import type { WorkoutProgram, WorkoutTemplate } from '@/types/workout';
 
@@ -23,6 +23,7 @@ function makeProgram(overrides: Partial<WorkoutProgram> = {}): WorkoutProgram {
 const noopProps = {
   activeProgramId: null,
   onSetActive: vi.fn(),
+  onView: vi.fn(),
   onEdit: vi.fn(),
   onDelete: vi.fn(),
   onShare: vi.fn(),
@@ -111,5 +112,22 @@ describe('ProgramsScreen day labels', () => {
     );
 
     expect(screen.getByText('Day 1: ?')).toBeInTheDocument();
+  });
+
+  it('hands the program to onView when View is pressed', () => {
+    const onView = vi.fn();
+    const program = makeProgram();
+    render(
+      <ProgramsScreen
+        programs={[program]}
+        templates={[makeTemplate('tpl-push', 'Push')]}
+        {...noopProps}
+        onView={onView}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+
+    expect(onView).toHaveBeenCalledWith(program);
   });
 });
