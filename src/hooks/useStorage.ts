@@ -456,28 +456,38 @@ export function useStorage() {
    * started from, when there is one; it decides which of the day's scheduled
    * workouts the session marks done, and is not stored on the session itself.
    */
-  const saveSession = useCallback(async (session: WorkoutSession, origin: { templateId?: string | null } = {}) => {
-    if (!user) return;
-    const { error } = await supabase.from('workout_sessions').upsert({
-      id: session.id,
-      user_id: user.id,
-      date: session.date,
-      started_at: session.startedAt ?? null,
-      exercises: session.exercises as unknown as Database['public']['Tables']['workout_sessions']['Insert']['exercises'],
-      duration: session.duration,
-      total_volume: session.totalVolume,
-      total_sets: session.totalSets,
-      total_reps: session.totalReps,
-      average_rpe: session.averageRpe ?? null,
-      note: session.note ?? null,
-      location: session.location ?? null,
-      is_rest_day: session.isRestDay ?? false,
-      recovery_activities: session.recoveryActivities as unknown as Database['public']['Tables']['workout_sessions']['Insert']['recovery_activities'] ?? null,
-    });
+  // Resolves false when the workout did not reach the server, so the caller can
+  // keep the summary screen and the local session cache alive for a retry. It
+  // never throws: an offline fetch rejects rather than resolving with an error
+  // payload, and an unhandled rejection here used to leave the caller believing
+  // the save had succeeded while it tore down the only other copy.
+  const saveSession = useCallback(async (session: WorkoutSession, origin: { templateId?: string | null } = {}): Promise<boolean> => {
+    if (!user) return false;
+    let error: unknown = null;
+    try {
+      ({ error } = await supabase.from('workout_sessions').upsert({
+        id: session.id,
+        user_id: user.id,
+        date: session.date,
+        started_at: session.startedAt ?? null,
+        exercises: session.exercises as unknown as Database['public']['Tables']['workout_sessions']['Insert']['exercises'],
+        duration: session.duration,
+        total_volume: session.totalVolume,
+        total_sets: session.totalSets,
+        total_reps: session.totalReps,
+        average_rpe: session.averageRpe ?? null,
+        note: session.note ?? null,
+        location: session.location ?? null,
+        is_rest_day: session.isRestDay ?? false,
+        recovery_activities: session.recoveryActivities as unknown as Database['public']['Tables']['workout_sessions']['Insert']['recovery_activities'] ?? null,
+      }));
+    } catch (e) {
+      error = e;
+    }
     if (error) {
       console.error('[useStorage] saveSession error:', error);
-      toast.error('Failed to save workout session');
-      return;
+      toast.error('Couldn\'t save this workout — check your connection and tap Save again');
+      return false;
     }
     setHistory(prev => {
       const exists = prev.findIndex(s => s.id === session.id);
@@ -507,6 +517,7 @@ export function useStorage() {
       }
       setFutureWorkouts(prev => prev.map(fw => updatedIds.has(fw.id) ? { ...fw, completed: true } : fw));
     }
+    return true;
   }, [user, futureWorkouts, templates]);
 
   const applyTemplateLocally = useCallback((template: WorkoutTemplate) => {

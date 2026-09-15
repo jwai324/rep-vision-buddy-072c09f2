@@ -383,8 +383,12 @@ const SCREEN_CHIPS: Record<string, string[]> = {
 
 const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I train today?"];
 
+// Asking for the metering bypass, not granting it. The server only honours the
+// ask for user ids in its METERING_BYPASS_USER_IDS secret, so this phrase (which
+// ships in the bundle, in a public repo) is inert for everyone else. Keep the
+// wording below conditional: the client cannot know whether the ask was granted.
 export const GOD_MODE_PHRASE = 'god mode 3247';
-const GOD_MODE_REPLY = 'God mode activated — credit limits are lifted for this session.';
+const GOD_MODE_REPLY = 'God mode requested — credit limits lift only if the server has this account on its bypass list.';
 const COOLDOWN_MS = 2000;
 const MESSAGE_WINDOW = 10;
 const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes

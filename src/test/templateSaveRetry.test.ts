@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { readPendingTemplates, queuePendingTemplate } from '@/utils/pendingTemplateWrites';
-import type { WorkoutTemplate } from '@/types/workout';
+import type { WorkoutSession, WorkoutTemplate } from '@/types/workout';
 
 const USER_ID = 'user-1';
 
@@ -173,5 +173,60 @@ describe('pending writes on the next load', () => {
     rows.workout_templates = [templateRow('Push')];
     await mounted();
     expect(upserts.filter(u => u.table === 'workout_templates')).toHaveLength(0);
+  });
+});
+
+// A finished workout used to be lost outright when the upsert failed: the
+// caller cleared the session cache and left the summary screen without waiting
+// for a result, and saveSession reported nothing back. It now resolves a
+// boolean so the caller can keep both copies alive for a retry.
+describe('saveSession', () => {
+  const session = (over: Partial<WorkoutSession> = {}): WorkoutSession => ({
+    id: 'sess-1',
+    date: '2026-09-15',
+    exercises: [],
+    duration: 1800,
+    totalVolume: 1000,
+    totalSets: 9,
+    totalReps: 80,
+    ...over,
+  });
+
+  it('reports success and keeps the workout once the row is written', async () => {
+    const { result } = await mounted();
+    let saved: boolean | undefined;
+    await act(async () => { saved = await result.current.saveSession(session()); });
+
+    expect(saved).toBe(true);
+    expect(upserts.filter(u => u.table === 'workout_sessions')).toHaveLength(1);
+    expect(result.current.history.map(s => s.id)).toEqual(['sess-1']);
+  });
+
+  it('reports failure when the server rejects the write', async () => {
+    const { result } = await mounted();
+    upsertOutcome = 'error';
+    let saved: boolean | undefined;
+    await act(async () => { saved = await result.current.saveSession(session()); });
+
+    expect(saved).toBe(false);
+    expect(result.current.history).toEqual([]);
+  });
+
+  it('reports failure rather than throwing when the request never reaches the server', async () => {
+    const { result } = await mounted();
+    upsertOutcome = 'throw';
+    let saved: boolean | undefined;
+    let threw = false;
+    await act(async () => {
+      try {
+        saved = await result.current.saveSession(session());
+      } catch {
+        threw = true;
+      }
+    });
+
+    expect(threw).toBe(false);
+    expect(saved).toBe(false);
+    expect(result.current.history).toEqual([]);
   });
 });

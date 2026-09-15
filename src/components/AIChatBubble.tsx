@@ -251,7 +251,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                 <div>
                   <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
                   {godMode ? (
-                    <p className="text-[10px] text-muted-foreground">God mode — unlimited</p>
+                    <p className="text-[10px] text-muted-foreground">God mode requested</p>
                   ) : (
                     <p className="text-[11px] text-muted-foreground leading-tight">
                       <span className="font-bold text-foreground">{creditsBalance.credits.toLocaleString()}</span>

@@ -334,15 +334,20 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           <SessionSummary
             session={pendingSummary}
             weightUnit={storage.preferences.weightUnit}
-            onSave={() => {
-              storage.saveSession(pendingSummary, { templateId: screen.templateId });
+            // The session cache is the only other copy of this workout, and the
+            // summary is the only screen offering a retry, so neither may be
+            // torn down until the upsert has actually landed.
+            onSave={async () => {
+              const saved = await storage.saveSession(pendingSummary, { templateId: screen.templateId });
+              if (!saved) return;
               clearSessionCache();
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
             }}
-            onSaveAsTemplate={() => {
-              storage.saveSession(pendingSummary, { templateId: screen.templateId });
+            onSaveAsTemplate={async () => {
+              const saved = await storage.saveSession(pendingSummary, { templateId: screen.templateId });
+              if (!saved) return;
               clearSessionCache();
               storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds));
               setMinimizedSession(null);
@@ -369,8 +374,11 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             defaultRestSeconds={storage.preferences.defaultRestSeconds}
             editSession={screen.session}
-            onFinish={(session) => {
-              storage.saveSession(session);
+            onFinish={async (session) => {
+              // Staying on the edit screen is what lets the user retry; leaving
+              // discards their edits with nothing holding them.
+              const saved = await storage.saveSession(session);
+              if (!saved) return;
               setScreen({ type: 'activity', initialTab: 'history' });
             }}
             onCancel={() => setScreen({ type: 'sessionDetail', session: screen.session, from: 'activity' })}
@@ -385,13 +393,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <SessionSummary
           session={screen.session}
           weightUnit={storage.preferences.weightUnit}
-          onSave={() => {
-            storage.saveSession(screen.session);
+          onSave={async () => {
+            const saved = await storage.saveSession(screen.session);
+            if (!saved) return;
             clearSessionCache();
             setScreen({ type: 'dashboard' });
           }}
-          onSaveAsTemplate={() => {
-            storage.saveSession(screen.session);
+          onSaveAsTemplate={async () => {
+            const saved = await storage.saveSession(screen.session);
+            if (!saved) return;
             clearSessionCache();
             storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
             setScreen({ type: 'dashboard' });
@@ -445,7 +455,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onUpdateFutureWorkout={handleUpdate}
             onDeleteFutureWorkout={canPersist && !isSynthetic ? storage.deleteFutureWorkout : undefined}
             onPushProgramBack={canPersist && !isSynthetic ? storage.pushProgramBack : undefined}
-            onSaveRestDay={(restFw) => {
+            onSaveRestDay={async (restFw) => {
               const session: WorkoutSession = {
                 id: crypto.randomUUID(),
                 date: restFw.date,
@@ -457,7 +467,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
                 isRestDay: true,
                 recoveryActivities: restFw.recoveryActivities,
               };
-              storage.saveSession(session);
+              const saved = await storage.saveSession(session);
+              if (!saved) return;
               setScreen(screen.from === 'activity'
                 ? { type: 'activity', initialTab: 'future' }
                 : { type: 'dashboard' });
@@ -490,8 +501,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             storage.deleteSession(id);
             setScreen({ type: 'activity', initialTab: 'history' });
           }}
-          onUpdateSession={(updated) => {
-            storage.saveSession(updated);
+          onUpdateSession={async (updated) => {
+            const saved = await storage.saveSession(updated);
+            if (!saved) return;
             setScreen({ type: 'sessionDetail', session: updated, from: 'activity' });
           }}
           onShare={(session) => setShareTarget({

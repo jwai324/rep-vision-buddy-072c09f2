@@ -41,10 +41,14 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 Like migrations, edits under `supabase/functions/` do NOT ship on their own — the frontend auto-deploys, the functions do not. After changing either function run `supabase functions deploy <name>` (or deploy via the Supabase MCP server) and check the deployed version, because a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces".
 
-Deploy state as of 2026-09-06: `ai-coach` is at version 4 and byte-identical to
-this repo. `generate-program` is at version 2 and **behind** — the superset
-prompt change is in the repo but not live. Confirm with the MCP server's
-`get_edge_function` and diff against the file rather than assuming.
+Deploy state as of 2026-09-15: `ai-coach` is at version 4 and **behind** — the
+metering-bypass fix (see "The AI coach metering bypass" below) is in this repo
+but not live, so until it ships any signed-in user can still run the coach
+unmetered. `generate-program` is at version 2 and behind by both the superset
+prompt change and the `if (!userId)` 401 guard, so it currently runs unmetered
+for anyone holding the publishable key. `grant-tokens` has never been deployed.
+Confirm with the MCP server's `get_edge_function` and diff against the file
+rather than assuming.
 
 ## AI integration
 
@@ -198,11 +202,34 @@ If you need to provision a fresh Supabase project (e.g., moving off the old `wek
 
 Server-side secrets (set via `supabase secrets set`, never in `.env`):
 
-| Secret                       | Used by             |
-| ---------------------------- | ------------------- |
-| `ANTHROPIC_API_KEY`          | Both edge functions |
-| `SUPABASE_URL`               | Auto-set            |
-| `SUPABASE_SERVICE_ROLE_KEY`  | Auto-set            |
+| Secret                       | Used by             | Purpose                                            |
+| ---------------------------- | ------------------- | -------------------------------------------------- |
+| `ANTHROPIC_API_KEY`          | Both edge functions | Anthropic API key                                  |
+| `METERING_BYPASS_USER_IDS`   | `ai-coach`          | Operator metering bypass; unset = off (see below)  |
+| `GRANT_TOKENS_SECRET`        | `grant-tokens`      | Header gate on the Phase 1 purchase stub           |
+| `SUPABASE_URL`               | Auto-set            |                                                    |
+| `SUPABASE_SERVICE_ROLE_KEY`  | Auto-set            |                                                    |
+
+### The AI coach metering bypass ("god mode")
+
+The switch is **off by default and lives entirely server-side**. `ai-coach`
+grants an unmetered turn only when the request asks for one *and* the
+authenticated user id appears in the `METERING_BYPASS_USER_IDS` function secret
+(comma- or whitespace-separated). With the secret unset, nobody gets it.
+
+The ask itself is not a secret and is not treated as one: `god_mode` in the
+request body and the `god mode 3247` phrase both ship in the client bundle, and
+this repository is public. They are a convenience trigger, nothing more. Before
+this split, either one was sufficient on its own, which meant any signed-up user
+could run `claude-opus-4-7` on the project's API key for free.
+
+```bash
+supabase secrets set METERING_BYPASS_USER_IDS=<your-auth-user-id>   # switch on
+supabase secrets unset METERING_BYPASS_USER_IDS                     # switch off
+```
+
+Never move this decision back to anything the client sends, and never put the
+allowlist in a `VITE_` variable — Vite inlines those into the public bundle.
 
 ## Capacitor (when you're ready for mobile)
 
@@ -423,15 +450,18 @@ finished workout when the network is down.
 
 Two facts from that audit change how you work in this repo:
 
-- **Deploys of the edge functions have been failing since 2026-05-15.** Every run of
-  `.github/workflows/deploy-supabase-functions.yml` has gone red because the
-  `SUPABASE_PROJECT_REF` secret is empty, which is the real reason `generate-program`
-  is still on the May build. Until that secret is set, an edit under
-  `supabase/functions/` ships only if you deploy it by hand.
+- **Edge-function deploys were broken from 2026-05-15 to 2026-09-15.** All twenty runs
+  of `.github/workflows/deploy-supabase-functions.yml` failed on an unset
+  `SUPABASE_PROJECT_REF`, which is the real reason `generate-program` is still on the
+  May build. The workflow now falls back to `project_id` in `supabase/config.toml`, so
+  the only thing it still needs is a `SUPABASE_ACCESS_TOKEN` repository secret. Until
+  that exists, an edit under `supabase/functions/` ships only if you deploy it by hand.
 - **The repo's migration filenames no longer match the live migration history.** Eight
   were applied through the Supabase MCP server, which stamps its own version. Running
   the documented `supabase db push` against the linked project will fail until the
-  versions are repaired.
+  versions are repaired. When you apply through the MCP server, read the version it
+  recorded and rename the local file to match, as
+  `20260915170641_lock_down_token_credits.sql` does.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
 gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated

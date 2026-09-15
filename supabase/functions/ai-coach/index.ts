@@ -21,7 +21,27 @@ const MODEL = "claude-opus-4-7";
 // bogus "Template requires a name and at least one exercise" rejection.
 const MAX_TOKENS = 8000;
 
+// Not a secret. The phrase ships in the client bundle and this repo is public,
+// so it is only a convenient way for an operator to ASK for the bypass. Whether
+// the ask is granted is decided by isMeteringBypassUser below.
 const GOD_MODE_PHRASE = "god mode 3247";
+
+// Who may run the AI coach without being charged. Read from the
+// METERING_BYPASS_USER_IDS function secret (comma- or whitespace-separated auth
+// user ids), never from the request, so nothing in the public client bundle can
+// grant it. Unset or empty means nobody, which is the default and the intended
+// resting state: set the secret only while you need the bypass, and unset it to
+// turn the switch back off.
+//
+//   supabase secrets set METERING_BYPASS_USER_IDS=<your-auth-user-id>
+//   supabase secrets unset METERING_BYPASS_USER_IDS
+function isMeteringBypassUser(userId: string | null): boolean {
+  if (!userId) return false;
+  const allowed = (Deno.env.get("METERING_BYPASS_USER_IDS") ?? "")
+    .split(/[\s,]+/)
+    .filter(Boolean);
+  return allowed.includes(userId);
+}
 
 const COST_CONTROL_RULES = `
 COST CONTROL RULES:
@@ -539,9 +559,15 @@ serve(async (req) => {
 
     const { messages, context, action_results, god_mode } = await req.json();
 
+    // The metering bypass is an operator switch, not a client capability. The
+    // request may ASK for it — both `god_mode` and the phrase ship in the public
+    // client bundle, so neither is a secret — but only a user id listed in the
+    // METERING_BYPASS_USER_IDS function secret is granted it. With that secret
+    // unset (the default) the switch is off for everyone, including the owner.
     const lastUser = [...(messages ?? [])].reverse().find((m: OpenAIMessage) => m.role === "user");
     const phraseInMsg = String(lastUser?.content ?? "").trim().toLowerCase() === GOD_MODE_PHRASE;
-    const bypassMetering = god_mode === true || phraseInMsg;
+    const bypassRequested = god_mode === true || phraseInMsg;
+    const bypassMetering = bypassRequested && isMeteringBypassUser(userId);
 
     // Pre-call gate. Exact cost is unknowable before the call, so we require a
     // small reserve and deduct the real cost afterward (bounded ~1-turn
