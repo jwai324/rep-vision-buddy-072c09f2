@@ -556,19 +556,14 @@ open — its "Everything else" section is the backlog, grouped by area.
 
 Two facts from that audit change how you work in this repo:
 
-- **Edge-function deploys were broken from 2026-05-15 to 2026-09-15.** All twenty runs
-  of `.github/workflows/deploy-supabase-functions.yml` failed on an unset
-  `SUPABASE_PROJECT_REF`, which is the real reason `generate-program` is still on the
-  May build. The workflow now falls back to `project_id` in `supabase/config.toml`, so
-  the only thing it still needs is a `SUPABASE_ACCESS_TOKEN` repository secret. Until
-  that exists, an edit under `supabase/functions/` ships only if you deploy it by hand.
 - **The repo's migration filenames no longer match the live migration history.** Eight
   were applied through the Supabase MCP server, which stamps its own version. Running
   the documented `supabase db push` against the linked project will fail until the
   versions are repaired. When you apply through the MCP server, read the version it
   recorded and rename the local file to match, as
-  `20260915170641_lock_down_token_credits.sql` and
-  `20260915182136_atomic_ai_turn_gate.sql` do.
+  `20260915170641_lock_down_token_credits.sql`,
+  `20260915182136_atomic_ai_turn_gate.sql` and
+  `20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql` do.
 - **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
   Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). Rates now live in
   `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap with no entry bills at the
@@ -580,6 +575,18 @@ Two facts from that audit change how you work in this repo:
   allowance and cost figure as 3x inflated. `user_ai_usage` does hold per-day token
   counts going back further, so a correction pass is possible there; nothing has run
   one, and `ai_usage_daily_summary.cost_usd` still overstates historical spend 3x.
+
+Still open from the audit's own high-severity list, as things the fixes could not
+close on their own:
+
+- **`grant-tokens` is an uncapped credit faucet.** Its only gate is a static
+  `x-admin-secret` header, it credits whatever `target_user_id` the body names, and
+  `micros` has no ceiling. It has never been deployed and is deliberately absent from
+  the deploy workflow, so there is no live exposure — but it is one deploy away from
+  being one. Before it ships it needs to verify the caller's JWT, drop
+  `target_user_id`, bound the amount, and grant only from a verified receipt.
+- **Balances consumed at the 3x rate were never corrected.** Nothing has re-priced
+  them; see the token-price note above for what the data does and does not allow.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
 gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated
