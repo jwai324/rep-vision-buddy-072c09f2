@@ -27,11 +27,6 @@ interface LedgerRow {
   balance_after_micros: number;
 }
 
-const PACKS: { id: string; label: string; desc: string }[] = [
-  { id: 'topup_small', label: 'Small top-up', desc: '+5,000 credits' },
-  { id: 'topup_large', label: 'Large top-up', desc: '+20,000 credits' },
-  { id: 'sub_month', label: 'Monthly allowance (test)', desc: '+45,000 credits' },
-];
 
 const REASON_LABELS: Record<string, string> = {
   ai_coach: 'AI chat',
@@ -52,7 +47,6 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
   const { creditsBalance, refreshBalance } = useChatContext();
   const { toast } = useToast();
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
-  const [granting, setGranting] = useState<string | null>(null);
 
   const tier = profile.subscriptionTier;
   const isPremium = tier === 'premium';
@@ -68,8 +62,6 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
     });
   };
 
-  const stubSecret = import.meta.env.VITE_GRANT_TOKENS_SECRET as string | undefined;
-
   const loadLedger = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -82,37 +74,6 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
   }, [user]);
 
   useEffect(() => { loadLedger(); }, [loadLedger]);
-
-  const buyPack = async (pack: string) => {
-    if (!stubSecret) return;
-    setGranting(pack);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/grant-tokens`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: anonKey,
-          Authorization: `Bearer ${session?.access_token ?? anonKey}`,
-          'x-admin-secret': stubSecret,
-        },
-        body: JSON.stringify({ pack }),
-      });
-      if (!resp.ok) throw new Error(`Grant failed (${resp.status})`);
-      await refreshBalance();
-      await loadLedger();
-      toast({ title: 'Credits added', description: 'Your balance has been updated.' });
-    } catch (e) {
-      toast({
-        title: 'Purchase failed',
-        description: e instanceof Error ? e.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setGranting(null);
-    }
-  };
 
   const nextReset = (() => {
     const d = new Date();
@@ -204,31 +165,16 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Get more credits</p>
         </div>
         <div className="p-4 flex flex-col gap-3">
-          {stubSecret ? (
-            PACKS.map(pack => (
-              <Button
-                key={pack.id}
-                variant="outline"
-                className="w-full justify-between"
-                disabled={granting !== null}
-                onClick={() => buyPack(pack.id)}
-              >
-                <span className="font-semibold">{pack.label}</span>
-                <span className="text-xs text-muted-foreground">
-                  {granting === pack.id ? 'Adding…' : pack.desc}
-                </span>
-              </Button>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-2">
-              In-app purchases coming soon.
-            </p>
-          )}
-          {stubSecret && (
-            <p className="text-[11px] text-muted-foreground">
-              Test mode — these packs grant credits directly without a real purchase.
-            </p>
-          )}
+          {/* The in-app packs used to call the grant-tokens stub with an admin
+              secret read from VITE_GRANT_TOKENS_SECRET. Vite inlines every
+              VITE_* value into the shipped bundle, so the only build in which
+              the buttons worked was a build that published the secret — and
+              that endpoint accepts an arbitrary target user and an uncapped
+              amount. Real purchases must be granted server-side from a verified
+              receipt; there is no safe way to do it from the browser. */}
+          <p className="text-sm text-muted-foreground text-center py-2">
+            In-app purchases coming soon.
+          </p>
         </div>
       </div>
 

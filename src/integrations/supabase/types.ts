@@ -488,6 +488,8 @@ export type Database = {
           free_period: string
           free_used_micros: number
           id: string
+          in_flight: number
+          in_flight_at: string | null
           lifetime_purchased_micros: number
           lifetime_spent_micros: number
           paid_balance_micros: number
@@ -499,6 +501,8 @@ export type Database = {
           free_period?: string
           free_used_micros?: number
           id?: string
+          in_flight?: number
+          in_flight_at?: string | null
           lifetime_purchased_micros?: number
           lifetime_spent_micros?: number
           paid_balance_micros?: number
@@ -510,6 +514,8 @@ export type Database = {
           free_period?: string
           free_used_micros?: number
           id?: string
+          in_flight?: number
+          in_flight_at?: string | null
           lifetime_purchased_micros?: number
           lifetime_spent_micros?: number
           paid_balance_micros?: number
@@ -655,6 +661,18 @@ export type Database = {
       }
     }
     Functions: {
+      begin_ai_turn: {
+        Args: {
+          p_max_concurrent?: number
+          p_reserve_micros: number
+          p_user_id: string
+        }
+        Returns: {
+          allowed: boolean
+          available_micros: number
+          in_flight: number
+        }[]
+      }
       consume_tokens: {
         Args: {
           p_cost_micros: number
@@ -668,6 +686,7 @@ export type Database = {
           paid_balance_micros: number
         }[]
       }
+      end_ai_turn: { Args: { p_user_id: string }; Returns: undefined }
       get_shared_item: {
         Args: { p_token: string }
         Returns: {

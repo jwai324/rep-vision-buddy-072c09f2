@@ -163,7 +163,6 @@ interface ChatContextType {
   quickChips: string[];
   creditsBalance: CreditsBalance;
   refreshBalance: () => Promise<void>;
-  godMode: boolean;
   consecutiveErrors: number;
   cooldownActive: boolean;
   proposals: Record<string, Proposal>;
@@ -184,7 +183,6 @@ const ChatContext = createContext<ChatContextType>({
   quickChips: [],
   creditsBalance: EMPTY_BALANCE,
   refreshBalance: async () => {},
-  godMode: false,
   consecutiveErrors: 0,
   cooldownActive: false,
   proposals: {},
@@ -383,8 +381,15 @@ const SCREEN_CHIPS: Record<string, string[]> = {
 
 const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I train today?"];
 
-export const GOD_MODE_PHRASE = 'god mode 3247';
-const GOD_MODE_REPLY = 'God mode activated — credit limits are lifted for this session.';
+// The operator metering bypass is decided entirely server-side, from the
+// METERING_BYPASS_USER_IDS function secret (see CLAUDE.md). The client no longer
+// tracks it at all: it cannot know whether the server granted the ask, and a
+// client that assumed it had been granted showed a stale balance, hid the
+// out-of-credits banner and turned the server's 402 into a bogus five-minute
+// "AI is temporarily unavailable" lockout for anyone who typed the phrase.
+// The phrase is now sent as an ordinary message; ai-coach recognises it only
+// for an allowlisted user id. Credits are displayed normally either way — for
+// an allowlisted operator the balance simply stops going down.
 const COOLDOWN_MS = 2000;
 const MESSAGE_WINDOW = 10;
 const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
@@ -433,7 +438,6 @@ export const ChatProvider: React.FC<{
   const screenRef = useRef<ScreenContext>({ screen: 'dashboard' });
   const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [creditsBalance, setCreditsBalance] = useState<CreditsBalance>(EMPTY_BALANCE);
-  const [godMode, setGodMode] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [cooldownActive, setCooldownActive] = useState(false);
   const [disabledUntil, setDisabledUntil] = useState(0);
@@ -1224,18 +1228,6 @@ export const ChatProvider: React.FC<{
   }, [proposals]);
 
   const sendMessage = useCallback(async (text: string) => {
-    // Must run before the cooldown/limit gates below so the phrase still works
-    // once credits are exhausted. Intercepted as a command: no API call, no
-    // credits spent.
-    if (text.trim().toLowerCase() === GOD_MODE_PHRASE) {
-      setGodMode(true);
-      setMessages(prev => [...prev,
-        { id: crypto.randomUUID(), role: 'user', content: text.trim() },
-        { id: crypto.randomUUID(), role: 'assistant', content: GOD_MODE_REPLY },
-      ]);
-      return;
-    }
-
     // Cooldown check
     if (Date.now() < sendDisabledUntil.current) return;
     sendDisabledUntil.current = Date.now() + COOLDOWN_MS;
@@ -1244,7 +1236,7 @@ export const ChatProvider: React.FC<{
 
     // Credit balance check (client-side, server also enforces). Premium tier
     // bypasses the gate.
-    if (creditsBalance.exhausted && !godMode) return;
+    if (creditsBalance.exhausted) return;
 
     // Disabled due to consecutive errors
     if (Date.now() < disabledUntil) return;
@@ -1261,7 +1253,6 @@ export const ChatProvider: React.FC<{
     // Window: only send last MESSAGE_WINDOW messages
     const allMessages = [...messages, userMsg];
     const windowedMessages = allMessages
-      .filter(m => m.content !== GOD_MODE_REPLY && m.content.trim().toLowerCase() !== GOD_MODE_PHRASE)
       .slice(-MESSAGE_WINDOW)
       .map(m => ({ role: m.role, content: m.content }));
 
@@ -1283,12 +1274,12 @@ export const ChatProvider: React.FC<{
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ messages: windowedMessages, context, god_mode: godMode }),
+        body: JSON.stringify({ messages: windowedMessages, context }),
       });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "" }));
-        if (err.balance_exhausted && !godMode) {
+        if (err.balance_exhausted) {
           setCreditsBalance(prev => ({ ...prev, exhausted: true, availableMicros: 0, credits: 0, estMessagesLeft: 0 }));
           // Signalled distinctly so the catch block below doesn't tick the
           // consecutive-error counter — running out of credits is not a fault.
@@ -1495,7 +1486,7 @@ export const ChatProvider: React.FC<{
         const followResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({ messages: followUpMessages, context, action_results: results, god_mode: godMode }),
+          body: JSON.stringify({ messages: followUpMessages, context, action_results: results }),
         });
 
         if (followResp.ok) {
@@ -1601,9 +1592,9 @@ export const ChatProvider: React.FC<{
       setIsLoading(false);
       // Re-sync the authoritative balance after the turn (cost is metered
       // server-side and unknown to the client). god-mode does not deduct.
-      if (!godMode) resyncBalanceSoon();
+      resyncBalanceSoon();
     }
-  }, [messages, buildContext, proposeToolCall, creditsBalance, godMode, consecutiveErrors, disabledUntil, resyncBalanceSoon]);
+  }, [messages, buildContext, proposeToolCall, creditsBalance, consecutiveErrors, disabledUntil, resyncBalanceSoon]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -1615,7 +1606,7 @@ export const ChatProvider: React.FC<{
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
       setOpen, sendMessage, clearChat, registerScreen, quickChips,
-      creditsBalance, refreshBalance, godMode, consecutiveErrors, cooldownActive,
+      creditsBalance, refreshBalance, consecutiveErrors, cooldownActive,
       proposals, proposalIdsByMessage, applyProposal, discardProposal,
     }}>
       {children}

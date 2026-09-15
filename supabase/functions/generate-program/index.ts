@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
-import { costMicros } from "../_shared/pricing.ts";
-import { consume, gate, getOrInitBalance, applyLazyMonthlyReset, recordUsageAggregate } from "../_shared/balance.ts";
+import { costMicros, RESERVE_MICROS } from "../_shared/pricing.ts";
+import { consume, recordUsageAggregate } from "../_shared/balance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,6 +10,11 @@ const corsHeaders = {
 };
 
 const MODEL = "claude-opus-4-7";
+
+// Shared with ai-coach: `in_flight` is one counter per user, so gating this at
+// 1 refused a generation whenever a coach reply happened to be streaming — and
+// told the user "a program is already being generated" when none was.
+const MAX_CONCURRENT_TURNS = 3;
 
 // Minimum fields we consume from each exercise in the payload sent by the
 // client. Keeps the map() lambda typed without pulling in the full Exercise
@@ -82,6 +87,22 @@ JSON SCHEMA:
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Declared outside the try so every exit releases the concurrency slot. An
+  // Anthropic 429, a malformed body, or any other throw used to return without
+  // releasing, and the user was then refused their own generations for the full
+  // five minutes the staleness backstop takes.
+  const slot: { supabase: { rpc(fn: string, args: Record<string, unknown>): Promise<unknown> } | null; userId: string | null; held: boolean } =
+    { supabase: null, userId: null, held: false };
+  const releaseTurn = async () => {
+    if (!slot.held || !slot.supabase || !slot.userId) return;
+    slot.held = false;
+    try {
+      await slot.supabase.rpc("end_ai_turn", { p_user_id: slot.userId });
+    } catch (e) {
+      console.error("end_ai_turn failed:", e);
+    }
+  };
+
   try {
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -89,6 +110,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    slot.supabase = supabase;
 
     const authHeader = req.headers.get("Authorization");
     let userId: string | null = null;
@@ -96,6 +118,7 @@ serve(async (req) => {
       const token = authHeader.replace("Bearer ", "");
       const { data: { user } } = await supabase.auth.getUser(token);
       userId = user?.id ?? null;
+      slot.userId = userId;
     }
 
     // Require a signed-in user. Without this the anon key (public in the
@@ -108,21 +131,47 @@ serve(async (req) => {
       });
     }
 
-    const { userInputs, exercises } = await req.json();
+    const body = await req.json();
+    const userInputs = (body?.userInputs ?? {}) as Record<string, unknown>;
+    const exercises = Array.isArray(body?.exercises) ? body.exercises : [];
+    if (!exercises.length) {
+      return new Response(JSON.stringify({ error: "No exercises were sent to build a program from." }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    // Pre-call balance gate. Real cost is deducted after the call. The monthly
-    // allowance is tier-based (premium gets a larger bucket; see balance.ts).
-    if (userId) {
-      const balance = applyLazyMonthlyReset(await getOrInitBalance(supabase, userId));
-      if (!gate(balance).allowed) {
-        return new Response(JSON.stringify({
-          error: "You're out of AI credits.",
-          balance_exhausted: true,
-        }), {
-          status: 402,
+    // Pre-call balance gate. Taken under the same row lock as the debit, so
+    // concurrent generations cannot all pass on one reserve — reading the
+    // balance and then deciding was a check-then-act race.
+    {
+      const { data, error } = await supabase.rpc("begin_ai_turn", {
+        p_user_id: userId,
+        p_reserve_micros: RESERVE_MICROS,
+        p_max_concurrent: MAX_CONCURRENT_TURNS,
+      });
+      if (error) {
+        // Fail closed: a metering outage must not read as free usage.
+        console.error("begin_ai_turn failed:", error);
+        return new Response(JSON.stringify({ error: "Couldn't check your credit balance. Please try again." }), {
+          status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.allowed) {
+        // The gate says which it is. Inferring it from in_flight reported a
+        // credit refusal as "busy" and a busy refusal as "out of credits",
+        // and the client latches the latter into an exhausted-balance UI.
+        const busy = row?.reason === "busy";
+        return new Response(JSON.stringify(
+          busy
+            ? { error: "Another AI request is still running. Wait for it to finish." }
+            : { error: "You're out of AI credits.", balance_exhausted: true },
+        ), {
+          status: busy ? 429 : 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      slot.held = true;
     }
 
     const customNotes = userInputs.custom_notes ? `\n- Additional notes from user: ${userInputs.custom_notes}` : '';
@@ -134,7 +183,7 @@ serve(async (req) => {
 - Days per week: ${userInputs.daysPerWeek}
 - Session duration: ${userInputs.sessionDuration}
 - Program duration: ${programWeeks} weeks (MUST set "weeks" to exactly ${programWeeks})
-- Available equipment: ${userInputs.equipment.join(', ')}
+- Available equipment: ${Array.isArray(userInputs.equipment) ? userInputs.equipment.join(', ') : (userInputs.equipment ?? 'Not specified')}
 - Injuries/constraints: ${userInputs.injuries || 'None'}
 - Split preference: ${userInputs.splitPreference || 'No preference'}${customNotes}
 
@@ -181,14 +230,20 @@ ${exercises.map((e: ExerciseSummary) => `- ${e.name} (${e.primaryBodyPart}, ${e.
     // Meter real token usage. The call succeeded and Anthropic billed us, so we
     // consume even if the JSON later fails to parse (deters abuse via repeated
     // failing prompts). Never let a metering failure break the response.
-    if (userId) {
-      try {
-        const cost = costMicros(message.usage);
-        await consume(supabase, userId, cost, "generate_program", `generate-program:${userId}:${Date.now()}`);
-        await recordUsageAggregate(supabase, userId, message.usage, cost);
-      } catch (e) {
-        console.error("generate-program metering failed:", e);
-      }
+    try {
+      const cost = costMicros(message.usage, MODEL);
+      await consume(supabase, userId, cost, "generate_program", `generate-program:${userId}:${Date.now()}`, {
+        model: MODEL,
+        input_tokens: message.usage?.input_tokens ?? null,
+        output_tokens: message.usage?.output_tokens ?? null,
+        cache_write_tokens: message.usage?.cache_creation_input_tokens ?? null,
+        cache_read_tokens: message.usage?.cache_read_input_tokens ?? null,
+      });
+      await recordUsageAggregate(supabase, userId, message.usage, cost);
+    } catch (e) {
+      console.error("generate-program metering failed:", e);
+    } finally {
+      await releaseTurn();
     }
 
     if (message.stop_reason === "max_tokens") {
@@ -225,5 +280,9 @@ ${exercises.map((e: ExerciseSummary) => `- ${e.name} (${e.primaryBodyPart}, ${e.
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  } finally {
+    // Idempotent: the metering block releases as soon as the debit lands, and
+    // this catches every path that never got there.
+    await releaseTurn();
   }
 });

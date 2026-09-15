@@ -35,6 +35,17 @@ import { AIChatBubble } from '@/components/AIChatBubble';
 import { ErrorReportButton } from '@/components/ErrorReportButton';
 import { templateFromSession, useDayClickHandler } from '@/hooks/useScreenHelpers';
 import { buildProgramSnapshot, buildSessionSnapshot, buildTemplateSnapshot } from '@/utils/shareSnapshot';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 import type { ExerciseId, WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { format } from 'date-fns';
@@ -44,7 +55,12 @@ type Screen =
   | { type: 'dashboard' }
   | { type: 'startWorkout' }
   | { type: 'browseExercises' }
-  | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises']; templateName?: string; templateId?: string }
+  // `resumed` marks a screen that is picking an existing workout back up — a
+  // cold-start restore or an expand of the minimized bar. Only those may read
+  // the session cache; a screen opened to start a *new* workout must not, or
+  // it mounts the previous workout's blocks, name and timer under the new
+  // template's identity.
+  | { type: 'activeSession'; exercises: ExerciseId[]; templateExercises?: WorkoutTemplate['exercises']; templateName?: string; templateId?: string; resumed?: boolean }
   | { type: 'editSession'; session: WorkoutSession }
   | { type: 'summary'; session: WorkoutSession }
   | { type: 'sessionDetail'; session: WorkoutSession; from?: 'activity' }
@@ -75,8 +91,38 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   // On a cold load with a cached in-progress workout, surface a dashboard
   // banner instead of dropping the user straight back into the session.
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(
-    () => restoredSessionScreen(getSessionCache()),
+    () => {
+      const restored = restoredSessionScreen(getSessionCache());
+      return restored ? { ...restored, resumed: true } : null;
+    },
   );
+  // A workout the user asked to start while another is still in progress,
+  // held until they say what should happen to the one already running.
+  const [pendingStart, setPendingStart] = useState<Screen | null>(null);
+  // The Save buttons stay enabled while the upsert is in flight, and a slow
+  // connection invites a second tap. The session upsert is idempotent on its
+  // id, but the template and the rest-day session are built fresh per tap, so
+  // the second tap would write a duplicate row rather than retry the first.
+  const savingRef = React.useRef(false);
+  const guardedSave = async (run: () => Promise<void>) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      await run();
+    } finally {
+      savingRef.current = false;
+    }
+  };
+  // One rest-day session per date, so a retry after a failed save updates the
+  // row the first attempt may have written rather than adding a second one.
+  const restDaySessionIds = React.useRef<Map<string, string>>(new Map());
+  const restDaySessionId = (date: string) => {
+    const existing = restDaySessionIds.current.get(date);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    restDaySessionIds.current.set(date, id);
+    return id;
+  };
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
@@ -114,10 +160,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
   }, [screen.type, registerScreen]);
 
-  // Auto-start tutorial for first-time users
+  // Auto-start tutorial for first-time users.
+  //
+  // Gated on dataTrusted, not on loading: a load that failed also ends loading,
+  // and it leaves tutorialCompleted at its DEFAULT_PREFERENCES false. Starting
+  // the tutorial there runs it over an account with months of history, and
+  // finishing it writes a whole settings row built from those placeholders.
   const autoStartedRef = React.useRef(false);
   useEffect(() => {
-    if (storage.loading) return;
+    if (!storage.dataTrusted) return;
     if (autoStartedRef.current) return;
     if (!storage.preferences.tutorialCompleted) {
       autoStartedRef.current = true;
@@ -125,7 +176,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       setScreen({ type: 'dashboard' });
       tutorial.start();
     }
-  }, [storage.loading, storage.preferences.tutorialCompleted, tutorial]);
+  }, [storage.dataTrusted, storage.preferences.tutorialCompleted, tutorial]);
 
   // When entering active session during tutorial, jump to session steps
   useEffect(() => {
@@ -163,11 +214,20 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     setScreen({ type: 'dashboard' });
   };
 
+  // The workout currently in progress, as a screen that may read the cache.
+  // Keyed on the cache rather than on `minimizedSession` alone so a path that
+  // navigates away from a session without minimizing it is still caught.
+  const inProgressScreen = (): Screen | null => {
+    if (minimizedSession?.type === 'activeSession') return { ...minimizedSession, resumed: true };
+    const restored = restoredSessionScreen(getSessionCache());
+    return restored ? { ...restored, resumed: true } : null;
+  };
+
   const handleExpand = () => {
-    if (minimizedSession) {
-      setScreen(minimizedSession);
-      setMinimizedSession(null);
-    }
+    const resume = inProgressScreen();
+    if (!resume) return;
+    setScreen(resume);
+    setMinimizedSession(null);
   };
 
   const handleDiscardMinimized = () => {
@@ -196,8 +256,20 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     );
   }
 
+  // Every entry point into a *new* workout goes through here. Starting one on
+  // top of a workout already in progress used to mount the old one's cache
+  // under the new template, which then offered to overwrite the new template
+  // with the old workout's exercises and marked the wrong scheduled entry done.
+  const openSession = (next: Screen) => {
+    if (inProgressScreen()) {
+      setPendingStart(next);
+      return;
+    }
+    setScreen(next);
+  };
+
   const startFromTemplate = (template: WorkoutTemplate) => {
-    setScreen({
+    openSession({
       type: 'activeSession',
       exercises: template.exercises.map(e => e.exerciseId),
       templateExercises: template.exercises,
@@ -207,6 +279,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   };
 
   const handleDesktopNav = (key: string) => {
+    // Sidebar navigation used to leave a running session with no minimized bar
+    // and no way back short of a reload.
+    if (screen.type === 'activeSession') setMinimizedSession(screen);
     setScreen({ type: key } as Screen);
   };
 
@@ -286,7 +361,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           templates={storage.templates}
           activeProgram={activeProgram}
           futureWorkouts={storage.futureWorkouts}
-          onBlankWorkout={() => setScreen({ type: 'activeSession', exercises: [] })}
+          onBlankWorkout={() => openSession({ type: 'activeSession', exercises: [] })}
           onSelectTemplate={startFromTemplate}
           onStartProgramDay={startFromTemplate}
           onBack={() => setScreen({ type: 'dashboard' })}
@@ -315,7 +390,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             weightUnit={storage.preferences.weightUnit}
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             defaultRestSeconds={storage.preferences.defaultRestSeconds}
-            cachedSession={getSessionCache()}
+            cachedSession={screen.resumed ? getSessionCache() : null}
             onFinish={(session) => { setPendingSummary(session); }}
             onCancel={() => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); }}
             onMinimize={handleMinimize}
@@ -336,21 +411,26 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           <SessionSummary
             session={pendingSummary}
             weightUnit={storage.preferences.weightUnit}
-            onSave={() => {
-              storage.saveSession(pendingSummary, { templateId: screen.templateId });
+            // The session cache is the only other copy of this workout, and the
+            // summary is the only screen offering a retry, so neither may be
+            // torn down until the upsert has actually landed.
+            onSave={() => guardedSave(async () => {
+              const saved = await storage.saveSession(pendingSummary, { templateId: screen.templateId });
+              if (!saved) return;
               clearSessionCache();
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
-            }}
-            onSaveAsTemplate={() => {
-              storage.saveSession(pendingSummary, { templateId: screen.templateId });
+            })}
+            onSaveAsTemplate={() => guardedSave(async () => {
+              const saved = await storage.saveSession(pendingSummary, { templateId: screen.templateId });
+              if (!saved) return;
               clearSessionCache();
               storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds));
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
-            }}
+            })}
             onContinue={() => setPendingSummary(null)}
             onClose={() => {
               clearSessionCache();
@@ -371,10 +451,13 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             defaultRestSeconds={storage.preferences.defaultRestSeconds}
             editSession={screen.session}
-            onFinish={(session) => {
-              storage.saveSession(session);
+            onFinish={(session) => guardedSave(async () => {
+              // Staying on the edit screen is what lets the user retry; leaving
+              // discards their edits with nothing holding them.
+              const saved = await storage.saveSession(session);
+              if (!saved) return;
               setScreen({ type: 'activity', initialTab: 'history' });
-            }}
+            })}
             onCancel={() => setScreen({ type: 'sessionDetail', session: screen.session, from: 'activity' })}
             customLocations={storage.preferences.customLocations}
             onUpdateCustomLocations={(locs) => storage.updatePreferences({ customLocations: locs })}
@@ -387,17 +470,19 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <SessionSummary
           session={screen.session}
           weightUnit={storage.preferences.weightUnit}
-          onSave={() => {
-            storage.saveSession(screen.session);
+          onSave={() => guardedSave(async () => {
+            const saved = await storage.saveSession(screen.session);
+            if (!saved) return;
             clearSessionCache();
             setScreen({ type: 'dashboard' });
-          }}
-          onSaveAsTemplate={() => {
-            storage.saveSession(screen.session);
+          })}
+          onSaveAsTemplate={() => guardedSave(async () => {
+            const saved = await storage.saveSession(screen.session);
+            if (!saved) return;
             clearSessionCache();
             storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
             setScreen({ type: 'dashboard' });
-          }}
+          })}
           onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
         />
       )}
@@ -413,6 +498,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onBack={() => setScreen({ type: 'dashboard' })}
           initialTab={screen.initialTab}
           filterDate={screen.filterDate}
+          weightUnit={storage.preferences.weightUnit}
         />
       )}
 
@@ -447,9 +533,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onUpdateFutureWorkout={handleUpdate}
             onDeleteFutureWorkout={canPersist && !isSynthetic ? storage.deleteFutureWorkout : undefined}
             onPushProgramBack={canPersist && !isSynthetic ? storage.pushProgramBack : undefined}
-            onSaveRestDay={(restFw) => {
+            onSaveRestDay={(restFw) => guardedSave(async () => {
               const session: WorkoutSession = {
-                id: crypto.randomUUID(),
+                id: restDaySessionId(restFw.date),
                 date: restFw.date,
                 exercises: [],
                 duration: 0,
@@ -459,11 +545,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
                 isRestDay: true,
                 recoveryActivities: restFw.recoveryActivities,
               };
-              storage.saveSession(session);
+              const saved = await storage.saveSession(session);
+              if (!saved) return;
               setScreen(screen.from === 'activity'
                 ? { type: 'activity', initialTab: 'future' }
                 : { type: 'dashboard' });
-            }}
+            })}
             onBack={() => setScreen(
               screen.from === 'activity'
                 ? { type: 'activity', initialTab: 'future' }
@@ -492,8 +579,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             storage.deleteSession(id);
             setScreen({ type: 'activity', initialTab: 'history' });
           }}
-          onUpdateSession={(updated) => {
-            storage.saveSession(updated);
+          onUpdateSession={async (updated) => {
+            const saved = await storage.saveSession(updated);
+            if (!saved) return;
             setScreen({ type: 'sessionDetail', session: updated, from: 'activity' });
           }}
           onShare={(session) => setShareTarget({
@@ -701,13 +789,49 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         );
       })()}
 
+      <AlertDialog open={!!pendingStart} onOpenChange={(open) => { if (!open) setPendingStart(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>You already have a workout in progress</AlertDialogTitle>
+            <AlertDialogDescription>
+              Starting a new one discards the sets you've already logged. Resume the
+              workout in progress instead?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => { setPendingStart(null); handleExpand(); }}
+            >
+              Resume it
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                const next = pendingStart;
+                clearSessionCache();
+                setMinimizedSession(null);
+                setPendingSummary(null);
+                setPendingStart(null);
+                if (next) setScreen(next);
+              }}
+            >
+              Discard &amp; start new
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <ShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
 
       <TutorialOverlay />
 
       <AIChatBubble
         templates={storage.templates}
-        onOpenCredits={() => setScreen({ type: 'credits' })}
+        onOpenCredits={() => {
+          if (screen.type === 'activeSession') setMinimizedSession(screen);
+          setScreen({ type: 'credits' });
+        }}
       />
 
       <ErrorReportButton screen={screen.type} />

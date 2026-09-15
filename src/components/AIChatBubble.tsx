@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Sparkles, Send, Trash2, Mic, Square } from 'lucide-react';
 import { toast } from 'sonner';
-import { useChatContext, GOD_MODE_PHRASE } from '@/contexts/ChatContext';
+import { useChatContext } from '@/contexts/ChatContext';
 import { useSpeechToText, type SpeechToTextError } from '@/hooks/useSpeechToText';
 import { SPEECH_ERROR_MESSAGES, withSpoken } from '@/utils/speechToText';
 import { cn } from '@/lib/utils';
@@ -36,7 +36,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
     clearChat, quickChips,
-    creditsBalance, godMode, consecutiveErrors, cooldownActive,
+    creditsBalance, consecutiveErrors, cooldownActive,
     proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
 
@@ -113,8 +113,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     if (!isOpen) stopListening();
   }, [isOpen, stopListening]);
 
-  const isGodPhrase = value.trim().toLowerCase() === GOD_MODE_PHRASE;
-  const limitBlocks = creditsBalance.exhausted && !godMode && !isGodPhrase;
+  const limitBlocks = creditsBalance.exhausted;
   const isSendDisabled = !value.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
   // Whatever else is going on, a live microphone can always be switched off.
   const micDisabled = !listening && (isLoading || limitBlocks || consecutiveErrors >= 2);
@@ -250,9 +249,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
-                  {godMode ? (
-                    <p className="text-[10px] text-muted-foreground">God mode — unlimited</p>
-                  ) : (
+                  {(
                     <p className="text-[11px] text-muted-foreground leading-tight">
                       <span className="font-bold text-foreground">{creditsBalance.credits.toLocaleString()}</span>
                       {' '}credits
@@ -334,7 +331,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
           </div>
 
           {/* Quick chips */}
-          {messages.length <= 2 && (!creditsBalance.exhausted || godMode) && (
+          {messages.length <= 2 && !creditsBalance.exhausted && (
             <div className="px-4 pb-2 flex-shrink-0">
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
                 {quickChips.map(chip => (
@@ -351,22 +348,22 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
           )}
 
           {/* Status messages */}
-          {creditsBalance.exhausted && !godMode && (
+          {creditsBalance.exhausted && (
             <div className="px-4 pb-2 flex-shrink-0 flex flex-col items-center gap-2">
               <p className="text-xs text-center text-destructive font-medium">
-                You've used your AI allowance for this month. Top up or check your plan to keep chatting.
+                You've used your AI allowance for this month. It resets at the start of next month.
               </p>
               {onOpenCredits && (
                 <button
                   onClick={() => { setOpen(false); onOpenCredits(); }}
                   className="text-xs font-semibold px-4 py-2 rounded-full gradient-green text-primary-foreground"
                 >
-                  Top up or manage plan
+                  See usage and plan
                 </button>
               )}
             </div>
           )}
-          {creditsBalance.lowBalance && !creditsBalance.exhausted && !godMode && (
+          {creditsBalance.lowBalance && !creditsBalance.exhausted && (
             <div className="px-4 pb-2 flex-shrink-0 flex items-center justify-center gap-2">
               <p className="text-xs text-center text-muted-foreground">
                 Running low — ~{creditsBalance.estMessagesLeft} msgs left.
@@ -409,7 +406,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                   onChange={handleInputChange}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                   placeholder={
-                    creditsBalance.exhausted && !godMode
+                    creditsBalance.exhausted
                       ? "Out of credits"
                       : listening
                         ? "Speak now…"

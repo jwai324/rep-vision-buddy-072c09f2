@@ -78,6 +78,10 @@ function safeWriteCache(cache: ActiveSessionCache) {
   }
 }
 
+// The weight column a finished set stores, per input mode:
+//   distance-only modes  -> no weight at all
+//   band                 -> the level as chosen, never unit-converted
+//   everything else      -> the typed display value converted to kg
 export function clearSessionCache() {
   localStorage.removeItem(CACHE_KEY);
 }
@@ -118,8 +122,18 @@ interface ActiveSessionProps {
 
 // normalizeBlocks is imported from useBlockMutations
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession: cachedSessionProp, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
+  // A cache belongs to the workout it was written for. Mounting one whose
+  // template differs from the screen's is how starting a workout on top of a
+  // minimized one used to carry the previous workout's blocks, name, timer and
+  // template snapshot into the new template — which then offered to overwrite
+  // that template with the old workout's exercises. Index only hands the cache
+  // to a screen that is resuming; this is the backstop for any path that
+  // forgets to.
+  const cachedSession = cachedSessionProp && (cachedSessionProp.templateId ?? null) === (templateId ?? null)
+    ? cachedSessionProp
+    : null;
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   // Scanning every logged session per exercise, on a component that re-renders
   // on each keystroke, adds up — so the answers are cached until history moves.
@@ -158,6 +172,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         return s;
       });
 
+      // Stored in metres; the input holds the user's unit. Omitting this is
+      // what silently erased every distance when a session was edited and saved.
+      const displayDistance = (d: number | null | undefined) =>
+        d == null ? '' : String(fromMeters(d, distanceUnit));
+
       const rows: SetRow[] = [];
       for (const s of repaired) {
         if (s.type === 'dropset' && rows.length > 0) {
@@ -169,6 +188,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             rpe: s.rpe?.toString() ?? '',
             completed: true,
             time: s.time != null ? String(s.time) : '',
+            distance: displayDistance(s.distance),
           });
         } else {
           rows.push({
@@ -179,6 +199,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             type: s.type,
             rpe: s.rpe?.toString() ?? '',
             time: s.time != null ? String(s.time) : '',
+            distance: displayDistance(s.distance),
           });
         }
       }
@@ -1059,7 +1080,21 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
     const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
-    const totalVolume = allSets.reduce((s, set) => s + set.reps * (set.weight ?? 0), 0);
+    // A band's "weight" is a level from a picker, not kilograms, so it is left
+    // out of volume rather than multiplied into it — level 3 is not 3 kg by any
+    // reading, and before the level/kg mix-up was fixed the same set scored
+    // differently for a kg user and an lbs user.
+    const bandExerciseIds = new Set(
+      exerciseLogs
+        .filter(l => getExerciseInputMode(l.exerciseId, customExercises) === 'band')
+        .map(l => l.exerciseId),
+    );
+    const totalVolume = exerciseLogs.reduce(
+      (sum, log) => bandExerciseIds.has(log.exerciseId)
+        ? sum
+        : sum + log.sets.reduce((s, set) => s + set.reps * (set.weight ?? 0), 0),
+      0,
+    );
     const rpeSets = allSets.filter(s => s.rpe !== undefined && s.type !== 'warmup');
     const averageRpe = rpeSets.length > 0 ? rpeSets.reduce((s, set) => s + (set.rpe ?? 0), 0) / rpeSets.length : undefined;
 

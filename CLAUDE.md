@@ -43,13 +43,25 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 That workflow took its project ref from a `SUPABASE_PROJECT_REF` secret that was never set, so from 2026-07-16 (when it was added) to 2026-09-06 all 20 of its runs died on "Cannot find project ref" and it deployed nothing, ever. It now reads the ref from `supabase/config.toml`, which is the single source of truth. Nothing was watching it fail: the error-triage routine's post-commit check is scoped to `ci.yml` by design, and this workflow never even runs on a triage commit because `supabase/functions/**` is on that routine's never-touch list. The routine's §4 health sweep now reports any red workflow on `main`.
 
-Deploy state as of 2026-09-14 (read from the API, not assumed): both functions
-are current with `main`. `ai-coach` is at version 4 (2026-09-06);
-`generate-program` was on version 2 from **2026-05-18** — four months and one
-commit behind, still hard-coding `"superset_group": null` so the program builder
-could not pair exercises — and was redeployed to version 3 once the workflow
-above was fixed. Version numbers rot; confirm with the MCP server's
-`get_edge_function` and diff against the file rather than trusting this line.
+**A merge to `main` that touches `supabase/functions/**` now deploys both
+functions.** That is new as of 2026-09-14 and it changes how to think about
+server-side changes here: they are no longer inert until someone remembers, but
+they also go live the moment the PR lands, with no separate gate. A migration a
+function depends on must therefore be applied *before* the merge, not after.
+Both gate RPCs (`begin_ai_turn` / `end_ai_turn`, from
+`20260915182136_atomic_ai_turn_gate.sql` and
+`20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql`) are already
+applied, so there is nothing to sequence today. The gate fails closed: a missing
+RPC 503s every coach turn rather than letting it through unmetered.
+
+Deploy state as of 2026-09-15, read from the API rather than assumed: `ai-coach`
+is at version 5 and `generate-program` at version 4, both deployed from CI on
+2026-09-14 and both current with `main`. Version numbers rot; confirm with the
+MCP server's `get_edge_function` and diff against the file rather than trusting
+this line.
+
+`grant-tokens` has never been deployed and is deliberately left out of that
+workflow — see the comment at the end of the file for why.
 
 ## AI integration
 
@@ -70,7 +82,45 @@ Template mutations come in two flavours, and the split exists for output-budget 
 
 A stream that dies after it has started (upstream billing, rate limit, dropped connection) is reported as a bare `data: {"error": "<plain sentence>"}` chunk with no `choices`. The client surfaces that sentence as the coach's reply — before this it skipped the payload and rendered an empty bubble, so an out-of-credits API key looked like the app silently doing nothing.
 
-**Prompt caching** is enabled on the system prompt and on the last tool definition (Anthropic caches everything up through the last `cache_control` marker). Both are stable across a session, so most turns should hit the cache.
+**Prompt caching** is enabled on the system prompt and on the last tool
+definition (Anthropic caches everything up through the last `cache_control`
+marker). The system array is **two blocks**, and the split is what makes the
+cache hit at all: block 0 is `SYSTEM_PROMPT` plus the *stable* context keys and
+carries the marker; block 1 holds the per-turn state and is deliberately
+unmarked. A cache entry is an exact prefix match, so anything that changes
+between turns inside block 0 rewrites the whole ~23k-token prefix at the
+cache-write rate every single turn — which is what `active_session`,
+`current_screen` and the rest were doing mid-workout, the coach's headline use
+case.
+
+`VOLATILE_CONTEXT_KEYS` in `ai-coach/index.ts` is that split, and it is a
+**deny-list**: a key `buildContext` (`ChatContext.tsx`) adds later goes into the
+*cached* block by default. Any new key carrying per-turn state has to be added
+there, or the cache silently stops hitting with nothing failing.
+
+**Concurrency and the slot.** Every metered turn takes an `in_flight` slot
+through `begin_ai_turn` and must release it through `end_ai_turn`. In `ai-coach`
+the release lives in `settleTurn` for a turn that actually streamed, and in the
+handler's outer `finally` for every exit that never handed a body to the client
+(`slot.handedOff` tells them apart); `generate-program` releases in its outer
+`finally`. Getting this wrong is not a leak that cleans itself up: the five-
+minute staleness reclaim is anchored to the *oldest* unreleased turn, so a
+stranded slot costs the user their own coach until they stop using it.
+
+**Billing survives a disconnect.** Metering is attached to the Anthropic stream,
+not to the response body, and the body loop deliberately does **not** `break`
+when the client goes away — breaking returns the generator, which aborts the
+upstream, which makes `finalMessage()` reject, and the call goes unbilled after
+Anthropic has already charged for it. Draining to the end is what makes a
+disconnect billable; `stream.currentMessage?.usage` is the fallback if
+`finalMessage()` still rejects.
+
+**Message shape.** The Messages API rejects two same-role turns in a row with a
+400, and the client writes a second assistant message whenever a proposal is
+applied or discarded. `toAnthropicMessages` merges consecutive assistant turns
+(and consecutive user turns) for that reason, and the window is trimmed to start
+on a user turn. Neither is cosmetic — a 400 here surfaces as "the reply failed
+partway through" and repeats on every retry, because the window is the same.
 
 ### `generate-program`
 
@@ -203,11 +253,34 @@ If you need to provision a fresh Supabase project (e.g., moving off the old `wek
 
 Server-side secrets (set via `supabase secrets set`, never in `.env`):
 
-| Secret                       | Used by             |
-| ---------------------------- | ------------------- |
-| `ANTHROPIC_API_KEY`          | Both edge functions |
-| `SUPABASE_URL`               | Auto-set            |
-| `SUPABASE_SERVICE_ROLE_KEY`  | Auto-set            |
+| Secret                       | Used by             | Purpose                                            |
+| ---------------------------- | ------------------- | -------------------------------------------------- |
+| `ANTHROPIC_API_KEY`          | Both edge functions | Anthropic API key                                  |
+| `METERING_BYPASS_USER_IDS`   | `ai-coach`          | Operator metering bypass; unset = off (see below)  |
+| `GRANT_TOKENS_SECRET`        | `grant-tokens`      | Header gate on the Phase 1 purchase stub           |
+| `SUPABASE_URL`               | Auto-set            |                                                    |
+| `SUPABASE_SERVICE_ROLE_KEY`  | Auto-set            |                                                    |
+
+### The AI coach metering bypass ("god mode")
+
+The switch is **off by default and lives entirely server-side**. `ai-coach`
+grants an unmetered turn only when the request asks for one *and* the
+authenticated user id appears in the `METERING_BYPASS_USER_IDS` function secret
+(comma- or whitespace-separated). With the secret unset, nobody gets it.
+
+The ask itself is not a secret and is not treated as one: `god_mode` in the
+request body and the `god mode 3247` phrase both ship in the client bundle, and
+this repository is public. They are a convenience trigger, nothing more. Before
+this split, either one was sufficient on its own, which meant any signed-up user
+could run `claude-opus-4-7` on the project's API key for free.
+
+```bash
+supabase secrets set METERING_BYPASS_USER_IDS=<your-auth-user-id>   # switch on
+supabase secrets unset METERING_BYPASS_USER_IDS                     # switch off
+```
+
+Never move this decision back to anything the client sends, and never put the
+allowlist in a `VITE_` variable — Vite inlines those into the public bundle.
 
 ## Capacitor (when you're ready for mobile)
 
@@ -236,9 +309,30 @@ are easy to break by accident:
   `refreshing` means "data on screen, network in flight" — gate full-screen
   spinners on `loading` only.
 
+- **A load is only trusted when every query came back clean.** postgrest-js
+  resolves `{ data: null, error }` rather than throwing — for a 5xx, an expired
+  token and an offline fetch alike — so nothing reaches the `catch`. The load
+  checks `.error` on all seven queries and only then sets `loadedOk`. Two things
+  gate on that flag rather than on `loading`: the localStorage snapshot write
+  (allowed also when the screen was painted from the cache, since that content is
+  already trusted) and the two effects that write back to the database — the
+  program-day repair and the streak-adjustment clear. Gating those on `!loading`
+  is what let a failed sessions query read as "the streak broke" and clear a real
+  adjustment permanently. Tests: `src/test/storageLoadErrors.test.tsx`.
+
 If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
+
+`saveSession` resolves `false` rather than throwing when the write does not
+land, so the caller can keep the summary screen and the local session cache
+alive for a retry; every call site in `Index.tsx` awaits it and bails on false.
+Writes to the *same* session id are chained, not raced — the summary's
+recovery-activity chips fire one save per tap and two in flight at once can
+arrive out of order, leaving the row holding the earlier one. The Save buttons
+themselves are covered by a single in-flight guard in `Index.tsx` (`guardedSave`)
+because a template and a rest-day session are built fresh per tap, so a second
+tap would write a duplicate row rather than retry the first.
 
 `saveTemplate` is the one write that survives a failure. It resolves
 `false` rather than throwing, applies the edit locally anyway, and parks the
@@ -251,6 +345,29 @@ still saved, because the user was sitting on the summary screen and could
 press Save again. Anything that resolves a template's fate (a later
 successful save, a delete) must clear its queued entry, or the replay
 resurrects it.
+
+## The session cache belongs to one workout
+
+`ActiveSession` rebuilds a workout from `ActiveSessionCache` — blocks, name,
+elapsed timer, `templateSnapshot`. That cache is only ever valid for the workout
+it was written for, and two rules keep it that way:
+
+- **`Index.tsx` hands the cache only to a screen that is resuming one.** The
+  `activeSession` screen carries a `resumed` flag, set by the cold-start restore
+  (`restoredSessionScreen`) and by `handleExpand`; `cachedSession` is
+  `screen.resumed ? getSessionCache() : null`. Reading `getSessionCache()`
+  unconditionally is how starting Push Day while Leg Day was minimized mounted
+  Leg Day's exercises and timer under Push Day's identity — and then offered to
+  overwrite Push Day with them, and marked Push Day's scheduled entry done.
+- **`ActiveSession` refuses a cache whose `templateId` does not match its own.**
+  A backstop for any path that forgets the first rule.
+
+Starting a new workout while one is in progress now asks first
+(`openSession` → the confirm dialog), keyed on the cache rather than on
+`minimizedSession`, because desktop sidebar navigation and the coach's credits
+link used to change screen without minimizing — leaving a live session with no
+bar and no way back short of a reload. Both now minimize first. Tests:
+`src/test/activeSessionStaleCache.test.tsx`.
 
 ## Exercise names are resolved, never trusted
 
@@ -429,15 +546,46 @@ red, so keep the workflow's steps identical to the local gate.
 
 ## Known issues / deferred work
 
-`.lovable/plan.md` contains an audit of pre-existing issues that were not part of the migration. Highest priority (per that doc):
+`docs/audit-2026-09.md` is the current audit (commit efffcd8): 193 verified findings,
+each traced to a file and line by one reviewer and re-checked by another, with the
+critical and high ones also given to a reviewer told to disprove them. Start there.
 
-- `useStorage.ts` does `select('*')` on `workout_sessions` with no pagination — silently loses rows above the 1000-row default limit.
-- A fire-and-forget delete inside `setFutureWorkouts` callback has no error handling.
-- 22 `as any` casts in `useStorage.ts` defeat the generated Supabase types.
-- `ActiveSession.tsx` is 2,737 lines with 38 `useState` hooks — needs decomposition.
-- `Index.tsx` is a 694-line god-router.
+**All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`;
+the audit's status note says which ship where. 73 medium and 98 low findings remain
+open — its "Everything else" section is the backlog, grouped by area.
 
-These are tracked but not yet fixed.
+Two facts from that audit change how you work in this repo:
+
+- **Edge-function deploys were broken from 2026-05-15 to 2026-09-15.** All twenty runs
+  of `.github/workflows/deploy-supabase-functions.yml` failed on an unset
+  `SUPABASE_PROJECT_REF`, which is the real reason `generate-program` is still on the
+  May build. The workflow now falls back to `project_id` in `supabase/config.toml`, so
+  the only thing it still needs is a `SUPABASE_ACCESS_TOKEN` repository secret. Until
+  that exists, an edit under `supabase/functions/` ships only if you deploy it by hand.
+- **The repo's migration filenames no longer match the live migration history.** Eight
+  were applied through the Supabase MCP server, which stamps its own version. Running
+  the documented `supabase db push` against the linked project will fail until the
+  versions are repaired. When you apply through the MCP server, read the version it
+  recorded and rename the local file to match, as
+  `20260915170641_lock_down_token_credits.sql` and
+  `20260915182136_atomic_ai_turn_gate.sql` do.
+- **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
+  Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). Rates now live in
+  `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap with no entry bills at the
+  highest known rate and logs loudly instead of silently under-charging.
+
+  `token_ledger` now records `model` and the four token counts per row, so the next
+  rate change is correctable. Rows written **before 2026-09-15 have those columns
+  null** and cannot be re-priced from the ledger — treat every pre-2026-09-15 balance,
+  allowance and cost figure as 3x inflated. `user_ai_usage` does hold per-day token
+  counts going back further, so a correction pass is possible there; nothing has run
+  one, and `ai_usage_daily_summary.cost_usd` still overstates historical spend 3x.
+
+`.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
+gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated
+`workout_sessions` read is now an explicit, documented 500-row cap. Its two surviving
+items are `Index.tsx` (724 lines, still a god-router) and the decomposition of
+`ActiveSession.tsx`.
 
 ## Conventions
 

@@ -62,7 +62,12 @@ export function useBlockMutations(
         ...block,
         sets: block.sets.map((set, si) => {
           if (si === setIdx) return { ...set, [field]: value };
-          if (shouldCascade && si > setIdx && set.type !== 'warmup' && (set[field] === '' || set[field] === oldValue)) {
+          // Only rows that have not been performed yet inherit the change.
+          // Without the `!set.completed` guard, correcting a typo in set 1
+          // silently rewrote every later set already ticked off at the old
+          // value — and in edit mode, where every set is completed, it
+          // rewrote the whole exercise.
+          if (shouldCascade && si > setIdx && !set.completed && set.type !== 'warmup' && (set[field] === '' || set[field] === oldValue)) {
             return { ...set, [field]: value };
           }
           return set;

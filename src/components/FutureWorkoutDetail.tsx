@@ -436,7 +436,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
             <div className="flex flex-col gap-3">
               {template.exercises.map((ex, i) => {
                 const info = EXERCISES[ex.exerciseId];
-                const mode = getExerciseInputMode(ex.exerciseId);
+                const mode = getExerciseInputMode(ex.exerciseId, customExercises);
                 return (
                   <div key={i} className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
