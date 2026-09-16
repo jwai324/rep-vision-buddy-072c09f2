@@ -455,6 +455,32 @@ being replaced on an `edit_template`, because the model can omit what it wasn't
 asked to change — without it a wholesale edit unlinked every superset in the
 template.
 
+## The program editor and the shared template editor
+
+`ProgramBuilder` is laid out like `ProgramView`: one tile per day holding the
+day's fields, with a footer strip that opens the day's template for editing in
+place. The exercise list is `TemplateExerciseEditor`, which the standalone
+`TemplateBuilder` renders too, so the two surfaces cannot drift. The editor is
+controlled — it holds no template state and expresses every edit as a
+functional update through `onChange` — which is what lets the program editor
+keep one draft per *template id* and show it in every tile that uses the
+template. It resolves exercise names through the lookup at render time rather
+than writing them back into the blocks, because a write-back registers as an
+edit to an owner that treats any change as unsaved.
+
+A template edited inside a tile is saved from that tile (`onSaveTemplate`,
+wired to `useStorage.saveTemplate`), not by Save Program: templates are shared
+by id, so the save reaches every program that uses the template, and the
+expanded tile says so. Save Program refuses while a referenced template still
+has an unsaved draft, rather than dropping or saving it silently. The editor's
+localStorage draft (`program_builder_draft`) carries the template drafts too,
+keyed to the program; the back arrow clears it, as Cancel did.
+
+The exercise picker and the superset linker open as fixed full-screen overlays
+from inside the editor, because a tile cannot hand over the whole screen the
+way the old builder's early return did. The block conversions live in
+`src/utils/templateBlocks.ts`. Tests: `src/test/programBuilder.test.tsx`.
+
 ## Volume exclusions
 
 A custom exercise can carry `exclude_from_volume` (see `CustomExercise` in
