@@ -662,10 +662,13 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           templates={storage.templates}
           history={storage.history}
           initial={screen.program}
+          weightUnit={storage.preferences.weightUnit}
+          defaultRestSeconds={storage.preferences.defaultRestSeconds}
           onSave={(p) => {
             storage.saveProgram(p);
             setScreen({ type: 'programs' });
           }}
+          onSaveTemplate={storage.saveTemplate}
           onCancel={() => setScreen({ type: 'programs' })}
         />
       )}
