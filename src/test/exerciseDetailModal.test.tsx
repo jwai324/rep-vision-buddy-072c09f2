@@ -1,7 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ExerciseDetailModal } from '@/components/ExerciseDetailModal';
 import type { WorkoutSession } from '@/types/workout';
+import type { ExerciseClipAsset } from '@/hooks/useExerciseClip';
+
+const clipLookup = vi.hoisted(() => ({
+  current: { clip: null as ExerciseClipAsset | null, loading: false },
+}));
+
+vi.mock('@/hooks/useExerciseClip', () => ({
+  useExerciseClip: () => clipLookup.current,
+}));
 
 const CUSTOM_ID = 'custom-abc-123';
 
@@ -223,5 +232,47 @@ describe('ExerciseDetailModal — Notes tab', () => {
 
     openNotesTab();
     expect(screen.getByRole('textbox')).toHaveValue('bench cue');
+  });
+});
+
+describe('ExerciseDetailModal — demonstration clip', () => {
+  const clip: ExerciseClipAsset = {
+    exerciseId: 'flat-barbell-bench-press',
+    webmUrl: 'https://cdn.example/bench-0123456789ab.webm',
+    mp4Url: 'https://cdn.example/bench-abcdef012345.mp4',
+    posterUrl: 'https://cdn.example/bench-fedcba987654.webp',
+    width: 512,
+    height: 288,
+    durationMs: 5000,
+  };
+
+  afterEach(() => {
+    clipLookup.current = { clip: null, loading: false };
+  });
+
+  it('renders the clip in place of the legacy animation when the exercise has one', () => {
+    clipLookup.current = { clip, loading: false };
+    render(<ExerciseDetailModal exerciseId="flat-barbell-bench-press" onClose={vi.fn()} history={[]} />);
+
+    expect(screen.getByTestId('exercise-clip')).toBeInTheDocument();
+    expect(document.querySelector('video')).toHaveAttribute('src', clip.mp4Url);
+    expect(screen.queryByTestId('exercise-clip-placeholder')).not.toBeInTheDocument();
+    expect(screen.queryByAltText(/animation$/)).not.toBeInTheDocument();
+  });
+
+  it('reserves a 16:9 box while the clip row is being looked up', () => {
+    clipLookup.current = { clip: null, loading: true };
+    render(<ExerciseDetailModal exerciseId="flat-barbell-bench-press" onClose={vi.fn()} history={[]} />);
+
+    expect(screen.getByTestId('exercise-clip-placeholder')).toHaveClass('aspect-video');
+    expect(document.querySelector('video')).toBeNull();
+  });
+
+  it('falls back to the legacy animation when the exercise has no clip', () => {
+    render(<ExerciseDetailModal exerciseId="flat-barbell-bench-press" onClose={vi.fn()} history={[]} />);
+
+    expect(screen.queryByTestId('exercise-clip')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('exercise-clip-placeholder')).not.toBeInTheDocument();
+    expect(document.querySelector('video')).toBeNull();
   });
 });

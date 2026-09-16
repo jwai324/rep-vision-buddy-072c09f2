@@ -3,6 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { ExerciseAnimation } from '@/components/ExerciseAnimation';
+import { ExerciseClip } from '@/components/ExerciseClip';
+import { useExerciseClip } from '@/hooks/useExerciseClip';
 import { Button } from '@/components/ui/button';
 import type { ExerciseId, WorkoutSession } from '@/types/workout';
 import type { UserPreferences, WeightUnit } from '@/hooks/useStorage';
@@ -35,6 +37,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
     ? EXERCISE_DATABASE.find(e => e.id === exerciseId) ?? customExercises.find(e => e.id === exerciseId)
     : null;
   const isCustom = !!exercise && 'isCustom' in exercise;
+  const { clip, loading: clipLoading } = useExerciseClip(exerciseId);
 
   const { getStickyNote, setStickyNote } = useStickyNotes(stickyNotes ?? {}, onUpdateStickyNotes ?? noopUpdate);
   const savedNote = exerciseId ? getStickyNote(exerciseId) : '';
@@ -105,10 +108,19 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
           </TabsList>
 
           <TabsContent value="info" className="flex-1 overflow-y-auto space-y-4 mt-4">
-            <ExerciseAnimation
-              exerciseName={exercise.name}
-              movementPattern={exercise.movementPattern}
-            />
+            {clip ? (
+              <ExerciseClip clip={clip} name={exercise.name} />
+            ) : clipLoading ? (
+              // The vendor library is 16:9 throughout, so this reserves the
+              // same box the clip will take and the tab does not jump when
+              // the row arrives.
+              <div data-testid="exercise-clip-placeholder" className="w-full aspect-video rounded-xl bg-secondary/40" />
+            ) : (
+              <ExerciseAnimation
+                exerciseName={exercise.name}
+                movementPattern={exercise.movementPattern}
+              />
+            )}
 
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">

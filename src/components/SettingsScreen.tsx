@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRestTimerSound } from '@/hooks/useRestTimerSound';
+import { ClipModeDevToggle } from '@/components/ClipModeDevToggle';
 import { REST_TIMER_SOUND_OPTIONS } from '@/utils/restTimerSound';
 import type { WeightUnit, UserPreferences, UserProfile } from '@/hooks/useStorage';
 
@@ -474,6 +475,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
       {/* Data Management */}
       <DataManagementSection />
+
+      {/* Dev builds only */}
+      <ClipModeDevToggle />
 
       {/* App Info */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
