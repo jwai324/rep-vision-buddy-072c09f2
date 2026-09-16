@@ -1,0 +1,19 @@
+# Vendor file -> exercise. Read by scripts/clips/ingest.ts; the rule is in naming.ts.
+#
+# source       the vendor filename. Matched by its vendor key (lower-case, runs of
+#              punctuation collapsed to "-"), so "0123_Bodyweight_Squat.MP4" and
+#              "0123-bodyweight-squat.mp4" both hit the same row.
+# exercise_id  an id from src/data/exercises.ts. The ingest refuses ids it cannot find.
+# slug         optional; defaults to the exercise_id. Kebab-case.
+# note         why, for the next person.
+#
+# Files not listed here are matched by exact name against the library (with the
+# vendor's catalogue prefix stripped only if the run declares it via --prefix);
+# anything else lands in <out>/review.tsv with suggestions. Copy the filename
+# from there. A row here always keeps its exercise, even if another file's name
+# would have matched the same one.
+source,exercise_id,slug,note
+Bodyweight_Squat.mp4,air-squat,bodyweight-squat,Air Squat is the library's bodyweight squat
+180_Jump_Turns_Male.mp4,jump-turns-180,,the 180 is part of the name (also matches by name)
+AB_Wheel_All_The_Way_out.mp4,ab-wheel-rollout,,vendor phrasing for a full-range ab wheel rollout
+Suspension_Trainer_with_Grips_Reverse_Ab_Rollout_female.mp4,suspension-reverse-rollout,,
