@@ -126,3 +126,7 @@ function subscribe(listener: () => void): () => void {
 export function useClipMode(): ClipMode {
   return useSyncExternalStore(subscribe, getClipMode, () => CLIP_MODE);
 }
+
+// Dev builds read the URL as soon as this module loads, before any in-app
+// redirect can drop the query string. Folded out of production builds.
+if (CLIP_MODE_OVERRIDE_ENABLED && typeof window !== 'undefined') getClipMode();

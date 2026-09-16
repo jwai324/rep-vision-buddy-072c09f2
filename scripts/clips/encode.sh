@@ -22,10 +22,12 @@ WHITE_MIN=245      # near-white: every channel at or above this
 GREEN_G_MIN=160    # pure-green tolerance: G at or above this ...
 GREEN_RB_MAX=90    # ... with R and B at or below this
 
-# One 40x40 patch of frame 10, averaged to a pixel. $1 is the crop x:y. Prints rrggbb.
+# One 40x40 patch of frame 10, averaged to a pixel. $1 is the crop x:y. Prints
+# rrggbb. ffmpeg's own errors (unreadable file, frame too small to crop) stay
+# on stderr so a failure here says why.
 sample_corner() {
   ffmpeg -v error -i "$IN" -vf "select='eq(n\,10)',crop=40:40:$1,scale=1:1" \
-         -vsync 0 -frames:v 1 -f rawvideo -pix_fmt rgb24 - 2>/dev/null \
+         -vsync 0 -frames:v 1 -f rawvideo -pix_fmt rgb24 - \
          | od -An -tx1 -v | tr -d ' \n' | head -c6
 }
 

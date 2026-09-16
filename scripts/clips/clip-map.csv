@@ -7,7 +7,10 @@
 # slug         optional; defaults to the exercise_id. Kebab-case.
 # note         why, for the next person.
 #
-# Files not listed here are matched by exact name against the library; anything
-# else lands in <out>/review.tsv with suggestions. Copy the filename from there.
+# Files not listed here are matched by exact name against the library (with the
+# vendor's catalogue prefix stripped only if the run declares it via --prefix);
+# anything else lands in <out>/review.tsv with suggestions. Copy the filename
+# from there. A row here always keeps its exercise, even if another file's name
+# would have matched the same one.
 source,exercise_id,slug,note
 Bodyweight_Squat.mp4,air-squat,bodyweight-squat,Air Squat is the library's bodyweight squat

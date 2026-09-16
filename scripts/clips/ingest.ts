@@ -3,8 +3,8 @@
  * nothing under scripts/ is reachable from the app bundle.
  *
  *   npx tsx scripts/clips/ingest.ts --src <vendor dir> --out <work dir>
- *       [--map scripts/clips/clip-map.csv] [--encode-only] [--force]
- *       [--limit N] [--width 512] [--dry-run]
+ *       [--map scripts/clips/clip-map.csv] [--prefix <regex>] [--only <text>]...
+ *       [--encode-only] [--force] [--limit N] [--width 512] [--dry-run]
  *
  * Environment, publish only: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
  *
@@ -15,7 +15,8 @@
  *            move into <out>/encoded/ as <key>.webm, .mp4, .webp (poster) and
  *            .json (meta, written last). Every readable file is encoded,
  *            matched or not, so an overnight run is not wasted on the files
- *            the map does not cover yet. Skipped when all four outputs exist.
+ *            the map does not cover yet. Skipped when all four outputs exist
+ *            at the requested width.
  *   publish  matched files only. Objects are named by content hash (plan.ts),
  *            uploaded when not already in the bucket, and the row upserted.
  *
@@ -23,6 +24,20 @@
  * <out>/encoded/ (outputs move in only after ffmpeg finishes, meta last), an
  * interrupted upload leaves no object (a Storage upload is one request), and
  * the row upsert is idempotent. Re-running skips everything already done.
+ *
+ * A file that fails to encode or publish is recorded in review.tsv and the
+ * run continues. After five publish failures in a row, publishing is switched
+ * off for the rest of the run (encoding continues) so a dead network does not
+ * waste the night; the next run publishes what is missing.
+ *
+ * --prefix declares the vendor's catalogue prefix, e.g. --prefix '\d{4}[_-]'
+ * for "0123_Bodyweight_Squat.mp4". Without it a leading number is part of the
+ * name ("180 Jump Turns") and is never stripped for matching.
+ *
+ * --only <text> restricts the run to files whose path contains the text or
+ * whose vendor key equals it (repeatable). Pair it with --force to replace
+ * one clip: --force alone re-encodes and republishes every file, and a VP9
+ * encode is not byte-stable, so every row would move to new object paths.
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -32,7 +47,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { EXERCISE_DATABASE } from '../../src/data/exercises';
 import type { Database } from '../../src/integrations/supabase/types';
-import { isVideoFile, parseClipMap, resolveAll, stem, type ResolvedFile } from './naming';
+import { isVideoFile, parseClipMap, resolveAll, stem, vendorKey, type ResolvedFile } from './naming';
 import { objectName, planPublish, type ObjectKind } from './plan';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -41,13 +56,15 @@ const DEFAULT_MAP = path.join(HERE, 'clip-map.csv');
 const BUCKET = 'exercise-clips';
 // Objects are content-addressed, so they never change under a path.
 const CACHE_CONTROL = String(365 * 24 * 60 * 60);
-const MAX_CONSECUTIVE_ENCODE_FAILURES = 5;
+const MAX_CONSECUTIVE_PUBLISH_FAILURES = 5;
 const REQUIRED_ENCODERS = ['libvpx-vp9', 'libx264', 'libwebp'];
 
 interface Options {
   src: string;
   out: string;
   map: string;
+  prefix: RegExp | null;
+  only: string[];
   encodeOnly: boolean;
   force: boolean;
   limit: number | null;
@@ -71,13 +88,15 @@ type ClipInsert = Database['public']['Tables']['exercise_clips']['Insert'];
 function usage(message?: string): never {
   if (message) console.error(`error: ${message}\n`);
   console.error(
-    'usage: npx tsx scripts/clips/ingest.ts --src <dir> --out <dir> [--map <csv>] [--encode-only] [--force] [--limit N] [--width 512] [--dry-run]',
+    'usage: npx tsx scripts/clips/ingest.ts --src <dir> --out <dir> [--map <csv>] [--prefix <regex>] [--only <text>]... [--encode-only] [--force] [--limit N] [--width 512] [--dry-run]',
   );
   process.exit(2);
 }
 
 function parseArgs(argv: string[]): Options {
-  const opts: Options = { src: '', out: '', map: DEFAULT_MAP, encodeOnly: false, force: false, limit: null, width: 512, dryRun: false };
+  const opts: Options = {
+    src: '', out: '', map: DEFAULT_MAP, prefix: null, only: [], encodeOnly: false, force: false, limit: null, width: 512, dryRun: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => {
@@ -89,6 +108,16 @@ function parseArgs(argv: string[]): Options {
       case '--src': opts.src = value(); break;
       case '--out': opts.out = value(); break;
       case '--map': opts.map = value(); break;
+      case '--prefix': {
+        const pattern = value();
+        try {
+          opts.prefix = new RegExp(`^(?:${pattern})`, 'i');
+        } catch (err) {
+          usage(`--prefix is not a valid regular expression: ${message(err)}`);
+        }
+        break;
+      }
+      case '--only': opts.only.push(value().toLowerCase()); break;
       case '--limit': opts.limit = Number(value()); break;
       case '--width': opts.width = Number(value()); break;
       case '--encode-only': opts.encodeOnly = true; break;
@@ -137,6 +166,12 @@ function listVideos(dir: string, out: string): string[] {
   return found.map(f => path.relative(dir, f)).sort();
 }
 
+function selected(entry: ResolvedFile, only: string[]): boolean {
+  if (only.length === 0) return true;
+  const file = entry.file.toLowerCase();
+  return only.some(text => file.includes(text) || entry.key === text);
+}
+
 class ReviewList {
   private rows = 0;
 
@@ -166,10 +201,16 @@ function encodedPaths(out: string, key: string) {
   };
 }
 
-function readMeta(out: string, key: string): EncodedMeta | null {
+/** The finished encode for a key at the requested width, or null when it has to be (re)made. */
+function readMeta(out: string, key: string, width: number): EncodedMeta | null {
   const p = encodedPaths(out, key);
   if (![p.webm, p.mp4, p.poster, p.meta].every(f => fs.existsSync(f) && fs.statSync(f).size > 0)) return null;
-  return JSON.parse(fs.readFileSync(p.meta, 'utf8')) as EncodedMeta;
+  try {
+    const meta = JSON.parse(fs.readFileSync(p.meta, 'utf8')) as EncodedMeta;
+    return meta.width === width ? meta : null;
+  } catch {
+    return null;
+  }
 }
 
 function writeFileAtomic(file: string, content: string): void {
@@ -217,7 +258,7 @@ type EncodeResult =
   | { status: 'review'; reason: string };
 
 function encodeOne(srcPath: string, key: string, opts: Options): EncodeResult {
-  const done = readMeta(opts.out, key);
+  const done = readMeta(opts.out, key, opts.width);
   if (done && !opts.force) return { status: 'skipped', meta: done };
 
   const work = path.join(opts.out, 'work', key);
@@ -230,7 +271,9 @@ function encodeOne(srcPath: string, key: string, opts: Options): EncodeResult {
     const reason = encode.stderr.trim().split('\n').pop() ?? 'background not recognised';
     return { status: 'review', reason: reason.replace(/^SKIP [^:]*: /, '') };
   }
-  if (encode.status !== 0) throw new Error(`encode.sh exited ${encode.status}: ${encode.stderr.trim()}`);
+  if (encode.status !== 0) {
+    throw new Error(`encode.sh exited ${encode.status}: ${encode.stderr.trim() || '(no output)'}`);
+  }
 
   const name = stem(srcPath);
   const webm = path.join(work, `${name}.webm`);
@@ -286,9 +329,10 @@ async function publishOne(
   const bucket = sb.storage.from(BUCKET);
   for (const object of objects) {
     if (!opts.force) {
-      const { data: present, error: existsError } = await bucket.exists(object.path);
-      if (existsError) throw new Error(`checking ${object.path}: ${existsError.message}`);
-      if (present) continue;
+      // exists() resolves { data: false } for a missing object (400/404) and
+      // throws for anything else, so `data` alone is the answer.
+      const { data: present } = await bucket.exists(object.path);
+      if (present === true) continue;
     }
     const { error: uploadError } = await bucket.upload(object.path, fs.readFileSync(object.local), {
       contentType: object.contentType,
@@ -332,7 +376,7 @@ async function main(): Promise<void> {
 
   const files = listVideos(opts.src, opts.out);
   const map = parseClipMap(fs.readFileSync(opts.map, 'utf8'));
-  const resolved = resolveAll(files, EXERCISE_DATABASE, map);
+  const resolved = resolveAll(files, EXERCISE_DATABASE, map, { stripPrefix: opts.prefix ?? undefined });
 
   const reviewPath = path.join(opts.out, 'review.tsv');
   const review = new ReviewList(reviewPath);
@@ -341,6 +385,7 @@ async function main(): Promise<void> {
   }
   const matched = resolved.filter(r => r.resolution.kind === 'mapped').length;
   console.log(`${resolved.length} video files under ${opts.src}: ${matched} matched to an exercise, ${resolved.length - matched} listed in ${reviewPath}`);
+  console.log(`prefix rule: ${opts.prefix ? opts.prefix.source : 'none (a leading number is part of the name)'}`);
 
   if (opts.dryRun) {
     for (const r of resolved) {
@@ -352,15 +397,25 @@ async function main(): Promise<void> {
     return;
   }
 
+  let todo = resolved.filter(r => selected(r, opts.only));
+  if (opts.only.length > 0) console.log(`--only: ${todo.length} of ${resolved.length} files selected (${opts.only.map(o => vendorKey(o) === o ? o : `"${o}"`).join(', ')})`);
+  if (opts.limit) todo = todo.slice(0, opts.limit);
+  if (opts.force && opts.only.length === 0) {
+    console.warn('warning: --force without --only re-encodes and republishes every selected file; every row will move to new object paths');
+  }
+
   const sb: Client | null = opts.encodeOnly
     ? null
     : createClient<Database>(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
 
-  const todo = opts.limit ? resolved.slice(0, opts.limit) : resolved;
-  const counts = { encoded: 0, encodeSkipped: 0, encodeReview: 0, encodeFailed: 0, unmatched: 0, published: 0, publishSkipped: 0, publishReview: 0 };
-  let consecutiveFailures = 0;
+  const counts = {
+    encoded: 0, encodeSkipped: 0, encodeReview: 0, encodeFailed: 0, unmatched: 0,
+    published: 0, publishSkipped: 0, publishReview: 0, publishFailed: 0, publishOff: 0,
+  };
+  let consecutivePublishFailures = 0;
+  let publishDisabled = false;
 
   for (const [i, entry] of todo.entries()) {
     const label = `[${i + 1}/${todo.length}] ${entry.file}`;
@@ -372,15 +427,10 @@ async function main(): Promise<void> {
     let encoded: EncodeResult;
     try {
       encoded = encodeOne(path.join(opts.src, entry.file), entry.key, opts);
-      consecutiveFailures = 0;
     } catch (err) {
-      consecutiveFailures++;
       counts.encodeFailed++;
       review.add(entry.file, entry.key, 'encode-failed', message(err));
       console.error(`${label}: encode FAILED: ${message(err)}`);
-      if (consecutiveFailures >= MAX_CONSECUTIVE_ENCODE_FAILURES) {
-        throw new Error(`${MAX_CONSECUTIVE_ENCODE_FAILURES} encodes failed in a row; stopping so the problem can be looked at`);
-      }
       continue;
     }
     if (encoded.status === 'review') {
@@ -401,8 +451,27 @@ async function main(): Promise<void> {
       console.log(`${label}: encode=${encoded.status} publish=off (--encode-only)`);
       continue;
     }
+    if (publishDisabled) {
+      counts.publishOff++;
+      console.log(`${label}: encode=${encoded.status} publish=off (disabled after repeated failures; re-run to publish)`);
+      continue;
+    }
 
-    const published = await publishOne(sb, entry as Parameters<typeof publishOne>[1], encoded.meta, opts);
+    let published: PublishResult;
+    try {
+      published = await publishOne(sb, entry as Parameters<typeof publishOne>[1], encoded.meta, opts);
+      consecutivePublishFailures = 0;
+    } catch (err) {
+      consecutivePublishFailures++;
+      counts.publishFailed++;
+      review.add(entry.file, entry.key, 'publish-failed', message(err));
+      console.error(`${label}: encode=${encoded.status} publish FAILED: ${message(err)}`);
+      if (consecutivePublishFailures >= MAX_CONSECUTIVE_PUBLISH_FAILURES) {
+        publishDisabled = true;
+        console.error(`publishing switched off for the rest of this run after ${MAX_CONSECUTIVE_PUBLISH_FAILURES} failures in a row; encoding continues. Re-run to publish once the cause is fixed.`);
+      }
+      continue;
+    }
     if (published.status === 'review') {
       counts.publishReview++;
       review.add(entry.file, entry.key, 'publish', published.reason);
@@ -416,9 +485,10 @@ async function main(): Promise<void> {
 
   console.log(
     `\ndone: encoded ${counts.encoded}, already encoded ${counts.encodeSkipped}, background review ${counts.encodeReview}, encode failed ${counts.encodeFailed}; ` +
-      `published ${counts.published}, already published ${counts.publishSkipped}, publish review ${counts.publishReview}, unmatched ${counts.unmatched}. ` +
-      `${review.count} review rows in ${reviewPath}`,
+      `published ${counts.published}, already published ${counts.publishSkipped}, publish review ${counts.publishReview}, publish failed ${counts.publishFailed}, ` +
+      `publish off ${counts.publishOff}, unmatched ${counts.unmatched}. ${review.count} review rows in ${reviewPath}`,
   );
+  if (publishDisabled) process.exitCode = 1;
 }
 
 main().catch(err => {

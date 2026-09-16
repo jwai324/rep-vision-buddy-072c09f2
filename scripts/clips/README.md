@@ -40,18 +40,26 @@ Defined once, in `naming.ts`:
 1. `clip-map.csv` wins. Match is by the file's *vendor key*, the filename stem
    lower-cased with runs of punctuation collapsed to `-`, so casing and
    separators do not matter. `exercise_id` must exist in
-   `src/data/exercises.ts`; `slug` is optional and defaults to the id.
-2. Otherwise an exact name match: the stem minus a leading numeric prefix and a
-   trailing `male`/`female` token, normalised like the app's search, compared
-   with each library exercise's name and aliases. One hit is a match. Zero or
-   more than one is not.
+   `src/data/exercises.ts`; `slug` is optional and defaults to the id. A map
+   row keeps its exercise even when a name match on another file sorts
+   earlier; the other file goes to review instead.
+2. Otherwise an exact name match: the stem minus a trailing `male`/`female`
+   token, normalised like the app's search, compared with each library
+   exercise's name and aliases. One hit is a match. Zero or more than one is
+   not. A leading number is part of the name ("180 Jump Turns" is not "Jump
+   Turns") unless you declare the vendor's catalogue prefix once with
+   `--prefix`, e.g. `--prefix '\d{4}[_-]'` for `0123_Bodyweight_Squat.mp4`;
+   only what that pattern matches is stripped.
 3. Otherwise the file goes to `<out>/review.tsv` with up to three suggestions.
    Suggestions are for the human; the script never uses them.
 
-A second file with the same vendor key, or a second file resolving to an
-exercise another file already claimed (in this run or in the table), also goes
-to review rather than silently winning. `--force` is the only way to replace an
-existing clip.
+A second file with the same vendor key, a second file resolving to an exercise
+or slug another file already claimed (in this run or in the table), and a map
+row whose slug is already taken all go to review rather than silently winning.
+`--force` is the only way to replace an existing clip; pair it with
+`--only <text>` (a path fragment or vendor key, repeatable) so it touches one
+file, because a VP9 encode is not byte-stable and a global `--force` moves
+every row to new object paths.
 
 Answer the review list by adding rows to `clip-map.csv` and re-running.
 
@@ -63,15 +71,20 @@ resumes at file 1,800:
 - **encode** runs `encode.sh` in `<out>/work/<key>/` and moves the outputs into
   `<out>/encoded/` only once ffmpeg has finished, the meta JSON last. A
   half-written encode never counts as done; the work directory is discarded on
-  the next attempt.
+  the next attempt. An encode made at a different `--width` does not count
+  either.
 - **upload** checks each object's existence in the bucket first. A Storage
   upload is one request, so an interrupted one leaves no object.
 - **row** upsert is idempotent.
 
 Every readable file is encoded whether or not it matched, so the long
-overnight encode happens once and later map answers publish in seconds.
-`--encode-only` runs the encode stage without credentials; `--dry-run` prints
-the plan and writes the review list without touching anything else.
+overnight encode happens once and later map answers publish in seconds. A file
+that fails to encode or publish is written to `review.tsv` and the run moves
+on; after five publish failures in a row (credentials, network) publishing is
+switched off for the rest of the run while encoding continues, and the process
+exits non-zero so the next run is known to be needed. `--encode-only` runs the
+encode stage without credentials; `--dry-run` prints the plan and writes the
+review list without touching anything else.
 
 ## encode.sh
 
@@ -85,7 +98,9 @@ The background is sampled from a 40×40 patch in each corner of frame 10. The
 top-left patch keys the clip. All four must classify the same way, as
 near-white (every channel ≥ 245) or green (G ≥ 160, R and B ≤ 90); anything
 else exits 3 and is appended to `<outdir>/encode-review.log` instead of being
-keyed wrong. The ingest records such files under `background` in `review.tsv`.
+keyed wrong. That log is for standalone use; the ingest discards the per-file
+work directory and records such files under `background` in `review.tsv`
+instead.
 
 No per-clip autocrop: bounding boxes vary enormously between clips, and a
 figure that changes size from tile to tile reads as sloppy. If cropping is ever

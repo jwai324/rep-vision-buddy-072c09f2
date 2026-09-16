@@ -11,18 +11,21 @@
  * Matching a file to an exercise, in order:
  *   1. clip-map.csv, matched by vendorKey of its `source` column: the human
  *      decision. Its exercise_id must exist in the library; its slug is
- *      optional and defaults to the exercise_id.
- *   2. Exact name match. The stem with a leading numeric prefix and a trailing
- *      male/female token removed, normalised the way the app's search does,
- *      compared for equality with every library exercise's name and aliases.
- *      Both the prefixed and unprefixed readings are tried; the match is taken
- *      only when they point at exactly one exercise.
+ *      optional and defaults to the exercise_id. A map row always keeps its
+ *      exercise: a name match on another file never displaces it.
+ *   2. Exact name match. The stem with a trailing male/female token removed
+ *      (and the catalogue prefix removed, only when the operator has declared
+ *      one with --prefix), normalised the way the app's search does, compared
+ *      for equality with every library exercise's name and aliases. Exactly
+ *      one hit is a match; zero or several is not. Nothing is stripped that
+ *      was not declared: "180 Jump Squat" is not "Jump Squat".
  *   3. Otherwise the file goes to the review list. Near-misses are listed as
  *      suggestions for the human and are never used.
  *
  * The published slug is the exercise_id unless clip-map.csv says otherwise;
- * both are kebab-case. Storage objects are named <slug>-<content hash>.<ext>
- * (see plan.ts), so a path cannot be guessed from a name.
+ * both are kebab-case and each is claimed by one file. Storage objects are
+ * named <slug>-<content hash>.<ext> (see plan.ts), so a path cannot be
+ * guessed from a name.
  */
 
 export interface LibraryExercise {
@@ -44,7 +47,17 @@ export type ReviewReason =
   | 'unknown-exercise-id'
   | 'bad-slug'
   | 'duplicate-file'
-  | 'duplicate-exercise';
+  | 'duplicate-exercise'
+  | 'duplicate-slug';
+
+export interface MatcherOptions {
+  /**
+   * The vendor's catalogue prefix, anchored at the start of the stem, e.g.
+   * /^\d{4}[_-]/ for "0123_Bodyweight_Squat". Off by default: a leading number
+   * is part of the name until the operator says otherwise.
+   */
+  stripPrefix?: RegExp;
+}
 
 export type Resolution =
   | { kind: 'mapped'; exerciseId: string; slug: string; via: 'map' | 'name' }
@@ -101,15 +114,10 @@ export function normalizeName(text: string): string {
     .replace(/s$/, '');
 }
 
-/** The readings of a vendor stem that are compared against library names. */
-export function candidateNames(stemText: string): string[] {
+/** The one reading of a vendor stem that is compared against library names. */
+export function candidateName(stemText: string, stripPrefix?: RegExp): string {
   const withoutGender = stemText.replace(/[\s_.-]*(male|female)\s*$/i, '');
-  const withoutPrefix = withoutGender.replace(/^\d+[\s_.-]+/, '');
-  const seen = new Set<string>();
-  for (const candidate of [normalizeName(withoutPrefix), normalizeName(withoutGender)]) {
-    if (candidate) seen.add(candidate);
-  }
-  return [...seen];
+  return normalizeName(stripPrefix ? withoutGender.replace(stripPrefix, '') : withoutGender);
 }
 
 function tokens(text: string): Set<string> {
@@ -138,7 +146,7 @@ export interface Matcher {
   resolve(filename: string): Resolution;
 }
 
-export function createMatcher(library: LibraryExercise[], map: ClipMapEntry[]): Matcher {
+export function createMatcher(library: LibraryExercise[], map: ClipMapEntry[], options: MatcherOptions = {}): Matcher {
   const byId = new Map(library.map(ex => [ex.id, ex]));
   const byName = new Map<string, Set<string>>();
   const index = (name: string, id: string) => {
@@ -153,10 +161,17 @@ export function createMatcher(library: LibraryExercise[], map: ClipMapEntry[]): 
     for (const alias of ex.aliases ?? []) index(alias, ex.id);
   }
   const byKey = new Map<string, ClipMapEntry>();
+  const bySlug = new Map<string, string>();
   for (const entry of map) {
     const key = vendorKey(entry.source);
     if (byKey.has(key)) throw new Error(`clip-map: "${entry.source}" appears twice (vendor key ${key})`);
     byKey.set(key, entry);
+    const slug = entry.slug?.trim();
+    if (slug) {
+      const other = bySlug.get(slug);
+      if (other) throw new Error(`clip-map: slug "${slug}" is used by both "${other}" and "${entry.source}"`);
+      bySlug.set(slug, entry.source);
+    }
   }
 
   return {
@@ -179,44 +194,47 @@ export function createMatcher(library: LibraryExercise[], map: ClipMapEntry[]): 
         return { kind: 'mapped', exerciseId: ex.id, slug, via: 'map' };
       }
 
-      const candidates = candidateNames(stem(filename));
-      const hits = new Set<string>();
-      for (const candidate of candidates) {
-        for (const id of byName.get(candidate) ?? []) hits.add(id);
-      }
-      if (hits.size === 1) {
+      const name = candidateName(stem(filename), options.stripPrefix);
+      const hits = [...(byName.get(name) ?? [])].sort();
+      if (hits.length === 1) {
         const [id] = hits;
         return { kind: 'mapped', exerciseId: id, slug: id, via: 'name' };
       }
-      if (hits.size > 1) {
+      if (hits.length > 1) {
         return {
           kind: 'review',
           reason: 'ambiguous',
-          detail: `name matches more than one exercise: ${[...hits].sort().join(', ')}`,
-          suggestions: [...hits].sort(),
+          detail: `name matches more than one exercise: ${hits.join(', ')}`,
+          suggestions: hits,
         };
       }
       return {
         kind: 'review',
         reason: 'no-match',
-        detail: `no library exercise is named "${candidates[0] ?? stem(filename)}"`,
-        suggestions: suggestions(candidates[0] ?? stem(filename), library),
+        detail: `no library exercise is named "${name || stem(filename)}"`,
+        suggestions: suggestions(name || stem(filename), library),
       };
     },
   };
 }
 
 /**
- * Resolves every file, then applies the two run-wide rules: a second file
- * with the same vendor key, or a second file resolving to an exercise another
- * file already claimed, goes to review rather than silently winning. Files
- * are taken in the order given, so callers pass them sorted.
+ * Resolves every file, then applies the run-wide rules: a second file with
+ * the same vendor key, or a second file resolving to an exercise or slug
+ * another file already claimed, goes to review rather than silently winning.
+ * Map rows claim first, so a human decision is never displaced by a name
+ * match that happens to sort earlier. Files are taken in the order given, so
+ * callers pass them sorted.
  */
-export function resolveAll(files: string[], library: LibraryExercise[], map: ClipMapEntry[]): ResolvedFile[] {
-  const matcher = createMatcher(library, map);
+export function resolveAll(
+  files: string[],
+  library: LibraryExercise[],
+  map: ClipMapEntry[],
+  options: MatcherOptions = {},
+): ResolvedFile[] {
+  const matcher = createMatcher(library, map, options);
   const seenKeys = new Map<string, string>();
-  const claimed = new Map<string, string>();
-  return files.map(file => {
+  const resolved: ResolvedFile[] = files.map(file => {
     const key = vendorKey(file);
     const earlier = seenKeys.get(key);
     if (earlier !== undefined) {
@@ -227,25 +245,38 @@ export function resolveAll(files: string[], library: LibraryExercise[], map: Cli
       };
     }
     seenKeys.set(key, file);
-    const resolution = matcher.resolve(file);
-    if (resolution.kind === 'mapped') {
-      const other = claimed.get(resolution.exerciseId);
-      if (other !== undefined) {
-        return {
-          file,
-          key,
-          resolution: {
-            kind: 'review',
-            reason: 'duplicate-exercise',
-            detail: `${resolution.exerciseId} is already taken by ${other}`,
-            suggestions: [],
-          },
-        };
-      }
-      claimed.set(resolution.exerciseId, file);
-    }
-    return { file, key, resolution };
+    return { file, key, resolution: matcher.resolve(file) };
   });
+
+  const claimedExercise = new Map<string, string>();
+  const claimedSlug = new Map<string, string>();
+  const claim = (entry: ResolvedFile): ResolvedFile => {
+    const r = entry.resolution;
+    if (r.kind !== 'mapped') return entry;
+    const exerciseOwner = claimedExercise.get(r.exerciseId);
+    if (exerciseOwner !== undefined) {
+      return {
+        ...entry,
+        resolution: { kind: 'review', reason: 'duplicate-exercise', detail: `${r.exerciseId} is already taken by ${exerciseOwner}`, suggestions: [] },
+      };
+    }
+    const slugOwner = claimedSlug.get(r.slug);
+    if (slugOwner !== undefined) {
+      return {
+        ...entry,
+        resolution: { kind: 'review', reason: 'duplicate-slug', detail: `slug ${r.slug} is already taken by ${slugOwner}`, suggestions: [] },
+      };
+    }
+    claimedExercise.set(r.exerciseId, entry.file);
+    claimedSlug.set(r.slug, entry.file);
+    return entry;
+  };
+  for (const via of ['map', 'name'] as const) {
+    resolved.forEach((entry, i) => {
+      if (entry.resolution.kind === 'mapped' && entry.resolution.via === via) resolved[i] = claim(entry);
+    });
+  }
+  return resolved;
 }
 
 /**

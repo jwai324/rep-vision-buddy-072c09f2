@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  candidateNames,
+  candidateName,
   createMatcher,
   isVideoFile,
   normalizeName,
@@ -22,7 +22,9 @@ const library: LibraryExercise[] = [
   { id: 'american-kettlebell-swing', name: 'American Kettlebell Swing', aliases: ['kb swing'] },
 ];
 
-const match = (file: string, map: Parameters<typeof createMatcher>[1] = []) => createMatcher(library, map).resolve(file);
+const CATALOGUE_PREFIX = /^\d{4}[_-]/;
+const match = (file: string, map: Parameters<typeof createMatcher>[1] = [], options: Parameters<typeof createMatcher>[2] = {}) =>
+  createMatcher(library, map, options).resolve(file);
 
 describe('vendorKey', () => {
   it('is the lower-cased stem with runs of punctuation collapsed to one hyphen', () => {
@@ -43,22 +45,37 @@ describe('vendorKey', () => {
   });
 });
 
-describe('candidateNames', () => {
+describe('candidateName', () => {
   it('normalises like the app search: lower-case words, one trailing s dropped', () => {
     expect(normalizeName('Chin-Ups')).toBe('chin up');
     expect(normalizeName('  Push   Up ')).toBe('push up');
   });
 
-  it('drops a trailing gender token and tries the stem both with and without a numeric prefix', () => {
-    expect(candidateNames('0123_Push_Up')).toEqual(['push up', '0123 push up']);
-    expect(candidateNames('Bodyweight_Squat_female')).toEqual(['bodyweight squat']);
-    expect(candidateNames('180_Jump_Turns_Male')).toEqual(['jump turn', '180 jump turn']);
+  it('drops a trailing gender token and keeps a leading number unless a prefix rule says otherwise', () => {
+    expect(candidateName('0123_Push_Up')).toBe('0123 push up');
+    expect(candidateName('0123_Push_Up', CATALOGUE_PREFIX)).toBe('push up');
+    expect(candidateName('Bodyweight_Squat_female')).toBe('bodyweight squat');
+    expect(candidateName('180_Jump_Turns_Male')).toBe('180 jump turn');
   });
 });
 
 describe('createMatcher', () => {
-  it('matches an exact library name regardless of prefix, case, separators and gender', () => {
-    expect(match('0042_push-UP_male.mp4')).toEqual({ kind: 'mapped', exerciseId: 'push-up', slug: 'push-up', via: 'name' });
+  it('matches an exact library name regardless of case, separators and gender', () => {
+    expect(match('push-UP_male.mp4')).toEqual({ kind: 'mapped', exerciseId: 'push-up', slug: 'push-up', via: 'name' });
+  });
+
+  it('strips a catalogue prefix only when the operator has declared one', () => {
+    const undeclared = match('0042_push-UP_male.mp4');
+    expect(undeclared).toMatchObject({ kind: 'review', reason: 'no-match' });
+    if (undeclared.kind === 'review') expect(undeclared.suggestions.join(' ')).toContain('push-up');
+    expect(match('0042_push-UP_male.mp4', [], { stripPrefix: CATALOGUE_PREFIX })).toEqual({ kind: 'mapped', exerciseId: 'push-up', slug: 'push-up', via: 'name' });
+  });
+
+  it('a leading number that is part of the name is never guessed away', () => {
+    const r = match('180_Jump_Squat.mp4');
+    expect(r).toMatchObject({ kind: 'review', reason: 'no-match' });
+    if (r.kind === 'review') expect(r.suggestions.join(' ')).toContain('jump-squat');
+    expect(match('180_Jump_Squat.mp4', [], { stripPrefix: CATALOGUE_PREFIX })).toMatchObject({ kind: 'review', reason: 'no-match' });
   });
 
   it('matches an alias', () => {
@@ -66,7 +83,7 @@ describe('createMatcher', () => {
   });
 
   it('never fuzzy-matches: a near miss goes to review with suggestions it does not act on', () => {
-    const r = match('0007_Squat.mp4');
+    const r = match('Squat.mp4');
     expect(r.kind).toBe('review');
     if (r.kind !== 'review') return;
     expect(r.reason).toBe('no-match');
@@ -80,13 +97,6 @@ describe('createMatcher', () => {
     if (r.kind !== 'review') return;
     expect(r.reason).toBe('ambiguous');
     expect(r.suggestions).toEqual(['american-kettlebell-swing', 'kettlebell-swing']);
-  });
-
-  it('a stem that reads differently with and without its number is ambiguous when both hit', () => {
-    const lib = [...library, { id: 'jump-turn-180', name: '180 Jump Turn' }, { id: 'jump-turn', name: 'Jump Turn' }];
-    const r = createMatcher(lib, []).resolve('180_Jump_Turn.mp4');
-    expect(r.kind).toBe('review');
-    if (r.kind === 'review') expect(r.reason).toBe('ambiguous');
   });
 
   it('clip-map.csv wins over the name match and is keyed by vendor key', () => {
@@ -117,6 +127,15 @@ describe('createMatcher', () => {
       ]),
     ).toThrow(/appears twice/);
   });
+
+  it('rejects a map that gives two files the same slug', () => {
+    expect(() =>
+      createMatcher(library, [
+        { source: 'a.mp4', exerciseId: 'air-squat', slug: 'squat' },
+        { source: 'b.mp4', exerciseId: 'jump-squat', slug: 'squat' },
+      ]),
+    ).toThrow(/slug "squat"/);
+  });
 });
 
 describe('resolveAll', () => {
@@ -130,6 +149,25 @@ describe('resolveAll', () => {
     const out = resolveAll(['Air_Squat.mp4', 'Bodyweight_Squat.mp4'], library, []);
     expect(out[0].resolution).toMatchObject({ kind: 'mapped', exerciseId: 'air-squat' });
     expect(out[1].resolution).toMatchObject({ kind: 'review', reason: 'duplicate-exercise' });
+  });
+
+  it('a clip-map row keeps its exercise even when a name match sorts earlier', () => {
+    const map = [{ source: 'Bodyweight_Squat.mp4', exerciseId: 'air-squat' }];
+    const out = resolveAll(['0001_Air_Squat.mp4', 'Bodyweight_Squat.mp4'], library, map, { stripPrefix: CATALOGUE_PREFIX });
+    expect(out[1].resolution).toMatchObject({ kind: 'mapped', exerciseId: 'air-squat', via: 'map' });
+    expect(out[0].resolution).toMatchObject({ kind: 'review', reason: 'duplicate-exercise' });
+  });
+
+  it('sends a file whose slug another file already holds to review', () => {
+    const map = [{ source: 'x.mp4', exerciseId: 'air-squat', slug: 'jump-squat' }];
+    const out = resolveAll(['Jump_Squat.mp4', 'x.mp4'], library, map);
+    expect(out[1].resolution).toMatchObject({ kind: 'mapped', exerciseId: 'air-squat', slug: 'jump-squat', via: 'map' });
+    expect(out[0].resolution).toMatchObject({ kind: 'review', reason: 'duplicate-slug' });
+  });
+
+  it('applies the prefix rule to the name match', () => {
+    const out = resolveAll(['0042_Push_Up_Male.mp4'], library, [], { stripPrefix: CATALOGUE_PREFIX });
+    expect(out[0].resolution).toMatchObject({ kind: 'mapped', exerciseId: 'push-up', via: 'name' });
   });
 });
 
