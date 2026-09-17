@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { supabase } from '@/integrations/supabase/client';
 import { clearStorageCache } from '@/utils/storageCache';
 import { clearAllPendingTemplates } from '@/utils/pendingTemplateWrites';
+import { clearLocalDrafts } from '@/utils/localDrafts';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -65,6 +66,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // be shown the previous one's data while its own load is in flight.
     clearStorageCache();
     clearAllPendingTemplates();
+    // The in-progress workout and the builder/chat drafts are not keyed by
+    // user, so without this the next account on the device resumes them.
+    clearLocalDrafts();
     await supabase.auth.signOut();
   }, []);
 

@@ -5,6 +5,7 @@ import { timerIdKey } from '@/components/ExerciseTableComponent';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 import { playRestTimerSoundNow, scheduleRestTimerSound } from '@/utils/restTimerSound';
 import RestTimerWorker from '@/workers/restTimerWorker?worker';
+import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
 
 type TimerStatus = 'running' | 'paused' | 'completed';
 
@@ -327,7 +328,7 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
   // posts ticks that queue while hidden, but a single recalcRestTimer here
   // shortcuts the post-resume drain.
   useEffect(() => {
-    const CACHE_KEY = 'active-session-cache';
+    const CACHE_KEY = ACTIVE_SESSION_CACHE_KEY;
     const onVisible = () => {
       if (document.visibilityState === 'visible') recalcRef.current();
     };

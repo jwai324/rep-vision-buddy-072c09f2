@@ -39,7 +39,7 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 ## Deploying edge functions
 
-`.github/workflows/deploy-supabase-functions.yml` deploys both functions on every push to `main` that touches `supabase/functions/**` or `supabase/config.toml`. Treat that as the deploy path, but **verify the run went green** — a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces". To deploy by hand (or after a red run) use `supabase functions deploy <name>`, or the Supabase MCP server, and check the deployed version.
+`.github/workflows/deploy-supabase-functions.yml` deploys `ai-coach`, `generate-program` and `exercise-gif` on every push to `main` that touches `supabase/functions/**` or `supabase/config.toml`. Treat that as the deploy path, but **verify the run went green** — a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces". To deploy by hand (or after a red run) use `supabase functions deploy <name>`, or the Supabase MCP server, and check the deployed version.
 
 That workflow took its project ref from a `SUPABASE_PROJECT_REF` secret that was never set, so from 2026-07-16 (when it was added) to 2026-09-06 all 20 of its runs died on "Cannot find project ref" and it deployed nothing, ever. It now reads the ref from `supabase/config.toml`, which is the single source of truth. Nothing was watching it fail: the error-triage routine's post-commit check is scoped to `ci.yml` by design, and this workflow never even runs on a triage commit because `supabase/functions/**` is on that routine's never-touch list. The routine's §4 health sweep now reports any red workflow on `main`.
 
@@ -114,6 +114,17 @@ upstream, which makes `finalMessage()` reject, and the call goes unbilled after
 Anthropic has already charged for it. Draining to the end is what makes a
 disconnect billable; `stream.currentMessage?.usage` is the fallback if
 `finalMessage()` still rejects.
+
+**Request size.** `requestTooLarge` in `ai-coach/index.ts` bounds what a turn
+may put in front of the model — message count and length, tool-result size,
+and the serialized context — and runs *before* the credit gate, so a rejected
+request never takes a concurrency slot. The gate holds a fixed reserve per
+turn; without these limits a hand-built request could put an arbitrary amount
+of input against that reserve. The ceilings sit well above what the client
+sends (a typed message is capped at 500 characters; the context runs to about
+100 KB, most of it the exercise library) so only a crafted request hits them.
+If the client legitimately grows past one, raise the constant rather than
+removing the check.
 
 **Message shape.** The Messages API rejects two same-role turns in a row with a
 400, and the client writes a second assistant message whenever a proposal is
@@ -255,7 +266,8 @@ Server-side secrets (set via `supabase secrets set`, never in `.env`):
 
 | Secret                       | Used by             | Purpose                                            |
 | ---------------------------- | ------------------- | -------------------------------------------------- |
-| `ANTHROPIC_API_KEY`          | Both edge functions | Anthropic API key                                  |
+| `ANTHROPIC_API_KEY`          | `ai-coach`, `generate-program` | Anthropic API key                       |
+| `EXERCISE_GIF_API_KEY`       | `exercise-gif`      | RapidAPI key for exercise GIFs; unset = feature off |
 | `METERING_BYPASS_USER_IDS`   | `ai-coach`          | Operator metering bypass; unset = off (see below)  |
 | `GRANT_TOKENS_SECRET`        | `grant-tokens`      | Header gate on the Phase 1 purchase stub           |
 | `SUPABASE_URL`               | Auto-set            |                                                    |
@@ -281,6 +293,17 @@ supabase secrets unset METERING_BYPASS_USER_IDS                     # switch off
 
 Never move this decision back to anything the client sends, and never put the
 allowlist in a `VITE_` variable — Vite inlines those into the public bundle.
+
+### No secret ever goes in a `VITE_` variable
+
+The same rule, stated generally, because it has been broken twice. Vite bakes
+every `VITE_*` value into the shipped JavaScript, so a key placed there is
+readable by anyone who opens the bundle — the exercise-GIF RapidAPI key shipped
+that way until 2026-09-17. Any third-party key is held as a Supabase function
+secret and used from an edge function (`exercise-gif` is the template: the
+client sends the one input it controls, the function holds the key). `.env`
+carries only the Supabase URL and the publishable key, both of which are public
+by design.
 
 ## Capacitor (when you're ready for mobile)
 
@@ -323,6 +346,21 @@ are easy to break by accident:
 If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
+
+**Sign-out clears everything that belongs to the user.** The snapshot and the
+pending-template queue are keyed by user id and clear themselves, but the
+in-progress workout cache and the builder, chat and bug-report drafts are not.
+`src/utils/localDrafts.ts` lists every such key and `signOut` clears them all;
+a new draft key added anywhere in the app belongs in that list, or the next
+account on a shared phone inherits it — for the session cache, that meant
+resuming the previous user's half-finished workout and being able to save it
+into their own history.
+
+**`saveProgram` and `setActiveProgram` resolve `false` on failure** and the
+two program builders wait for that answer before clearing their draft, showing
+"saved" or leaving the screen. They used to do all three first, so a failed
+upsert lost the whole program — and, for the AI builder, the credits spent
+generating it — and then activated a program id that was never written.
 
 `saveSession` resolves `false` rather than throwing when the write does not
 land, so the caller can keep the summary screen and the local session cache

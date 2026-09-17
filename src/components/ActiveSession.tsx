@@ -66,7 +66,7 @@ import { supersetInfo } from '@/types/activeSession';
 import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
-const CACHE_KEY = 'active-session-cache';
+import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
 const DEFAULT_LOCATION = 'Home Gym';
 
 // Safe localStorage write — never throws

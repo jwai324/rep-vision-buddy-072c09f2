@@ -662,9 +662,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           templates={storage.templates}
           history={storage.history}
           initial={screen.program}
-          onSave={(p) => {
-            storage.saveProgram(p);
-            setScreen({ type: 'programs' });
+          onSave={async (p) => {
+            const saved = await storage.saveProgram(p);
+            if (saved) setScreen({ type: 'programs' });
+            return saved;
           }}
           onCancel={() => setScreen({ type: 'programs' })}
         />
@@ -722,12 +723,16 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <AIProgramBuilder
           onBack={() => setScreen({ type: 'dashboard' })}
           onSaveProgram={async (program, templates) => {
+            // A failed template save is queued and replayed by useStorage, so
+            // it does not block the program; a failed program save does.
             for (const t of templates) {
               await storage.saveTemplate(t);
             }
-            await storage.saveProgram(program);
+            const saved = await storage.saveProgram(program);
+            if (!saved) return false;
             await storage.setActiveProgram(program.id);
             setScreen({ type: 'programs' });
+            return true;
           }}
         />
       )}

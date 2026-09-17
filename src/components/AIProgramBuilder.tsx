@@ -156,11 +156,31 @@ function clearBuilderDraft(): void {
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
 }
 
+// functions.invoke reports every non-2xx as "Edge Function returned a non-2xx
+// status code" and keeps the response on `context`. The server puts the real
+// reason in the body — out of credits (402), reply cut off (422), rate limited
+// (429) — and each of those has a different right next step, none of which is
+// "press Generate again and pay for another attempt".
+export async function describeInvokeError(error: unknown): Promise<Error> {
+  const ctx = (error as { context?: unknown })?.context;
+  if (ctx instanceof Response) {
+    try {
+      const body = await ctx.clone().json();
+      if (body?.balance_exhausted) return new Error("You're out of AI credits for this month.");
+      if (typeof body?.error === 'string' && body.error.trim()) return new Error(body.error);
+    } catch {
+      // Not JSON — fall through to the generic message.
+    }
+    if (ctx.status === 429) return new Error('The AI is busy right now. Wait a moment and try again.');
+  }
+  return error instanceof Error ? error : new Error('Failed to generate program. Please try again.');
+}
+
 // ─── Onboarding Chat ─────────────────────────────────────────────────
 
 interface AIProgramBuilderProps {
   onBack: () => void;
-  onSaveProgram: (program: WorkoutProgram, templates: WorkoutTemplate[]) => void;
+  onSaveProgram: (program: WorkoutProgram, templates: WorkoutTemplate[]) => Promise<boolean>;
 }
 
 export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSaveProgram }) => {
@@ -182,6 +202,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [showEquipmentOther, setShowEquipmentOther] = useState(restored?.showEquipmentOther ?? false);
   const [additionalNotesText, setAdditionalNotesText] = useState(restored?.additionalNotesText ?? '');
   const [showFullNotes, setShowFullNotes] = useState(false);
+  const [saving, setSaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const otherInputRef = useRef<HTMLInputElement>(null);
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
@@ -434,7 +455,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
         },
       });
 
-      if (error) throw error;
+      if (error) throw await describeInvokeError(error);
       if (data?.error) throw new Error(data.error);
 
       const program = data.program as AIProgram;
@@ -502,7 +523,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
 
   // ─── Save ───────────────────────────────────────────────────────
 
-  const saveProgram = () => {
+  const saveProgram = async () => {
     if (!generatedProgram) return;
 
     const programId = crypto.randomUUID();
@@ -557,9 +578,20 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       startDate: formatLocalDate(),
     };
 
-    clearBuilderDraft();
-    onSaveProgram(program, templates);
-    toast.success(`Program "${program.name}" saved.`);
+    // Nothing is torn down until the save has landed. This used to clear the
+    // draft and toast "saved" first, so a failed upsert lost a program the user
+    // had just paid credits to generate — and the caller then activated a
+    // program id that was never written.
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await onSaveProgram(program, templates);
+      if (!saved) return;
+      clearBuilderDraft();
+      toast.success(`Program "${program.name}" saved.`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ─── Render ─────────────────────────────────────────────────────
@@ -656,7 +688,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
         </div>
 
         <div className="p-4 border-t border-border">
-          <Button variant="neon" size="lg" className="w-full font-bold" onClick={saveProgram}>
+          <Button variant="neon" size="lg" className="w-full font-bold" onClick={saveProgram} disabled={saving}>
             <Check className="w-5 h-5 mr-2" /> Save Program
           </Button>
         </div>

@@ -643,8 +643,12 @@ export function useStorage() {
     setTemplates(prev => prev.filter(t => t.id !== id));
   }, [user]);
 
-  const saveProgram = useCallback(async (program: WorkoutProgram) => {
-    if (!user) return;
+  // Resolves true only once the program row is written. Both builders used to
+  // toast "saved", clear their draft and leave the screen before this had
+  // resolved, so a failed upsert lost the whole program — and, for the AI
+  // builder, the credits spent generating it.
+  const saveProgram = useCallback(async (program: WorkoutProgram): Promise<boolean> => {
+    if (!user) return false;
     // Snapshot the pre-save version so we can decide whether the schedule
     // shape (days, frequencies, duration, startDate) actually changed. A pure
     // rename or metadata-only edit should NOT wipe program-linked
@@ -665,7 +669,7 @@ export function useStorage() {
     if (error) {
       console.error('[useStorage] saveProgram error:', error);
       toast.error('Failed to save program');
-      return;
+      return false;
     }
     setPrograms(prev => {
       const exists = prev.findIndex(p => p.id === program.id);
@@ -675,7 +679,7 @@ export function useStorage() {
 
     // Only regenerate future_workouts when the schedule shape actually
     // changed. Pure renames / metadata edits skip the destructive path.
-    if (!scheduleChanged) return;
+    if (!scheduleChanged) return true;
 
     // Regenerate future workouts for this program.
     // Delete old ones for this program — check for errors so a failed delete
@@ -688,7 +692,8 @@ export function useStorage() {
     if (deleteError) {
       console.error('[useStorage] future workouts delete error:', deleteError);
       toast.error('Could not refresh program schedule');
-      return;
+      // The program itself is saved; only its calendar is stale.
+      return true;
     }
 
     const newFws = generateFutureWorkouts(program);
@@ -717,6 +722,7 @@ export function useStorage() {
     } else {
       setFutureWorkouts(prev => prev.filter(fw => fw.programId !== program.id));
     }
+    return true;
   }, [user, programs]);
 
   // Auto-heal previously-saved programs whose stored day.frequency values
@@ -756,8 +762,9 @@ export function useStorage() {
     setFutureWorkouts(prev => prev.filter(fw => fw.programId !== id));
   }, [user]);
 
-  const setActiveProgram = useCallback(async (id: string | null) => {
-    if (!user) return;
+  const setActiveProgram = useCallback(async (id: string | null): Promise<boolean> => {
+    if (!user) return false;
+    const previous = activeProgramId;
     setActiveProgramIdState(id);
     const { error } = await supabase.from('user_settings').upsert({
       user_id: user.id,
@@ -765,8 +772,12 @@ export function useStorage() {
     }, { onConflict: 'user_id' });
     if (error) {
       console.error('[useStorage] setActiveProgram error:', error);
+      toast.error('Failed to set active program');
+      setActiveProgramIdState(previous); // rollback, like every other write here
+      return false;
     }
-  }, [user]);
+    return true;
+  }, [user, activeProgramId]);
 
   const deleteSession = useCallback(async (id: string) => {
     if (!user) return;

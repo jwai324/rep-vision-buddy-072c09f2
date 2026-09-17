@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ExerciseAnimationProps {
   exerciseName: string;
@@ -21,26 +22,14 @@ export const ExerciseAnimation: React.FC<ExerciseAnimationProps> = ({ exerciseNa
       return;
     }
 
-    const apiKey = import.meta.env.VITE_EXERCISE_GIF_API;
-    if (!apiKey) {
-      cache.set(exerciseName, null);
-      setGifUrl(null);
-      return;
-    }
-
+    // The lookup goes through the exercise-gif edge function, which holds the
+    // RapidAPI key as a function secret. It used to be read here from a VITE_
+    // variable, and Vite inlines those into the public bundle.
     setGifUrl(undefined);
-    fetch(
-      `https://workoutx-exercise-api-with-gif-animations.p.rapidapi.com/exercises/search?name=${encodeURIComponent(exerciseName)}`,
-      {
-        headers: {
-          'X-RapidAPI-Key': apiKey,
-          'X-RapidAPI-Host': 'workoutx-exercise-api-with-gif-animations.p.rapidapi.com',
-        },
-      }
-    )
-      .then(res => res.json())
-      .then(data => {
-        const url = data?.data?.[0]?.gifUrl ?? null;
+    supabase.functions
+      .invoke<{ gifUrl?: string | null }>('exercise-gif', { body: { name: exerciseName } })
+      .then(({ data, error }) => {
+        const url = !error && typeof data?.gifUrl === 'string' ? data.gifUrl : null;
         cache.set(exerciseName, url);
         setGifUrl(url);
       })

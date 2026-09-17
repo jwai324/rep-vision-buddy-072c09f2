@@ -14,7 +14,7 @@ interface ProgramBuilderProps {
   templates: WorkoutTemplate[];
   history: WorkoutSession[];
   initial?: WorkoutProgram;
-  onSave: (program: WorkoutProgram) => void;
+  onSave: (program: WorkoutProgram) => Promise<boolean>;
   onCancel: () => void;
 }
 
@@ -152,7 +152,9 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
     return map;
   }, [calendarEvents]);
 
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (saving) return;
     if (!name.trim()) {
       toast.error('Enter a program name.');
       return;
@@ -161,15 +163,24 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
       toast.error('Add at least one day.');
       return;
     }
-    clearDraft();
-    onSave({
-      id: initial?.id ?? crypto.randomUUID(),
-      name: name.trim(),
-      days,
-      durationWeeks,
-      startDate: format(startDate, 'yyyy-MM-dd'),
-    });
-    toast.success(`Program "${name.trim()}" saved.`);
+    // The draft outlives a failed save on purpose: it is the only copy of the
+    // program until the row is written, and the screen stays put on failure so
+    // the user can retry. useStorage has already shown the error toast.
+    setSaving(true);
+    try {
+      const saved = await onSave({
+        id: initial?.id ?? crypto.randomUUID(),
+        name: name.trim(),
+        days,
+        durationWeeks,
+        startDate: format(startDate, 'yyyy-MM-dd'),
+      });
+      if (!saved) return;
+      clearDraft();
+      toast.success(`Program "${name.trim()}" saved.`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -376,7 +387,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({ templates, histo
         </div>
       )}
 
-      <Button variant="neon" onClick={save} disabled={!name.trim()} className="w-full">Save Program</Button>
+      <Button variant="neon" onClick={save} disabled={saving || !name.trim()} className="w-full">Save Program</Button>
     </div>
   );
 };

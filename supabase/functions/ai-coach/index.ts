@@ -26,6 +26,19 @@ const MAX_TOKENS = 8000;
 // requests fired in parallel.
 const MAX_CONCURRENT_TURNS = 3;
 
+// Server-side size limits on what a turn may send to the model. The credit
+// gate holds a fixed reserve before the call; with no bound on the request
+// itself, one crafted call could put an arbitrary amount of input in front of
+// the model against that reserve. The client caps a typed message at 500
+// characters and its context at roughly 100 KB, so these are generous ceilings
+// that only a hand-built request reaches. Checked before the gate so a
+// rejected request never takes a concurrency slot.
+const MAX_MESSAGES = 40;
+const MAX_USER_MESSAGE_CHARS = 4_000;
+const MAX_TOOL_RESULT_CHARS = 32_000;
+const MAX_ACTION_RESULTS = 10;
+const MAX_CONTEXT_BYTES = 256_000;
+
 // Not a secret. The phrase ships in the client bundle and this repo is public,
 // so it is only a convenient way for an operator to ASK for the bypass. Whether
 // the ask is granted is decided by isMeteringBypassUser below.
@@ -433,6 +446,29 @@ function streamErrorMessage(err: unknown): string {
 //   { role: 'assistant', content: string|null, tool_calls: [{id, function:{name, arguments}}] }
 //   { role: 'tool', tool_call_id, content }
 // Anthropic expects user/assistant only, with structured content blocks for tool_use / tool_result.
+// Returns the reason a request is over the size limits, or null if it fits.
+// Sizes are measured on the serialized form the model would actually see.
+function requestTooLarge(messages: unknown, context: unknown, actionResults: unknown): string | null {
+  const list = Array.isArray(messages) ? messages : [];
+  if (list.length > MAX_MESSAGES) return "Too many messages in this request.";
+  for (const m of list) {
+    if (!m || typeof m !== "object") continue;
+    const msg = m as { role?: string; content?: unknown };
+    const text = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content ?? "");
+    const cap = msg.role === "tool" ? MAX_TOOL_RESULT_CHARS : MAX_USER_MESSAGE_CHARS;
+    if (text.length > cap) return "A message in this request is too long.";
+  }
+  const results = Array.isArray(actionResults) ? actionResults : [];
+  if (results.length > MAX_ACTION_RESULTS) return "Too many tool results in this request.";
+  for (const r of results) {
+    if (JSON.stringify(r ?? "").length > MAX_TOOL_RESULT_CHARS) return "A tool result in this request is too long.";
+  }
+  if (context != null && JSON.stringify(context).length > MAX_CONTEXT_BYTES) {
+    return "The app context sent with this message is too large.";
+  }
+  return null;
+}
+
 function toAnthropicMessages(openaiMessages: OpenAIMessage[]): AnthropicMessage[] {
   const out: AnthropicMessage[] = [];
   for (const m of openaiMessages) {
@@ -599,6 +635,15 @@ serve(async (req) => {
     }
 
     const { messages, context, action_results } = await req.json();
+
+    {
+      const tooLarge = requestTooLarge(messages, context, action_results);
+      if (tooLarge) {
+        return new Response(JSON.stringify({ error: tooLarge }), {
+          status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // The metering bypass is an operator switch, not a client capability. A
     // request may ASK for it by containing the phrase, which ships in the public
