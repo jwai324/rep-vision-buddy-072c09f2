@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { format, addDays, addWeeks, getDay } from 'date-fns';
 import { ArrowLeft, CalendarIcon, ChevronDown, ChevronRight } from 'lucide-react';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { monthlyOccurrences, sanitizeFrequency } from '@/utils/programFrequency';
 import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, DayFrequency, ProgramDay } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { Button } from '@/components/ui/button';
@@ -196,8 +197,10 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
     const endDate = addWeeks(startDate, durationWeeks);
 
     days.forEach((day) => {
-      if (!day.frequency) return;
-      const freq = day.frequency;
+      // Same validation as the scheduler: an interval of 0 was an infinite
+      // loop here too, on every keystroke in the builder.
+      const freq = sanitizeFrequency(day.frequency);
+      if (!freq) return;
 
       if (freq.type === 'weekly') {
         // Find the first occurrence of this weekday on or after startDate
@@ -221,16 +224,10 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
           current = addDays(current, freq.interval);
         }
       } else if (freq.type === 'monthly') {
-        let current = new Date(startDate);
-        current.setDate(freq.dayOfMonth);
-        if (current < startDate) {
-          current.setMonth(current.getMonth() + 1);
-        }
-        while (current < endDate) {
-          events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-          const next = new Date(current);
-          next.setMonth(next.getMonth() + 1);
-          current = next;
+        // Same helper the scheduler uses, so the preview cannot disagree with
+        // the calendar it previews (and neither overflows a short month).
+        for (const date of monthlyOccurrences(startDate, endDate, freq.dayOfMonth)) {
+          events.push({ date, label: day.label, templateId: day.templateId });
         }
       }
     });

@@ -5,21 +5,29 @@ interface ErrorBoundaryProps {
   children: React.ReactNode;
   fallbackTitle?: string;
   onReset?: () => void;
+  /**
+   * A second, destructive way out (e.g. "Discard workout"). It takes two taps:
+   * the first turns the label into a confirmation, the second fires. Try Again
+   * is the button people reach for reflexively, so it must never be the one
+   * that throws data away.
+   */
+  destructiveAction?: { label: string; confirmLabel?: string; onClick: () => void };
 }
 
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  armed: boolean;
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, armed: false };
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
+    return { hasError: true, error, armed: false };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -27,8 +35,17 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, armed: false });
     this.props.onReset?.();
+  };
+
+  handleDestructive = () => {
+    if (!this.state.armed) {
+      this.setState({ armed: true });
+      return;
+    }
+    this.setState({ hasError: false, error: null, armed: false });
+    this.props.destructiveAction?.onClick();
   };
 
   render() {
@@ -45,6 +62,13 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           <Button variant="outline" onClick={this.handleReset}>
             Try Again
           </Button>
+          {this.props.destructiveAction && (
+            <Button variant="ghost" className="text-set-failure" onClick={this.handleDestructive}>
+              {this.state.armed
+                ? (this.props.destructiveAction.confirmLabel ?? `Tap again to ${this.props.destructiveAction.label.toLowerCase()}`)
+                : this.props.destructiveAction.label}
+            </Button>
+          )}
         </div>
       );
     }

@@ -14,11 +14,18 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const rows: Record<string, unknown[]> = {};
 let upsertOutcome: 'ok' | 'error' | 'throw' = 'ok';
 const upserts: { table: string; payload: unknown }[] = [];
+/** Every chained call on every builder, in order: [table, method, ...args]. */
+const chain: unknown[][] = [];
 
 function makeBuilder(table: string) {
-  const result = Promise.resolve({ data: rows[table] ?? [], error: null });
+  // An insert echoes its rows back (with ids) from .select(); anything else
+  // reads the table's seeded rows.
+  let inserted: Record<string, unknown>[] | null = null;
   const builder: Record<string, unknown> = {
-    then: (...args: Parameters<Promise<unknown>['then']>) => result.then(...args),
+    then: (...args: Parameters<Promise<unknown>['then']>) => {
+      const data = inserted ? inserted.map((r, i) => ({ id: `new-${i}`, ...r })) : (rows[table] ?? []);
+      return Promise.resolve({ data, error: null }).then(...args);
+    },
     upsert: (payload: unknown) => {
       upserts.push({ table, payload });
       if (upsertOutcome === 'throw') return Promise.reject(new TypeError('Failed to fetch'));
@@ -26,9 +33,10 @@ function makeBuilder(table: string) {
         upsertOutcome === 'error' ? { error: { message: 'network' } } : { error: null },
       );
     },
+    insert: (payload: Record<string, unknown>[]) => { inserted = payload; chain.push([table, 'insert', payload.length]); return builder; },
   };
-  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'update', 'delete', 'insert']) {
-    builder[m] = () => builder;
+  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'update', 'delete', 'gte', 'lte', 'neq', 'or', 'not', 'in']) {
+    builder[m] = (...args: unknown[]) => { chain.push([table, m, ...args]); return builder; };
   }
   return builder;
 }
@@ -51,6 +59,7 @@ const templateRow = (name: string) => ({ id: 'tpl-1', name, exercises: [] });
 beforeEach(() => {
   localStorage.clear();
   upserts.length = 0;
+  chain.length = 0;
   upsertOutcome = 'ok';
   for (const k of Object.keys(rows)) delete rows[k];
   vi.clearAllMocks();
@@ -286,5 +295,67 @@ describe('setActiveProgram', () => {
     // The optimistic value must not survive a failed write: the coach and the
     // dashboard would otherwise show a program the server never recorded.
     expect(result.current.activeProgramId).toBe('prog-old');
+  });
+});
+
+describe('saveProgram regenerates the calendar without erasing history', () => {
+  const today = new Date();
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  it('keeps completed and past rows, inserts the new ones first, and retires only upcoming uncompleted rows', async () => {
+    rows['future_workouts'] = [
+      { id: 'done-1', program_id: 'prog-1', user_id: 'u1', date: '2026-01-05', template_id: 't', label: 'A', completed: true, recovery_activities: null, created_at: '', updated_at: '' },
+      { id: 'other-prog', program_id: 'prog-2', user_id: 'u1', date: '2099-01-01', template_id: 't', label: 'B', completed: false, recovery_activities: null, created_at: '', updated_at: '' },
+    ];
+    const { result } = await mounted();
+    chain.length = 0;
+
+    const program: WorkoutProgram = {
+      id: 'prog-1', name: 'Weekly', durationWeeks: 1, startDate: ymd(today),
+      days: [{ label: 'A', templateId: 't', frequency: { type: 'weekly', weekday: today.getDay() } }],
+    };
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.saveProgram(program); });
+    expect(ok).toBe(true);
+
+    // The completed past row and the other program's row survive; the new
+    // rows are present.
+    const ids = result.current.futureWorkouts.map(fw => fw.id);
+    expect(ids).toContain('done-1');
+    expect(ids).toContain('other-prog');
+    expect(ids.some(id => id.startsWith('new-'))).toBe(true);
+
+    // Insert happened before the delete, and the delete was scoped.
+    const order = chain.filter(c => c[0] === 'future_workouts').map(c => c[1]);
+    expect(order.indexOf('insert')).toBeLessThan(order.indexOf('delete'));
+    const afterDelete = chain.slice(chain.findIndex(c => c[0] === 'future_workouts' && c[1] === 'delete'));
+    expect(afterDelete.some(c => c[1] === 'gte' && c[2] === 'date' && c[3] === ymd(today))).toBe(true);
+    expect(afterDelete.some(c => c[1] === 'or' && String(c[2]).includes('completed.eq.false'))).toBe(true);
+    expect(afterDelete.some(c => c[1] === 'not' && c[2] === 'id' && c[3] === 'in')).toBe(true);
+  });
+});
+
+describe('updatePreferences sends only what changed', () => {
+  it('writes the changed column and the user id, nothing else', async () => {
+    const { result } = await mounted();
+    upserts.length = 0;
+
+    await act(async () => { await result.current.updatePreferences({ weightUnit: 'kg' }); });
+
+    const write = upserts.find(u => u.table === 'user_settings');
+    expect(write).toBeTruthy();
+    // A whole-row write here is what let one device revert another's newer
+    // settings, and what dragged active_program_id along on every save.
+    expect(Object.keys(write!.payload as object).sort()).toEqual(['user_id', 'weight_unit']);
+  });
+
+  it('carries the streak adjustment along when the mode changes, since it is derived from it', async () => {
+    const { result } = await mounted();
+    upserts.length = 0;
+
+    await act(async () => { await result.current.updatePreferences({ streakMode: 'weekly' }); });
+
+    const keys = Object.keys(upserts.find(u => u.table === 'user_settings')!.payload as object).sort();
+    expect(keys).toEqual(['streak_adjustment', 'streak_adjustment_set_at', 'streak_mode', 'user_id']);
   });
 });

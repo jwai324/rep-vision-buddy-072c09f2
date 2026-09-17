@@ -5,6 +5,7 @@ import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
 import { restoredSessionScreen } from '@/utils/sessionRestore';
+import { useScreenHistory } from '@/hooks/useScreenHistory';
 import { MinimizedSessionBar, MINIMIZED_BAR_HEIGHT } from '@/components/MinimizedSessionBar';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
@@ -124,7 +125,26 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     return id;
   };
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
-  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  const [screen, setScreen] = useScreenHistory<Screen>({ type: 'dashboard' }, {
+    isRoot: s => s.type === 'dashboard',
+    // Back out of a live workout minimizes it; the cache is untouched, so the
+    // bar appears on the screen beneath and Resume brings it straight back.
+    onUserBack: leaving => { if (leaving.type === 'activeSession') setMinimizedSession(leaving); },
+  });
+
+  // #11: a template a program still schedules, or a custom exercise a template
+  // still uses, cannot be deleted — the reference would dangle, today's workout
+  // would vanish from the calendar, and the exercise would log under its raw id.
+  const templateUsedBy = React.useCallback((id: string) => {
+    const names = storage.programs.filter(p => p.days.some(d => d.templateId === id)).map(p => p.name);
+    const manual = storage.futureWorkouts.filter(fw => fw.templateId === id && fw.programId === 'manual' && !fw.completed).length;
+    if (manual > 0) names.push(`${manual} scheduled workout${manual === 1 ? '' : 's'}`);
+    return names;
+  }, [storage.programs, storage.futureWorkouts]);
+  const exerciseUsedBy = React.useCallback(
+    (exerciseId: string) => storage.templates.filter(t => t.exercises.some(e => e.exerciseId === exerciseId)).map(t => t.name),
+    [storage.templates],
+  );
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
 
   // Screens swap inside one window-scrolled container, so a screen opened
@@ -379,7 +399,18 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       )}
 
       {screen.type === 'activeSession' && (
-        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); }}>
+        <ErrorBoundary
+          fallbackTitle="Workout session error"
+          // The boundary unmounted the session when it threw; remounting with
+          // `resumed` rebuilds it from the cache instead of from nothing. This
+          // used to clear the cache — the recovery button was the destructive one.
+          onReset={() => setScreen(s => s.type === 'activeSession' ? { ...s, resumed: true } : s)}
+          destructiveAction={{
+            label: 'Discard workout',
+            confirmLabel: 'Tap again to discard this workout',
+            onClick: () => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); },
+          }}
+        >
           <ActiveSession
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
@@ -599,6 +630,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onStart={startFromTemplate}
           onEdit={(t) => setScreen({ type: 'templateBuilder', template: t })}
           onDelete={storage.deleteTemplate}
+          usedBy={templateUsedBy}
           onDuplicate={(t) => {
             const copy = { ...t, id: crypto.randomUUID(), name: `${t.name} (2)` };
             storage.saveTemplate(copy);
@@ -746,6 +778,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onAdd={addCustomExercise}
           onUpdate={updateCustomExercise}
           onDelete={deleteCustomExercise}
+          usedBy={exerciseUsedBy}
           onBack={() => setScreen({ type: 'settings' })}
           history={storage.history}
           weightUnit={storage.preferences.weightUnit}

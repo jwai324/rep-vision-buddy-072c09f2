@@ -362,6 +362,27 @@ two program builders wait for that answer before clearing their draft, showing
 upsert lost the whole program — and, for the AI builder, the credits spent
 generating it — and then activated a program id that was never written.
 
+**Regenerating a program's calendar never touches its history.** `saveProgram`
+rewrites `future_workouts` only from today forward and only for rows not yet
+completed; past and completed rows carry the done flags, recovery activities
+and hand-shifted dates that *are* the program's record. The new rows go in
+before the old ones come out, so a failed insert leaves the previous schedule
+standing rather than an empty server behind a screen still showing rows.
+
+**A write that lands while a load is in flight wins.** Every write bumps
+`writeSerial`; a load that started before a write and resolved after it is
+discarded and run once more (at most twice), instead of painting rows that are
+older than the screen — which then got pushed back to the server by the next
+preferences save.
+
+**Settings and profile writes send only the changed columns.** An upsert with a
+partial payload updates just those columns on conflict, so a phone and a laptop
+stop overwriting each other's newer values with whatever each had cached.
+`updatePreferences` builds its payload from the keys it was given (plus the
+streak-adjustment pair whenever the mode or target changes, since those are
+derived from it) and never includes `active_program_id`, which has its own
+write path.
+
 `saveSession` resolves `false` rather than throwing when the write does not
 land, so the caller can keep the summary screen and the local session cache
 alive for a retry; every call site in `Index.tsx` awaits it and bails on false.
@@ -384,6 +405,53 @@ press Save again. Anything that resolves a template's fate (a later
 successful save, a delete) must clear its queued entry, or the replay
 resurrects it.
 
+## Program frequencies are validated at every door
+
+`src/utils/programFrequency.ts` is the one place a `DayFrequency` is checked
+(`sanitizeFrequency`) and the one place "the Nth of each month" is turned into
+dates (`monthlyOccurrences`). Both exist because the same value arrives from
+four sources that never agreed — the builder, the coach's `create_program`
+tool, a shared program and a restored backup — and the last two carry whatever
+was in the file. An `everyNDays` interval of 0 was an infinite loop in the
+scheduler *and* in the builder's calendar preview (a denial of service by share
+link); a monthly day of 29–31 overflowed a short month and then drifted the
+whole schedule by a day or three for good. `generateFutureWorkouts`, the
+builder preview, `remapProgram` (share import) and `importUserData` (backup)
+all go through it. An invalid frequency makes the day *unscheduled*, never
+dropped.
+
+## Screens live in the browser's history
+
+`useScreenHistory` (`src/hooks/useScreenHistory.ts`) is `Index.tsx`'s screen
+state. Each change of screen *type* pushes one history entry and `popstate`
+restores the screen beneath, so the Android Back button goes back a screen
+instead of leaving the site. Two in-app navigations map onto the browser's own
+history rather than pushing: going home unwinds to the root entry (so Back at
+home still exits rather than replaying the trip), and an in-app back to the
+screen directly beneath goes back one entry. A same-type update (a detail
+screen swapping its payload) changes state in place and adds nothing. Back out
+of a live workout **minimizes** it — the cache is untouched and the bar appears
+on the screen beneath. Deep links and reload survival are deliberately out of
+scope: a reload starts at the root.
+
+## Editing a past workout is not a workout
+
+`ActiveSession` in edit mode (`editSession` set) must stay out of everything
+that belongs to a live session: it does not register with the session
+controller (the coach saw a fake `active_session` and its tools rewrote
+history), re-ticking a set gets a no-op `startTimer` (no sound, OS
+notification or permission prompt), and the fields the edit screen has no
+control for — `location`, `isRestDay`, `recoveryActivities` — ride through from
+the session being edited. Duration is written back only when the minutes field
+was actually changed; the field shows whole minutes, and writing it back
+unconditionally truncated 32:40 to 32:00 on every edit.
+
+A live workout keeps two clocks. `startTime` is the timer's anchor and is
+shifted forward on every resume so elapsed stays continuous; `trueStart`
+(cached as `trueStartTimestamp`) is when the workout began. `startedAt` and the
+session's date come from `trueStart`; duration is `now − startTime` while
+running and the frozen figure while paused, so a pause is never counted.
+
 ## The session cache belongs to one workout
 
 `ActiveSession` rebuilds a workout from `ActiveSessionCache` — blocks, name,
@@ -399,6 +467,10 @@ it was written for, and two rules keep it that way:
   overwrite Push Day with them, and marked Push Day's scheduled entry done.
 - **`ActiveSession` refuses a cache whose `templateId` does not match its own.**
   A backstop for any path that forgets the first rule.
+- **The session's error boundary recovers from the cache.** Try Again remounts
+  the screen with `resumed` set; discarding is a separate two-tap action on the
+  same fallback. Try Again used to clear the cache — the recovery button was the
+  destructive one.
 
 Starting a new workout while one is in progress now asks first
 (`openSession` → the confirm dialog), keyed on the cache rather than on
@@ -699,6 +771,13 @@ close on their own:
   `target_user_id`, bound the amount, and grant only from a verified receipt.
 - **Balances consumed at the 3x rate were never corrected.** Nothing has re-priced
   them; see the token-price note above for what the data does and does not allow.
+
+**Deleting something still referenced is refused, not cascaded.** A template a
+program schedules (or a manual scheduled workout points at) and a custom
+exercise a template uses cannot be deleted from their screens; the dialog names
+what references them. `Index.tsx` computes `templateUsedBy` / `exerciseUsedBy`
+from loaded state. Cascading was the alternative and was rejected: the
+reference is a plan the user made, not a row to clean up.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
 gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated

@@ -10,6 +10,7 @@ import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
 import { getFutureWorkoutsCompletedBySession } from '@/utils/scheduledWorkout';
 import { readStorageCache, writeStorageCache, type CachedStorage } from '@/utils/storageCache';
 import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate, type PendingTemplateWrite } from '@/utils/pendingTemplateWrites';
+import { monthlyOccurrences, sanitizeFrequency } from '@/utils/programFrequency';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
 type TemplateRow = Database['public']['Tables']['workout_templates']['Row'];
@@ -54,8 +55,10 @@ export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWork
   const { days: normalizedDays } = normalizeProgramDays(program.days);
 
   normalizedDays.forEach((day) => {
-    if (!day.frequency) return;
-    const freq = day.frequency;
+    // Frequencies stored verbatim from a share or a backup have not been
+    // validated; an interval of 0 below is an infinite loop.
+    const freq = sanitizeFrequency(day.frequency);
+    if (!freq) return;
 
     const addEvent = (date: Date) => {
       const dateStr = format(date, 'yyyy-MM-dd');
@@ -87,15 +90,7 @@ export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWork
         current = addDays(current, freq.interval);
       }
     } else if (freq.type === 'monthly') {
-      let current = new Date(start);
-      current.setDate(freq.dayOfMonth);
-      if (current < start) current.setMonth(current.getMonth() + 1);
-      while (current < endDate) {
-        addEvent(current);
-        const next = new Date(current);
-        next.setMonth(next.getMonth() + 1);
-        current = next;
-      }
+      monthlyOccurrences(start, endDate, freq.dayOfMonth).forEach(addEvent);
     }
   });
 
@@ -340,6 +335,12 @@ export function useStorage() {
   // `dataTrusted` because callers outside the hook write whole rows from this
   // state and would otherwise overwrite the real ones with placeholders.
   const [snapshotTrusted, setSnapshotTrusted] = useState(false);
+  // Bumped by every write. A load that started before a write and resolved
+  // after it holds rows older than the screen; applying them would discard
+  // the save, and the next preferences write would then push the stale values
+  // back to the server. Such a load is thrown away and run once more.
+  const writeSerial = useRef(0);
+  const noteWrite = useCallback(() => { writeSerial.current += 1; }, []);
 
   // Load all data from Supabase on mount / user change
   useEffect(() => {
@@ -376,9 +377,11 @@ export function useStorage() {
     // the new account's data.
     let cancelled = false;
 
+    let reloads = 0;
     const load = async () => {
       if (cached) setRefreshing(true);
       else setLoading(true);
+      const serialAtStart = writeSerial.current;
       try {
         const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes, measurementsRes] = await Promise.all([
           supabase.from('workout_sessions').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
@@ -393,6 +396,13 @@ export function useStorage() {
           supabase.from('body_measurements').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
         ]);
         if (cancelled) return;
+        if (writeSerial.current !== serialAtStart && reloads < 2) {
+          // Something was saved while these rows were in flight. They are
+          // already stale; fetch again rather than paint over the save.
+          reloads += 1;
+          void load();
+          return;
+        }
 
         // postgrest-js resolves with an `error` payload rather than throwing,
         // so nothing above reaches the catch. Reading only `.data` meant a
@@ -512,6 +522,7 @@ export function useStorage() {
   // payload, and an unhandled rejection here used to leave the caller believing
   // the save had succeeded while it tore down the only other copy.
   const saveSessionNow = useCallback(async (session: WorkoutSession, origin: { templateId?: string | null } = {}): Promise<boolean> => {
+    noteWrite();
     if (!user) return false;
     let error: unknown = null;
     try {
@@ -604,6 +615,7 @@ export function useStorage() {
    * screen unmounts moments later and so has nowhere of its own to retry from.
    */
   const saveTemplate = useCallback(async (template: WorkoutTemplate): Promise<boolean> => {
+    noteWrite();
     if (!user) return false;
     let error: unknown = null;
     try {
@@ -630,6 +642,7 @@ export function useStorage() {
   }, [user, applyTemplateLocally]);
 
   const deleteTemplate = useCallback(async (id: string) => {
+    noteWrite();
     if (!user) return;
     const { error } = await supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id);
     if (error) {
@@ -648,6 +661,7 @@ export function useStorage() {
   // resolved, so a failed upsert lost the whole program — and, for the AI
   // builder, the credits spent generating it.
   const saveProgram = useCallback(async (program: WorkoutProgram): Promise<boolean> => {
+    noteWrite();
     if (!user) return false;
     // Snapshot the pre-save version so we can decide whether the schedule
     // shape (days, frequencies, duration, startDate) actually changed. A pure
@@ -687,25 +701,18 @@ export function useStorage() {
     // changed. Pure renames / metadata edits skip the destructive path.
     if (!scheduleChanged) return true;
 
-    // Regenerate future workouts for this program.
-    // Delete old ones for this program — check for errors so a failed delete
-    // doesn't leave orphaned rows alongside the fresh insert.
-    const { error: deleteError } = await supabase
-      .from('future_workouts')
-      .delete()
-      .eq('program_id', program.id)
-      .eq('user_id', user.id);
-    if (deleteError) {
-      console.error('[useStorage] future workouts delete error:', deleteError);
-      toast.error('Could not refresh program schedule');
-      // The program itself is saved; only its calendar is stale.
-      return true;
-    }
-
-    const newFws = generateFutureWorkouts(program);
+    // Regenerate this program's calendar from today forward. Two rules that
+    // the old delete-everything-then-insert broke:
+    //  - Past and completed rows are the program's history (done flags,
+    //    recovery activities, dates the user shifted by hand). They stay.
+    //  - The new rows go in before the old ones come out, so a failed insert
+    //    leaves the previous schedule in place rather than an empty server
+    //    behind a screen that still shows rows.
     const today = format(new Date(), 'yyyy-MM-dd');
-    const futureFws = newFws.filter(fw => fw.date >= today);
+    const futureFws = generateFutureWorkouts(program).filter(fw => fw.date >= today);
 
+    let insertedIds: string[] = [];
+    let inserted: FutureWorkout[] = [];
     if (futureFws.length > 0) {
       const rows = futureFws.map(fw => ({
         user_id: user.id,
@@ -716,18 +723,40 @@ export function useStorage() {
         completed: false,
       }));
       const { data, error: insertError } = await supabase.from('future_workouts').insert(rows).select();
-      if (insertError) {
+      if (insertError || !data) {
         console.error('[useStorage] future workouts insert error:', insertError);
+        toast.error('Program saved, but its calendar could not be updated');
+        return true;
       }
-      if (data) {
-        setFutureWorkouts(prev => {
-          const withoutOld = prev.filter(fw => fw.programId !== program.id);
-          return [...withoutOld, ...data.map(mapFutureWorkout)].sort((a, b) => a.date.localeCompare(b.date));
-        });
-      }
-    } else {
-      setFutureWorkouts(prev => prev.filter(fw => fw.programId !== program.id));
+      inserted = data.map(mapFutureWorkout);
+      insertedIds = inserted.map(fw => fw.id);
     }
+
+    // Retire the superseded upcoming rows: this program, today or later, not
+    // completed, and not one of the rows just written.
+    let retire = supabase
+      .from('future_workouts')
+      .delete()
+      .eq('program_id', program.id)
+      .eq('user_id', user.id)
+      .gte('date', today)
+      .or('completed.is.null,completed.eq.false');
+    if (insertedIds.length > 0) retire = retire.not('id', 'in', `(${insertedIds.join(',')})`);
+    const { error: deleteError } = await retire;
+    if (deleteError) {
+      console.error('[useStorage] future workouts delete error:', deleteError);
+      toast.error('Program saved, but old scheduled workouts could not be cleared');
+      // The new rows are in; the stale ones will show until the next save.
+    }
+
+    setFutureWorkouts(prev => {
+      const kept = prev.filter(fw =>
+        fw.programId !== program.id
+        || fw.date < today
+        || fw.completed === true
+        || (deleteError != null && !insertedIds.includes(fw.id)));
+      return [...kept, ...inserted].sort((a, b) => a.date.localeCompare(b.date));
+    });
     return true;
   }, [user, programs]);
 
@@ -756,6 +785,7 @@ export function useStorage() {
   // defined — see the "clearedAdjustmentAt" effect.
 
   const deleteProgram = useCallback(async (id: string) => {
+    noteWrite();
     if (!user) return;
     await supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id);
     const { error } = await supabase.from('workout_programs').delete().eq('id', id).eq('user_id', user.id);
@@ -769,6 +799,7 @@ export function useStorage() {
   }, [user]);
 
   const setActiveProgram = useCallback(async (id: string | null): Promise<boolean> => {
+    noteWrite();
     if (!user) return false;
     const previous = activeProgramId;
     setActiveProgramIdState(id);
@@ -786,6 +817,7 @@ export function useStorage() {
   }, [user, activeProgramId]);
 
   const deleteSession = useCallback(async (id: string) => {
+    noteWrite();
     if (!user) return;
     // Capture for rollback
     const previous = history;
@@ -800,6 +832,7 @@ export function useStorage() {
   }, [user, history]);
 
   const updateFutureWorkout = useCallback(async (updated: FutureWorkout) => {
+    noteWrite();
     if (!user) return;
     const { error } = await supabase.from('future_workouts').upsert({
       id: updated.id,
@@ -824,6 +857,7 @@ export function useStorage() {
   }, [user]);
 
   const deleteFutureWorkout = useCallback(async (id: string) => {
+    noteWrite();
     if (!user) return;
     const { error } = await supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id);
     if (error) {
@@ -835,6 +869,7 @@ export function useStorage() {
   }, [user]);
 
   const pushProgramBack = useCallback(async (programId: string, fromDate: string, days: number) => {
+    noteWrite();
     if (!user || days <= 0) return;
     // Already-completed entries are a record of what happened on that date, so
     // they stay put even though they still live in future_workouts.
@@ -896,6 +931,7 @@ export function useStorage() {
   }, [user, futureWorkouts, programs]);
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
+    noteWrite();
     if (!user) return;
     // This upserts the whole settings row from local state. After a load that
     // failed with nothing cached, that state is DEFAULT_PREFERENCES, so writing
@@ -939,21 +975,33 @@ export function useStorage() {
     }
 
     setPreferencesState(updated);
-    const { error } = await supabase.from('user_settings').upsert({
-      user_id: user.id,
-      active_program_id: activeProgramId,
-      weight_unit: updated.weightUnit,
-      default_rest_seconds: updated.defaultRestSeconds,
-      default_drop_sets_enabled: updated.defaultDropSetsEnabled,
-      streak_mode: updated.streakMode,
-      streak_weekly_target: updated.streakWeeklyTarget,
-      streak_adjustment: updated.streakAdjustment,
-      streak_adjustment_set_at: updated.streakAdjustmentSetAt,
-      tutorial_completed: updated.tutorialCompleted,
-      hide_timers: updated.hideTimers,
-      custom_locations: updated.customLocations as unknown as Database['public']['Tables']['user_settings']['Insert']['custom_locations'],
-      sticky_notes: updated.stickyNotes as unknown as Database['public']['Tables']['user_settings']['Insert']['sticky_notes'],
-    }, { onConflict: 'user_id' });
+    // Only the columns that changed on this device are sent. An upsert with a
+    // partial payload updates just those columns on conflict, so a phone and a
+    // laptop no longer overwrite each other's newer values with whatever each
+    // had cached — and active_program_id, which has its own write path, is not
+    // dragged along. The streak-adjustment columns ride with any mode/target
+    // change because the reconciliation above derives them from it.
+    const changedKeys = new Set<keyof UserPreferences>(Object.keys(prefs) as (keyof UserPreferences)[]);
+    if (modeOrTargetChanging) { changedKeys.add('streakAdjustment'); changedKeys.add('streakAdjustmentSetAt'); }
+    const column: Record<keyof UserPreferences, keyof SettingsRow> = {
+      weightUnit: 'weight_unit',
+      defaultRestSeconds: 'default_rest_seconds',
+      defaultDropSetsEnabled: 'default_drop_sets_enabled',
+      streakMode: 'streak_mode',
+      streakWeeklyTarget: 'streak_weekly_target',
+      streakAdjustment: 'streak_adjustment',
+      streakAdjustmentSetAt: 'streak_adjustment_set_at',
+      tutorialCompleted: 'tutorial_completed',
+      hideTimers: 'hide_timers',
+      customLocations: 'custom_locations',
+      stickyNotes: 'sticky_notes',
+    };
+    const payload: Record<string, unknown> = { user_id: user.id };
+    for (const key of changedKeys) payload[column[key]] = updated[key];
+    const { error } = await supabase.from('user_settings').upsert(
+      payload as Database['public']['Tables']['user_settings']['Insert'],
+      { onConflict: 'user_id' },
+    );
     if (error) {
       console.error('[useStorage] updatePreferences error:', error);
       toast.error('Failed to save preferences');
@@ -988,6 +1036,7 @@ export function useStorage() {
   }, [user, loadedOk, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
+    noteWrite();
     if (!user) return;
     // Same whole-row hazard as updatePreferences: DEFAULT_PROFILE would blank
     // goal, equipment, injuries, age, height and drop the subscription tier.
@@ -1003,20 +1052,19 @@ export function useStorage() {
       : { ...merged, hybridGoals: [] };
     const previous = profile;
     setProfileState(updated);
-    const profilePayload: ProfileInsert = {
-      user_id: user.id,
-      display_name: updated.displayName,
-      goal: updated.goal,
-      hybrid_goals: updated.hybridGoals,
-      coach_notes: updated.coachNotes,
-      experience_level: updated.experienceLevel,
-      equipment: updated.equipment,
-      injuries: updated.injuries,
-      age: updated.age,
-      sex: updated.sex,
-      height_cm: updated.heightCm,
-      subscription_tier: updated.subscriptionTier,
+    // Same partial-payload rule as updatePreferences: send what this call is
+    // changing, not the whole cached row. hybrid_goals rides along whenever
+    // the goal changes, since the merge above may have just cleared it.
+    const profileColumn: Record<keyof UserProfile, keyof ProfileInsert> = {
+      displayName: 'display_name', goal: 'goal', hybridGoals: 'hybrid_goals',
+      coachNotes: 'coach_notes', experienceLevel: 'experience_level',
+      equipment: 'equipment', injuries: 'injuries', age: 'age', sex: 'sex',
+      heightCm: 'height_cm', subscriptionTier: 'subscription_tier',
     };
+    const profileKeys = new Set<keyof UserProfile>(Object.keys(updates) as (keyof UserProfile)[]);
+    if (profileKeys.has('goal')) profileKeys.add('hybridGoals');
+    const profilePayload: ProfileInsert = { user_id: user.id };
+    for (const key of profileKeys) (profilePayload as Record<string, unknown>)[profileColumn[key]] = updated[key];
     const { error } = await supabase
       .from('profiles')
       .upsert(profilePayload, { onConflict: 'user_id' });
@@ -1028,6 +1076,7 @@ export function useStorage() {
   }, [user, profile, snapshotTrusted]);
 
   const addBodyMeasurement = useCallback(async (weightKg: number, date?: string): Promise<boolean> => {
+    noteWrite();
     if (!user) return false;
     const id = crypto.randomUUID();
     const dateStr = date || format(new Date(), 'yyyy-MM-dd');
@@ -1046,6 +1095,7 @@ export function useStorage() {
   }, [user, bodyMeasurements]);
 
   const deleteBodyMeasurement = useCallback(async (id: string): Promise<boolean> => {
+    noteWrite();
     if (!user) return false;
     const previous = bodyMeasurements;
     setBodyMeasurements(prev => prev.filter(m => m.id !== id));
