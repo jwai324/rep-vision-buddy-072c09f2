@@ -657,15 +657,21 @@ export function useStorage() {
     const existing = programs.find(p => p.id === program.id);
     const scheduleChanged = !existing || !isProgramScheduleEqual(existing, program);
 
-    const { error } = await supabase.from('workout_programs').upsert({
-      id: program.id,
-      user_id: user.id,
-      name: program.name,
-      days: program.days as unknown as Database['public']['Tables']['workout_programs']['Insert']['days'],
-      duration_weeks: program.durationWeeks ?? 8,
-      start_date: program.startDate ?? null,
-      schedule: program.schedule as unknown as Database['public']['Tables']['workout_programs']['Insert']['schedule'] ?? null,
-    });
+    let error: unknown = null;
+    try {
+      ({ error } = await supabase.from('workout_programs').upsert({
+        id: program.id,
+        user_id: user.id,
+        name: program.name,
+        days: program.days as unknown as Database['public']['Tables']['workout_programs']['Insert']['days'],
+        duration_weeks: program.durationWeeks ?? 8,
+        start_date: program.startDate ?? null,
+        schedule: program.schedule as unknown as Database['public']['Tables']['workout_programs']['Insert']['schedule'] ?? null,
+      }));
+    } catch (e) {
+      // An offline fetch rejects rather than resolving with an error payload.
+      error = e;
+    }
     if (error) {
       console.error('[useStorage] saveProgram error:', error);
       toast.error('Failed to save program');

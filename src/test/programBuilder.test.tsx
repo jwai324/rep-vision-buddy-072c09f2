@@ -293,3 +293,30 @@ describe('a new program', () => {
     });
   });
 });
+
+describe('saving the program waits for the row', () => {
+  const DRAFT_KEY = 'program_builder_draft';
+
+  it('keeps the draft and says nothing on a failed save, so the user can retry', async () => {
+    const { props } = renderBuilder({ onSave: vi.fn().mockResolvedValue(false) });
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Program' }));
+
+    await waitFor(() => expect(props.onSave).toHaveBeenCalledTimes(1));
+    // The builder used to clear the draft and toast "saved" before the write
+    // resolved, so a failed upsert lost the whole program.
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(props.onCancel).not.toHaveBeenCalled();
+  });
+
+  it('clears the draft and confirms once the save has landed', async () => {
+    renderBuilder({ onSave: vi.fn().mockResolvedValue(true) });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Program' }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+  });
+});

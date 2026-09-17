@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { readPendingTemplates, queuePendingTemplate } from '@/utils/pendingTemplateWrites';
-import type { WorkoutSession, WorkoutTemplate } from '@/types/workout';
+import type { WorkoutSession, WorkoutTemplate, WorkoutProgram } from '@/types/workout';
 
 const USER_ID = 'user-1';
 
@@ -27,7 +27,7 @@ function makeBuilder(table: string) {
       );
     },
   };
-  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'update', 'delete']) {
+  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'update', 'delete', 'insert']) {
     builder[m] = () => builder;
   }
   return builder;
@@ -228,5 +228,63 @@ describe('saveSession', () => {
     expect(threw).toBe(false);
     expect(saved).toBe(false);
     expect(result.current.history).toEqual([]);
+  });
+});
+
+describe('saveProgram', () => {
+  // Zero weeks schedules nothing, which keeps the test on the row write itself
+  // rather than the calendar regeneration that follows it.
+  const program = (over: Partial<WorkoutProgram> = {}): WorkoutProgram => ({
+    id: 'prog-1', name: 'Push/Pull', days: [], durationWeeks: 0, ...over,
+  });
+
+  it('resolves true and keeps the program once the row is written', async () => {
+    const { result } = await mounted();
+    let saved: boolean | undefined;
+    await act(async () => { saved = await result.current.saveProgram(program()); });
+
+    expect(saved).toBe(true);
+    expect(upserts.filter(u => u.table === 'workout_programs')).toHaveLength(1);
+    expect(result.current.programs.map(p => p.id)).toEqual(['prog-1']);
+  });
+
+  it('resolves false when the server rejects the write, so the builder keeps its draft', async () => {
+    const { result } = await mounted();
+    upsertOutcome = 'error';
+    let saved: boolean | undefined;
+    await act(async () => { saved = await result.current.saveProgram(program()); });
+
+    expect(saved).toBe(false);
+    expect(result.current.programs).toEqual([]);
+  });
+
+  it('resolves false rather than throwing when the request never reaches the server', async () => {
+    const { result } = await mounted();
+    upsertOutcome = 'throw';
+    let saved: boolean | undefined;
+    let threw = false;
+    await act(async () => {
+      try { saved = await result.current.saveProgram(program()); } catch { threw = true; }
+    });
+
+    expect(threw).toBe(false);
+    expect(saved).toBe(false);
+  });
+});
+
+describe('setActiveProgram', () => {
+  it('rolls the active id back and reports failure when the settings write fails', async () => {
+    const { result } = await mounted();
+    await act(async () => { await result.current.setActiveProgram('prog-old'); });
+    expect(result.current.activeProgramId).toBe('prog-old');
+
+    upsertOutcome = 'error';
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.setActiveProgram('prog-new'); });
+
+    expect(ok).toBe(false);
+    // The optimistic value must not survive a failed write: the coach and the
+    // dashboard would otherwise show a program the server never recorded.
+    expect(result.current.activeProgramId).toBe('prog-old');
   });
 });
