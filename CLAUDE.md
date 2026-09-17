@@ -426,6 +426,54 @@ which is what heals a session that started before the custom library landed.
 Anything the AI coach renders is subject to the same rule — the proposal diff
 card resolves through the merged lookup, not `EXERCISE_DATABASE`.
 
+## Exercise demonstration clips
+
+Every exercise can carry a short looping demonstration clip (`ExerciseClip`,
+at the top of the exercise detail modal). The media lives in the public
+`exercise-clips` Storage bucket and the map in `public.exercise_clips`, one
+row per exercise keyed by the app-side exercise id. There is no `exercises`
+table (the built-in library is bundled), so `exercise_id` is a text key that
+the ingest validates against `EXERCISE_DATABASE`, not a foreign key.
+
+Each clip exists in two encodes, and **`CLIP_MODE` in
+`src/config/exerciseClips.ts` decides which one the app serves**: `'opaque'`
+(the H.264 mp4, figure flattened onto white, rendered on an explicit white
+card) or `'alpha'` (the VP9 webm with an alpha channel, over a transparent
+container that follows the theme). The default is `'opaque'` because it
+renders correctly everywhere; `'alpha'` is a one-line flip once VP9 alpha has
+been verified on iOS WKWebView, which is untested. The two are never offered
+as sibling `<source>` elements: a browser can decode VP9 and still ignore the
+alpha channel, which renders an opaque black box with no error to fall back
+on, so the choice has to be explicit.
+
+The component reserves its box from the row's `width`/`height` before anything
+loads, shows the poster (a transparent WebP) under `prefers-reduced-motion`
+and on any media error, and never leaves a dead black rectangle. The detail
+modal reserves a 16:9 placeholder while the row is looked up and falls back to
+the legacy `ExerciseAnimation` for an exercise that has no clip yet.
+
+**Dev override.** In a dev build (`npm run dev`, or `npm run build:dev` for a
+Capacitor test build) `?clipmode=alpha|opaque|reset` on the page URL, or the
+toggle under Settings → Developer, overrides `CLIP_MODE`; the choice is
+persisted in localStorage so it survives navigation. `import.meta.env.DEV`
+gates it, so a production build compiles the override out (the strings are
+absent from the bundle). Tests: `src/test/clipMode.test.ts`,
+`src/test/exerciseClip.test.tsx`.
+
+**Readable, not enumerable.** The bucket is public-read but has no
+`storage.objects` policy: objects are served by exact path, while list and
+search go through RLS and find nothing. Object names carry a content hash, and
+the table, the only map of paths, is readable by `authenticated` only. Do not
+add a SELECT policy on `storage.objects` for this bucket, and do not grant the
+table to `anon`; the vendor licence covers use in the app, not redistribution.
+
+**Ingest.** `scripts/clips/` (README there) encodes a vendor directory with
+`encode.sh`, extracts posters, uploads and upserts. It is resumable stage by
+stage, resolves filenames to exercises by the explicit `clip-map.csv` first and
+exact name match second, and writes everything it will not decide to
+`review.tsv`. It needs the service role key exported in the shell; it is
+one-time tooling and not in the bundle. Tests: `src/test/clipNaming.test.ts`.
+
 ## Exercise input modes
 
 `getExerciseInputMode` turns an exercise's `measurementType` into one of the
@@ -492,6 +540,32 @@ null) in the generate-program prompt. `carryTemplateOnlyFields` in
 being replaced on an `edit_template`, because the model can omit what it wasn't
 asked to change — without it a wholesale edit unlinked every superset in the
 template.
+
+## The program editor and the shared template editor
+
+`ProgramBuilder` is laid out like `ProgramView`: one tile per day holding the
+day's fields, with a footer strip that opens the day's template for editing in
+place. The exercise list is `TemplateExerciseEditor`, which the standalone
+`TemplateBuilder` renders too, so the two surfaces cannot drift. The editor is
+controlled — it holds no template state and expresses every edit as a
+functional update through `onChange` — which is what lets the program editor
+keep one draft per *template id* and show it in every tile that uses the
+template. It resolves exercise names through the lookup at render time rather
+than writing them back into the blocks, because a write-back registers as an
+edit to an owner that treats any change as unsaved.
+
+A template edited inside a tile is saved from that tile (`onSaveTemplate`,
+wired to `useStorage.saveTemplate`), not by Save Program: templates are shared
+by id, so the save reaches every program that uses the template, and the
+expanded tile says so. Save Program refuses while a referenced template still
+has an unsaved draft, rather than dropping or saving it silently. The editor's
+localStorage draft (`program_builder_draft`) carries the template drafts too,
+keyed to the program; the back arrow clears it, as Cancel did.
+
+The exercise picker and the superset linker open as fixed full-screen overlays
+from inside the editor, because a tile cannot hand over the whole screen the
+way the old builder's early return did. The block conversions live in
+`src/utils/templateBlocks.ts`. Tests: `src/test/programBuilder.test.tsx`.
 
 ## Volume exclusions
 

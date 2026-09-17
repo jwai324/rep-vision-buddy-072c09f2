@@ -1,0 +1,295 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
+import { ProgramBuilder } from '@/components/ProgramBuilder';
+import type { WorkoutProgram, WorkoutSession, WorkoutTemplate } from '@/types/workout';
+
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
+vi.mock('@/contexts/CustomExercisesContext', () => {
+  const exercises: never[] = [];
+  return {
+    useCustomExercisesContext: () => ({
+      exercises, loading: false,
+      addExercise: vi.fn(), deleteExercise: vi.fn(), updateExercise: vi.fn(),
+    }),
+  };
+});
+
+const BENCH = 'flat-barbell-bench-press';
+const FLY = 'dumbbell-fly';
+const ROW = 'barbell-bent-over-row';
+
+const push: WorkoutTemplate = {
+  id: 'tpl-push',
+  name: 'Push Day',
+  exercises: [
+    { exerciseId: BENCH, sets: 3, targetReps: 10, setType: 'normal', restSeconds: 90, targetWeight: 60 },
+    { exerciseId: FLY, sets: 3, targetReps: 12, setType: 'normal', restSeconds: 60 },
+  ],
+};
+
+const pull: WorkoutTemplate = {
+  id: 'tpl-pull',
+  name: 'Pull Day',
+  exercises: [
+    { exerciseId: ROW, sets: 3, targetReps: 10, setType: 'normal', restSeconds: 90 },
+  ],
+};
+
+const pastSession: WorkoutSession = {
+  id: 'sess-1',
+  date: '2026-09-01',
+  exercises: [{ exerciseId: BENCH, exerciseName: 'Flat Barbell Bench Press', sets: [] }],
+  duration: 0, totalVolume: 0, totalSets: 0, totalReps: 0,
+};
+
+const program: WorkoutProgram = {
+  id: 'prog-1',
+  name: 'Push/Pull',
+  durationWeeks: 8,
+  days: [
+    { label: 'Chest', templateId: 'tpl-push', frequency: { type: 'weekly', weekday: 1 } },
+    { label: 'Rest', templateId: 'rest' },
+    { label: 'Back', templateId: 'tpl-pull' },
+    { label: 'Redo', templateId: `session:${pastSession.id}` },
+  ],
+};
+
+type Props = React.ComponentProps<typeof ProgramBuilder>;
+
+function renderBuilder(over: Partial<Props> = {}) {
+  const props: Props = {
+    templates: [push, pull],
+    history: [pastSession],
+    initial: program,
+    weightUnit: 'kg',
+    onSave: vi.fn(),
+    onSaveTemplate: vi.fn().mockResolvedValue(true),
+    onCancel: vi.fn(),
+    ...over,
+  };
+  return { ...render(<ProgramBuilder {...props} />), props };
+}
+
+/** The tile for day N, found from its heading. */
+const tile = (n: number) => screen.getByText(`Day ${n}`).closest('[data-testid="program-day"]') as HTMLElement;
+/** The footer strip that opens a tile's template; null on a day that has none. */
+const footer = (n: number) => tile(n).querySelector('button[aria-expanded]') as HTMLButtonElement | null;
+/** A tile's reps cells, top to bottom. They are the only numeric inputs bound to reps. */
+const repsCells = (t: HTMLElement) => within(t).getAllByPlaceholderText(/^(Fail|—)$/)
+  .filter(el => (el as HTMLInputElement).inputMode === 'numeric') as HTMLInputElement[];
+
+beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+
+describe('ProgramBuilder tiles', () => {
+  it('lays each day out as a tile with its fields, and a template footer only where there is a template', () => {
+    renderBuilder();
+
+    expect(screen.getByRole('heading', { name: 'Edit Program' })).toBeInTheDocument();
+    expect(screen.getByText('4 days — 3 training, 1 rest · 8 weeks')).toBeInTheDocument();
+
+    expect(screen.getByLabelText('Label for day 1')).toHaveValue('Chest');
+    expect(screen.getByLabelText('Workout for day 1')).toHaveValue('tpl-push');
+    expect(screen.getByLabelText('Frequency for day 1')).toHaveValue('weekly');
+    expect(screen.getByLabelText('Workout for day 2')).toHaveValue('rest');
+    expect(screen.getByLabelText('Workout for day 4')).toHaveValue('session:sess-1');
+
+    expect(footer(1)).toHaveTextContent('Push Day · 2 exercises');
+    expect(footer(2)).toBeNull();
+    expect(footer(3)).toHaveTextContent('Pull Day · 1 exercise');
+    expect(footer(4)).toBeNull();
+
+    // Collapsed: the exercises are not on screen.
+    expect(screen.queryByText('Flat Barbell Bench Press')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show Calendar Preview' })).toBeInTheDocument();
+  });
+
+  it('shows the weekday buttons only for a day scheduled weekly', () => {
+    renderBuilder();
+
+    expect(within(tile(1)).getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(tile(3)).queryByRole('button', { name: 'Mon' })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Frequency for day 3'), { target: { value: 'weekly' } });
+    expect(within(tile(3)).getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(tile(3)).getByRole('button', { name: 'Wed' }));
+    expect(within(tile(3)).getByRole('button', { name: 'Wed' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(tile(3)).getByRole('button', { name: 'Mon' })).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.change(screen.getByLabelText('Frequency for day 3'), { target: { value: 'monthly' } });
+    expect(within(tile(3)).queryByRole('button', { name: 'Mon' })).toBeNull();
+    expect(within(tile(3)).getByText('of each month')).toBeInTheDocument();
+  });
+
+  it('opens several tiles at once and shows each template for editing', () => {
+    renderBuilder();
+
+    fireEvent.click(footer(1)!);
+    fireEvent.click(footer(3)!);
+
+    expect(footer(1)).toHaveAttribute('aria-expanded', 'true');
+    expect(footer(3)).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Flat Barbell Bench Press')).toBeInTheDocument();
+    expect(screen.getByText('Dumbbell Fly')).toBeInTheDocument();
+    expect(screen.getByText('Barbell Bent-Over Row')).toBeInTheDocument();
+    expect(screen.getAllByText('Changes apply everywhere this template is used.')).toHaveLength(2);
+    // The saved target is what the cells start from.
+    expect(repsCells(tile(1))[0]).toHaveValue(10);
+
+    fireEvent.click(footer(1)!);
+    expect(screen.queryByText('Flat Barbell Bench Press')).toBeNull();
+    expect(screen.getByText('Barbell Bent-Over Row')).toBeInTheDocument();
+  });
+
+  it('keeps the tiles below a removed day open', () => {
+    renderBuilder();
+
+    fireEvent.click(footer(3)!);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove day 1' }));
+
+    expect(screen.queryByText('Day 4')).toBeNull();
+    expect(screen.getByLabelText('Workout for day 2')).toHaveValue('tpl-pull');
+    expect(footer(2)).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Barbell Bent-Over Row')).toBeInTheDocument();
+  });
+});
+
+describe('editing a template inside its tile', () => {
+  it('saves from the tile and clears the unsaved mark', async () => {
+    const { props, rerender } = renderBuilder();
+
+    fireEvent.click(footer(1)!);
+    const save = within(tile(1)).getByRole('button', { name: 'Save template' });
+    expect(save).toBeDisabled();
+    expect(within(tile(1)).queryByText('Unsaved changes')).toBeNull();
+
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    expect(within(tile(1)).getByText('Unsaved changes')).toBeInTheDocument();
+    expect(save).toBeEnabled();
+
+    fireEvent.click(save);
+    await waitFor(() => expect(props.onSaveTemplate).toHaveBeenCalledTimes(1));
+    const saved = vi.mocked(props.onSaveTemplate).mock.calls[0][0];
+    expect(saved.id).toBe('tpl-push');
+    expect(saved.name).toBe('Push Day');
+    expect(saved.exercises[0]).toMatchObject({ exerciseId: BENCH, sets: 3, targetReps: 8, targetWeight: 60, restSeconds: 90 });
+    expect(saved.exercises[1]).toMatchObject({ exerciseId: FLY, sets: 3, targetReps: 12 });
+
+    await waitFor(() => expect(within(tile(1)).queryByText('Unsaved changes')).toBeNull());
+    expect(toast.success).toHaveBeenCalledWith('Template "Push Day" saved.');
+
+    // The store hands the saved template back; the tile now reads from it.
+    rerender(<ProgramBuilder {...props} templates={[saved, pull]} />);
+    expect(repsCells(tile(1))[0]).toHaveValue(8);
+    expect(within(tile(1)).getByRole('button', { name: 'Save template' })).toBeDisabled();
+  });
+
+  it('discards an unsaved edit and puts the saved template back', () => {
+    const { props } = renderBuilder();
+
+    fireEvent.click(footer(1)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    fireEvent.click(within(tile(1)).getByRole('button', { name: 'Discard' }));
+
+    expect(repsCells(tile(1))[0]).toHaveValue(10);
+    expect(within(tile(1)).queryByText('Unsaved changes')).toBeNull();
+    expect(props.onSaveTemplate).not.toHaveBeenCalled();
+  });
+
+  it('shows one edit in every tile that uses the template', () => {
+    renderBuilder({
+      initial: {
+        ...program,
+        days: [
+          { label: 'A', templateId: 'tpl-push' },
+          { label: 'B', templateId: 'tpl-push' },
+        ],
+      },
+    });
+
+    fireEvent.click(footer(1)!);
+    fireEvent.click(footer(2)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+
+    expect(repsCells(tile(2))[0]).toHaveValue(8);
+    expect(within(tile(1)).getByText('Unsaved changes')).toBeInTheDocument();
+    expect(within(tile(2)).getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('refuses to save the program while a template edit is unsaved', async () => {
+    const { props } = renderBuilder();
+
+    fireEvent.click(footer(1)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Program' }));
+
+    expect(props.onSave).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Push Day'));
+
+    fireEvent.click(within(tile(1)).getByRole('button', { name: 'Save template' }));
+    await waitFor(() => expect(within(tile(1)).queryByText('Unsaved changes')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Save Program' }));
+
+    expect(props.onSave).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(props.onSave).mock.calls[0][0]).toMatchObject({
+      id: 'prog-1',
+      name: 'Push/Pull',
+      durationWeeks: 8,
+      days: program.days,
+    });
+  });
+
+  it('keeps an unsaved template edit in the draft across a reload', () => {
+    const { unmount } = renderBuilder();
+
+    fireEvent.click(footer(1)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    unmount();
+
+    renderBuilder();
+    expect(within(tile(1)).getByText('Unsaved changes')).toBeInTheDocument();
+    fireEvent.click(footer(1)!);
+    expect(repsCells(tile(1))[0]).toHaveValue(8);
+  });
+
+  it('drops the draft, template edits included, when the user backs out', () => {
+    const { props } = renderBuilder();
+
+    fireEvent.click(footer(1)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    expect(localStorage.getItem('program_builder_draft')).toContain('tpl-push');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to programs' }));
+
+    expect(props.onCancel).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('program_builder_draft')).toBeNull();
+  });
+});
+
+describe('a new program', () => {
+  it('uses the same tile layout, with the calendar preview and a save gated on a name', () => {
+    const { props } = renderBuilder({ initial: undefined });
+
+    expect(screen.getByRole('heading', { name: 'New Program' })).toBeInTheDocument();
+    expect(screen.getByText('Day 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Workout for day 1')).toHaveValue('rest');
+    expect(footer(1)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show Calendar Preview' }));
+    expect(screen.getByRole('button', { name: 'Hide Calendar Preview' })).toBeInTheDocument();
+
+    const save = screen.getByRole('button', { name: 'Save Program' });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Program name'), { target: { value: 'Starter' } });
+    fireEvent.change(screen.getByLabelText('Workout for day 1'), { target: { value: 'tpl-pull' } });
+    expect(footer(1)).toHaveTextContent('Pull Day · 1 exercise');
+
+    fireEvent.click(save);
+    expect(props.onSave).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(props.onSave).mock.calls[0][0]).toMatchObject({
+      name: 'Starter',
+      days: [{ label: 'Day 1', templateId: 'tpl-pull' }],
+    });
+  });
+});

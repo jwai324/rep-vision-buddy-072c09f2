@@ -173,6 +173,51 @@ export type Database = {
         }
         Relationships: []
       }
+      exercise_clips: {
+        Row: {
+          created_at: string
+          duration_ms: number
+          exercise_id: string
+          height: number
+          mp4_path: string
+          poster_path: string
+          slug: string
+          source_bg: string
+          source_file: string
+          updated_at: string
+          webm_path: string
+          width: number
+        }
+        Insert: {
+          created_at?: string
+          duration_ms: number
+          exercise_id: string
+          height: number
+          mp4_path: string
+          poster_path: string
+          slug: string
+          source_bg: string
+          source_file: string
+          updated_at?: string
+          webm_path: string
+          width: number
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number
+          exercise_id?: string
+          height?: number
+          mp4_path?: string
+          poster_path?: string
+          slug?: string
+          source_bg?: string
+          source_file?: string
+          updated_at?: string
+          webm_path?: string
+          width?: number
+        }
+        Relationships: []
+      }
       future_workouts: {
         Row: {
           completed: boolean | null
@@ -641,6 +686,27 @@ export type Database = {
           name?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      workout_templates_superset_backup: {
+        Row: {
+          backed_up_at: string | null
+          exercises: Json | null
+          id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          backed_up_at?: string | null
+          exercises?: Json | null
+          id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          backed_up_at?: string | null
+          exercises?: Json | null
+          id?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
