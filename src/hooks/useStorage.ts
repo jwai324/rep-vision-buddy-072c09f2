@@ -650,6 +650,9 @@ export function useStorage() {
       return false;
     }
     clearPendingTemplate(user.id, template.id);
+    // Applied again once the row is on the server: a load that resolved in
+    // between read the pre-write rows and painted over the early apply.
+    applyTemplateLocally(template);
     return true;
   }, [user, applyTemplateLocally]);
 

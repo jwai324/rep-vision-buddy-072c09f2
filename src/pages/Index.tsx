@@ -613,16 +613,23 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         const canPersist = hasValidProgramId && !isManual;
 
         const handleUpdate = canPersist
-          ? (incoming: FutureWorkout) => {
+          ? async (incoming: FutureWorkout) => {
               let next = incoming;
               if (incoming.id.startsWith('synthetic-')) {
+                // Minted before the write so a rest day's activity taps all
+                // share one id; put the synthetic row back if the write does
+                // not land, or the screen shows a reschedule that never saved.
                 next = { ...incoming, id: crypto.randomUUID() };
                 setScreen(prev => prev.type === 'futureWorkoutDetail'
                   ? { ...prev, futureWorkout: next }
                   : prev);
               }
               // The detail screen waits for this before it says "done".
-              return storage.updateFutureWorkout(next);
+              const ok = await storage.updateFutureWorkout(next);
+              if (!ok && next !== incoming) {
+                setScreen(prev => prev.type === 'futureWorkoutDetail' ? { ...prev, futureWorkout: fw } : prev);
+              }
+              return ok;
             }
           : undefined;
 
