@@ -395,10 +395,12 @@ export function templateExerciseIssues(e: ExerciseInput, name: string): string[]
     issues.push(`${name}: targetReps must be a whole number from ${minReps} to ${maxReps} (got ${JSON.stringify(e.targetReps)}).`);
   }
   const [minRest, maxRest] = NUMERIC_BOUNDS.restSeconds;
-  if (e.restSeconds !== undefined && !isInt(e.restSeconds, minRest, maxRest)) {
+  // `!= null`: the model sometimes nulls an optional field rather than
+  // omitting it, and a null defaults downstream exactly as an omission does.
+  if (e.restSeconds != null && !isInt(e.restSeconds, minRest, maxRest)) {
     issues.push(`${name}: restSeconds must be a whole number from ${minRest} to ${maxRest} (got ${JSON.stringify(e.restSeconds)}).`);
   }
-  if (e.targetWeight !== undefined && !isLoad(e.targetWeight)) {
+  if (e.targetWeight != null && !isLoad(e.targetWeight)) {
     issues.push(`${name}: targetWeight must be a number of 0 or more (got ${JSON.stringify(e.targetWeight)}).`);
   }
   return issues;
@@ -441,7 +443,9 @@ export function remapSupersetGroups<T extends { supersetGroup?: number }>(
   for (const e of additions) {
     if (typeof e.supersetGroup === 'number') incomingCounts.set(e.supersetGroup, (incomingCounts.get(e.supersetGroup) ?? 0) + 1);
   }
-  let next = taken.size ? Math.max(...taken) + 1 : 1;
+  // Above every id in play, the template's and the additions' alike: a fresh
+  // id equal to a non-colliding incoming pair's would fuse the two.
+  let next = Math.max(0, ...taken, ...incomingCounts.keys()) + 1;
   const fresh = new Map<number, number>();
   return additions.map(e => {
     const g = e.supersetGroup;
@@ -1019,7 +1023,7 @@ export const ChatProvider: React.FC<{
           exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
           sets: e.sets,
           targetReps: e.targetReps,
-          setType: e.setType || 'normal',
+          setType: normalizeSetType(e.setType),
           restSeconds: e.restSeconds ?? 90,
           targetRpe: e.targetRpe,
           supersetGroup: e.supersetGroup,
@@ -1406,12 +1410,22 @@ export const ChatProvider: React.FC<{
           // The proposal replaces the whole exercise list, so it can only be
           // applied to the template it was built from. An edit made in the
           // builder between the proposal and Apply used to be overwritten.
-          if (templateChangedSince(proposal.before.template, currentTemplate(proposal.before.template.id))) {
+          // A rename sends no list: it is applied to whatever the template
+          // holds now, so an append from the same reply applied first does
+          // not make the rename refuse.
+          const editArgs = proposal.arguments as { exercises?: unknown[] } | undefined;
+          const renameOnly = !(editArgs?.exercises && editArgs.exercises.length > 0);
+          const current = currentTemplate(proposal.before.template.id);
+          if (renameOnly ? !current : templateChangedSince(proposal.before.template, current)) {
             invalidate(TEMPLATE_CHANGED_MESSAGE);
             return;
           }
           const t = proposal.after.template;
-          await storage.saveTemplate({ id: t.id, name: t.name, exercises: persistable(t.exercises) });
+          await storage.saveTemplate({
+            id: t.id,
+            name: t.name,
+            exercises: renameOnly && current ? current.exercises : persistable(t.exercises),
+          });
           break;
         }
         case 'add_exercises_to_template': {

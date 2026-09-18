@@ -71,6 +71,21 @@ describe('remapSupersetGroups', () => {
     expect(out.map(e => e.supersetGroup)).toEqual([5, 5, undefined]);
   });
 
+  it('never hands a colliding pair the id a non-colliding incoming pair already carries', () => {
+    // Template holds group 1; the model numbers its two new pairs 1 and 2.
+    // The fresh id for the colliding pair used to be 2, fusing it with the
+    // second pair into one four-exercise superset.
+    const out = remapSupersetGroups(existing, [
+      ex({ exerciseId: 'd', supersetGroup: 1 }), ex({ exerciseId: 'e', supersetGroup: 1 }),
+      ex({ exerciseId: 'f', supersetGroup: 2 }), ex({ exerciseId: 'g', supersetGroup: 2 }),
+    ]);
+    const groups = out.map(e => e.supersetGroup);
+    expect(groups[0]).toBe(groups[1]);
+    expect(groups[2]).toBe(groups[3]);
+    expect(groups[0]).not.toBe(groups[2]);
+    expect(groups).not.toContain(1);
+  });
+
   it('lets a single addition join an existing superset', () => {
     const out = remapSupersetGroups(existing, [ex({ exerciseId: 'd', supersetGroup: 1 })]);
     expect(out[0].supersetGroup).toBe(1);
