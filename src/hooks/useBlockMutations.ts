@@ -44,12 +44,14 @@ interface UseBlockMutationsOptions {
   onSetIndicesShifted?: (blockIdx: number, remap: (setIdx: number) => number | null) => void;
   /** The same for exercises: removing one shifts every block after it up. */
   onBlockIndicesShifted?: (remap: (blockIdx: number) => number | null) => void;
+  /** A set's drops moved or went; `setIdx` null means every set of the block. */
+  onDropIndicesShifted?: (blockIdx: number, setIdx: number | null, remap: (dropIdx: number) => number | null) => void;
 }
 
 export function useBlockMutations(
   blocks: ExerciseBlock[],
   setBlocks: React.Dispatch<React.SetStateAction<ExerciseBlock[]>>,
-  { weightUnit, defaultDropSetsEnabled, defaultRestSeconds, customExercises, startTimer, onSetIndicesShifted, onBlockIndicesShifted }: UseBlockMutationsOptions,
+  { weightUnit, defaultDropSetsEnabled, defaultRestSeconds, customExercises, startTimer, onSetIndicesShifted, onBlockIndicesShifted, onDropIndicesShifted }: UseBlockMutationsOptions,
 ) {
   const exerciseLookup = useMemo(() => {
     const lookup: Record<string, string> = {};
@@ -181,12 +183,16 @@ export function useBlockMutations(
   }, [setBlocks]);
 
   const removeSet = useCallback((blockIdx: number, setIdx: number) => {
-    let deletedSet: SetRow | null = null;
+    // Read from the render's blocks, not inside the updater: React runs an
+    // updater lazily when the fiber has pending work (a rest-timer tick), and
+    // the Undo toast below then saw nothing to restore.
+    const row = blocks[blockIdx]?.sets[setIdx];
+    if (!row) return;
+    const deletedSet: SetRow = { ...row };
 
     setBlocks(prev => {
       const block = prev[blockIdx];
       if (!block) return prev;
-      deletedSet = { ...block.sets[setIdx] };
 
       return prev.map((b, bi) => {
         if (bi !== blockIdx) return b;
@@ -206,7 +212,7 @@ export function useBlockMutations(
     });
     onSetIndicesShifted?.(blockIdx, i => (i === setIdx ? null : i > setIdx ? i - 1 : i));
 
-    if (deletedSet) {
+    {
       const captured = deletedSet;
       toast('Set deleted', {
         action: {
@@ -229,7 +235,7 @@ export function useBlockMutations(
         },
       });
     }
-  }, [setBlocks, onSetIndicesShifted]);
+  }, [blocks, setBlocks, onSetIndicesShifted]);
 
   const removeDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {
@@ -243,7 +249,8 @@ export function useBlockMutations(
         }),
       };
     }));
-  }, [setBlocks]);
+    onDropIndicesShifted?.(blockIdx, setIdx, d => (d === dropIdx ? null : d > dropIdx ? d - 1 : d));
+  }, [setBlocks, onDropIndicesShifted]);
 
   const addExercise = useCallback((id: ExerciseId) => {
     addMultipleExercises([id]);
@@ -309,7 +316,8 @@ export function useBlockMutations(
       }
       return { ...b, dropSetsEnabled: true };
     }));
-  }, [setBlocks]);
+    if (blocks[blockIdx]?.dropSetsEnabled) onDropIndicesShifted?.(blockIdx, null, () => null);
+  }, [blocks, setBlocks, onDropIndicesShifted]);
 
   const addWarmupSet = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.map((block, bi) => {

@@ -252,6 +252,39 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
     if (!sessionCacheExists()) releaseRestSchedule();
   }, []);
 
+  // The timer and every recorded rest are keyed by row position. When a
+  // mutation moves rows (a warm-up prepended, a set or exercise removed, an
+  // exercise dragged) the keys must move with them, or the live rest bar and
+  // the rest chips render one row off. A rest whose row is gone ends.
+  const remapTimerIds = useCallback((mapId: (id: TimerId) => TimerId | null) => {
+    const t = activeTimerRef.current;
+    if (t) {
+      const id = mapId(t.id);
+      if (id === null) {
+        setActiveTimer(null);
+        releaseRestSchedule();
+      } else if (timerIdKey(id) !== timerIdKey(t.id)) {
+        // Same rest at a new position: the sync effect re-attaches the
+        // scheduler under the new key with the same start, so the clock
+        // does not restart.
+        setActiveTimer({ ...t, id });
+      }
+    }
+    setRestRecords(prev => {
+      let changed = false;
+      const next: Record<string, number> = {};
+      for (const [key, seconds] of Object.entries(prev)) {
+        const parsed = parseTimerIdKey(key);
+        const mapped = parsed ? mapId(parsed) : parsed;
+        if (mapped === null) { changed = true; continue; }
+        const nextKey = mapped ? timerIdKey(mapped) : key;
+        if (nextKey !== key) changed = true;
+        next[nextKey] = seconds;
+      }
+      return changed ? next : prev;
+    });
+  }, [setActiveTimer]);
+
   return {
     activeTimer,
     restRecords,
@@ -262,5 +295,18 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
     extendTimer,
     pauseTimer,
     resumeTimer,
+    remapTimerIds,
+  };
+}
+
+/** Inverse of timerIdKey; undefined for a key that is not one. */
+function parseTimerIdKey(key: string): TimerId | undefined {
+  const m = /^(set|between)-(\d+)-(\d*)-(\d*)$/.exec(key);
+  if (!m) return undefined;
+  return {
+    type: m[1] as TimerId['type'],
+    blockIdx: Number(m[2]),
+    ...(m[3] !== '' ? { setIdx: Number(m[3]) } : {}),
+    ...(m[4] !== '' ? { dropIdx: Number(m[4]) } : {}),
   };
 }

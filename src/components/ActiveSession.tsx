@@ -273,6 +273,8 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // them: a warm-up prepended above a stopwatch set, or a row or exercise
   // deleted above it, left the index on a different row and Stop wrote the
   // time and completion there. A row that is gone ends what was on it.
+  // The rest timer and the recorded rests are keyed by the same positions.
+  const { remapTimerIds } = restTimer;
   const shiftSetIndices = useCallback((blockIdx: number, remap: (setIdx: number) => number | null) => {
     const shifted = <T extends { blockIdx: number; setIdx: number }>(s: T | null): T | null => {
       if (!s || s.blockIdx !== blockIdx) return s;
@@ -281,7 +283,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     };
     setRunningSet(shifted);
     setCountdown(shifted);
-  }, []);
+    remapTimerIds(id => {
+      if (id.blockIdx !== blockIdx || id.setIdx === undefined) return id;
+      const setIdx = remap(id.setIdx);
+      return setIdx === null ? null : setIdx === id.setIdx ? id : { ...id, setIdx };
+    });
+  }, [remapTimerIds]);
   const shiftBlockIndices = useCallback((remap: (blockIdx: number) => number | null) => {
     const shifted = <T extends { blockIdx: number }>(s: T | null): T | null => {
       if (!s) return s;
@@ -290,7 +297,27 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     };
     setRunningSet(shifted);
     setCountdown(shifted);
-  }, []);
+    remapTimerIds(id => {
+      const blockIdx = remap(id.blockIdx);
+      return blockIdx === null ? null : blockIdx === id.blockIdx ? id : { ...id, blockIdx };
+    });
+  }, [remapTimerIds]);
+  const shiftDropIndices = useCallback((blockIdx: number, setIdx: number | null, remap: (dropIdx: number) => number | null) => {
+    const shifted = <T extends { blockIdx: number; setIdx: number; dropIdx?: number }>(s: T | null): T | null => {
+      if (!s || s.blockIdx !== blockIdx || s.dropIdx === undefined) return s;
+      if (setIdx !== null && s.setIdx !== setIdx) return s;
+      const dropIdx = remap(s.dropIdx);
+      return dropIdx === null ? null : dropIdx === s.dropIdx ? s : { ...s, dropIdx };
+    };
+    setRunningSet(shifted);
+    setCountdown(shifted);
+    remapTimerIds(id => {
+      if (id.blockIdx !== blockIdx || id.dropIdx === undefined) return id;
+      if (setIdx !== null && id.setIdx !== setIdx) return id;
+      const dropIdx = remap(id.dropIdx);
+      return dropIdx === null ? null : dropIdx === id.dropIdx ? id : { ...id, dropIdx };
+    });
+  }, [remapTimerIds]);
 
   // Re-ticking a set while editing history must not start a real rest timer
   // (sound, OS notification, permission prompt), so edit mode gets a no-op.
@@ -302,6 +329,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     startTimer: isEditMode ? noopStartTimer : startTimer,
     onSetIndicesShifted: shiftSetIndices,
     onBlockIndicesShifted: shiftBlockIndices,
+    onDropIndicesShifted: shiftDropIndices,
   });
   const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, replaceExercise, toggleDropSets, addWarmupSet } = blockOps;
 
@@ -1007,10 +1035,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       // template can never resolve.
       // Only working sets count: an exercise that got no further than its
       // warm-up is a skipped one, not a template entry of one warm-up set.
+      // Unless the template entry is itself warm-up typed (the coach's tools
+      // allow it): then its warm-up rows are the plan, done as planned.
+      const isWorking = (b: ExerciseBlock, s: SetRow) =>
+        s.completed && (s.type !== 'warmup'
+          || originalTemplateSnapshot.current?.find(e => e.exerciseId === b.exerciseId)?.setType === 'warmup');
       const completedBlocks: FinishedBlockLite[] = withoutLoneSupersets(blocks
-        .filter(b => b.sets.some(s => s.completed && s.type !== 'warmup'))
+        .filter(b => b.sets.some(s => isWorking(b, s)))
         .map(b => {
-          const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
+          const completed = b.sets.filter(s => isWorking(b, s));
           const lastSet = completed[completed.length - 1];
           const lastReps = completed.length > 0 ? parseInt(lastSet.reps) || null : null;
           const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
@@ -1294,13 +1327,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 <FileText className="w-4 h-4" />
                 {workoutNote ? 'Edit Note' : 'Add Note'}
               </button>
-              <button
-                onClick={() => { setHideTimers(prev => { const next = !prev; onUpdateHideTimers?.(next); return next; }); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
-              >
-                <Timer className="w-4 h-4" />
-                {hideTimers ? 'Show Timers' : 'Hide Timers'}
-              </button>
+              {!isEditMode && (
+                <button
+                  onClick={() => { setHideTimers(prev => { const next = !prev; onUpdateHideTimers?.(next); return next; }); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
+                >
+                  <Timer className="w-4 h-4" />
+                  {hideTimers ? 'Show Timers' : 'Hide Timers'}
+                </button>
+              )}
             </PopoverContent>
           </Popover>
           {!isEditMode && (
