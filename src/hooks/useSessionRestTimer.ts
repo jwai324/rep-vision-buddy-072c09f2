@@ -33,6 +33,25 @@ const sessionCacheExists = (): boolean => {
   }
 };
 
+// A storage event hands over freshly parsed objects. Setting them as they
+// come re-renders this tab's cache writer, whose write is the other tab's
+// next storage event — the two rewrite the same session every half-second
+// and whichever wrote last owns the blocks. Only a real change is applied.
+const sameTimer = (a: PersistedTimer | null, b: PersistedTimer | null): boolean => {
+  if (a === null || b === null) return a === b;
+  return timerIdKey(a.id) === timerIdKey(b.id)
+    && a.startedAtEpoch === b.startedAtEpoch
+    && a.duration === b.duration
+    && a.originalDuration === b.originalDuration
+    && a.status === b.status
+    && (a.elapsedAtPause ?? null) === (b.elapsedAtPause ?? null);
+};
+
+const sameRecords = (a: Record<string, number>, b: Record<string, number>): boolean => {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(k => a[k] === b[k]);
+};
+
 /**
  * Rest-timer state for a live session. The scheduling that must survive this
  * hook (worker, sound, notification) lives in `restTimerScheduler`; this hook
@@ -202,11 +221,14 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
         const parsed: ActiveSessionCache = JSON.parse(e.newValue);
         if (parsed.activeTimer !== undefined) {
           const next = parsed.activeTimer ?? null;
-          setActiveTimer(next);
-          if (!next) releaseRestSchedule();
+          if (!sameTimer(activeTimerRef.current, next)) {
+            setActiveTimer(next);
+            if (!next) releaseRestSchedule();
+          }
         }
         if (parsed.restRecords) {
-          setRestRecords(parsed.restRecords);
+          const next = parsed.restRecords;
+          setRestRecords(cur => (sameRecords(cur, next) ? cur : next));
         }
       } catch {
         // ignore malformed

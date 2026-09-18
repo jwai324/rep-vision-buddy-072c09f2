@@ -41,6 +41,17 @@ function groupSizes(runLength: number): number[] {
   return sizes;
 }
 
+/** The group ids that only one item holds. */
+function loneSupersetGroups(items: readonly { supersetGroup?: number }[]): Set<number> {
+  const counts = new Map<number, number>();
+  for (const e of items) {
+    if (e.supersetGroup !== undefined) counts.set(e.supersetGroup, (counts.get(e.supersetGroup) ?? 0) + 1);
+  }
+  const lone = new Set<number>();
+  for (const [group, count] of counts) if (count === 1) lone.add(group);
+  return lone;
+}
+
 /**
  * Clear a `supersetGroup` that only one exercise holds. A superset is a link
  * between two or more; a group of one is left behind when a partner is dropped
@@ -48,17 +59,25 @@ function groupSizes(runLength: number): number[] {
  * builder — and nothing else ever heals it.
  */
 export function withoutLoneSupersets<T extends SupersetCarrier>(exercises: T[]): T[] {
-  const counts = new Map<number, number>();
-  for (const e of exercises) {
-    if (e.supersetGroup !== undefined) counts.set(e.supersetGroup, (counts.get(e.supersetGroup) ?? 0) + 1);
-  }
-  let changed = false;
-  const cleared = exercises.map(e => {
-    if (e.supersetGroup === undefined || counts.get(e.supersetGroup)! > 1) return e;
-    changed = true;
-    return { ...e, supersetGroup: undefined, setType: linkedSetType(e.setType, false) };
-  });
-  return changed ? cleared : exercises;
+  const lone = loneSupersetGroups(exercises);
+  if (lone.size === 0) return exercises;
+  return exercises.map(e => (
+    e.supersetGroup !== undefined && lone.has(e.supersetGroup)
+      ? { ...e, supersetGroup: undefined, setType: linkedSetType(e.setType, false) }
+      : e
+  ));
+}
+
+/**
+ * The same heal for items that carry a group but no set type — a saved
+ * workout's exercise logs, whose set types live on the sets.
+ */
+export function withoutLoneSupersetGroups<T extends { supersetGroup?: number }>(items: T[]): T[] {
+  const lone = loneSupersetGroups(items);
+  if (lone.size === 0) return items;
+  return items.map(e => (
+    e.supersetGroup !== undefined && lone.has(e.supersetGroup) ? { ...e, supersetGroup: undefined } : e
+  ));
 }
 
 /**

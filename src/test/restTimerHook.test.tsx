@@ -181,6 +181,30 @@ describe('useSessionRestTimer and the schedule that outlives it', () => {
     hook.unmount();
   });
 
+  it('leaves its state alone on a cross-tab cache echo that carries nothing new', () => {
+    // The other tab's cache write carries this tab's own timer back. Applying
+    // it as fresh objects re-ran the cache writer here, whose write was the
+    // other tab's next echo — every half-second, for as long as both stayed open.
+    const hook = mountHook();
+    act(() => { hook.result.current.startTimer(SET_ONE, 30); });
+    const timer = hook.result.current.activeTimer;
+    const records = hook.result.current.restRecords;
+
+    const echo = (cache: ActiveSessionCache) => act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: ACTIVE_SESSION_CACHE_KEY, newValue: JSON.stringify(cache) }));
+    });
+
+    echo({ ...cacheWith(timer), restRecords: { ...records } });
+    expect(hook.result.current.activeTimer).toBe(timer);
+    expect(hook.result.current.restRecords).toBe(records);
+
+    // A change made in the other tab is still taken.
+    echo({ ...cacheWith(null), restRecords: { 'set-0-0-': 12 } });
+    expect(hook.result.current.activeTimer).toBeNull();
+    expect(hook.result.current.restRecords).toEqual({ 'set-0-0-': 12 });
+    hook.unmount();
+  });
+
   it('Hide Timers starts the rest without sound or notification', async () => {
     const hook = mountHook(null, true);
     act(() => { hook.result.current.startTimer(SET_ONE, 5); });
