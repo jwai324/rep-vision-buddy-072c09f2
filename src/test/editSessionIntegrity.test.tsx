@@ -64,6 +64,22 @@ describe('editing a past workout', () => {
     renderEdit();
     expect(registerSession).not.toHaveBeenCalled();
   });
+
+  it('leaves startedAt alone when neither the date nor the time was touched', () => {
+    // The time field shows HH:mm; rebuilding startedAt from it on every edit
+    // dropped the seconds and, worse, moved a workout that began before
+    // midnight (startedAt on the 9th, date on the 10th) forward a day each
+    // time it was opened and saved.
+    const crossesMidnight: WorkoutSession = { ...past, startedAt: '2026-09-09T23:50:37.000Z' };
+    const onFinish = vi.fn();
+    render(<ActiveSession exercises={[]} editSession={crossesMidnight} onFinish={onFinish} onCancel={vi.fn()} />);
+
+    fireEvent.click(screen.getByText('Save Changes'));
+
+    const saved = onFinish.mock.calls[0][0] as WorkoutSession;
+    expect(saved.startedAt).toBe('2026-09-09T23:50:37.000Z');
+    expect(saved.date).toBe('2026-09-10');
+  });
 });
 
 describe('pausing a live workout', () => {

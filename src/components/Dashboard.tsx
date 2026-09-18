@@ -7,6 +7,7 @@ import { EXERCISE_DATABASE } from '@/data/exercises';
 import { Button } from '@/components/ui/button';
 import { addDays, addWeeks, format, getDay, isSameDay, startOfWeek } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { programOccurrences } from '@/utils/programFrequency';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { volumeExcludedIds } from '@/utils/volumeExclusions';
@@ -167,48 +168,10 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
 };
 
 // Build all scheduled events from a program's days + frequencies + duration
-function buildProgramEvents(program: WorkoutProgram) {
-  const events: { date: Date; label: string; templateId: string }[] = [];
-  const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
-  const endDate = addWeeks(start, program.durationWeeks ?? 8);
-
-  program.days.forEach((day) => {
-    if (!day.frequency) return;
-    const freq = day.frequency;
-
-    if (freq.type === 'weekly') {
-      const targetDay = freq.weekday;
-      const currentDay = getDay(start);
-      const diff = (targetDay - currentDay + 7) % 7;
-      let current = addDays(start, diff);
-      while (current < endDate) {
-        events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-        current = addDays(current, 7);
-      }
-    } else if (freq.type === 'everyNDays') {
-      const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(start);
-      let current = new Date(origin);
-      while (current < endDate) {
-        if (current >= start) {
-          events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-        }
-        current = addDays(current, freq.interval);
-      }
-    } else if (freq.type === 'monthly') {
-      let current = new Date(start);
-      current.setDate(freq.dayOfMonth);
-      if (current < start) current.setMonth(current.getMonth() + 1);
-      while (current < endDate) {
-        events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-        const next = new Date(current);
-        next.setMonth(next.getMonth() + 1);
-        current = next;
-      }
-    }
-  });
-
-  return events;
-}
+// Only for a program with no future_workouts rows yet (an import, or a
+// schedule not regenerated): the same walker the scheduler uses, so what the
+// strip shows is what a save would write.
+const buildProgramEvents = (program: WorkoutProgram) => programOccurrences(program);
 
 const WeeklyProgramCalendar: React.FC<{
   program: WorkoutProgram | null;

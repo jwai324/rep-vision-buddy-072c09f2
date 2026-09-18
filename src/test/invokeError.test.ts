@@ -8,9 +8,26 @@ const httpError = (status: number, body: unknown) =>
   });
 
 describe('describeInvokeError', () => {
-  it('names running out of credits, so the user does not retry and pay again', async () => {
+  it("names running out of credits in the server's own words, so the user does not retry and pay again", async () => {
     const e = await describeInvokeError(httpError(402, { error: "You're out of AI credits.", balance_exhausted: true }));
+    expect(e.message).toBe("You're out of AI credits.");
+  });
+
+  it('does not promise a monthly reset when the server says nothing about one', async () => {
+    const e = await describeInvokeError(httpError(402, { balance_exhausted: true }));
     expect(e.message).toMatch(/out of AI credits/);
+    expect(e.message).not.toMatch(/month/);
+  });
+
+  it("keeps a 5xx body's internals off the screen", async () => {
+    const e = await describeInvokeError(httpError(500, { error: 'ANTHROPIC_API_KEY is not configured' }));
+    expect(e.message).not.toMatch(/ANTHROPIC/);
+    expect(e.message).toMatch(/server error/);
+  });
+
+  it("reads the gateway's 401, which has no error field, as an expired session", async () => {
+    const e = await describeInvokeError(httpError(401, { code: 401, message: 'Invalid JWT' }));
+    expect(e.message).toMatch(/session has expired/);
   });
 
   it("surfaces the server's own sentence for a cut-off reply", async () => {
@@ -23,8 +40,12 @@ describe('describeInvokeError', () => {
     expect(e.message).toMatch(/busy right now/);
   });
 
-  it('falls back to the generic message for an unknown failure', async () => {
-    const e = await describeInvokeError(httpError(500, 'not json at all' as unknown));
+  it('falls back to the generic message when the body is not JSON', async () => {
+    // A gateway's HTML error page, not a JSON string: this is what makes
+    // clone().json() reject and exercises the catch branch.
+    const e = await describeInvokeError(Object.assign(new Error('Edge Function returned a non-2xx status code'), {
+      context: new Response('<html><body>Bad Gateway</body></html>', { status: 404 }),
+    }));
     expect(e.message).toBe('Edge Function returned a non-2xx status code');
   });
 

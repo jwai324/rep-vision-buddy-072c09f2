@@ -43,8 +43,8 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 That workflow took its project ref from a `SUPABASE_PROJECT_REF` secret that was never set, so from 2026-07-16 (when it was added) to 2026-09-06 all 20 of its runs died on "Cannot find project ref" and it deployed nothing, ever. It now reads the ref from `supabase/config.toml`, which is the single source of truth. Nothing was watching it fail: the error-triage routine's post-commit check is scoped to `ci.yml` by design, and this workflow never even runs on a triage commit because `supabase/functions/**` is on that routine's never-touch list. The routine's §4 health sweep now reports any red workflow on `main`.
 
-**A merge to `main` that touches `supabase/functions/**` now deploys both
-functions.** That is new as of 2026-09-14 and it changes how to think about
+**A merge to `main` that touches `supabase/functions/**` now deploys all three
+functions (`ai-coach`, `generate-program`, `exercise-gif`).** That is new as of 2026-09-14 and it changes how to think about
 server-side changes here: they are no longer inert until someone remembers, but
 they also go live the moment the PR lands, with no separate gate. A migration a
 function depends on must therefore be applied *before* the merge, not after.
@@ -146,7 +146,11 @@ which the gate itself prevented, so "will retry in 5 minutes" was a lie until
 reload. A 413 (`requestTooLarge` on the server) is the message's fault, not the
 service's, so it is shown and never counts toward the lockout. The counters are
 read from refs because the error path runs long after the render that created
-the closure. Tests: `src/test/aiChatLockout.test.tsx`.
+the closure. Clearing the chat ends the turn in flight but does **not** lift
+the lockout — the trash icon must not be a one-tap way around it. The session
+lookup (`auth.getSession`) runs inside the timer and the abort too: auth-js's
+lock can hang, and that used to leave the coach loading until a reload. Tests:
+`src/test/aiChatLockout.test.tsx`.
 
 ### `generate-program`
 
@@ -282,7 +286,7 @@ Server-side secrets (set via `supabase secrets set`, never in `.env`):
 | Secret                       | Used by             | Purpose                                            |
 | ---------------------------- | ------------------- | -------------------------------------------------- |
 | `ANTHROPIC_API_KEY`          | `ai-coach`, `generate-program` | Anthropic API key                       |
-| `EXERCISE_GIF_API_KEY`       | `exercise-gif`      | RapidAPI key for exercise GIFs; unset = feature off |
+| `EXERCISE_GIF_API_KEY`       | `exercise-gif`      | RapidAPI key for exercise GIFs; unset = feature off. Mint a fresh key: the old `VITE_` one is in every past bundle |
 | `METERING_BYPASS_USER_IDS`   | `ai-coach`          | Operator metering bypass; unset = off (see below)  |
 | `GRANT_TOKENS_SECRET`        | `grant-tokens`      | Header gate on the Phase 1 purchase stub           |
 | `SUPABASE_URL`               | Auto-set            |                                                    |
@@ -365,11 +369,17 @@ shape of anything cached means bumping `CACHE_VERSION`.
 **Sign-out clears everything that belongs to the user.** The snapshot and the
 pending-template queue are keyed by user id and clear themselves, but the
 in-progress workout cache and the builder, chat and bug-report drafts are not.
-`src/utils/localDrafts.ts` lists every such key and `signOut` clears them all;
-a new draft key added anywhere in the app belongs in that list, or the next
-account on a shared phone inherits it — for the session cache, that meant
-resuming the previous user's half-finished workout and being able to save it
-into their own history.
+`src/utils/localDrafts.ts` lists every such key; a new draft key added
+anywhere in the app belongs in that list, or the next account on a shared
+phone inherits it — for the session cache, that meant resuming the previous
+user's half-finished workout and being able to save it into their own history.
+The clearing runs from the **`SIGNED_OUT` event** in `AuthContext`, not from
+the Sign Out button: auth-js also ends the session by itself when a refresh is
+refused — which is what signing out on any *other* device does to this one,
+the default scope being global — and it emits the event in every open tab.
+The button waits for `auth.signOut()` to succeed before clearing anything;
+offline it resolves with an error and keeps the session, and wiping the
+workout first would have lost it for nothing.
 
 **`saveProgram` and `setActiveProgram` resolve `false` on failure** and the
 two program builders wait for that answer before clearing their draft, showing
@@ -382,7 +392,12 @@ rewrites `future_workouts` only from today forward and only for rows not yet
 completed; past and completed rows carry the done flags, recovery activities
 and hand-shifted dates that *are* the program's record. The new rows go in
 before the old ones come out, so a failed insert leaves the previous schedule
-standing rather than an empty server behind a screen still showing rows.
+standing rather than an empty server behind a screen still showing rows. The
+old rows are retired by `created_at < ` the timestamp the server stamped on the
+new ones — never by a list of the new ids, which grew with the program until
+the URL was refused (48 weeks of daily rows is a 13 KB query string), and a
+refused delete doubled every date. A workout already completed on or after
+today is not scheduled a second time beside its completed row.
 
 **A write that lands while a load is in flight wins.** Every write bumps
 `writeSerial`; a load that started before a write and resolved after it is
@@ -423,31 +438,63 @@ resurrects it.
 ## Program frequencies are validated at every door
 
 `src/utils/programFrequency.ts` is the one place a `DayFrequency` is checked
-(`sanitizeFrequency`) and the one place "the Nth of each month" is turned into
-dates (`monthlyOccurrences`). Both exist because the same value arrives from
-four sources that never agreed — the builder, the coach's `create_program`
-tool, a shared program and a restored backup — and the last two carry whatever
-was in the file. An `everyNDays` interval of 0 was an infinite loop in the
-scheduler *and* in the builder's calendar preview (a denial of service by share
+(`sanitizeFrequency`) and the one place a frequency is turned into dates
+(`frequencyOccurrences`, with `programOccurrences` / `programOccurrencesOn` on
+top of it). Both exist because the same value arrives from four sources that
+never agreed — the builder, the coach's `create_program` tool, a shared program
+and a restored backup — and the last two carry whatever was in the file. An
+`everyNDays` interval of 0 was an infinite loop (a denial of service by share
 link); a monthly day of 29–31 overflowed a short month and then drifted the
-whole schedule by a day or three for good. `generateFutureWorkouts`, the
-builder preview, `remapProgram` (share import) and `importUserData` (backup)
-all go through it. An invalid frequency makes the day *unscheduled*, never
-dropped.
+whole schedule by a day or three for good.
+
+**Every reader walks dates through that one helper**: the scheduler
+(`generateFutureWorkouts`), the dashboard's week strip, the monthly calendar
+and the day-tap helper in `useScreenHelpers`. The first fix validated the
+scheduler alone and left the other three with their own loops, so a program
+saved before validation existed still hung the home screen. Do not add a
+fifth loop. `saveProgram` also writes sanitized days and the load-time repair
+re-saves a stored program whose days sanitize differently, so the database
+heals itself. An invalid frequency makes the day *unscheduled*, never dropped;
+weekday 7 is read as Sunday (an older builder's numbering), the same mapping
+the repair uses.
 
 ## Screens live in the browser's history
 
 `useScreenHistory` (`src/hooks/useScreenHistory.ts`) is `Index.tsx`'s screen
-state. Each change of screen *type* pushes one history entry and `popstate`
-restores the screen beneath, so the Android Back button goes back a screen
-instead of leaving the site. Two in-app navigations map onto the browser's own
-history rather than pushing: going home unwinds to the root entry (so Back at
-home still exits rather than replaying the trip), and an in-app back to the
-screen directly beneath goes back one entry. A same-type update (a detail
-screen swapping its payload) changes state in place and adds nothing. Back out
-of a live workout **minimizes** it — the cache is untouched and the bar appears
-on the screen beneath. Deep links and reload survival are deliberately out of
-scope: a reload starts at the root.
+state. Each change of screen *type* pushes one history entry, tagged with its
+depth and a per-load id, and `popstate` restores the screen beneath, so the
+Android Back button goes back a screen instead of leaving the site. In-app
+navigation maps onto the browser's own history wherever it can: going home
+unwinds to the root entry (so Back at home still exits rather than replaying
+the trip), and going to a screen type that is already in the stack unwinds to
+it. That second rule is what keeps "save, back to the list" from leaving the
+editor in the history — Back used to reopen it holding the pre-edit session,
+whose Save then overwrote the edit. A same-type update (a detail screen
+swapping its payload) changes state in place and adds nothing.
+
+Three things about it are easy to get wrong:
+
+- **The screen changes synchronously; the browser catches up.** `history.go`
+  lands on a later task, and the popstate it fires is recognised by depth and
+  ignored. Nothing in the app waits on it, so a cache write or a Finish tapped
+  in that window runs against the new screen, not the one on its way out. Two
+  navigations in one tick are still not supported: the second computes against
+  a browser position the first has not reached.
+- **A restored screen goes through `restore`.** The stored object is whatever
+  the screen held when it was left; the rows have moved on. `Index` re-reads a
+  session, scheduled workout, template or program by id and returns `null` for
+  one that no longer exists, which Back skips. A restored `activeSession` is
+  marked `resumed` when its cache is there and dead when it is not — a screen
+  restored without `resumed` mounted a blank workout over the real cache.
+- **`onUserBack` can keep the screen.** Returning `true` puts the history entry
+  back; `Index` uses it so Back with the summary open closes the summary (the
+  user un-finished the workout) rather than minimizing a finished one. Back out
+  of a live workout otherwise **minimizes** it — the cache is untouched and the
+  bar appears on the screen beneath. A Forward press is undone, since the
+  screens above were discarded.
+
+Deep links and reload survival are deliberately out of scope: a reload starts
+at the root, and entries from an earlier page load pop back to it.
 
 ## Editing a past workout is not a workout
 
@@ -459,7 +506,13 @@ notification or permission prompt), and the fields the edit screen has no
 control for — `location`, `isRestDay`, `recoveryActivities` — ride through from
 the session being edited. Duration is written back only when the minutes field
 was actually changed; the field shows whole minutes, and writing it back
-unconditionally truncated 32:40 to 32:00 on every edit.
+unconditionally truncated 32:40 to 32:00 on every edit. `startedAt` likewise
+is rebuilt from the date and HH:mm fields only when one of them changed: the
+unconditional rebuild dropped the seconds and moved a workout that began
+before midnight (startedAt on the 9th, date on the 10th) forward a day on
+every save. Saving an edit passes `markScheduled: false`, so correcting a
+record never ticks off whatever is scheduled on that date, and the coach sees
+an `activity` screen, not an `active_workout`.
 
 A live workout keeps two clocks. `startTime` is the timer's anchor and is
 shifted forward on every resume so elapsed stays continuous; `trueStart`
@@ -522,7 +575,13 @@ Rules that keep it correct:
 - **Hide Timers silences the whole feature**: no sound, no vibration, no
   permission prompt, no toast, no OS notification (`setRestTimerHidden`). The
   old hook silenced the sound only and still prompted for notification
-  permission and toasted; that was an oversight, not a design.
+  permission and toasted; that was an oversight, not a design. `Index` sets it
+  from the preference, because Settings is reachable while a session is
+  minimized and the session hook is unmounted then; the hook sets it too for
+  the in-session toggle.
+- **A pending cache write is flushed on unmount while the cache exists.** A
+  rest started or skipped in the last half-second before minimizing was in the
+  scheduler but not in the cache, and the screen came back without it.
 - **Notifications on Chrome for Android go through the service worker.** Its
   page-level `Notification` constructor throws, so `main.tsx` registers
   `public/sw.js`, which handles nothing but the notification click. It
@@ -794,9 +853,10 @@ red, so keep the workflow's steps identical to the local gate.
 each traced to a file and line by one reviewer and re-checked by another, with the
 critical and high ones also given to a reviewer told to disprove them. Start there.
 
-**All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`;
-the audit's status note says which ship where. 73 medium and 98 low findings remain
-open — its "Everything else" section is the backlog, grouped by area.
+**All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`,
+and a second pass closed the 20 highest-exposure items from the backlog; the
+audit's status note lists both passes and says which ship where. Its "Everything
+else" section is the remaining backlog, grouped by area.
 
 Two facts from that audit change how you work in this repo:
 

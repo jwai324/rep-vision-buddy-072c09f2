@@ -23,7 +23,7 @@ function makeBuilder(table: string) {
   let inserted: Record<string, unknown>[] | null = null;
   const builder: Record<string, unknown> = {
     then: (...args: Parameters<Promise<unknown>['then']>) => {
-      const data = inserted ? inserted.map((r, i) => ({ id: `new-${i}`, ...r })) : (rows[table] ?? []);
+      const data = inserted ? inserted.map((r, i) => ({ id: `new-${i}`, created_at: '2026-09-18T12:00:00.000Z', ...r })) : (rows[table] ?? []);
       return Promise.resolve({ data, error: null }).then(...args);
     },
     upsert: (payload: unknown) => {
@@ -35,7 +35,7 @@ function makeBuilder(table: string) {
     },
     insert: (payload: Record<string, unknown>[]) => { inserted = payload; chain.push([table, 'insert', payload.length]); return builder; },
   };
-  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'update', 'delete', 'gte', 'lte', 'neq', 'or', 'not', 'in']) {
+  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'update', 'delete', 'gte', 'lte', 'lt', 'neq', 'or', 'not', 'in']) {
     builder[m] = (...args: unknown[]) => { chain.push([table, m, ...args]); return builder; };
   }
   return builder;
@@ -331,7 +331,44 @@ describe('saveProgram regenerates the calendar without erasing history', () => {
     const afterDelete = chain.slice(chain.findIndex(c => c[0] === 'future_workouts' && c[1] === 'delete'));
     expect(afterDelete.some(c => c[1] === 'gte' && c[2] === 'date' && c[3] === ymd(today))).toBe(true);
     expect(afterDelete.some(c => c[1] === 'or' && String(c[2]).includes('completed.eq.false'))).toBe(true);
-    expect(afterDelete.some(c => c[1] === 'not' && c[2] === 'id' && c[3] === 'in')).toBe(true);
+    // Retired by the server's own timestamp on the rows just written, never
+    // by a list of their ids: that list grew with the program until the URL
+    // was refused, and a refused delete doubled every date.
+    expect(afterDelete.some(c => c[1] === 'lt' && c[2] === 'created_at' && c[3] === '2026-09-18T12:00:00.000Z')).toBe(true);
+    expect(afterDelete.some(c => c[1] === 'not')).toBe(false);
+  });
+
+  it('drops the superseded upcoming rows from state and does not schedule a workout beside its completed row', async () => {
+    const todayStr = ymd(today);
+    rows['future_workouts'] = [
+      // Today's workout, already done: it survives, and the regenerated
+      // schedule must not put a second copy of the same workout beside it.
+      { id: 'done-today', program_id: 'prog-1', user_id: 'u1', date: todayStr, template_id: 't', label: 'A', completed: true, recovery_activities: null, created_at: '2026-01-01T00:00:00.000Z', updated_at: '' },
+      // An upcoming row of the old schedule: retired.
+      { id: 'stale-upcoming', program_id: 'prog-1', user_id: 'u1', date: '2099-01-01', template_id: 't', label: 'A', completed: false, recovery_activities: null, created_at: '2026-01-01T00:00:00.000Z', updated_at: '' },
+      // A past row never done: history, kept.
+      { id: 'past-missed', program_id: 'prog-1', user_id: 'u1', date: '2026-01-05', template_id: 't', label: 'A', completed: false, recovery_activities: null, created_at: '2026-01-01T00:00:00.000Z', updated_at: '' },
+    ];
+    const { result } = await mounted();
+    chain.length = 0;
+
+    const program: WorkoutProgram = {
+      id: 'prog-1', name: 'Weekly', durationWeeks: 1, startDate: todayStr,
+      days: [{ label: 'A', templateId: 't', frequency: { type: 'weekly', weekday: today.getDay() } }],
+    };
+    await act(async () => { await result.current.saveProgram(program); });
+
+    const fws = result.current.futureWorkouts;
+    const ids = fws.map(fw => fw.id);
+    expect(ids).toContain('done-today');
+    expect(ids).toContain('past-missed');
+    expect(ids).not.toContain('stale-upcoming');
+    expect(fws.filter(fw => fw.date === todayStr && fw.templateId === 't')).toHaveLength(1);
+    // The rest days around it were still written.
+    expect(fws.filter(fw => fw.date === todayStr && fw.templateId === 'rest')).toHaveLength(0);
+    expect(fws.some(fw => fw.id.startsWith('new-') && fw.templateId === 'rest')).toBe(true);
+    const insertedRows = chain.find(c => c[0] === 'future_workouts' && c[1] === 'insert');
+    expect(insertedRows).toBeDefined();
   });
 });
 

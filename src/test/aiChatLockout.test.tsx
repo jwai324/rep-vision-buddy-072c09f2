@@ -212,17 +212,24 @@ describe('AI coach lockout', () => {
     expect(text('last')).toBe('Still here.');
   });
 
-  it('ends the turn in flight and lifts the lockout when the chat is cleared', async () => {
+  it('clearing the chat does not lift the lockout: the trash icon is not a way around it', async () => {
     fetchMock.mockResolvedValue(failing());
     await send();
     await send();
     expect(text('locked')).toBe('true');
+    const callsBefore = fetchMock.mock.calls.length;
 
     fireEvent.click(screen.getByText('clear'));
-    expect(text('locked')).toBe('false');
-    expect(text('errors')).toBe('0');
     expect(text('count')).toBe('0');
+    expect(text('locked')).toBe('true');
 
+    // Still locked: a send goes nowhere.
+    await send();
+    expect(fetchMock.mock.calls.length).toBe(callsBefore);
+    expect(text('count')).toBe('0');
+  });
+
+  it('ends the turn in flight when the chat is cleared', async () => {
     fetchMock.mockResolvedValueOnce(response(200, [HANG]));
     await send();
     expect(text('loading')).toBe('true');
@@ -230,7 +237,7 @@ describe('AI coach lockout', () => {
 
     fireEvent.click(screen.getByText('clear'));
     await flush();
-    expect(signalOf(2).aborted).toBe(true);
+    expect(signalOf(0).aborted).toBe(true);
     expect(text('loading')).toBe('false');
     expect(text('count')).toBe('0');
     expect(text('errors')).toBe('0');

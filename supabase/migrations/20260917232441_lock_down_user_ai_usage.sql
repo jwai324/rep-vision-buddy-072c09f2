@@ -2,8 +2,9 @@
 -- operator's ai_usage_daily_summary view. Only the edge functions write it,
 -- through the service role — but two policies let any signed-in user INSERT
 -- and UPDATE their own rows from the browser, so the accounting could be
--- rewritten by the person being accounted for. Read access stays: the credits
--- screen shows the user their own usage.
+-- rewritten by the person being accounted for. The owner-only SELECT policy is
+-- left alone: nothing in the client reads this table today (the credits screen
+-- reads token_ledger), and an owner-scoped read is harmless.
 DROP POLICY IF EXISTS "Users can insert own usage" ON public.user_ai_usage;
 DROP POLICY IF EXISTS "Users can update own usage" ON public.user_ai_usage;
 

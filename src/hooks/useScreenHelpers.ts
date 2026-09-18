@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { format, addDays, addWeeks, getDay, isSameDay } from 'date-fns';
 import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
+import { programOccurrencesOn } from '@/utils/programFrequency';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 
 /**
@@ -67,42 +68,9 @@ export function useDayClickHandler(
     // more than one workout on the same weekday, so keep going after the
     // first match — we need the full list to decide between opening a
     // single detail screen and routing to the day-filtered activity list.
-    const programScheduled: { label: string; templateId: string }[] = [];
-    if (activeProgram && !hasStoredScheduled && !hasCompleted) {
-      const start = activeProgram.startDate ? parseLocalDate(activeProgram.startDate) : new Date();
-      const end = addWeeks(start, activeProgram.durationWeeks ?? 8);
-      if (date >= start && date < end) {
-        for (const day of activeProgram.days) {
-          if (!day.frequency) continue;
-          const f = day.frequency;
-          let match = false;
-          if (f.type === 'weekly') {
-            const diff = (f.weekday - getDay(start) + 7) % 7;
-            let cur = addDays(start, diff);
-            while (cur < end) {
-              if (isSameDay(cur, date)) { match = true; break; }
-              cur = addDays(cur, 7);
-            }
-          } else if (f.type === 'everyNDays') {
-            const origin = f.startDate ? parseLocalDate(f.startDate) : start;
-            let cur = new Date(origin);
-            while (cur < end) {
-              if (cur >= start && isSameDay(cur, date)) { match = true; break; }
-              cur = addDays(cur, f.interval);
-            }
-          } else if (f.type === 'monthly') {
-            let cur = new Date(start);
-            cur.setDate(f.dayOfMonth);
-            if (cur < start) cur.setMonth(cur.getMonth() + 1);
-            while (cur < end) {
-              if (isSameDay(cur, date)) { match = true; break; }
-              const nxt = new Date(cur); nxt.setMonth(nxt.getMonth() + 1); cur = nxt;
-            }
-          }
-          if (match) programScheduled.push({ label: day.label, templateId: day.templateId });
-        }
-      }
-    }
+    const programScheduled = activeProgram && !hasStoredScheduled && !hasCompleted
+      ? programOccurrencesOn(activeProgram, date)
+      : [];
 
     // If a scheduled item exists for this date and nothing is completed → open detail.
     // With multiple scheduled workouts, jump to the day-filtered activity list

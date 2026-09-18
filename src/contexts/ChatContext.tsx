@@ -505,7 +505,16 @@ export const ChatProvider: React.FC<{
   useEffect(() => {
     if (!lockedUntil) return;
     const timer = setTimeout(releaseLockout, Math.max(0, lockedUntil - Date.now()));
-    return () => clearTimeout(timer);
+    // A background tab's timers are throttled or frozen; on return an overdue
+    // lockout lifts at once rather than sitting at "Back in 0:00".
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() >= lockedUntil) releaseLockout();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [lockedUntil, releaseLockout]);
 
   useEffect(() => () => {
@@ -1185,13 +1194,17 @@ export const ChatProvider: React.FC<{
         case 'create_program': {
           if (proposal.after.kind !== 'program' || !proposal.after.program) return;
           const p = proposal.after.program;
-          await storage.saveProgram({
+          // saveProgram toasts its own failure and resolves false. The proposal
+          // then stays pending so Apply can be tapped again; before this it was
+          // marked applied and the thread said so while the toast said failed.
+          const saved = await storage.saveProgram({
             id: p.id,
             name: p.name,
             days: p.days,
             durationWeeks: p.durationWeeks ?? 8,
             startDate: proposal.arguments?.startDate || formatLocalDate(),
           });
+          if (!saved) return;
           break;
         }
         case 'delete_program': {
@@ -1201,7 +1214,7 @@ export const ChatProvider: React.FC<{
         }
         case 'set_active_program': {
           if (proposal.after.kind !== 'active-program' || !proposal.after.programId) return;
-          await storage.setActiveProgram(proposal.after.programId);
+          if (!(await storage.setActiveProgram(proposal.after.programId))) return;
           break;
         }
         case 'add_exercise_to_workout': {
@@ -1360,19 +1373,22 @@ export const ChatProvider: React.FC<{
     // Allocate the assistant message id up front so we can associate proposals with it.
     const assistantMessageId = crypto.randomUUID();
 
-    // Mirror what supabase.functions.invoke sends: both `apikey` and a Bearer
-    // token, preferring the user's session JWT over the anon key when signed in.
-    const { data: { session } } = await supabase.auth.getSession();
     const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    const bearer = session?.access_token ?? anonKey;
-    const authHeaders = {
-      "Content-Type": "application/json",
-      apikey: anonKey,
-      Authorization: `Bearer ${bearer}`,
-    };
 
     try {
       armInactivityTimer();
+      // Mirror what supabase.functions.invoke sends: both `apikey` and a Bearer
+      // token, preferring the user's session JWT over the anon key when signed
+      // in. Inside the timer and the abort: a session lookup that never
+      // resolves (auth-js's lock can hang) used to leave the coach loading
+      // until a reload, with nothing able to cancel it.
+      const { data: { session } } = await Promise.race([supabase.auth.getSession(), aborted]);
+      const bearer = session?.access_token ?? anonKey;
+      const authHeaders = {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${bearer}`,
+      };
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
         method: "POST",
         headers: authHeaders,
@@ -1661,13 +1677,15 @@ export const ChatProvider: React.FC<{
         ));
       }
     } catch (err) {
-      // Replaces the loading bubble, or appends when there is none yet.
+      // Replaces this turn's bubble, or appends one when the turn never got
+      // that far. Keyed on the id, not "the last message": an "Applied" note
+      // from a proposal accepted mid-stream can be last, and used to be
+      // overwritten.
       const showReply = (errMsg: string) => setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'assistant') {
-          return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
+        if (prev.some(m => m.id === assistantMessageId)) {
+          return prev.map(m => m.id === assistantMessageId ? { ...m, content: errMsg, isLoading: false } : m);
         }
-        return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errMsg, isLoading: false }];
+        return [...prev, { id: assistantMessageId, role: 'assistant', content: errMsg, isLoading: false }];
       });
 
       // An aborted turn is not a fault of the service. clearChat and unmount
@@ -1721,8 +1739,9 @@ export const ChatProvider: React.FC<{
     setMessages([]);
     setProposals({});
     setProposalIdsByMessage({});
-    releaseLockout();
-  }, [releaseLockout]);
+    // The lockout stays: it is what keeps a failing backend from being
+    // hammered, and the trash icon must not be a one-tap way around it.
+  }, []);
 
   return (
     <ChatContext.Provider value={{

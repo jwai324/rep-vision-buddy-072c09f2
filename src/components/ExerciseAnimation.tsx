@@ -7,7 +7,13 @@ interface ExerciseAnimationProps {
   movementPattern?: string;
 }
 
+// Answers the server actually gave. A failed call is not cached, so a
+// transient error (a token refresh racing the call, a 5xx, the minute after a
+// deploy) does not pin an exercise to "no clip" for the rest of the page.
 const cache = new Map<string, string | null>();
+// Set once the function says no key is configured: the feature is off and
+// every further lookup would be a round trip for the same answer.
+let featureOff = false;
 
 export const ExerciseAnimation: React.FC<ExerciseAnimationProps> = ({ exerciseName, movementPattern }) => {
   const [gifUrl, setGifUrl] = useState<string | null | undefined>(undefined);
@@ -17,6 +23,10 @@ export const ExerciseAnimation: React.FC<ExerciseAnimationProps> = ({ exerciseNa
     if (!exerciseName || fetchedRef.current === exerciseName) return;
     fetchedRef.current = exerciseName;
 
+    if (featureOff) {
+      setGifUrl(null);
+      return;
+    }
     if (cache.has(exerciseName)) {
       setGifUrl(cache.get(exerciseName)!);
       return;
@@ -27,14 +37,20 @@ export const ExerciseAnimation: React.FC<ExerciseAnimationProps> = ({ exerciseNa
     // variable, and Vite inlines those into the public bundle.
     setGifUrl(undefined);
     supabase.functions
-      .invoke<{ gifUrl?: string | null }>('exercise-gif', { body: { name: exerciseName } })
+      .invoke<{ gifUrl?: string | null; enabled?: boolean }>('exercise-gif', { body: { name: exerciseName } })
       .then(({ data, error }) => {
-        const url = !error && typeof data?.gifUrl === 'string' ? data.gifUrl : null;
+        if (error || !data) {
+          fetchedRef.current = '';
+          setGifUrl(null);
+          return;
+        }
+        if (data.enabled === false) featureOff = true;
+        const url = typeof data.gifUrl === 'string' ? data.gifUrl : null;
         cache.set(exerciseName, url);
         setGifUrl(url);
       })
       .catch(() => {
-        cache.set(exerciseName, null);
+        fetchedRef.current = '';
         setGifUrl(null);
       });
   }, [exerciseName]);

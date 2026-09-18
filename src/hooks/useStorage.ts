@@ -10,7 +10,7 @@ import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
 import { getFutureWorkoutsCompletedBySession } from '@/utils/scheduledWorkout';
 import { readStorageCache, writeStorageCache, type CachedStorage } from '@/utils/storageCache';
 import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate, type PendingTemplateWrite } from '@/utils/pendingTemplateWrites';
-import { monthlyOccurrences, sanitizeFrequency } from '@/utils/programFrequency';
+import { programOccurrences, programWindow, sanitizeProgramDays } from '@/utils/programFrequency';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
 type TemplateRow = Database['public']['Tables']['workout_templates']['Row'];
@@ -45,54 +45,31 @@ export function normalizeProgramDays(days: WorkoutProgram['days']): { days: Work
   return { days: normalized, changed };
 }
 
+export interface SaveSessionOrigin {
+  templateId?: string | null;
+  markScheduled?: boolean;
+}
+
 // Exported for unit testing — pure, no React/singleton deps.
 export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWorkout, 'id'>[] {
   const workouts: Omit<FutureWorkout, 'id'>[] = [];
-  const start = program.startDate ? new Date(program.startDate + 'T00:00:00') : new Date();
-  const endDate = addWeeks(start, program.durationWeeks ?? 8);
+  const { start, end: endDate } = programWindow(program);
   const scheduledDates = new Set<string>();
 
+  // normalizeProgramDays first (the legacy weekday repair), then the shared
+  // walker, which validates every frequency: one stored verbatim from a share
+  // or a backup can carry the interval of 0 that used to loop forever.
   const { days: normalizedDays } = normalizeProgramDays(program.days);
-
-  normalizedDays.forEach((day) => {
-    // Frequencies stored verbatim from a share or a backup have not been
-    // validated; an interval of 0 below is an infinite loop.
-    const freq = sanitizeFrequency(day.frequency);
-    if (!freq) return;
-
-    const addEvent = (date: Date) => {
-      const dateStr = format(date, 'yyyy-MM-dd');
-      scheduledDates.add(dateStr);
-      workouts.push({
-        programId: program.id,
-        date: dateStr,
-        templateId: day.templateId,
-        label: day.label,
-      });
-    };
-
-    if (freq.type === 'weekly') {
-      const targetDay = freq.weekday;
-      const currentDay = getDay(start);
-      const diff = (targetDay - currentDay + 7) % 7;
-      let current = addDays(start, diff);
-      while (current < endDate) {
-        addEvent(current);
-        current = addDays(current, 7);
-      }
-    } else if (freq.type === 'everyNDays') {
-      const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(start);
-      let current = new Date(origin);
-      while (current < endDate) {
-        if (current >= start) {
-          addEvent(current);
-        }
-        current = addDays(current, freq.interval);
-      }
-    } else if (freq.type === 'monthly') {
-      monthlyOccurrences(start, endDate, freq.dayOfMonth).forEach(addEvent);
-    }
-  });
+  for (const occurrence of programOccurrences({ ...program, days: normalizedDays })) {
+    const dateStr = format(occurrence.date, 'yyyy-MM-dd');
+    scheduledDates.add(dateStr);
+    workouts.push({
+      programId: program.id,
+      date: dateStr,
+      templateId: occurrence.templateId,
+      label: occurrence.label,
+    });
+  }
 
   // Fill in rest days
   let cursor = new Date(start);
@@ -382,6 +359,7 @@ export function useStorage() {
       if (cached) setRefreshing(true);
       else setLoading(true);
       const serialAtStart = writeSerial.current;
+      let handedOff = false;
       try {
         const [sessionsRes, templatesRes, programsRes, futureRes, settingsRes, profileRes, measurementsRes] = await Promise.all([
           supabase.from('workout_sessions').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
@@ -398,8 +376,11 @@ export function useStorage() {
         if (cancelled) return;
         if (writeSerial.current !== serialAtStart && reloads < 2) {
           // Something was saved while these rows were in flight. They are
-          // already stale; fetch again rather than paint over the save.
+          // already stale; fetch again rather than paint over the save. The
+          // replacement owns the loading flags from here: this load's
+          // `finally` must not clear what the replacement just set.
           reloads += 1;
+          handedOff = true;
           void load();
           return;
         }
@@ -480,7 +461,7 @@ export function useStorage() {
         // background refresh doesn't warrant interrupting the user.
         if (!cached) toast.error('Failed to load your data');
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !handedOff) {
           setLoading(false);
           setRefreshing(false);
         }
@@ -515,13 +496,15 @@ export function useStorage() {
    * Persist a session. `origin.templateId` is the template the workout was
    * started from, when there is one; it decides which of the day's scheduled
    * workouts the session marks done, and is not stored on the session itself.
+   * `markScheduled: false` is for editing a past record: a correction is not
+   * a workout done, so it must not tick off whatever is scheduled that day.
    */
   // Resolves false when the workout did not reach the server, so the caller can
   // keep the summary screen and the local session cache alive for a retry. It
   // never throws: an offline fetch rejects rather than resolving with an error
   // payload, and an unhandled rejection here used to leave the caller believing
   // the save had succeeded while it tore down the only other copy.
-  const saveSessionNow = useCallback(async (session: WorkoutSession, origin: { templateId?: string | null } = {}): Promise<boolean> => {
+  const saveSessionNow = useCallback(async (session: WorkoutSession, origin: SaveSessionOrigin = {}): Promise<boolean> => {
     noteWrite();
     if (!user) return false;
     let error: unknown = null;
@@ -558,7 +541,7 @@ export function useStorage() {
 
     // Flag matching scheduled workouts as done rather than deleting them — the
     // day's plan stays on the calendar and can still be started again.
-    const matchingFws = getFutureWorkoutsCompletedBySession(session, futureWorkouts, {
+    const matchingFws = origin.markScheduled === false ? [] : getFutureWorkoutsCompletedBySession(session, futureWorkouts, {
       templateId: origin.templateId,
       templates,
     });
@@ -587,7 +570,7 @@ export function useStorage() {
   // earlier of the two. Chained, not deduped: each call carries different
   // data, so all of them have to land — just in order.
   const saveChains = useRef<Map<string, Promise<boolean>>>(new Map());
-  const saveSession = useCallback((session: WorkoutSession, origin: { templateId?: string | null } = {}): Promise<boolean> => {
+  const saveSession = useCallback((session: WorkoutSession, origin: SaveSessionOrigin = {}): Promise<boolean> => {
     const prior = saveChains.current.get(session.id) ?? Promise.resolve(true);
     // saveSessionNow never rejects, so the chain can't be poisoned.
     const next = prior.then(() => saveSessionNow(session, origin));
@@ -660,9 +643,14 @@ export function useStorage() {
   // toast "saved", clear their draft and leave the screen before this had
   // resolved, so a failed upsert lost the whole program — and, for the AI
   // builder, the credits spent generating it.
-  const saveProgram = useCallback(async (program: WorkoutProgram): Promise<boolean> => {
+  const saveProgram = useCallback(async (input: WorkoutProgram): Promise<boolean> => {
     noteWrite();
     if (!user) return false;
+    // What is written is what every reader will trust: a frequency that
+    // arrived invalid (the coach's tool, a share, a backup, or a row saved
+    // before validation existed) is dropped here, so the stored program can
+    // never carry the interval-0 hang back into the app.
+    const program: WorkoutProgram = { ...input, days: sanitizeProgramDays(input.days) };
     // Snapshot the pre-save version so we can decide whether the schedule
     // shape (days, frequencies, duration, startDate) actually changed. A pure
     // rename or metadata-only edit should NOT wipe program-linked
@@ -709,10 +697,25 @@ export function useStorage() {
     //    leaves the previous schedule in place rather than an empty server
     //    behind a screen that still shows rows.
     const today = format(new Date(), 'yyyy-MM-dd');
-    const futureFws = generateFutureWorkouts(program).filter(fw => fw.date >= today);
+    // A row already completed on or after today survives (see below), so the
+    // same workout is not scheduled a second time next to it — today's
+    // finished session would otherwise show as "1 of 2, start again".
+    const alreadyDone = new Set(
+      futureWorkouts
+        .filter(fw => fw.programId === program.id && fw.completed === true && fw.date >= today)
+        .map(fw => `${fw.date}|${fw.templateId}`),
+    );
+    const futureFws = generateFutureWorkouts(program)
+      .filter(fw => fw.date >= today && !alreadyDone.has(`${fw.date}|${fw.templateId}`));
 
     let insertedIds: string[] = [];
     let inserted: FutureWorkout[] = [];
+    // The server's own clock, read off the rows it just wrote: everything
+    // older than this is the previous schedule. An id list here grew with the
+    // program — 48 weeks of daily rows is a 13 KB URL, past the edge's limit
+    // for a program with two workouts on a weekday — and a refused delete
+    // doubled every date.
+    let retireBefore: string | null = null;
     if (futureFws.length > 0) {
       const rows = futureFws.map(fw => ({
         user_id: user.id,
@@ -730,10 +733,11 @@ export function useStorage() {
       }
       inserted = data.map(mapFutureWorkout);
       insertedIds = inserted.map(fw => fw.id);
+      retireBefore = data.reduce<string | null>((min, row) => (min === null || row.created_at < min ? row.created_at : min), null);
     }
 
     // Retire the superseded upcoming rows: this program, today or later, not
-    // completed, and not one of the rows just written.
+    // completed, and written before the rows that replace them.
     let retire = supabase
       .from('future_workouts')
       .delete()
@@ -741,7 +745,8 @@ export function useStorage() {
       .eq('user_id', user.id)
       .gte('date', today)
       .or('completed.is.null,completed.eq.false');
-    if (insertedIds.length > 0) retire = retire.not('id', 'in', `(${insertedIds.join(',')})`);
+    if (retireBefore) retire = retire.lt('created_at', retireBefore);
+    else if (insertedIds.length > 0) retire = retire.not('id', 'in', `(${insertedIds.join(',')})`);
     const { error: deleteError } = await retire;
     if (deleteError) {
       console.error('[useStorage] future workouts delete error:', deleteError);
@@ -758,7 +763,7 @@ export function useStorage() {
       return [...kept, ...inserted].sort((a, b) => a.date.localeCompare(b.date));
     });
     return true;
-  }, [user, programs]);
+  }, [user, programs, futureWorkouts]);
 
   // Auto-heal previously-saved programs whose stored day.frequency values
   // collide on the same weekday (a bug in older AI Coach output that
@@ -773,8 +778,12 @@ export function useStorage() {
     if (!user || !loadedOk) return;
     for (const p of programs) {
       if (repairedProgramIds.current.has(p.id)) continue;
-      const { days, changed } = normalizeProgramDays(p.days);
-      if (!changed) continue;
+      const { days: normalized, changed } = normalizeProgramDays(p.days);
+      // A row that predates frequency validation can still hold the
+      // interval-0 loop; the readers all validate, but the stored program is
+      // healed here so it stops being a hazard for anything that does not.
+      const days = sanitizeProgramDays(normalized);
+      if (!changed && JSON.stringify(days) === JSON.stringify(p.days)) continue;
       repairedProgramIds.current.add(p.id);
       saveProgram({ ...p, days });
     }
@@ -1007,7 +1016,7 @@ export function useStorage() {
       toast.error('Failed to save preferences');
       setPreferencesState(previous); // rollback
     }
-  }, [user, preferences, activeProgramId, history, snapshotTrusted]);
+  }, [user, preferences, history, snapshotTrusted]);
 
   // Once the new streak mode has produced an actual break (raw=0 for at
   // least one period past the day the adjustment was set), clear the

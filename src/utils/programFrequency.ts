@@ -1,4 +1,6 @@
-import type { DayFrequency, ProgramDay } from '@/types/workout';
+import { addDays, addWeeks, differenceInCalendarDays } from 'date-fns';
+import type { DayFrequency, ProgramDay, WorkoutProgram } from '@/types/workout';
+import { parseLocalDate } from '@/utils/dateUtils';
 
 /**
  * Frequency values arrive from four places that do not agree on validation:
@@ -14,7 +16,10 @@ export function sanitizeFrequency(f: unknown): DayFrequency | undefined {
   const v = f as Record<string, unknown>;
   switch (v.type) {
     case 'weekly': {
-      const weekday = Number(v.weekday);
+      // 7 is Sunday in the ISO numbering an older builder wrote; the load-time
+      // repair in useStorage maps it the same way, so every door agrees.
+      const raw = Number(v.weekday);
+      const weekday = raw === 7 ? 0 : raw;
       return Number.isInteger(weekday) && weekday >= 0 && weekday <= 6 ? { type: 'weekly', weekday } : undefined;
     }
     case 'monthly': {
@@ -44,6 +49,7 @@ export function sanitizeProgramDays(days: ProgramDay[]): ProgramDay[] {
 }
 
 const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+const startOfLocalDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 /**
  * Every occurrence of "the Nth of each month" in [start, end), clamped to the
@@ -55,15 +61,88 @@ const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0
 export function monthlyOccurrences(start: Date, end: Date, dayOfMonth: number): Date[] {
   const out: Date[] = [];
   if (!(dayOfMonth >= 1 && dayOfMonth <= 31)) return out;
-  let year = start.getFullYear();
-  let month = start.getMonth();
+  // Occurrences are midnights; a `start` carrying a time of day (the builder
+  // seeds a new program with `new Date()`) must not exclude today's.
+  const from = startOfLocalDay(start);
+  let year = from.getFullYear();
+  let month = from.getMonth();
   for (let guard = 0; guard < 240; guard++) {
     const day = Math.min(dayOfMonth, daysInMonth(year, month));
     const occurrence = new Date(year, month, day);
     if (occurrence >= end) break;
-    if (occurrence >= start) out.push(occurrence);
+    if (occurrence >= from) out.push(occurrence);
     month += 1;
     if (month > 11) { month = 0; year += 1; }
+  }
+  return out;
+}
+
+/**
+ * Every date a frequency lands on in [start, end). The one walker for all of
+ * them: the scheduler, the dashboard's week strip, the monthly calendar and
+ * the day-tap helper each used to carry their own loops, and three of the four
+ * kept the interval-0 hang and the month overflow after the scheduler was
+ * fixed. An invalid frequency yields nothing.
+ */
+export function frequencyOccurrences(frequency: unknown, start: Date, end: Date): Date[] {
+  const freq = sanitizeFrequency(frequency);
+  if (!freq) return [];
+  const from = startOfLocalDay(start);
+  const out: Date[] = [];
+  if (freq.type === 'weekly') {
+    const diff = (freq.weekday - from.getDay() + 7) % 7;
+    for (let cur = addDays(from, diff); cur < end; cur = addDays(cur, 7)) out.push(cur);
+    return out;
+  }
+  if (freq.type === 'everyNDays') {
+    let cur = freq.startDate ? parseLocalDate(freq.startDate) : from;
+    if (cur < from) {
+      // Jump to the first occurrence on or after `from` rather than walking
+      // years of a long-past origin one interval at a time. Calendar days,
+      // not milliseconds, so a DST hour cannot skip an occurrence.
+      const behind = differenceInCalendarDays(from, cur);
+      cur = addDays(cur, Math.floor(behind / freq.interval) * freq.interval);
+      while (cur < from) cur = addDays(cur, freq.interval);
+    }
+    for (; cur < end; cur = addDays(cur, freq.interval)) out.push(cur);
+    return out;
+  }
+  return monthlyOccurrences(from, end, freq.dayOfMonth);
+}
+
+export interface ScheduledOccurrence {
+  date: Date;
+  label: string;
+  templateId: string;
+}
+
+/** The window a program's schedule covers: [start of its start date, +durationWeeks). */
+export function programWindow(program: Pick<WorkoutProgram, 'startDate' | 'durationWeeks'>): { start: Date; end: Date } {
+  const start = startOfLocalDay(program.startDate ? parseLocalDate(program.startDate) : new Date());
+  return { start, end: addWeeks(start, program.durationWeeks ?? 8) };
+}
+
+/** Every workout a program schedules across its window, in day order. */
+export function programOccurrences(program: Pick<WorkoutProgram, 'days' | 'startDate' | 'durationWeeks'>): ScheduledOccurrence[] {
+  const { start, end } = programWindow(program);
+  const out: ScheduledOccurrence[] = [];
+  for (const day of program.days) {
+    for (const date of frequencyOccurrences(day.frequency, start, end)) {
+      out.push({ date, label: day.label, templateId: day.templateId });
+    }
+  }
+  return out;
+}
+
+/** What a program schedules on one date; empty outside its window. */
+export function programOccurrencesOn(program: Pick<WorkoutProgram, 'days' | 'startDate' | 'durationWeeks'>, date: Date): Omit<ScheduledOccurrence, 'date'>[] {
+  const { start, end } = programWindow(program);
+  const day = startOfLocalDay(date);
+  if (day < start || day >= end) return [];
+  const next = addDays(day, 1);
+  const out: Omit<ScheduledOccurrence, 'date'>[] = [];
+  for (const d of program.days) {
+    if (frequencyOccurrences(d.frequency, day, next).length > 0) out.push({ label: d.label, templateId: d.templateId });
   }
   return out;
 }

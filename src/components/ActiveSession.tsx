@@ -403,7 +403,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   });
   // The field shows whole minutes; writing it back unconditionally truncated
   // a 32:40 workout to 32:00 on every edit, whether or not it was touched.
+  // Same for the start: rebuilt from the date and HH:mm fields only when one
+  // of them changed, or every edit dropped the seconds — and moved a workout
+  // that started before midnight (startedAt on one day, date on the next)
+  // forward a day each time it was opened.
   const initialEditDurationMin = useRef(editDurationMin);
+  const initialEditDate = useRef(editDate);
+  const initialEditTime = useRef(editTime);
 
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
@@ -522,6 +528,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       if (writeTimerRef.current) {
         clearTimeout(writeTimerRef.current);
         writeTimerRef.current = null;
+        // A write still pending on unmount belongs to a session being
+        // minimized — a rest started or skipped in the last half-second would
+        // otherwise be in the scheduler but not in the cache, and the screen
+        // would come back without it. A session that ended has had its cache
+        // cleared first, and that must stay cleared.
+        if (localStorage.getItem(CACHE_KEY) !== null) flushCache();
       }
     };
   }, [flushCache]);
@@ -1126,10 +1138,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       duration = editDurationMin && editDurationMin !== initialEditDurationMin.current
         ? parseInt(editDurationMin) * 60
         : editSession.duration;
-      // Combine editDate + editTime into a startedAt ISO string
-      if (editTime) {
-        const combined = new Date(`${sessionDate}T${editTime}:00`);
-        startedAt = combined.toISOString();
+      const startChanged = editDate !== initialEditDate.current || editTime !== initialEditTime.current;
+      if (editTime && startChanged) {
+        startedAt = new Date(`${sessionDate}T${editTime}:00`).toISOString();
       } else {
         startedAt = editSession.startedAt;
       }

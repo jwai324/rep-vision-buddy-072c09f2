@@ -8,7 +8,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 // configured key could be lifted from the shipped JavaScript and billed by
 // anyone. The key now lives here as a function secret, the same way
 // ANTHROPIC_API_KEY does, and the only input a caller controls is the
-// exercise name. A signed-in user is required so this is not an open proxy.
+// exercise name. A signed-in user is required, and each user gets a bounded
+// number of upstream lookups per hour, so a free sign-up cannot run the
+// RapidAPI quota down. The limit is per isolate and in memory — a best-effort
+// brake, not an accounting system; the client caches every answer for the
+// page's lifetime, so a real user never comes near it.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +24,36 @@ const MAX_NAME_CHARS = 120;
 
 // One lookup per exercise name per isolate. The client caches too; this keeps
 // a warm isolate from re-billing the upstream for the same name across users.
+// Bounded, because every unique name a caller invents is an entry: the oldest
+// go first (Map keeps insertion order).
+const MAX_CACHE_ENTRIES = 2_000;
 const cache = new Map<string, string | null>();
+
+const MAX_UPSTREAM_PER_USER_PER_HOUR = 120;
+const HOUR_MS = 60 * 60 * 1000;
+const upstreamCalls = new Map<string, { windowStart: number; count: number }>();
+
+function remember(key: string, gifUrl: string | null): void {
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, gifUrl);
+}
+
+// True when this user may make another billed upstream call now.
+function allowUpstream(userId: string): boolean {
+  const now = Date.now();
+  const entry = upstreamCalls.get(userId);
+  if (!entry || now - entry.windowStart >= HOUR_MS) {
+    if (upstreamCalls.size >= MAX_CACHE_ENTRIES) upstreamCalls.clear();
+    upstreamCalls.set(userId, { windowStart: now, count: 1 });
+    return true;
+  }
+  if (entry.count >= MAX_UPSTREAM_PER_USER_PER_HOUR) return false;
+  entry.count += 1;
+  return true;
+}
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -33,9 +66,10 @@ serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const apiKey = Deno.env.get("EXERCISE_GIF_API_KEY");
-  // No key configured means the feature is off, not broken: the client renders
-  // its text placeholder for a null url exactly as it did before.
-  if (!apiKey) return json({ gifUrl: null });
+  // No key configured means the feature is off, not broken. `enabled: false`
+  // lets the client stop asking for the rest of the page's life instead of
+  // paying a round trip per exercise for the same answer.
+  if (!apiKey) return json({ gifUrl: null, enabled: false });
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return json({ error: "Authentication required." }, 401);
@@ -54,6 +88,9 @@ serve(async (req) => {
   }
   const key = name.trim().toLowerCase();
   if (cache.has(key)) return json({ gifUrl: cache.get(key) ?? null });
+  if (!allowUpstream(user.id)) {
+    return json({ error: "Too many exercise lookups. Try again in an hour." }, 429);
+  }
 
   try {
     const res = await fetch(
@@ -67,7 +104,7 @@ serve(async (req) => {
     }
     const data = await res.json();
     const gifUrl: string | null = typeof data?.data?.[0]?.gifUrl === "string" ? data.data[0].gifUrl : null;
-    cache.set(key, gifUrl);
+    remember(key, gifUrl);
     return json({ gifUrl });
   } catch (e) {
     console.error("exercise-gif error:", e);
