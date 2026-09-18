@@ -922,9 +922,10 @@ each traced to a file and line by one reviewer and re-checked by another, with t
 critical and high ones also given to a reviewer told to disprove them. Start there.
 
 **All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`,
-and a second pass closed the 20 highest-exposure items from the backlog; the
-audit's status note lists both passes and says which ship where. Its "Everything
-else" section is the remaining backlog, grouped by area.
+a second pass closed the 20 highest-exposure items from the backlog, and a third
+pass (`claude/code-audit-batch-one`) closed 69 more that were unambiguous
+defects. The audit's status note lists all three passes, names the 64 rows still
+open, and says which ship where.
 
 Two facts from that audit change how you work in this repo:
 
