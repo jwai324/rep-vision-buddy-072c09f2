@@ -441,7 +441,10 @@ had nothing to retry from and the change was gone — while the session itself
 still saved, because the user was sitting on the summary screen and could
 press Save again. Anything that resolves a template's fate (a later
 successful save, a delete) must clear its queued entry, or the replay
-resurrects it.
+resurrects it. `saveTemplate` and `deleteTemplate` also **wait for the replay
+in flight** (`pendingFlush`) before writing: a queued version is older than
+anything the user does after reopening the app, and its upsert landing second
+silently replaced the newer edit. That `await` is not a needless delay.
 
 ## Program frequencies are validated at every door
 
