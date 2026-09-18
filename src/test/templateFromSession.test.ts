@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { templateFromSession } from '@/hooks/useScreenHelpers';
 import { EXERCISE_DATABASE } from '@/data/exercises';
+import { getExerciseInputMode } from '@/utils/exerciseInputMode';
 import type { WorkoutSession, WorkoutSet } from '@/types/workout';
 
 const set = (o: Partial<WorkoutSet> = {}): WorkoutSet => ({ setNumber: 1, type: 'normal', reps: 10, weight: 60, ...o });
@@ -64,7 +65,7 @@ describe('templateFromSession', () => {
     // The finish path logs a plank as reps 1 with the hold in `time`; the
     // template's target for time-only work is minutes, so 1 was a nonsense
     // target that the editor and the calendar then displayed.
-    const timed = EXERCISE_DATABASE.find(e => e.measurementType === 'time');
+    const timed = EXERCISE_DATABASE.find(e => getExerciseInputMode(e.id) === 'time');
     expect(timed).toBeDefined();
     const s = session();
     s.exercises = [{ exerciseId: timed!.id, exerciseName: timed!.name, sets: [set({ reps: 1, weight: undefined, time: 90 })] }];
