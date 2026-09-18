@@ -10,6 +10,7 @@ import { SessionSummary } from '@/components/SessionSummary';
 import { SharedProgramView } from '@/components/shared/SharedProgramView';
 import { SharedTemplateView } from '@/components/shared/SharedTemplateView';
 import { importSharedSnapshot } from '@/utils/shareImport';
+import { publishableSharedBy } from '@/utils/shareSnapshot';
 import { SHARE_SNAPSHOT_VERSION, type ShareSnapshot } from '@/types/share';
 import type { WeightUnit } from '@/hooks/useStorage';
 
@@ -126,7 +127,9 @@ const SharedItem: React.FC = () => {
   }
 
   const { snapshot, title } = state;
-  const sharedBy = snapshot.sharedBy?.trim() || 'a RepVision user';
+  // Applied on read as well as at share time: a snapshot is frozen, and links
+  // made before the guard existed still carry the address.
+  const sharedBy = publishableSharedBy(snapshot.sharedBy) ?? 'a RepVision user';
   const importable = snapshot.kind !== 'session' || snapshot.session.exercises.length > 0;
 
   // SharedCustomExercise uses `sourceId`; getExerciseInputMode wants `id`.

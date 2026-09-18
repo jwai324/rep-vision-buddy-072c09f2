@@ -231,11 +231,14 @@ easy to undo by accident:
   place, and a Send tapped in that instant goes out without them. The engine
   therefore never hands words over from inside a React effect — `stop()`
   between sessions finishes on a fresh task for exactly that reason.
-- A session opens `RESTART_DELAY_MS` after the previous recognizer was told
-  to abort (chaining, or a tap right after a send or a double tap). Chrome for
-  Android tears the native recognizer down asynchronously and reports a start
-  that races it as `not-allowed`, which would otherwise surface as a false
-  "microphone blocked" toast.
+- A session opens `RESTART_DELAY_MS` after the previous one closed, whether
+  it was told to abort (a tap right after a send, a double tap) or ended by
+  itself (chaining, and a run started from inside `onEnd` — which is how the
+  bug-report sheet moves the mic between its boxes). Chrome for Android tears
+  the native recognizer down asynchronously, after `onend` as well, and
+  reports a start that races it as `not-allowed`, which would otherwise
+  surface as a false "microphone blocked" toast. `lastClosedAt` in the engine
+  is recorded on both paths for that reason.
 
 Browser facts the design leans on (verified in Chromium and WebKit source):
 Chrome and WebKit only ever append finals and keep at most one interim, always
@@ -871,6 +874,12 @@ import into their own library.
   missing ones are created (deduped by name) and each `exerciseId` is rewritten.
   An imported program is deliberately **not** activated: activating it would
   regenerate the viewer's `future_workouts`, which is destructive.
+- **`sharedBy` is never an email address.** Sign-up seeds `display_name` from
+  the email, so an account that never renamed itself would put its address on
+  a public page. `publishableSharedBy` drops anything that could be one, at
+  share time in the snapshot builders and again on read in `SharedItem`
+  (payloads frozen before the guard still carry it). Route any new reader or
+  writer of `sharedBy` through it.
 - Snapshot shape changes must bump `SHARE_SNAPSHOT_VERSION` in
   `src/types/share.ts`; the public page refuses payloads newer than it knows.
 - Links preview with the generic RepVision card — this is a client-rendered SPA

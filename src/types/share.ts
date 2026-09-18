@@ -29,6 +29,8 @@ export interface SharedCustomExercise {
   secondaryMuscles: string[];
   isRecovery: boolean;
   measurementType?: MeasurementType | null;
+  /** Absent from payloads written before the flag travelled; read as false. */
+  excludeFromVolume?: boolean;
 }
 
 /** Resolved display name for one exercise id, so the public page never needs a lookup hook. */

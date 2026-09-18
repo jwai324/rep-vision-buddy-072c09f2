@@ -26,7 +26,11 @@ import type { WeightUnit } from '@/hooks/useStorage';
  */
 
 /** The element shape of `useCustomExercisesContext().exercises`. */
-export type CustomExerciseLite = Exercise & { isCustom: true; isRecovery: boolean };
+export type CustomExerciseLite = Exercise & {
+  isCustom: true;
+  isRecovery: boolean;
+  excludeFromVolume?: boolean;
+};
 
 export interface SnapshotContext {
   weightUnit: WeightUnit;
@@ -39,6 +43,18 @@ export interface SnapshotContext {
 /** Custom exercise ids are minted as `custom-<row uuid>` by useCustomExercises. */
 export function isCustomExerciseId(id: string): boolean {
   return id.startsWith('custom-');
+}
+
+/**
+ * Sign-up seeds `profiles.display_name` from the account's email address
+ * (`handle_new_user`), so a display name the user never changed *is* their
+ * email. A public page must not publish one: anything that could be an
+ * address is dropped, and the viewer sees the generic fallback instead.
+ */
+export function publishableSharedBy(name: string | null | undefined): string | null {
+  const trimmed = name?.trim() ?? '';
+  if (!trimmed || /\S@\S/.test(trimmed)) return null;
+  return trimmed;
 }
 
 /**
@@ -87,6 +103,7 @@ function pickCustomExercises(
       secondaryMuscles: ce.secondaryMuscles ?? [],
       isRecovery: ce.isRecovery,
       measurementType: ce.measurementType ?? null,
+      excludeFromVolume: ce.excludeFromVolume ?? false,
     }));
 }
 
@@ -99,7 +116,7 @@ function base(ctx: SnapshotContext, ids: ExerciseId[]) {
     version: SHARE_SNAPSHOT_VERSION,
     sharedAt: (ctx.now ?? (() => new Date().toISOString()))(),
     weightUnit: ctx.weightUnit,
-    sharedBy: ctx.sharedBy,
+    sharedBy: publishableSharedBy(ctx.sharedBy),
     customExercises: pickCustomExercises(ids, ctx.customExercises),
   };
 }

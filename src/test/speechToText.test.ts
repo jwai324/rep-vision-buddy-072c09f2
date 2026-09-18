@@ -577,6 +577,7 @@ describe('SpeechToText — the mic button ending a run', () => {
     mic().end();
     engine.start();
     expect(engine.getState()).toEqual({ listening: true, transcript: '' });
+    chain();
     mic().final('and lunges');
     engine.stop();
     mic().end();
@@ -664,15 +665,56 @@ describe('SpeechToText — cancelling and disposing', () => {
     expect(built).toHaveLength(2);
   });
 
-  it('opens at once after a session the browser had already ended', () => {
+  it('waits out the restart delay after a session the browser had already ended', () => {
     const { engine } = harness();
     engine.start();
     mic().final('add squats');
     engine.stop();
     mic().end();
     engine.start();
-    expect(built).toHaveLength(2);
+    // Nothing was aborted, but on Android the recognizer behind an ended
+    // session is still being torn down when onend fires, and a start that
+    // races it is refused as if the microphone were blocked.
+    expect(engine.getState().listening).toBe(true);
+    expect(built).toHaveLength(1);
     expect(built[0].aborted).toBe(false);
+    chain();
+    expect(built).toHaveLength(2);
+    expect(mic().live).toBe(true);
+  });
+
+  it('gives a run started from inside the hand-over the same room', () => {
+    // The bug-report sheet moves the mic between its boxes by starting the
+    // next run from onEnd — that is, from inside the last recognizer's onend.
+    const ended: string[] = [];
+    const engine: SpeechToText = new SpeechToText({
+      onEnd: words => {
+        ended.push(words);
+        engine.start();
+      },
+    });
+    engine.start();
+    mic().final('rest timer is wrong');
+    engine.stop();
+    mic().end();
+
+    expect(ended).toEqual(['rest timer is wrong']);
+    expect(engine.getState()).toEqual({ listening: true, transcript: '' });
+    expect(built).toHaveLength(1);
+    chain();
+    expect(built).toHaveLength(2);
+    expect(mic().live).toBe(true);
+  });
+
+  it('opens at once when the last session closed a while ago', () => {
+    const { engine } = harness();
+    engine.start();
+    mic().final('add squats');
+    engine.stop();
+    mic().end();
+    vi.advanceTimersByTime(RESTART_DELAY_MS);
+    engine.start();
+    expect(built).toHaveLength(2);
   });
 });
 

@@ -48,6 +48,27 @@ describe('AI coach chat draft', () => {
     expect(screen.getByPlaceholderText('Ask anything…')).toHaveValue('how should I program deadlifts');
   });
 
+  it('renders, and opens, when the browser blocks site storage', () => {
+    // Chrome with site data blocked throws on the localStorage getter itself;
+    // jsdom's does not, so the closest stand-in is a Storage that throws.
+    const blocked = () => {
+      throw new DOMException('Access is denied for this document.', 'SecurityError');
+    };
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(blocked);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(blocked);
+    const wasOpen = chatValue.isOpen;
+    chatValue.isOpen = false;
+    try {
+      render(<AIChatBubble />);
+      fireEvent.click(screen.getByRole('button'));
+      expect(chatValue.setOpen).toHaveBeenCalledWith(true);
+    } finally {
+      chatValue.isOpen = wasOpen;
+      getItem.mockRestore();
+      setItem.mockRestore();
+    }
+  });
+
   it('clears the stored draft once the message is sent', () => {
     const first = render(<AIChatBubble />);
     fireEvent.change(screen.getByPlaceholderText('Ask anything…'), {
