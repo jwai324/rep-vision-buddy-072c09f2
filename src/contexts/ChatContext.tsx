@@ -1174,13 +1174,16 @@ export const ChatProvider: React.FC<{
         const rows = getSessionRows();
         const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
         if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
-        if (!targetRow.sets.some(s => s.setNumber === args.setNumber)) {
+        // Warm-ups carry their own 1..n numbering; "set 1" is working set 1,
+        // and the session applies the same rule.
+        const isTarget = (s: { setNumber: number; type?: string }) => s.type !== 'warmup' && s.setNumber === args.setNumber;
+        if (!targetRow.sets.some(isTarget)) {
           return mkInvalid({ kind: 'session', rows }, `Set ${args.setNumber} of ${targetRow.exerciseName} does not exist.`);
         }
         const argIssues = sessionArgIssues(args);
         if (argIssues.length) return mkInvalid({ kind: 'session', rows }, argIssues.join('\n'));
         const after = rows.map(r => r.exerciseId === args.exerciseId
-          ? { ...r, sets: r.sets.map(s => s.setNumber === args.setNumber ? { ...s, weight: args.weight ?? s.weight, reps: args.reps ?? s.reps } : s) }
+          ? { ...r, sets: r.sets.map(s => isTarget(s) ? { ...s, weight: args.weight ?? s.weight, reps: args.reps ?? s.reps } : s) }
           : r);
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,

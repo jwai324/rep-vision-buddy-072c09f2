@@ -138,9 +138,11 @@ const SharedItem: React.FC = () => {
   // handful of rows.
   const sharedCustomLite = (snapshot?.customExercises ?? []).map(c => ({
     id: c.sourceId,
+    name: c.name,
     primaryBodyPart: c.primaryBodyPart,
     equipment: c.equipment,
     measurementType: c.measurementType,
+    isRecovery: c.isRecovery,
   }));
 
   return (

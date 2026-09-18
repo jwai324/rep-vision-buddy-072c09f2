@@ -885,7 +885,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             return {
               ...block,
               sets: block.sets.map(set => {
-                if (set.setNumber !== setNumber) return set;
+                // Warm-ups are numbered 1..n on their own; "set 1" from the
+                // coach means working set 1, not both.
+                if (set.type === 'warmup' || set.setNumber !== setNumber) return set;
                 found = true;
                 return {
                   ...set,

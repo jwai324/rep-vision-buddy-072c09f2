@@ -125,7 +125,12 @@ export function buildSessionSnapshot(
   session: WorkoutSession,
   ctx: SnapshotContext,
 ): SessionSnapshot {
-  const ids = uniq(session.exercises.map(e => e.exerciseId));
+  // A rest day's recovery activities are exercise ids too; a custom one
+  // needs its definition in the payload or the shared page shows nothing.
+  const ids = uniq([
+    ...session.exercises.map(e => e.exerciseId),
+    ...(session.recoveryActivities ?? []).map(a => a.activityId),
+  ]);
   const lookup = buildExerciseLookup(ctx.customExercises);
   return {
     ...base(ctx, ids),

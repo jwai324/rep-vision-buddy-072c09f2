@@ -621,7 +621,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
                   ? { ...prev, futureWorkout: next }
                   : prev);
               }
-              storage.updateFutureWorkout(next);
+              // The detail screen waits for this before it says "done".
+              return storage.updateFutureWorkout(next);
             }
           : undefined;
 
@@ -957,7 +958,10 @@ const Index = () => {
   }, [storage]);
   return (
     <CustomExercisesProvider>
-      <ErrorBoundary fallbackTitle="Chat unavailable — try reloading">
+      {/* Wraps everything below the auth provider, so a crash anywhere in the
+          app lands here; the title used to blame the chat, and the bug-report
+          handle it unmounted is the one thing the user needs on this screen. */}
+      <ErrorBoundary fallbackTitle="Something went wrong" fallbackExtra={<ErrorReportButton screen="crash" />}>
         <ChatProvider storage={storage}>
           <TutorialProvider onComplete={handleTutorialComplete}>
             <IndexInner storage={storage} />

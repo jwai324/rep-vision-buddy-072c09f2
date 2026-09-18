@@ -1,6 +1,7 @@
 import type { WorkoutProgram, FutureWorkout, WorkoutTemplate } from '@/types/workout';
 import { format } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { programOccurrencesOn } from '@/utils/programFrequency';
 
 export interface ScheduledWorkoutResult {
   template: WorkoutTemplate | null;
@@ -44,17 +45,14 @@ export function getScheduledWorkoutsForDate(
     });
   }
 
-  const dow =
-    typeof date === 'string'
-      ? new Date(date + 'T00:00:00').getDay()
-      : date.getDay();
-  const matchingDays = activeProgram.days.filter(
-    d => d.frequency?.type === 'weekly' && d.frequency.weekday === dow,
-  );
-  return matchingDays.map(programDay => {
-    if (programDay.templateId === 'rest') return { template: null, isRestDay: true, futureWorkout: null };
+  // No rows yet (an import, or a schedule not regenerated): the same walker
+  // every other calendar uses, so monthly and every-N-days workouts show up
+  // here too rather than only on the month view.
+  const day = typeof date === 'string' ? parseLocalDate(date) : date;
+  return programOccurrencesOn(activeProgram, day).map(occurrence => {
+    if (occurrence.templateId === 'rest') return { template: null, isRestDay: true, futureWorkout: null };
     return {
-      template: templates.find(t => t.id === programDay.templateId) ?? null,
+      template: templates.find(t => t.id === occurrence.templateId) ?? null,
       isRestDay: false,
       futureWorkout: null,
     };

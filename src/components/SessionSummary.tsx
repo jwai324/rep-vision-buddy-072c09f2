@@ -62,7 +62,7 @@ interface SessionSummaryProps {
    * and carries its own definitions in the snapshot. Omit inside the app and
    * the signed-in user's own list is used.
    */
-  customExercises?: { id: string; primaryBodyPart: string; equipment: string; measurementType?: MeasurementType | null }[];
+  customExercises?: { id: string; name?: string; primaryBodyPart: string; equipment: string; measurementType?: MeasurementType | null; isRecovery?: boolean }[];
 }
 
 function formatDuration(s: number) {
@@ -84,6 +84,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
   // or band exercise fall back to the reps-and-weight branch, so a workout that
   // logged correctly renders as weight x reps the moment it is read back.
   const inputModeExercises = customExercisesProp ?? contextCustomExercises;
+  // The shared page mounts no provider, so a custom recovery activity's name
+  // comes from the snapshot's definitions when they are given.
+  const recoveryNameExercises: { id: string; name?: string; equipment: string; primaryBodyPart: string }[] = customExercisesProp ?? contextCustomExercises;
   const exerciseLookup = useExerciseLookup();
 
   const allRestDayExercises = useMemo(() => {
@@ -200,7 +203,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                 // A custom recovery exercise is in neither static table, and
                 // a row that resolves to nothing still has to be removable.
                 const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId)
-                  ?? customExercises.find(ex => ex.id === a.activityId);
+                  ?? recoveryNameExercises.find(ex => ex.id === a.activityId);
                 const lookup = EXERCISES[a.activityId];
                 const name = info?.name ?? lookup?.name ?? a.activityId;
                 const icon = lookup?.icon ?? '🏋️';
