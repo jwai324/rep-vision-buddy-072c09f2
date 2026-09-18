@@ -596,9 +596,10 @@ mutation reports the move through `onSetIndicesShifted` /
 it. Before this, Stop wrote the set's time and completion to whichever row had
 slid into the index. A new mutation that inserts, removes or reorders rows
 must report through the same callbacks. The rest timer's id and the
-`restRecords` keys are also index-keyed (`useSessionRestTimer`) and are
-**not** remapped yet, so a rest bar can still show under the wrong row after
-one of these edits; that is display-only.
+`restRecords` keys are index-keyed the same way (`useSessionRestTimer`), and
+`ActiveSession` forwards every remap to `remapTimerIds`, so the rest bar and
+the rest chips move with their rows too; a drop-row remap
+(`onDropIndicesShifted`) covers a stopwatch running on a drop.
 
 ## The rest timer outlives the screen
 
