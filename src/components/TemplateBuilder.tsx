@@ -42,7 +42,21 @@ function loadDraft(
   };
 }
 
-export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', defaultRestSeconds = 90, onSave, onCancel }) => {
+/**
+ * The blocks are derived once, in the state initialisers below, and a custom
+ * exercise's input mode decides how its target is read in: before the custom
+ * library has loaded every custom exercise reads as reps-and-weight, so an lbs
+ * user's band level came in converted as kilograms (level 4 as 8.8) and went
+ * back out as a fractional level. The library loads once per app start, so
+ * this only ever waits on that first fetch.
+ */
+export const TemplateBuilder: React.FC<TemplateBuilderProps> = (props) => {
+  const { loading } = useCustomExercisesContext();
+  if (loading && props.initial) return null;
+  return <LoadedTemplateBuilder {...props} />;
+};
+
+const LoadedTemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', defaultRestSeconds = 90, onSave, onCancel }) => {
   const { exercises: customExercises } = useCustomExercisesContext();
 
   const [name, setName] = useState(() => loadDraft(initial, weightUnit, customExercises).name);

@@ -4,6 +4,7 @@ import { format, subDays, startOfWeek, addDays } from 'date-fns';
 import { parseLocalDate } from '@/utils/dateUtils';
 import type { UserPreferences } from '@/hooks/useStorage';
 import { computeDisplayedStreak, getLongestStreak } from '@/utils/streak';
+import { formatVolumeFromKg } from '@/utils/weightConversion';
 
 interface ConsistencyTabProps {
   history: WorkoutSession[];
@@ -13,14 +14,13 @@ interface ConsistencyTabProps {
 export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, preferences }) => {
   const { grid, maxVolume, currentStreak, longestStreak } = useMemo(() => {
     const volumeMap = new Map<string, number>();
-    const workoutDates = new Set<string>();
+    const trainedDates = new Set<string>();
 
     for (const s of history) {
+      if (s.isRestDay) continue;
       const key = format(parseLocalDate(s.date), 'yyyy-MM-dd');
-      workoutDates.add(key);
-      if (!s.isRestDay) {
-        volumeMap.set(key, (volumeMap.get(key) || 0) + s.totalVolume);
-      }
+      trainedDates.add(key);
+      volumeMap.set(key, (volumeMap.get(key) || 0) + s.totalVolume);
     }
 
     const maxVol = Math.max(...Array.from(volumeMap.values()), 1);
@@ -28,14 +28,14 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, prefere
     // Build 52 weeks of data ending today
     const today = new Date();
     const start = startOfWeek(subDays(today, 52 * 7 - 1), { weekStartsOn: 1 });
-    const weeks: { date: string; volume: number; dayOfWeek: number }[][] = [];
+    const weeks: { date: string; volume: number; trained: boolean; dayOfWeek: number }[][] = [];
     let week: typeof weeks[0] = [];
     let cursor = new Date(start);
 
     while (cursor <= today) {
       const key = format(cursor, 'yyyy-MM-dd');
       const dow = cursor.getDay();
-      week.push({ date: key, volume: volumeMap.get(key) || 0, dayOfWeek: dow === 0 ? 6 : dow - 1 });
+      week.push({ date: key, volume: volumeMap.get(key) || 0, trained: trainedDates.has(key), dayOfWeek: dow === 0 ? 6 : dow - 1 });
       if (dow === 0 || cursor.getTime() === today.getTime()) {
         weeks.push(week);
         week = [];
@@ -56,9 +56,11 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, prefere
     return { grid: weeks, maxVolume: maxVol, currentStreak: current, longestStreak: longest };
   }, [history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt]);
 
-  const getIntensity = (volume: number) => {
-    if (volume === 0) return 'bg-secondary';
-    const ratio = volume / maxVolume;
+  // A day is painted for having a workout on it at all; volume only picks the
+  // shade among trained days, so a bodyweight or cardio session is not blank.
+  const getIntensity = (day: { volume: number; trained: boolean }) => {
+    if (!day.trained) return 'bg-secondary';
+    const ratio = day.volume / maxVolume;
     if (ratio < 0.25) return 'bg-primary/25';
     if (ratio < 0.5) return 'bg-primary/50';
     if (ratio < 0.75) return 'bg-primary/75';
@@ -106,8 +108,8 @@ export const ConsistencyTab: React.FC<ConsistencyTabProps> = ({ history, prefere
                   return (
                     <div
                       key={day?.date ?? `${week[0]?.date}-${di}`}
-                      className={`w-full aspect-square md:w-[11px] md:h-[11px] rounded-[2px] ${day ? getIntensity(day.volume) : 'bg-transparent'}`}
-                      title={day ? `${day.date}: ${day.volume.toLocaleString()}` : ''}
+                      className={`w-full aspect-square md:w-[11px] md:h-[11px] rounded-[2px] ${day ? getIntensity(day) : 'bg-transparent'}`}
+                      title={day ? `${day.date}: ${formatVolumeFromKg(day.volume, preferences.weightUnit)}` : ''}
                     />
                   );
                 })}

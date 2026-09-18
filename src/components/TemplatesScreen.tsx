@@ -15,6 +15,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+/** How far a finger may drift during a long press before it reads as a scroll. */
+const LONG_PRESS_SLOP_PX = 10;
+
 interface TemplatesScreenProps {
   templates: WorkoutTemplate[];
   onStart: (template: WorkoutTemplate) => void;
@@ -33,9 +36,12 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
   const blockers = deleteTarget && usedBy ? usedBy(deleteTarget.id) : [];
   const [contextMenu, setContextMenu] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchOrigin = useRef<{ x: number; y: number } | null>(null);
   const exerciseLookup = useExerciseLookup();
 
-  const handleTouchStart = (id: string) => {
+  const handleTouchStart = (id: string, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchOrigin.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
     longPressTimer.current = setTimeout(() => {
       setContextMenu(id);
     }, 500);
@@ -46,6 +52,15 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
+  };
+
+  // A scroll keeps the finger down well past the delay and touchend does not
+  // fire until it lifts, so movement is what cancels the press.
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const origin = touchOrigin.current;
+    if (touch && origin && Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) < LONG_PRESS_SLOP_PX) return;
+    handleTouchEnd();
   };
 
   const handleDuplicate = (t: WorkoutTemplate) => {
@@ -70,7 +85,8 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
             <div
               key={t.id}
               className="bg-card rounded-xl p-4 border border-border relative"
-              onTouchStart={() => handleTouchStart(t.id)}
+              onTouchStart={e => handleTouchStart(t.id, e)}
+              onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
               onTouchCancel={handleTouchEnd}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu(t.id); }}

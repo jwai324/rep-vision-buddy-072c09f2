@@ -40,6 +40,7 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weigh
     if (typeof window === 'undefined') return true;
     try { return localStorage.getItem(HINT_KEY) === '1'; } catch { return true; }
   });
+  const [tab, setTab] = useState('volume');
 
   useEffect(() => {
     const mql = window.matchMedia('(orientation: portrait)');
@@ -80,7 +81,9 @@ export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ history, weigh
         </div>
       )}
 
-      <Tabs key={isPortrait ? 'p' : 'l'} defaultValue="volume" className="w-full min-w-0 max-w-full">
+      {/* The key remounts the panel so the charts re-measure for the new
+          orientation; the selected tab lives outside it so it survives that. */}
+      <Tabs key={isPortrait ? 'p' : 'l'} value={tab} onValueChange={setTab} className="w-full min-w-0 max-w-full">
         <TabsList className="w-full overflow-x-auto scrollbar-hide flex justify-start gap-0 bg-muted rounded-lg p-1 h-auto flex-nowrap">
           {TABS.map(tab => (
             <TabsTrigger key={tab.value} value={tab.value} className="text-[11px] px-2.5 py-1.5 whitespace-nowrap flex-shrink-0">

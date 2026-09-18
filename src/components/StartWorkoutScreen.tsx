@@ -1,5 +1,5 @@
 import React from 'react';
-import { format } from 'date-fns';
+import { formatLocalDate } from '@/utils/dateUtils';
 import type { WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
@@ -20,13 +20,19 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
   templates, activeProgram, futureWorkouts, onBlankWorkout, onSelectTemplate, onStartProgramDay, onBack,
 }) => {
   const lookup = useExerciseLookup();
-  const todayScheduled = getScheduledWorkoutsForDate(
-    format(new Date(), 'yyyy-MM-dd'), activeProgram, futureWorkouts, templates,
-  );
+  const today = formatLocalDate();
+  const todayScheduled = getScheduledWorkoutsForDate(today, activeProgram, futureWorkouts, templates);
   const todayEntries = todayScheduled
     .filter(s => s.template !== null)
     .map(s => ({ template: s.template as WorkoutTemplate, completed: s.futureWorkout?.completed === true }));
   const isRestDay = todayScheduled.length > 0 && todayScheduled.every(s => s.isRestDay);
+  // The raw list holds every program ever activated and every missed date,
+  // oldest first; the quick pick is what the current plan has coming up.
+  const upcoming = futureWorkouts
+    .filter(fw => fw.templateId !== 'rest' && !fw.completed && fw.date >= today
+      && (fw.programId === activeProgram?.id || fw.programId === 'manual'))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 5);
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
@@ -94,15 +100,13 @@ export const StartWorkoutScreen: React.FC<StartWorkoutScreenProps> = ({
 
       {/* Future Workouts — the quick pick list is what's still outstanding;
           today's already-logged entry stays available in the card above. */}
-      {futureWorkouts.filter(fw => fw.templateId !== 'rest' && !fw.completed).length > 0 && (
+      {upcoming.length > 0 && (
         <div>
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2 px-1">
             🗓️ Future Workouts
           </p>
           <div className="flex flex-col gap-2">
-            {futureWorkouts
-              .filter(fw => fw.templateId !== 'rest' && !fw.completed)
-              .slice(0, 5)
+            {upcoming
               .map(fw => {
                 const template = templates.find(t => t.id === fw.templateId);
                 return (

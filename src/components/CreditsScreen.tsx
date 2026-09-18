@@ -75,10 +75,14 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
 
   useEffect(() => { loadLedger(); }, [loadLedger]);
 
+  // The allowance period is the UTC calendar month (free_period is stamped
+  // from now() AT TIME ZONE 'utc'), so the reset day is named in UTC as well.
+  // Formatting the boundary in local time put it on the 30th in the evening
+  // west of Greenwich and on the 2nd in the morning east of it.
   const nextReset = (() => {
-    const d = new Date();
-    d.setUTCMonth(d.getUTCMonth() + 1, 1);
-    return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+    const now = new Date();
+    const boundary = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return boundary.toLocaleDateString(undefined, { month: 'long', day: 'numeric', timeZone: 'UTC' });
   })();
 
   return (

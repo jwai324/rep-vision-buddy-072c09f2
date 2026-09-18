@@ -197,9 +197,11 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">Recovery Plan</p>
             <div className="flex flex-col gap-2">
               {activities.map(a => {
-                const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId);
+                // A custom recovery exercise is in neither static table, and
+                // a row that resolves to nothing still has to be removable.
+                const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId)
+                  ?? customExercises.find(ex => ex.id === a.activityId);
                 const lookup = EXERCISES[a.activityId];
-                if (!info && !lookup) return null;
                 const name = info?.name ?? lookup?.name ?? a.activityId;
                 const icon = lookup?.icon ?? '🏋️';
                 return (

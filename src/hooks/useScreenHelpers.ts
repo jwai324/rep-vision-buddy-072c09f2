@@ -16,9 +16,12 @@ export function templateFromSession(session: WorkoutSession, nameOverride?: stri
       // Warm-ups are prepended, so sets[0] is a warm-up whenever one was added
       // — and its light load and low reps are not what the template is for.
       const first = ex.sets.find(s => s.type !== 'warmup') ?? ex.sets[0];
+      // Drop-set rows are saved beside their parent set and warm-ups ahead of
+      // the working ones; neither is a set the template should ask for again.
+      const working = ex.sets.filter(s => s.type !== 'warmup' && s.type !== 'dropset').length;
       return {
         exerciseId: ex.exerciseId,
-        sets: ex.sets.length,
+        sets: Math.max(1, working),
         targetReps: first?.reps ?? 10,
         setType: first?.type ?? 'normal',
         restSeconds: defaultRestSeconds,

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import type { ExerciseId, SetType } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
@@ -152,12 +153,19 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
   }, [addMultipleExercises]);
 
   const swapExercise = useCallback((blockIdx: number, newId: ExerciseId) => {
+    // Rows are keyed, dragged and superset-linked by exerciseId, so two rows
+    // sharing one cannot be told apart. The similar list already leaves out
+    // what is in the template; Browse All does not.
+    if (blocks.some((b, i) => i !== blockIdx && b.exerciseId === newId)) {
+      toast.error(`${exerciseLookup[newId] ?? newId} is already in this template.`);
+      return;
+    }
     onChange(prev => prev.map((b, i) => {
       if (i !== blockIdx) return b;
       return { ...b, exerciseId: newId, exerciseName: exerciseLookup[newId] ?? newId };
     }));
     setSwapTarget(null);
-  }, [onChange, exerciseLookup]);
+  }, [onChange, exerciseLookup, blocks]);
 
   const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
 
@@ -336,7 +344,7 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                       min={0}
                       step={15}
                       value={block.restSeconds}
-                      onChange={e => updateRestSeconds(blockIdx, parseInt(e.target.value) || 0)}
+                      onChange={e => updateRestSeconds(blockIdx, Math.max(0, parseInt(e.target.value) || 0))}
                       className="w-16 text-center text-xs bg-secondary/60 rounded-md py-1 text-foreground outline-none focus:ring-1 focus:ring-primary"
                     />
                     <span>sec</span>

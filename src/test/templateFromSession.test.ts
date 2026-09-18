@@ -32,6 +32,30 @@ describe('templateFromSession', () => {
     expect(first.targetReps).toBe(8);
     expect(first.targetWeight).toBe(80);
     expect(first.setType).toBe('normal');
-    expect(first.sets).toBe(2);
+    // The warm-up is not a set to plan either.
+    expect(first.sets).toBe(1);
+  });
+
+  it('counts working sets only: warm-ups and the drop rows saved beside their parent are not sets to plan', () => {
+    const s = session();
+    s.exercises[0].sets = [
+      set({ type: 'warmup', reps: 5, weight: 20 }),
+      set({ reps: 8, weight: 80 }),
+      set({ type: 'dropset', reps: 6, weight: 60 }),
+      set({ setNumber: 2, reps: 8, weight: 80 }),
+      set({ setNumber: 2, type: 'dropset', reps: 6, weight: 60 }),
+      set({ setNumber: 3, reps: 8, weight: 80 }),
+    ];
+    const [first] = templateFromSession(s).exercises;
+
+    expect(first.sets).toBe(3);
+    expect(first.targetReps).toBe(8);
+    expect(first.targetWeight).toBe(80);
+  });
+
+  it('never plans zero sets for an exercise that only logged a warm-up', () => {
+    const s = session();
+    s.exercises[0].sets = [set({ type: 'warmup', reps: 5, weight: 20 })];
+    expect(templateFromSession(s).exercises[0].sets).toBe(1);
   });
 });

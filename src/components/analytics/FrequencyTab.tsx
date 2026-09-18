@@ -59,7 +59,7 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
     })
       .filter(d => d.sessions > 0)
       .sort((a, b) => b.sessions - a.sessions);
-  }, [history, period]);
+  }, [history, period, exerciseBodyPartMap]);
 
   const weeks = period / 7;
   const lowThreshold = Math.floor(weeks);

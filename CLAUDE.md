@@ -481,7 +481,10 @@ whole schedule by a day or three for good.
 and the day-tap helper in `useScreenHelpers`. The first fix validated the
 scheduler alone and left the other three with their own loops, so a program
 saved before validation existed still hung the home screen. Do not add a
-fifth loop. `saveProgram` also writes sanitized days and the load-time repair
+fifth loop. The program editor's calendar preview is `programOccurrences` over
+the draft, the same call `saveProgram` schedules from — its own loops used to
+drop today's every-N-days occurrence, so the preview and the saved calendar
+disagreed. `saveProgram` also writes sanitized days and the load-time repair
 re-saves a stored program whose days sanitize differently, so the database
 heals itself. An invalid frequency makes the day *unscheduled*, never dropped;
 weekday 7 is read as Sunday (an older builder's numbering), the same mapping
