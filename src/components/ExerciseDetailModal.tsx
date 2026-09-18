@@ -11,7 +11,7 @@ import type { UserPreferences, WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
 import { formatWeightString, formatVolume, fromKg, storedBandLevel } from '@/utils/weightConversion';
-import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, distanceUnitFromWeightUnit } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, distanceUnitFromWeightUnit, usesReps, usesWeight } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { parseLocalDate } from '@/utils/dateUtils';
@@ -80,12 +80,19 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   );
 
   const volumeData = useMemo(() => {
+    // Weight x reps is volume only for rep-and-load work. A timed hold logs
+    // reps 1, a band set's "weight" is a level, and distance work has no
+    // load, so the series was a flat zero line or a level multiplied out as
+    // a mass; the tab's empty state is the honest answer for those.
+    if (!exerciseId) return [];
+    const mode = getExerciseInputMode(exerciseId, customExercises);
+    if (!usesReps(mode) || !usesWeight(mode) || mode === 'band') return [];
     return exerciseHistory.map(h => {
       const volumeKg = h.exerciseLog.sets.reduce((sum, set) => sum + (set.weight || 0) * set.reps, 0);
       const volume = Math.round(fromKg(volumeKg, weightUnit));
       return { date: h.date, volume };
     });
-  }, [exerciseHistory, weightUnit]);
+  }, [exerciseHistory, weightUnit, exerciseId, customExercises]);
 
   if (!exercise) return null;
 

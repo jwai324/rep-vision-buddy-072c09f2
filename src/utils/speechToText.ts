@@ -412,6 +412,9 @@ export class SpeechToText {
     }
 
     this.segments.push(session.text);
+    // Stamped here as on the other two close paths: a stop()+start() inside
+    // the restart delay must still wait out the recognizer's teardown.
+    this.lastClosedAt = this.now();
     this.session = null;
     this.clearTimer('silence');
     this.openSessionLater(RESTART_DELAY_MS);
