@@ -18,6 +18,8 @@ type ExerciseNames = Record<string, string>;
 
 type DiffMark = 'add' | 'remove' | 'change' | 'same';
 
+const isActionable = (p: Proposal) => p.status === 'pending' || p.status === 'applying';
+
 const markClass: Record<DiffMark, string> = {
   add: 'text-primary border-l-2 border-primary/60 pl-2 bg-primary/5',
   remove: 'text-destructive line-through border-l-2 border-destructive/60 pl-2 bg-destructive/5',
@@ -26,15 +28,28 @@ const markClass: Record<DiffMark, string> = {
 };
 
 const formatExerciseRow = (
-  e: { exerciseId: string; sets?: number; targetReps?: number; restSeconds?: number },
+  e: { exerciseId: string; sets?: number; targetReps?: number | 'failure'; restSeconds?: number; setType?: string; targetRpe?: number },
   names: ExerciseNames,
 ) => {
   const name = names[e.exerciseId] ?? e.exerciseId;
   const sets = e.sets ?? '—';
   const reps = e.targetReps ?? '—';
   const rest = e.restSeconds != null ? ` · rest ${e.restSeconds}s` : '';
-  return `${name} · ${sets}×${reps}${rest}`;
+  const rpe = e.targetRpe != null ? ` · RPE ${e.targetRpe}` : '';
+  const type = e.setType && e.setType !== 'normal' ? ` · ${e.setType}` : '';
+  return `${name} · ${sets}×${reps}${rest}${rpe}${type}`;
 };
+
+// The target load is in kg by the tool contract and the superset id is
+// internal, so neither is written into the row; a change to either still has
+// to mark the row, or the user approves an edit the card calls unchanged.
+const sameField = (a: unknown, b: unknown) => (a ?? undefined) === (b ?? undefined);
+const exerciseChanged = (a: ExerciseInput, b: ExerciseInput) =>
+  a.sets !== b.sets || a.targetReps !== b.targetReps || a.restSeconds !== b.restSeconds ||
+  (a.setType ?? 'normal') !== (b.setType ?? 'normal') ||
+  !sameField(a.supersetGroup, b.supersetGroup) ||
+  !sameField(a.targetWeight, b.targetWeight) ||
+  !sameField(a.targetRpe, b.targetRpe);
 
 const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot }> = ({ before, after }) => {
   const names = useExerciseLookup();
@@ -80,7 +95,7 @@ const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot
           return <div key={'a-' + i} className={cn('text-xs py-0.5', markClass.add)}>+ {formatExerciseRow(e, names)}</div>;
         }
         const matching = beforeEx.find((b: ExerciseInput) => b.exerciseId === e.exerciseId);
-        const changed = matching && (matching.sets !== e.sets || matching.targetReps !== e.targetReps || matching.restSeconds !== e.restSeconds);
+        const changed = matching && exerciseChanged(matching, e);
         return (
           <div key={'k-' + i} className={cn('text-xs py-0.5', changed ? markClass.change : markClass.same)}>
             {changed ? '~ ' : '  '}{formatExerciseRow(e, names)}
@@ -197,7 +212,7 @@ const SessionDiff: React.FC<{ proposal: Proposal }> = ({ proposal }) => {
 
   return (
     <div className="space-y-1">
-      {proposal.status === 'pending' && (
+      {isActionable(proposal) && (
         <div className="flex items-center gap-1.5 rounded-md bg-amber-500/10 border border-amber-500/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-500">
           <AlertTriangle className="w-3 h-3" />
           Proposed — not yet in your workout
@@ -237,7 +252,10 @@ export const ProposalDiffCard: React.FC<Props> = ({ proposal, templateNameById, 
     proposal.before.kind === 'session' ? <SessionDiff proposal={proposal} /> :
     null;
 
-  const isPendingSession = proposal.before.kind === 'session' && proposal.status === 'pending';
+  const isPendingSession = proposal.before.kind === 'session' && isActionable(proposal);
+  // The buttons stay while the save is in flight but take no taps: a second
+  // Apply used to run the save twice and post two Applied notes.
+  const applying = proposal.status === 'applying';
 
   return (
     <div className="mt-2 pt-2 border-t border-border">
@@ -249,18 +267,20 @@ export const ProposalDiffCard: React.FC<Props> = ({ proposal, templateNameById, 
       )}>
         <div className="text-xs font-medium text-foreground">{proposal.summary}</div>
         {body}
-        {proposal.status === 'pending' && (
+        {isActionable(proposal) && (
           <div className="flex gap-2 pt-1">
             <button
               onClick={() => onApply(proposal.id)}
-              className="flex items-center gap-1 px-3 py-1 text-xs rounded-lg gradient-green text-primary-foreground font-medium"
+              disabled={applying}
+              className="flex items-center gap-1 px-3 py-1 text-xs rounded-lg gradient-green text-primary-foreground font-medium disabled:opacity-60"
             >
               <Check className="w-3 h-3" />
               Apply
             </button>
             <button
               onClick={() => onDiscard(proposal.id)}
-              className="flex items-center gap-1 px-3 py-1 text-xs rounded-lg bg-secondary text-secondary-foreground font-medium"
+              disabled={applying}
+              className="flex items-center gap-1 px-3 py-1 text-xs rounded-lg bg-secondary text-secondary-foreground font-medium disabled:opacity-60"
             >
               <X className="w-3 h-3" />
               Discard

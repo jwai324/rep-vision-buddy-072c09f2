@@ -83,6 +83,24 @@ Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an
 
 Template mutations come in two flavours, and the split exists for output-budget reasons: `edit_template` replaces the whole exercise list (so the model must re-send everything that should survive), while `add_exercises_to_template` appends only the new ones. Additions must use the append tool — a full re-send of a long template is thousands of tokens of tool JSON and is what pushes a reply into truncation. The client dedupes on `exerciseId` (`appendableTemplateExercises`) so a model that re-sends the list anyway can't duplicate rows.
 
+A template proposal is applied against the template **as it is at Apply time**, not
+the snapshot on the card. `edit_template` replaces the list, so `applyProposal`
+refuses it (`templateChangedSince`, "changed since this was proposed") when the
+template's name or rows differ from the ones it was built on — an edit made in
+the builder in between used to be silently overwritten. `add_exercises_to_template`
+re-derives instead: its additions are deduped against and appended to the
+current rows, which is also what lets two append proposals from one reply both
+apply. A proposal whose save is in flight is `status: 'applying'` (the card's
+buttons are disabled; a second tap is a no-op), and it goes back to `pending`
+when the write resolves `false`, so a refused delete or save never reads as
+Applied. What the model may write is bounded at proposal time — `SetType`
+outside the known list becomes `normal`, `sets`/`count` are 1–20 (they become
+array lengths), a `create_program` day must name an existing template or
+`rest`, and a `delete_template` obeys the same "used by a program" refusal as
+the Templates screen (`templateDeleteBlockers` mirrors `templateUsedBy` in
+`Index.tsx`; keep the two rules the same). Tests: `src/test/aiChatProposals.test.tsx`,
+`src/test/chatProposalGuards.test.ts`.
+
 A stream that dies after it has started (upstream billing, rate limit, dropped connection) is reported as a bare `data: {"error": "<plain sentence>"}` chunk with no `choices`. The client surfaces that sentence as the coach's reply — before this it skipped the payload and rendered an empty bubble, so an out-of-credits API key looked like the app silently doing nothing.
 
 **Prompt caching** is enabled on the system prompt and on the last tool
@@ -513,7 +531,9 @@ at the root, and entries from an earlier page load pop back to it.
 that belongs to a live session: it does not register with the session
 controller (the coach saw a fake `active_session` and its tools rewrote
 history), re-ticking a set gets a no-op `startTimer` (no sound, OS
-notification or permission prompt), and the fields the edit screen has no
+notification or permission prompt), the rest bars between sets and between
+exercises are not rendered at all (they took the live `startTimer`, so the
+no-op never reached them), and the fields the edit screen has no
 control for — `location`, `isRestDay`, `recoveryActivities` — ride through from
 the session being edited. Duration is written back only when the minutes field
 was actually changed; the field shows whole minutes, and writing it back
@@ -575,6 +595,12 @@ Rules that keep it correct:
 - **Completion is signalled once per rest, from `recalcRestSchedule`.** The
   worker's "done", the completion timeout and the visibility catch-up all route
   through it; whichever lands first fires, the rest are no-ops.
+- **A cross-tab `storage` event is applied only when its timer or records
+  actually differ** (`sameTimer` / `sameRecords` in `useSessionRestTimer`).
+  Setting the freshly parsed objects as they come re-ran this tab's cache
+  writer, whose write was the other tab's next storage event: two tabs on one
+  workout rewrote the cache every half-second and the last writer owned the
+  blocks.
 - **`ensureRestSchedule` is a no-op for the live key.** A remounting hook
   re-attaches rather than restarting; `releaseRestSchedule` is the only
   teardown. It is called by skip/pause/replace, by `clearSessionCache`
@@ -786,7 +812,10 @@ out of volume and set aggregates without hiding it from the log.
 - Applied to: weekly sets by body part (`Dashboard`), both charts in
   `analytics/VolumeTab`, movement-pattern sets in `analytics/BalanceTab`, and
   the AI coach's `summary` / `volume_by_muscle` analyses so its numbers match
-  the charts.
+  the charts. The coach counts the way the charts count, too:
+  `volume_by_muscle` is working sets only (no warm-ups, like the Dashboard's
+  Weekly Sets and the Volume tab's body-part lines) and `frequency` counts a
+  body part once per session (like the Frequency tab), not once per exercise.
 - Deliberately *not* applied to: per-session summaries, per-exercise history
   (`exercise_progression`, `weekly_volume_by_exercise`, `ExerciseDetailModal`),
   streaks, and consistency — those answer "what did I do" and "did I show up",

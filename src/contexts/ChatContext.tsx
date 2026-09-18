@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { EXERCISE_DATABASE, type Exercise } from '@/data/exercises';
-import type { WorkoutSession } from '@/types/workout';
+import type { SetType, WorkoutSession } from '@/types/workout';
 import { supabase } from '@/integrations/supabase/client';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
@@ -25,7 +25,7 @@ export interface ExerciseInput {
   exerciseId: string;
   exerciseName?: string;
   sets?: number;
-  targetReps?: number;
+  targetReps?: number | 'failure';
   setType?: string;
   restSeconds?: number;
   targetRpe?: number;
@@ -46,7 +46,7 @@ export interface ToolCallResult {
   proposalId?: string;
   templateId?: string;
   programId?: string;
-  prs?: Record<string, { weight: number; reps: number; rpe?: number }>;
+  prs?: Record<string, { exercise_id: string; weight: number; reps: number; rpe?: number }>;
   period_days?: number;
   requested_days?: number;
   actual_days?: number;
@@ -133,7 +133,9 @@ export interface Proposal {
   arguments: any;
   before: ProposalSnapshot;
   after: ProposalSnapshot;
-  status: 'pending' | 'applied' | 'discarded' | 'invalid';
+  // 'applying' is 'pending' with its save in flight: the card keeps its
+  // buttons but disables them, and a second Apply is a no-op.
+  status: 'pending' | 'applying' | 'applied' | 'discarded' | 'invalid';
   error?: string;
   suggestions?: string[];
   summary: string;
@@ -354,6 +356,169 @@ export function carryTemplateOnlyFields(
   });
 }
 
+const SET_TYPES: ReadonlySet<string> = new Set<SetType>(['normal', 'superset', 'dropset', 'failure', 'warmup']);
+
+// The tool schema lists the set types, but the model is not held to the enum
+// and edit_template's schema has none. Anything outside SetType used to be
+// saved as-is and crashed the session summary (SET_TYPE_CONFIG[type] is
+// undefined). Exported for unit testing.
+export function normalizeSetType(value: unknown): SetType {
+  return typeof value === 'string' && SET_TYPES.has(value) ? (value as SetType) : 'normal';
+}
+
+const isInt = (v: unknown, min: number, max: number): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+const isLoad = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+export const NUMERIC_BOUNDS = {
+  sets: [1, 20],
+  count: [1, 20],
+  reps: [1, 1000],
+  restSeconds: [0, 3600],
+} as const;
+
+/**
+ * Bounds on the numbers a tool call may carry. `sets` and `count` become
+ * array lengths (0 or negative throws, a huge one freezes the app), a missing
+ * targetReps crashes templateToBlocks when the workout starts, and the rest
+ * are persisted verbatim. Each problem is reported as a sentence the model
+ * can act on next turn. Exported for unit testing.
+ */
+export function templateExerciseIssues(e: ExerciseInput, name: string): string[] {
+  const issues: string[] = [];
+  const [minSets, maxSets] = NUMERIC_BOUNDS.sets;
+  if (!isInt(e.sets, minSets, maxSets)) {
+    issues.push(`${name}: sets must be a whole number from ${minSets} to ${maxSets} (got ${JSON.stringify(e.sets)}).`);
+  }
+  const [minReps, maxReps] = NUMERIC_BOUNDS.reps;
+  if (e.targetReps !== 'failure' && !isInt(e.targetReps, minReps, maxReps)) {
+    issues.push(`${name}: targetReps must be a whole number from ${minReps} to ${maxReps} (got ${JSON.stringify(e.targetReps)}).`);
+  }
+  const [minRest, maxRest] = NUMERIC_BOUNDS.restSeconds;
+  if (e.restSeconds !== undefined && !isInt(e.restSeconds, minRest, maxRest)) {
+    issues.push(`${name}: restSeconds must be a whole number from ${minRest} to ${maxRest} (got ${JSON.stringify(e.restSeconds)}).`);
+  }
+  if (e.targetWeight !== undefined && !isLoad(e.targetWeight)) {
+    issues.push(`${name}: targetWeight must be a number of 0 or more (got ${JSON.stringify(e.targetWeight)}).`);
+  }
+  return issues;
+}
+
+/** The same bounds for the live-session tools; every field is optional there. */
+export function sessionArgIssues(args: { sets?: unknown; count?: unknown; targetReps?: unknown; reps?: unknown; weight?: unknown }): string[] {
+  const issues: string[] = [];
+  const check = (key: 'sets' | 'count', value: unknown) => {
+    const [min, max] = NUMERIC_BOUNDS[key];
+    if (value !== undefined && !isInt(value, min, max)) issues.push(`${key} must be a whole number from ${min} to ${max} (got ${JSON.stringify(value)}).`);
+  };
+  check('sets', args.sets);
+  check('count', args.count);
+  const [minReps, maxReps] = NUMERIC_BOUNDS.reps;
+  for (const key of ['targetReps', 'reps'] as const) {
+    const value = args[key];
+    if (value !== undefined && !isInt(value, minReps, maxReps)) issues.push(`${key} must be a whole number from ${minReps} to ${maxReps} (got ${JSON.stringify(value)}).`);
+  }
+  if (args.weight !== undefined && !isLoad(args.weight)) issues.push(`weight must be a number of 0 or more (got ${JSON.stringify(args.weight)}).`);
+  return issues;
+}
+
+/**
+ * Give appended exercises superset ids the template is not already using.
+ * The model numbers groups from 1 within the list it sends, so a new pair
+ * arriving as group 1 fused with the template's existing group 1 into a
+ * four-exercise superset. A colliding id shared by two or more additions is
+ * their own superset and gets a fresh id; a single addition carrying an
+ * existing id is joining that superset and keeps it. Exported for unit
+ * testing.
+ */
+export function remapSupersetGroups<T extends { supersetGroup?: number }>(
+  existing: readonly { supersetGroup?: number }[],
+  additions: readonly T[],
+): T[] {
+  const taken = new Set<number>();
+  for (const e of existing) if (typeof e.supersetGroup === 'number') taken.add(e.supersetGroup);
+  const incomingCounts = new Map<number, number>();
+  for (const e of additions) {
+    if (typeof e.supersetGroup === 'number') incomingCounts.set(e.supersetGroup, (incomingCounts.get(e.supersetGroup) ?? 0) + 1);
+  }
+  let next = taken.size ? Math.max(...taken) + 1 : 1;
+  const fresh = new Map<number, number>();
+  return additions.map(e => {
+    const g = e.supersetGroup;
+    if (typeof g !== 'number' || !taken.has(g) || (incomingCounts.get(g) ?? 0) < 2) return e;
+    if (!fresh.has(g)) fresh.set(g, next++);
+    return { ...e, supersetGroup: fresh.get(g) };
+  });
+}
+
+const sameValue = (a: unknown, b: unknown) => (a ?? undefined) === (b ?? undefined);
+
+/**
+ * Whether a template still holds what a proposal was built against. Compared
+ * by content, not identity: a reload hands back fresh objects for unchanged
+ * rows, and a proposal must not be refused for that. Exported for unit
+ * testing.
+ */
+export function templateChangedSince(
+  before: { name: string; exercises: ExerciseInput[] },
+  current: { name: string; exercises: ExerciseInput[] } | undefined,
+): boolean {
+  if (!current) return true;
+  if (before.name !== current.name) return true;
+  const a = before.exercises ?? [];
+  const b = current.exercises ?? [];
+  if (a.length !== b.length) return true;
+  const fields = ['exerciseId', 'sets', 'targetReps', 'setType', 'restSeconds', 'targetWeight', 'targetRpe', 'supersetGroup'] as const;
+  return a.some((x, i) => fields.some(f => !sameValue(x[f], b[i][f])));
+}
+
+export const TEMPLATE_CHANGED_MESSAGE = 'Template changed since this was proposed — ask the coach again.';
+
+interface DeleteBlockerSource {
+  programs?: { id: string; name: string; days: { templateId: string }[] }[];
+  futureWorkouts?: { templateId: string; programId: string; date: string; completed?: boolean }[];
+  dataTrusted?: boolean;
+}
+
+/**
+ * The same rule the Templates screen applies (`templateUsedBy` in Index.tsx):
+ * a template a program schedules, or a manual scheduled workout points at,
+ * cannot be deleted. Before this the coach deleted it with no check and the
+ * program's days for it vanished from the calendar. Exported for unit testing.
+ */
+export function templateDeleteBlockers(templateId: string, storage: DeleteBlockerSource): string[] {
+  if (!storage.dataTrusted) return ['data that is still loading'];
+  const programs = (storage.programs ?? []).filter(p => p.days.some(d => d.templateId === templateId));
+  const names = programs.map(p => p.name);
+  const today = formatLocalDate();
+  const listed = new Set(programs.map(p => p.id));
+  const scheduled = (storage.futureWorkouts ?? []).filter(fw =>
+    fw.templateId === templateId && !fw.completed && fw.date >= today && !listed.has(fw.programId)).length;
+  if (scheduled > 0) names.push(`${scheduled} scheduled workout${scheduled === 1 ? '' : 's'}`);
+  return names;
+}
+
+const deleteBlockedMessage = (name: string, blockers: string[]) =>
+  `"${name}" is used by ${blockers.map(b => `"${b}"`).join(', ')}. Remove it from ${blockers.length === 1 ? 'that program' : 'those programs'} first.`;
+
+/**
+ * Template ids a create_program call names that the user does not have. A
+ * program saved with one schedules calendar rows that point at nothing.
+ * Exported for unit testing.
+ */
+export function unknownProgramTemplates(days: readonly unknown[], knownIds: ReadonlySet<string>): string[] {
+  const missing = new Set<string>();
+  for (const day of days) {
+    const templateId = day && typeof day === 'object' ? (day as { templateId?: unknown }).templateId : undefined;
+    if (typeof templateId !== 'string' || templateId === '') { missing.add(String(templateId)); continue; }
+    if (templateId !== 'rest' && !knownIds.has(templateId)) missing.add(templateId);
+  }
+  return Array.from(missing);
+}
+
+const unknownTemplatesMessage = (missing: string[]) =>
+  `Unknown template id${missing.length === 1 ? '' : 's'}: ${missing.map(m => `"${m}"`).join(', ')}. Every day needs an id from user_templates, or "rest".`;
+
 function validateAllExercises(
   exercises: ExerciseInput[],
   byId: Map<string, ExerciseLike>,
@@ -367,6 +532,11 @@ function validateAllExercises(
     if (!result.valid) {
       errors.push(result.error!);
       if (result.suggestions) allSuggestions.push(...result.suggestions);
+      continue;
+    }
+    const numeric = templateExerciseIssues(e, byId.get(e.exerciseId)?.name ?? e.exerciseId);
+    if (numeric.length) {
+      errors.push(...numeric);
       continue;
     }
     validated.push(e);
@@ -573,15 +743,22 @@ export const ChatProvider: React.FC<{
     }, 2000);
   }, [refreshBalance]);
 
-  // Fetch membership start + credit balance on mount
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user?.created_at) setMemberSince(user.created_at.substring(0, 10));
-      await refreshBalance();
     };
     init();
-  }, [refreshBalance]);
+  }, []);
+
+  // The allowance is sized by tier, and on a cold open the profile lands after
+  // the first fetch, so the balance is re-read whenever the tier changes (that
+  // covers mount too). Before this a premium user saw the free allowance until
+  // their next message resynced it.
+  const subscriptionTier = storage?.profile?.subscriptionTier;
+  useEffect(() => {
+    void refreshBalance();
+  }, [subscriptionTier, refreshBalance]);
 
   const daysSinceMember = useCallback((): number | null => {
     if (!memberSince) return null;
@@ -750,6 +927,7 @@ export const ChatProvider: React.FC<{
       };
       return { result: { success: false, message: error, validation_errors: [error], suggestions }, proposal };
     };
+    const templateIds = () => new Set<string>((storage.templates ?? []).map((t: { id: string }) => t.id));
 
     switch (tc.name) {
       case 'create_template': {
@@ -768,7 +946,7 @@ export const ChatProvider: React.FC<{
             exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
             sets: e.sets,
             targetReps: e.targetReps,
-            setType: e.setType || 'normal',
+            setType: normalizeSetType(e.setType),
             restSeconds: e.restSeconds ?? 90,
             targetRpe: e.targetRpe,
             supersetGroup: e.supersetGroup,
@@ -801,7 +979,7 @@ export const ChatProvider: React.FC<{
             exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
             sets: e.sets,
             targetReps: e.targetReps,
-            setType: e.setType || 'normal',
+            setType: normalizeSetType(e.setType),
             restSeconds: e.restSeconds ?? 90,
             targetRpe: e.targetRpe,
             supersetGroup: e.supersetGroup,
@@ -836,7 +1014,7 @@ export const ChatProvider: React.FC<{
         if (additions.length === 0) {
           return mkInvalid(before, `Every exercise you listed is already in "${existing.name}".`);
         }
-        const appended = additions.map(e => ({
+        const appended = remapSupersetGroups(currentExercises, additions).map(e => ({
           exerciseId: e.exerciseId,
           exerciseName: exerciseById.get(e.exerciseId)?.name || e.exerciseId,
           sets: e.sets,
@@ -871,6 +1049,8 @@ export const ChatProvider: React.FC<{
         const existing = storage.templates.find((t: any) => t.id === args.templateId);
         if (!existing) return mkInvalid({ kind: 'template', template: null }, `Template "${args.templateId}" not found.`);
         const before = { kind: 'template' as const, template: { id: existing.id, name: existing.name, exercises: existing.exercises } };
+        const blockers = templateDeleteBlockers(existing.id, storage);
+        if (blockers.length) return mkInvalid(before, deleteBlockedMessage(existing.name, blockers));
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
           before,
@@ -885,6 +1065,10 @@ export const ChatProvider: React.FC<{
         const args = tc.arguments;
         if (!args.name || !Array.isArray(args.days) || args.days.length === 0) {
           return mkInvalid({ kind: 'program', program: null }, 'Program requires a name and at least one day.');
+        }
+        const missingTemplates = unknownProgramTemplates(args.days, templateIds());
+        if (missingTemplates.length) {
+          return mkInvalid({ kind: 'program', program: null }, unknownTemplatesMessage(missingTemplates));
         }
         const newId = crypto.randomUUID();
         const after = { id: newId, name: args.name, days: args.days, durationWeeks: args.durationWeeks ?? 8 };
@@ -943,6 +1127,8 @@ export const ChatProvider: React.FC<{
         if (rows.some(r => r.exerciseId === args.exerciseId)) {
           return mkInvalid({ kind: 'session', rows }, 'Exercise is already in the workout.');
         }
+        const argIssues = sessionArgIssues(args);
+        if (argIssues.length) return mkInvalid({ kind: 'session', rows }, argIssues.join('\n'));
         const exName = exerciseById.get(args.exerciseId)!.name;
         const sets = args.sets ?? 3;
         const newRow: SessionExerciseRow = {
@@ -966,6 +1152,8 @@ export const ChatProvider: React.FC<{
         const rows = getSessionRows();
         const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
         if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
+        const argIssues = sessionArgIssues(args);
+        if (argIssues.length) return mkInvalid({ kind: 'session', rows }, argIssues.join('\n'));
         const count = args.count ?? 1;
         const lastSetNumber = targetRow.sets.length;
         const newSets = Array.from({ length: count }, (_, i) => ({ setNumber: lastSetNumber + i + 1, type: 'normal' as const, completed: false }));
@@ -989,6 +1177,8 @@ export const ChatProvider: React.FC<{
         if (!targetRow.sets.some(s => s.setNumber === args.setNumber)) {
           return mkInvalid({ kind: 'session', rows }, `Set ${args.setNumber} of ${targetRow.exerciseName} does not exist.`);
         }
+        const argIssues = sessionArgIssues(args);
+        if (argIssues.length) return mkInvalid({ kind: 'session', rows }, argIssues.join('\n'));
         const after = rows.map(r => r.exerciseId === args.exerciseId
           ? { ...r, sets: r.sets.map(s => s.setNumber === args.setNumber ? { ...s, weight: args.weight ?? s.weight, reps: args.reps ?? s.reps } : s) }
           : r);
@@ -1011,6 +1201,11 @@ export const ChatProvider: React.FC<{
         const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
         if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
         const newName = exerciseById.get(args.newExerciseId)!.name;
+        // Two blocks with one exerciseId break the session's keys, drag
+        // order and superset links, the same reason add_exercise refuses.
+        if (rows.some(r => r.exerciseId === args.newExerciseId)) {
+          return mkInvalid({ kind: 'session', rows }, `${newName} is already in the workout.`);
+        }
         const after = rows.map(r => r.exerciseId === args.exerciseId
           ? { ...r, exerciseId: args.newExerciseId, exerciseName: newName }
           : r);
@@ -1070,28 +1265,38 @@ export const ChatProvider: React.FC<{
           }
 
           case 'prs': {
-            const prs: Record<string, { weight: number; reps: number; rpe?: number }> = {};
+            // Grouped by id: the logged name is a snapshot, so a renamed
+            // custom exercise used to come back as two entries. The name is
+            // resolved through the lookup and the snapshot is only the
+            // fallback for an id the library no longer knows.
+            const byExercise = new Map<string, { name: string; weight: number; reps: number; rpe?: number }>();
             for (const session of recent) {
               for (const ex of session.exercises) {
+                const name = exerciseById.get(ex.exerciseId)?.name || ex.exerciseName || ex.exerciseId;
                 for (const set of ex.sets) {
                   if (set.type === 'warmup') continue;
-                  const key = ex.exerciseName || ex.exerciseId;
-                  if (!prs[key] || (set.weight || 0) > prs[key].weight) {
-                    prs[key] = { weight: set.weight || 0, reps: set.reps, ...(set.rpe ? { rpe: set.rpe } : {}) };
+                  const best = byExercise.get(ex.exerciseId);
+                  if (!best || (set.weight || 0) > best.weight) {
+                    byExercise.set(ex.exerciseId, { name, weight: set.weight || 0, reps: set.reps, ...(set.rpe ? { rpe: set.rpe } : {}) });
                   }
                 }
               }
+            }
+            const prs: NonNullable<ToolCallResult['prs']> = {};
+            for (const [exerciseId, { name, ...best }] of byExercise) {
+              const key = name in prs ? exerciseId : name;
+              prs[key] = { exercise_id: exerciseId, ...best };
             }
             return { result: { ...meta, prs } };
           }
 
           case 'frequency': {
+            // A body part counts once per session, as the Frequency chart
+            // counts it; counting every exercise reported several times its number.
             const freq: Record<string, number> = {};
             for (const session of recent) {
-              for (const ex of session.exercises) {
-                const bp = exerciseById.get(ex.exerciseId)?.primaryBodyPart || 'Other';
-                freq[bp] = (freq[bp] || 0) + 1;
-              }
+              const parts = new Set(session.exercises.map(ex => exerciseById.get(ex.exerciseId)?.primaryBodyPart || 'Other'));
+              for (const bp of parts) freq[bp] = (freq[bp] || 0) + 1;
             }
             return { result: { ...meta, frequency: freq } };
           }
@@ -1102,7 +1307,7 @@ export const ChatProvider: React.FC<{
               for (const ex of session.exercises) {
                 if (volumeExcluded.has(ex.exerciseId)) continue;
                 const bp = exerciseById.get(ex.exerciseId)?.primaryBodyPart || 'Other';
-                vol[bp] = (vol[bp] || 0) + ex.sets.length;
+                vol[bp] = (vol[bp] || 0) + ex.sets.filter(s => s.type !== 'warmup').length;
               }
             }
             return { result: { ...meta, sets_by_muscle: vol } };
@@ -1159,41 +1364,100 @@ export const ChatProvider: React.FC<{
     }
   }, [storage, getSessionRows, daysSinceMember, exerciseById, mergedExercises, memberSince, earliestSessionDate, volumeExcluded]);
 
+  // Proposals whose save is in flight. The status in `proposals` is the same
+  // signal for the card, but a second tap in the same tick reads the closure
+  // from before the first tap's update landed, so the ref is what stops it.
+  const applyingRef = useRef(new Set<string>());
+
   const applyProposal = useCallback(async (id: string) => {
     const proposal = proposals[id];
-    if (!proposal || proposal.status !== 'pending') return;
+    if (!proposal || proposal.status !== 'pending' || applyingRef.current.has(id)) return;
+    applyingRef.current.add(id);
+    setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'applying' } }));
+    const invalidate = (error: string) =>
+      setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error } }));
+    // exerciseName is a display hint the proposal adds and must not be
+    // persisted. Spread rather than re-list the fields: an untouched exercise
+    // carried through an edit still holds template-only data the tool schema
+    // never sees (targetWeight, supersetGroup), and rebuilding it
+    // field-by-field silently dropped that.
+    const persistable = (exercises: ExerciseInput[]) => exercises.map(({ exerciseName: _displayOnly, ...e }) => ({
+      ...e,
+      setType: normalizeSetType(e.setType),
+      restSeconds: e.restSeconds ?? 90,
+    }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const currentTemplate = (templateId: string) => storage.templates.find((t: any) => t.id === templateId);
 
     try {
       switch (proposal.toolName) {
-        case 'create_template':
-        case 'edit_template':
-        case 'add_exercises_to_template': {
+        case 'create_template': {
           if (proposal.after.kind !== 'template' || !proposal.after.template) return;
           const t = proposal.after.template;
+          await storage.saveTemplate({ id: t.id, name: t.name, exercises: persistable(t.exercises) });
+          break;
+        }
+        case 'edit_template': {
+          if (proposal.after.kind !== 'template' || !proposal.after.template) return;
+          if (proposal.before.kind !== 'template' || !proposal.before.template) return;
+          // The proposal replaces the whole exercise list, so it can only be
+          // applied to the template it was built from. An edit made in the
+          // builder between the proposal and Apply used to be overwritten.
+          if (templateChangedSince(proposal.before.template, currentTemplate(proposal.before.template.id))) {
+            invalidate(TEMPLATE_CHANGED_MESSAGE);
+            return;
+          }
+          const t = proposal.after.template;
+          await storage.saveTemplate({ id: t.id, name: t.name, exercises: persistable(t.exercises) });
+          break;
+        }
+        case 'add_exercises_to_template': {
+          if (proposal.after.kind !== 'template' || !proposal.after.template) return;
+          if (proposal.before.kind !== 'template' || !proposal.before.template) return;
+          // An append is re-derived against the template as it is now, the
+          // way add_sets_to_exercise appends to the live block: the snapshot
+          // it was proposed on may have been edited since, or another
+          // proposal from the same reply may already have been applied.
+          const current = currentTemplate(proposal.before.template.id);
+          if (!current) {
+            invalidate(TEMPLATE_CHANGED_MESSAGE);
+            return;
+          }
+          const beforeIds = new Set(proposal.before.template.exercises.map(e => e.exerciseId));
+          const proposed = proposal.after.template.exercises.filter(e => !beforeIds.has(e.exerciseId));
+          const currentExercises: ExerciseInput[] = current.exercises ?? [];
+          const { additions } = appendableTemplateExercises(currentExercises, proposed);
+          if (additions.length === 0) {
+            invalidate(`Every exercise in this proposal is already in "${current.name}".`);
+            return;
+          }
           await storage.saveTemplate({
-            id: t.id,
-            name: t.name,
-            // Spread rather than re-listing the fields: an untouched exercise
-            // carried through an edit still holds template-only data the tool
-            // schema never sees (targetWeight, supersetGroup), and rebuilding
-            // it field-by-field silently dropped that. exerciseName is a
-            // display hint the proposal adds and must not be persisted.
-            exercises: t.exercises.map(({ exerciseName: _displayOnly, ...e }) => ({
-              ...e,
-              setType: e.setType || 'normal',
-              restSeconds: e.restSeconds ?? 90,
-            })),
+            id: current.id,
+            name: current.name,
+            exercises: [...currentExercises, ...persistable(remapSupersetGroups(currentExercises, additions))],
           });
           break;
         }
         case 'delete_template': {
           if (proposal.before.kind !== 'template' || !proposal.before.template) return;
-          await storage.deleteTemplate(proposal.before.template.id);
+          const blockers = templateDeleteBlockers(proposal.before.template.id, storage);
+          if (blockers.length) {
+            invalidate(deleteBlockedMessage(proposal.before.template.name, blockers));
+            return;
+          }
+          // Resolves false when the server refused; the proposal stays pending
+          // rather than saying Applied over a "Failed to delete" toast.
+          if (!(await storage.deleteTemplate(proposal.before.template.id))) return;
           break;
         }
         case 'create_program': {
           if (proposal.after.kind !== 'program' || !proposal.after.program) return;
           const p = proposal.after.program;
+          const missing = unknownProgramTemplates(p.days, new Set<string>((storage.templates ?? []).map((t: { id: string }) => t.id)));
+          if (missing.length) {
+            invalidate(unknownTemplatesMessage(missing));
+            return;
+          }
           // saveProgram toasts its own failure and resolves false. The proposal
           // then stays pending so Apply can be tapped again; before this it was
           // marked applied and the thread said so while the toast said failed.
@@ -1209,7 +1473,7 @@ export const ChatProvider: React.FC<{
         }
         case 'delete_program': {
           if (proposal.before.kind !== 'program' || !proposal.before.program) return;
-          await storage.deleteProgram(proposal.before.program.id);
+          if (!(await storage.deleteProgram(proposal.before.program.id))) return;
           break;
         }
         case 'set_active_program': {
@@ -1284,6 +1548,10 @@ export const ChatProvider: React.FC<{
             setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Exercise is no longer in the session.' } }));
             return;
           }
+          if (blocks.some(b => b.exerciseId === args.newExerciseId)) {
+            invalidate(`${exerciseById.get(args.newExerciseId)?.name ?? args.newExerciseId} is already in the workout.`);
+            return;
+          }
           const ok = controller.swapExercise(targetBlock.exerciseName, args.newExerciseId);
           if (!ok) {
             setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Session changed since proposal — could not swap.' } }));
@@ -1298,8 +1566,12 @@ export const ChatProvider: React.FC<{
     } catch (err) {
       console.error('applyProposal error:', err);
       setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: String(err) } }));
+    } finally {
+      applyingRef.current.delete(id);
+      // A save that resolved false leaves the proposal pending for another tap.
+      setProposals(prev => prev[id]?.status === 'applying' ? { ...prev, [id]: { ...prev[id], status: 'pending' } } : prev);
     }
-  }, [proposals, storage]);
+  }, [proposals, storage, exerciseById]);
 
   const discardProposal = useCallback((id: string) => {
     const proposal = proposals[id];
@@ -1430,11 +1702,13 @@ export const ChatProvider: React.FC<{
       let assistantContent = "";
       const toolCalls: RawToolCallAccumulator[] = [];
 
+      // Keyed on the id, not "the last message": an Applied or Discarded note
+      // from an earlier proposal can land while this reply streams, and the
+      // reply used to continue in a second bubble under the same id.
       const updateAssistant = () => {
         setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant' && last.isLoading) {
-            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: assistantContent } : m);
+          if (prev.some(m => m.id === assistantMessageId)) {
+            return prev.map(m => m.id === assistantMessageId ? { ...m, content: assistantContent } : m);
           }
           return [...prev, { id: assistantMessageId, role: 'assistant', content: assistantContent, isLoading: true }];
         });
@@ -1620,6 +1894,7 @@ export const ChatProvider: React.FC<{
           const followReader = followResp.body!.getReader();
           let followBuffer = "";
           let followContent = "";
+          let followError: string | null = null;
           let done2 = false;
           while (!done2) {
             const { done, value } = await readChunk(followReader);
@@ -1635,7 +1910,7 @@ export const ChatProvider: React.FC<{
               if (fJson === "[DONE]") { done2 = true; break; }
               try {
                 const fp = JSON.parse(fJson);
-                if (typeof fp.error === 'string') { done2 = true; break; }
+                if (typeof fp.error === 'string') { followError = fp.error; done2 = true; break; }
                 const fc = fp.choices?.[0]?.delta?.content;
                 if (fc) {
                   followContent += fc;
@@ -1646,6 +1921,11 @@ export const ChatProvider: React.FC<{
               } catch { break; }
             }
           }
+
+          // Surfaced the way the first stream surfaces it. For an analysis the
+          // narration is the whole answer, and a dropped reason used to leave
+          // the bubble saying "get_workout_history completed".
+          if (followError) throw new StreamFailedError(followError);
 
           if (followContent) {
             setMessages(prev => prev.map(m =>
@@ -1658,13 +1938,12 @@ export const ChatProvider: React.FC<{
           }
         } else {
           // The proposals are already on screen and applyable; only the
-          // narration failed. Without this the bubble spins forever. A 413
-          // carries the server's reason, which is worth more than the summary
-          // alone because the fix (a shorter request) is the user's to make.
-          const tooLarge = followResp.status === 413
-            ? await followResp.json().then(b => (typeof b?.error === 'string' ? b.error : ''), () => '')
-            : '';
-          const content = [toolCallSummary(parsedToolCalls), tooLarge].filter(Boolean).join(' ');
+          // narration failed. Without this the bubble spins forever. The
+          // body's sentence is shown next to the summary because it is the
+          // only reason the user gets: a 413 says the fix (a shorter request)
+          // is theirs to make, a 402 that the credits ran out between turns.
+          const reason = await followResp.json().then(b => (typeof b?.error === 'string' ? b.error : ''), () => '');
+          const content = [toolCallSummary(parsedToolCalls), reason].filter(Boolean).join(' ');
           setMessages(prev => prev.map(m =>
             m.id === assistantMessageId ? { ...m, content, isLoading: false, toolCalls: parsedToolCalls } : m
           ));
