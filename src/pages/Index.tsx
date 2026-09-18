@@ -524,7 +524,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               const saved = await storage.saveSession(pendingSummary, { templateId: screen.templateId });
               if (!saved) return;
               clearSessionCache();
-              storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds));
+              storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds, customExercises));
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
@@ -580,7 +580,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             const saved = await storage.saveSession(screen.session);
             if (!saved) return;
             clearSessionCache();
-            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds, customExercises));
             setScreen({ type: 'dashboard' });
           })}
           onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
@@ -675,12 +675,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           isViewMode
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => {
-            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds, customExercises));
             toast.success('Template saved');
           }}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onReperform={(session) => {
-            startFromTemplate(templateFromSession(session, undefined, storage.preferences.defaultRestSeconds));
+            startFromTemplate(templateFromSession(session, undefined, storage.preferences.defaultRestSeconds, customExercises));
           }}
           onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {

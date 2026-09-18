@@ -142,7 +142,12 @@ export function programOccurrencesOn(program: Pick<WorkoutProgram, 'days' | 'sta
   const next = addDays(day, 1);
   const out: Omit<ScheduledOccurrence, 'date'>[] = [];
   for (const d of program.days) {
-    if (frequencyOccurrences(d.frequency, day, next).length > 0) out.push({ label: d.label, templateId: d.templateId });
+    // Walked from the window start, not from the day asked about: an
+    // every-N-days frequency with no startDate anchors on the walk's start,
+    // and anchored on the queried day it landed on every day.
+    if (frequencyOccurrences(d.frequency, start, next).some(o => o.getTime() === day.getTime())) {
+      out.push({ label: d.label, templateId: d.templateId });
+    }
   }
   return out;
 }

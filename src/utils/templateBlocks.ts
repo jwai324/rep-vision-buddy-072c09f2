@@ -74,10 +74,12 @@ export function blockToExercise(
   // being read as a blank and defaulting to 10.
   const cell = (firstSet?.targetReps ?? '').trim();
   const toFailure = cell === 'failure' || cell === '';
-  const typedReps = parseInt(cell);
-  // A typed 0 stays 0 (`|| 10` used to turn it into ten) and a negative is
-  // clamped; only an unreadable cell falls back to the default.
-  const reps = toFailure ? 'failure' as const : Number.isFinite(typedReps) ? Math.max(0, typedReps) : 10;
+  // parseFloat, then round: the same cell holds minutes for timed work, and
+  // parseInt read '0.5' as 0. A zero or negative target is not a target
+  // (`|| 10` used to turn 0 into ten); it floors at 1, and only an
+  // unreadable cell falls back to the default.
+  const typedReps = parseFloat(cell);
+  const reps = toFailure ? 'failure' as const : Number.isFinite(typedReps) ? Math.max(1, Math.round(typedReps)) : 10;
   // The picker offers half steps, which parseInt silently rounded down.
   const rpe = parseFloat(firstSet?.targetRpe ?? '');
   return {

@@ -27,12 +27,16 @@ describe('blockToExercise target RPE', () => {
 });
 
 describe('blockToExercise target reps', () => {
-  it('keeps a typed 0 as 0 rather than turning it into 10', () => {
-    expect(blockToExercise(block({ targetReps: '0' })).targetReps).toBe(0);
+  it('floors a typed 0 or negative at 1 rather than saving no target, and never turns it into 10', () => {
+    // A zero rep target prefilled every set with 0 reps and let them
+    // complete at 0; ten was the old accident.
+    expect(blockToExercise(block({ targetReps: '0' })).targetReps).toBe(1);
+    expect(blockToExercise(block({ targetReps: '-5' })).targetReps).toBe(1);
   });
 
-  it('clamps a negative to 0', () => {
-    expect(blockToExercise(block({ targetReps: '-5' })).targetReps).toBe(0);
+  it('reads the same cell as decimal minutes for timed work: 0.5 rounds to 1, not down to 0', () => {
+    expect(blockToExercise(block({ targetReps: '0.5' })).targetReps).toBe(1);
+    expect(blockToExercise(block({ targetReps: '2.5' })).targetReps).toBe(3);
   });
 
   it('still reads a blank cell as "to failure"', () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { templateFromSession } from '@/hooks/useScreenHelpers';
+import { EXERCISE_DATABASE } from '@/data/exercises';
 import type { WorkoutSession, WorkoutSet } from '@/types/workout';
 
 const set = (o: Partial<WorkoutSet> = {}): WorkoutSet => ({ setNumber: 1, type: 'normal', reps: 10, weight: 60, ...o });
@@ -57,5 +58,16 @@ describe('templateFromSession', () => {
     const s = session();
     s.exercises[0].sets = [set({ type: 'warmup', reps: 5, weight: 20 })];
     expect(templateFromSession(s).exercises[0].sets).toBe(1);
+  });
+
+  it('targets a timed exercise by its logged length in minutes, not the reps of 1 the finish path writes', () => {
+    // The finish path logs a plank as reps 1 with the hold in `time`; the
+    // template's target for time-only work is minutes, so 1 was a nonsense
+    // target that the editor and the calendar then displayed.
+    const timed = EXERCISE_DATABASE.find(e => e.measurementType === 'time');
+    expect(timed).toBeDefined();
+    const s = session();
+    s.exercises = [{ exerciseId: timed!.id, exerciseName: timed!.name, sets: [set({ reps: 1, weight: undefined, time: 90 })] }];
+    expect(templateFromSession(s).exercises[0].targetReps).toBe(2);
   });
 });
