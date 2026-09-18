@@ -18,7 +18,7 @@ RepVision is a workout tracking PWA. The user plans workouts (templates → prog
 src/
   pages/              Top-level routes (Auth, etc.)
   components/         Feature components (AIProgramBuilder, ActiveSession, ...)
-  contexts/           App-wide React contexts (notably ChatContext.tsx — 680 lines, holds the AI chat loop)
+  contexts/           App-wide React contexts (notably ChatContext.tsx, which holds the AI chat loop)
   hooks/              Custom hooks (useStorage is the data layer)
   integrations/
     supabase/         Generated types + client (do not edit by hand; regenerate via Supabase CLI)
@@ -29,8 +29,11 @@ supabase/
   config.toml         Supabase project config
   migrations/         SQL migrations
   functions/
+    _shared/          Pricing, balance and request-bound helpers each function bundles
     ai-coach/         Streaming chat endpoint with tool use
     generate-program/ One-shot program builder, returns JSON
+    exercise-gif/     Holds the RapidAPI key; the client sends only the exercise
+    grant-tokens/     Purchase stub, never deployed (see "Deploying edge functions")
 ```
 
 ## Applying schema changes
@@ -71,7 +74,7 @@ Note that `SYSTEM_PROMPT` and the other prompt blocks are template literals: a s
 
 ### `ai-coach`
 
-Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an OpenAI-style SSE stream. To avoid rewriting the 680-line ChatContext, the edge function **translates Anthropic stream events into OpenAI-shaped SSE chunks** (see `translateStream` in `supabase/functions/ai-coach/index.ts`). When making changes to either side:
+Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an OpenAI-style SSE stream. To avoid rewriting ChatContext, the edge function **translates Anthropic stream events into OpenAI-shaped SSE chunks** (see `translateStream` in `supabase/functions/ai-coach/index.ts`). When making changes to either side:
 
 - Client expects `data: {"choices":[{"delta":{...},"finish_reason":null}]}` lines, terminated by `data: [DONE]`.
 - Anthropic emits `content_block_start`, `content_block_delta` (with `text_delta` or `input_json_delta`), and `message_delta`. The translator maps those to the OpenAI shape.
@@ -124,7 +127,9 @@ of input against that reserve. The ceilings sit well above what the client
 sends (a typed message is capped at 500 characters; the context runs to about
 100 KB, most of it the exercise library) so only a crafted request hits them.
 If the client legitimately grows past one, raise the constant rather than
-removing the check.
+removing the check. `generate-program` has the same check in
+`programRequestTooLarge` (exercise count and row size, every `userInputs`
+value, and the whole), placed before `begin_ai_turn` for the same reason.
 
 **Message shape.** The Messages API rejects two same-role turns in a row with a
 400, and the client writes a second assistant message whenever a proposal is
@@ -258,14 +263,17 @@ If you need to provision a fresh Supabase project (e.g., moving off the old `wek
 2. Install the Supabase CLI: `npm install -g supabase`. Log in: `supabase login`.
 3. Link locally: `supabase link --project-ref <new-project-ref>`.
 4. Push the schema: `supabase db push` (applies everything under `supabase/migrations/`).
-5. Set the Anthropic API key as a function secret:
+5. Set the function secrets. The Anthropic key is required; the RapidAPI key
+   is optional and the exercise-GIF feature is simply off without it:
    ```bash
    supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   supabase secrets set EXERCISE_GIF_API_KEY=...
    ```
-6. Deploy both edge functions:
+6. Deploy the three live edge functions (the same set the deploy workflow ships):
    ```bash
    supabase functions deploy ai-coach
    supabase functions deploy generate-program
+   supabase functions deploy exercise-gif
    ```
 7. Configure Google OAuth in the dashboard (Auth → Providers → Google) and add `http://localhost:8080` plus your production URL to the allowed redirect list.
 8. Update `.env` with the new project URL and anon key (copy them from Settings → API in the dashboard).
@@ -900,9 +908,10 @@ from loaded state. Cascading was the alternative and was rejected: the
 reference is a plan the user made, not a row to clean up.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
-gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated
+gone, `ActiveSession.tsx` is about 1,750 lines rather than the 2,737 it quotes (measure
+with `wc -l` rather than trusting either figure), and the unpaginated
 `workout_sessions` read is now an explicit, documented 500-row cap. Its two surviving
-items are `Index.tsx` (724 lines, still a god-router) and the decomposition of
+items are `Index.tsx` (about 970 lines, still a god-router) and the decomposition of
 `ActiveSession.tsx`.
 
 ## Conventions
