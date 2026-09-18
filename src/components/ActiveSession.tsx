@@ -12,6 +12,7 @@ import { resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/template
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
+import { releaseRestSchedule } from '@/utils/restTimerScheduler';
 import { useBlockMutations, normalizeBlocks } from '@/hooks/useBlockMutations';
 import { CameraFeed } from '@/components/CameraFeed';
 import { cn } from '@/lib/utils';
@@ -86,6 +87,10 @@ const noopStartTimer = () => {};
 
 export function clearSessionCache() {
   localStorage.removeItem(CACHE_KEY);
+  // The workout is over, so is its rest: the scheduler outlives this screen
+  // on purpose (a minimized session keeps its rest), and this is the one
+  // signal that the session it belonged to is gone.
+  releaseRestSchedule();
 }
 
 export function getSessionCache(): ActiveSessionCache | null {

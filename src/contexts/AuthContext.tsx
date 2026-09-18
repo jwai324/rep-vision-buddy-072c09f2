@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { clearStorageCache } from '@/utils/storageCache';
 import { clearAllPendingTemplates } from '@/utils/pendingTemplateWrites';
 import { clearLocalDrafts } from '@/utils/localDrafts';
+import { releaseRestSchedule } from '@/utils/restTimerScheduler';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -69,6 +70,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // The in-progress workout and the builder/chat drafts are not keyed by
     // user, so without this the next account on the device resumes them.
     clearLocalDrafts();
+    // A rest running while the user signs out belongs to the workout just
+    // discarded; the scheduler would notice the missing cache within a
+    // second, but nothing of the previous account should sound after this.
+    releaseRestSchedule();
     await supabase.auth.signOut();
   }, []);
 

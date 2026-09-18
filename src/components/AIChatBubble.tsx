@@ -36,9 +36,21 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
     clearChat, quickChips,
-    creditsBalance, consecutiveErrors, cooldownActive,
+    creditsBalance, cooldownActive, lockedUntil,
     proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
+
+  // The context clears lockedUntil on its own timer; the tick here only keeps
+  // the countdown honest while it lasts.
+  const lockedOut = lockedUntil > 0;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!lockedOut) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [lockedOut]);
+  const lockSecondsLeft = lockedOut ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
 
   const templateNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -114,9 +126,9 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   }, [isOpen, stopListening]);
 
   const limitBlocks = creditsBalance.exhausted;
-  const isSendDisabled = !value.trim() || isLoading || limitBlocks || cooldownActive || consecutiveErrors >= 2;
+  const isSendDisabled = !value.trim() || isLoading || limitBlocks || cooldownActive || lockedOut;
   // Whatever else is going on, a live microphone can always be switched off.
-  const micDisabled = !listening && (isLoading || limitBlocks || consecutiveErrors >= 2);
+  const micDisabled = !listening && (isLoading || limitBlocks || lockedOut);
 
   const handleSend = () => {
     if (isSendDisabled) return;
@@ -378,10 +390,11 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
               )}
             </div>
           )}
-          {consecutiveErrors >= 2 && (
+          {lockedOut && (
             <div className="px-4 pb-2 flex-shrink-0">
               <p className="text-xs text-center text-destructive/80 font-medium">
                 AI is temporarily unavailable. You can still build templates manually.
+                {' '}Back in {Math.floor(lockSecondsLeft / 60)}:{String(lockSecondsLeft % 60).padStart(2, '0')}.
               </p>
             </div>
           )}
@@ -413,7 +426,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                         : "Ask anything…"
                   }
                   className="block w-full resize-none bg-card border border-border rounded-xl px-3.5 py-2.5 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  disabled={isLoading || consecutiveErrors >= 2}
+                  disabled={isLoading || lockedOut}
                   maxLength={MAX_CHAT_CHARS}
                 />
                 {value.length > 0 && (

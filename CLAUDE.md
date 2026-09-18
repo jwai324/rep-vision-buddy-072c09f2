@@ -133,6 +133,21 @@ applied or discarded. `toAnthropicMessages` merges consecutive assistant turns
 on a user turn. Neither is cosmetic — a 400 here surfaces as "the reply failed
 partway through" and repeats on every retry, because the window is the same.
 
+**Turn lifecycle on the client.** Each `sendMessage` owns one
+`AbortController` covering both fetches of the turn; `clearChat` and unmount
+abort it, and a chunk that lands after the abort is dropped rather than
+appended to a panel that was just emptied. A turn with no chunk for
+`STREAM_INACTIVITY_MS` (60 s) is abandoned with a "stopped responding" reply —
+without it a stalled connection left the coach spinning until a reload. Two
+consecutive failures lock the coach out for `DISABLE_DURATION_MS`; the lockout
+is `lockedUntil` (epoch ms) and **clears itself on a timer**, which the old
+`consecutiveErrors >= 2` gate never did — its only reset was a successful turn,
+which the gate itself prevented, so "will retry in 5 minutes" was a lie until
+reload. A 413 (`requestTooLarge` on the server) is the message's fault, not the
+service's, so it is shown and never counts toward the lockout. The counters are
+read from refs because the error path runs long after the render that created
+the closure. Tests: `src/test/aiChatLockout.test.tsx`.
+
 ### `generate-program`
 
 One-shot, non-streaming. Returns JSON. The system prompt has `cache_control: { type: "ephemeral" }` so consecutive program generations from the same user reuse the cache.
@@ -479,6 +494,43 @@ link used to change screen without minimizing — leaving a live session with no
 bar and no way back short of a reload. Both now minimize first. Tests:
 `src/test/activeSessionStaleCache.test.tsx`.
 
+## The rest timer outlives the screen
+
+`src/utils/restTimerScheduler.ts` holds everything about a rest that must keep
+running when `ActiveSession` unmounts: the worker that keeps time in a hidden
+tab, the scheduled sound and vibration, and the "Rest complete" toast and OS
+notification. `useSessionRestTimer` owns only the React state and hands the
+scheduler the rest's identity (`<timer key>@<startedAtEpoch>`, so an extend
+is a new rest and a remount of the same one is not). Before this the hook
+owned all of it, so minimizing a session — which unmounts the screen — killed
+the rest's sound, notification and worker, and its worker's "done" raced the
+throttled completion timeout and cancelled the notification it was racing.
+
+Rules that keep it correct:
+
+- **Completion is signalled once per rest, from `recalcRestSchedule`.** The
+  worker's "done", the completion timeout and the visibility catch-up all route
+  through it; whichever lands first fires, the rest are no-ops.
+- **`ensureRestSchedule` is a no-op for the live key.** A remounting hook
+  re-attaches rather than restarting; `releaseRestSchedule` is the only
+  teardown. It is called by skip/pause/replace, by `clearSessionCache`
+  (the workout is over), by sign-out, and by the hook's unmount only when no
+  session cache exists (a minimized session keeps its rest). As a backstop, a
+  rest scheduled while a cache existed polls for that cache once a second and
+  releases itself when it is gone, so a workout discarded from the minimized
+  bar cannot ring later.
+- **Hide Timers silences the whole feature**: no sound, no vibration, no
+  permission prompt, no toast, no OS notification (`setRestTimerHidden`). The
+  old hook silenced the sound only and still prompted for notification
+  permission and toasted; that was an oversight, not a design.
+- **Notifications on Chrome for Android go through the service worker.** Its
+  page-level `Notification` constructor throws, so `main.tsx` registers
+  `public/sw.js`, which handles nothing but the notification click. It
+  deliberately has no fetch handler and no cache; keep it that way, or it
+  starts sitting between the app and the network.
+
+Tests: `src/test/restTimerScheduler.test.ts` and `src/test/restTimerHook.test.tsx`.
+
 ## Exercise names are resolved, never trusted
 
 `ExerciseBlock` and `ExerciseLog` carry an `exerciseName` next to the
@@ -633,6 +685,14 @@ expanded tile says so. Save Program refuses while a referenced template still
 has an unsaved draft, rather than dropping or saving it silently. The editor's
 localStorage draft (`program_builder_draft`) carries the template drafts too,
 keyed to the program; the back arrow clears it, as Cancel did.
+
+The editor shows **one target row per exercise and a set-count stepper**,
+because that is what a template can hold: `TemplateExercise` has a set count
+next to a single reps/weight/RPE, and `blockToExercise` reads only `sets[0]`.
+Every edit is written to every row of the block and the stepper clones the
+row, so a draft's rows can never disagree with what will be saved. The old
+per-set rows were how "clear set 3 to mark it to failure" looked like an edit
+and saved nothing.
 
 The exercise picker and the superset linker open as fixed full-screen overlays
 from inside the editor, because a tile cannot hand over the whole screen the

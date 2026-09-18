@@ -1,57 +1,61 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { toast } from 'sonner';
 import type { PersistedTimer, ActiveSessionCache } from '@/types/activeSession';
 import { timerIdKey } from '@/components/ExerciseTableComponent';
 import type { TimerId } from '@/components/ExerciseRestTimer';
-import { playRestTimerSoundNow, scheduleRestTimerSound } from '@/utils/restTimerSound';
-import RestTimerWorker from '@/workers/restTimerWorker?worker';
 import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
-
-type TimerStatus = 'running' | 'paused' | 'completed';
+import {
+  ensureRestSchedule,
+  recalcRestSchedule,
+  releaseRestSchedule,
+  setRestTimerHidden,
+  subscribeRestSchedule,
+} from '@/utils/restTimerScheduler';
 
 interface UseSessionRestTimerOptions {
   cachedSession?: ActiveSessionCache | null;
   hideTimers?: boolean;
 }
 
+// A rest is identified by its set and the instant it started, so an extend
+// (which restarts the clock) is a new rest and a remount of the same one is
+// not.
+const scheduleOf = (t: PersistedTimer) => ({
+  key: `${timerIdKey(t.id)}@${t.startedAtEpoch}`,
+  startedAtEpoch: t.startedAtEpoch,
+  durationMs: t.duration * 1000,
+});
+
+const sessionCacheExists = (): boolean => {
+  try {
+    return localStorage.getItem(ACTIVE_SESSION_CACHE_KEY) !== null;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Rest-timer state for a live session. The scheduling that must survive this
+ * hook (worker, sound, notification) lives in `restTimerScheduler`; this hook
+ * only owns the React state and hands the scheduler the rest's identity.
+ */
 export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSessionRestTimerOptions) {
-  const [activeTimer, setActiveTimer] = useState<PersistedTimer | null>(
+  const [activeTimer, setActiveTimerState] = useState<PersistedTimer | null>(
     cachedSession?.activeTimer ?? null
   );
   const [restRecords, setRestRecords] = useState<Record<string, number>>(
     cachedSession?.restRecords ?? {}
   );
   const [, setTimerTick] = useState(0);
-  const notificationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelSound = useRef<(() => void) | null>(null);
-  const completedFiredFor = useRef<Set<string>>(new Set());
-  const soundCaughtUpFor = useRef<Set<string>>(new Set());
-  const workerRef = useRef<Worker | null>(null);
-  const recalcRef = useRef<() => void>(() => undefined);
+  // The controls read the current timer from here rather than from a state
+  // updater, so scheduling stays outside React's (StrictMode-doubled) updaters.
+  const activeTimerRef = useRef<PersistedTimer | null>(activeTimer);
 
-  const hideTimersRef = useRef(hideTimers);
-  useEffect(() => { hideTimersRef.current = hideTimers; }, [hideTimers]);
-
-  const cancelPendingSound = useCallback(() => {
-    if (cancelSound.current) {
-      cancelSound.current();
-      cancelSound.current = null;
-    }
+  const setActiveTimer = useCallback((next: PersistedTimer | null) => {
+    activeTimerRef.current = next;
+    setActiveTimerState(next);
   }, []);
 
-  const scheduleSound = useCallback((remainingSeconds: number) => {
-    cancelPendingSound();
-    if (remainingSeconds <= 0 || hideTimersRef.current) return;
-    cancelSound.current = scheduleRestTimerSound(remainingSeconds);
-  }, [cancelPendingSound]);
-
-  const startWorker = useCallback((startedAt: number, durationMs: number) => {
-    workerRef.current?.postMessage({ type: 'start', startedAt, durationMs });
-  }, []);
-
-  const cancelWorker = useCallback(() => {
-    workerRef.current?.postMessage({ type: 'cancel' });
-  }, []);
+  useEffect(() => { setRestTimerHidden(hideTimers); }, [hideTimers]);
 
   const computeRemaining = useCallback((t: PersistedTimer | null): number => {
     if (!t) return 0;
@@ -64,281 +68,142 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
     return Math.min(t.originalDuration, Math.ceil(remainingMs / 1000));
   }, []);
 
-  // Notification helpers
-  const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
-
-  const ensureNotificationPermission = useCallback(async () => {
-    if (!notificationsSupported) return false;
-    try {
-      if (Notification.permission === 'granted') return true;
-      if (Notification.permission === 'denied') return false;
-      const res = await Notification.requestPermission();
-      return res === 'granted';
-    } catch {
-      return false;
-    }
-  }, [notificationsSupported]);
-
-  const cancelNotification = useCallback(() => {
-    if (notificationTimeout.current) {
-      clearTimeout(notificationTimeout.current);
-      notificationTimeout.current = null;
-    }
-  }, []);
-
-  const fireRestCompleteNotification = useCallback((late: boolean = false) => {
-    try {
-      if (notificationsSupported && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-        new Notification('Rest complete', {
-          body: late ? 'Your rest finished while you were away.' : 'Time for your next set.',
-          tag: 'rest-timer',
-          silent: false,
-        });
-      }
-    } catch (e) {
-      console.warn('[ActiveSession] Notification failed:', e);
-    }
-    toast.success(late ? 'Rest finished' : 'Rest complete', {
-      description: late ? 'Your rest finished while you were away.' : 'Time for your next set.',
-    });
-  }, [notificationsSupported]);
-
-  const scheduleNotification = useCallback((msUntil: number) => {
-    cancelNotification();
-    if (msUntil <= 0) return;
-    notificationTimeout.current = setTimeout(() => {
-      fireRestCompleteNotification(false);
-    }, msUntil);
-  }, [cancelNotification, fireRestCompleteNotification]);
+  const recordRest = useCallback((t: PersistedTimer) => {
+    const taken = t.status === 'paused'
+      ? (t.elapsedAtPause ?? 0)
+      : t.originalDuration - computeRemaining(t);
+    setRestRecords(r => ({ ...r, [timerIdKey(t.id)]: Math.max(0, Math.round(taken)) }));
+  }, [computeRemaining]);
 
   const recalcRestTimer = useCallback(() => {
-    setActiveTimer(prev => {
-      if (!prev) return prev;
-      if (prev.status !== 'running') return prev;
-      const remaining = computeRemaining(prev);
-      const key = `${timerIdKey(prev.id)}@${prev.startedAtEpoch}`;
-      if (remaining <= 0 && !completedFiredFor.current.has(key)) {
-        completedFiredFor.current.add(key);
-        const target = prev.startedAtEpoch + prev.duration * 1000;
-        const wasLate = Date.now() - target > 1500;
-        if (wasLate) {
-          fireRestCompleteNotification(true);
-          // Catch-up: vibration's setTimeout was throttled while hidden, and
-          // on Safari the AudioContext-scheduled source was suspended. Fire
-          // both now. We dedupe across calls in the same expiry via
-          // `soundCaughtUpFor` so a burst of queued worker messages doesn't
-          // re-fire on every tick.
-          if (!soundCaughtUpFor.current.has(key)) {
-            soundCaughtUpFor.current.add(key);
-            cancelPendingSound();
-            if (!hideTimersRef.current) playRestTimerSoundNow();
-          }
-        }
-        cancelNotification();
-      }
-      setTimerTick(n => (n + 1) % 1000000);
-      return prev;
-    });
-  }, [computeRemaining, cancelNotification, cancelPendingSound, fireRestCompleteNotification]);
-
-  // Keep a ref so the worker's message handler always invokes the latest
-  // closure without forcing the worker to be torn down on every recalc dep
-  // change.
-  useEffect(() => {
-    recalcRef.current = recalcRestTimer;
-  }, [recalcRestTimer]);
+    const t = activeTimerRef.current;
+    if (!t || t.status !== 'running') return;
+    recalcRestSchedule();
+    setTimerTick(n => (n + 1) % 1000000);
+  }, []);
 
   // Public timer controls
   const startTimer = useCallback((id: TimerId, duration: number) => {
-    cancelNotification();
-    cancelPendingSound();
-    setActiveTimer(prev => {
-      if (prev && prev.status === 'running') {
-        const taken = prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
-      }
-      return null;
-    });
-    const now = Date.now();
-    const newTimer: PersistedTimer = {
+    const prev = activeTimerRef.current;
+    if (prev && prev.status === 'running') recordRest(prev);
+    const next: PersistedTimer = {
       id,
-      startedAtEpoch: now,
+      startedAtEpoch: Date.now(),
       duration,
       originalDuration: duration,
       status: 'running',
     };
-    setActiveTimer(newTimer);
-    scheduleSound(duration);
-    startWorker(now, duration * 1000);
-    ensureNotificationPermission().finally(() => {
-      scheduleNotification(duration * 1000);
-    });
-  }, [cancelNotification, cancelPendingSound, computeRemaining, ensureNotificationPermission, scheduleNotification, scheduleSound, startWorker]);
+    setActiveTimer(next);
+    // Scheduled here, inside the tap, rather than from the sync effect below,
+    // so the notification permission prompt is raised from the user gesture.
+    ensureRestSchedule(scheduleOf(next));
+  }, [recordRest, setActiveTimer]);
 
   const skipTimer = useCallback(() => {
-    cancelNotification();
-    cancelPendingSound();
-    cancelWorker();
-    setActiveTimer(prev => {
-      if (prev) {
-        const taken = prev.status === 'paused'
-          ? (prev.elapsedAtPause ?? 0)
-          : prev.originalDuration - computeRemaining(prev);
-        setRestRecords(r => ({ ...r, [timerIdKey(prev.id)]: Math.max(0, Math.round(taken)) }));
-      }
-      return null;
-    });
-  }, [cancelNotification, cancelPendingSound, cancelWorker, computeRemaining]);
+    const prev = activeTimerRef.current;
+    if (prev) recordRest(prev);
+    setActiveTimer(null);
+    releaseRestSchedule();
+  }, [recordRest, setActiveTimer]);
 
   const extendTimer = useCallback((delta: number = 30) => {
-    setActiveTimer(prev => {
-      if (!prev) return prev;
-      const newOriginal = Math.max(1, prev.originalDuration + delta);
-      let next: PersistedTimer;
-      if (prev.status === 'running') {
-        const remaining = computeRemaining(prev);
-        const newRemaining = Math.max(1, remaining + delta);
-        const now = Date.now();
-        next = {
-          ...prev,
-          originalDuration: newOriginal,
-          duration: newRemaining,
-          startedAtEpoch: now,
-          status: 'running',
-        };
-        cancelNotification();
-        scheduleNotification(newRemaining * 1000);
-        scheduleSound(newRemaining);
-        startWorker(now, newRemaining * 1000);
-      } else {
-        next = { ...prev, originalDuration: newOriginal };
-      }
-      return next;
-    });
-  }, [computeRemaining, cancelNotification, scheduleNotification, scheduleSound, startWorker]);
-
-  const pauseTimer = useCallback(() => {
-    cancelNotification();
-    cancelPendingSound();
-    cancelWorker();
-    setActiveTimer(prev => {
-      if (!prev || prev.status !== 'running') return prev;
-      const remaining = computeRemaining(prev);
-      const elapsedAtPause = prev.originalDuration - remaining;
-      return {
-        ...prev,
-        status: 'paused',
-        startedAtEpoch: 0,
-        elapsedAtPause: Math.max(0, elapsedAtPause),
-      };
-    });
-  }, [cancelNotification, cancelPendingSound, cancelWorker, computeRemaining]);
-
-  const resumeTimer = useCallback(() => {
-    setActiveTimer(prev => {
-      if (!prev || prev.status !== 'paused') return prev;
-      const elapsed = prev.elapsedAtPause ?? 0;
-      const newDuration = Math.max(1, prev.originalDuration - elapsed);
-      const now = Date.now();
-      ensureNotificationPermission().finally(() => scheduleNotification(newDuration * 1000));
-      scheduleSound(newDuration);
-      startWorker(now, newDuration * 1000);
-      return {
-        ...prev,
-        status: 'running',
-        startedAtEpoch: now,
-        duration: newDuration,
-        elapsedAtPause: undefined,
-      };
-    });
-  }, [ensureNotificationPermission, scheduleNotification, scheduleSound, startWorker]);
-
-  // Spin up the Web Worker once for the hook's lifetime. The worker ticks
-  // accurately even when the tab is hidden (workers aren't throttled on
-  // modern browsers), so the "done" detection fires close to on-time even
-  // if the main-thread setInterval would have been clamped.
-  useEffect(() => {
-    let worker: Worker | null = null;
-    try {
-      worker = new RestTimerWorker();
-    } catch (e) {
-      // Worker construction can fail in environments that don't support it
-      // (some older WebViews); the visibility-change recompute below still
-      // covers correctness, just at lower precision.
-      console.warn('[RestTimer] Worker unavailable, falling back to visibility recompute only:', e);
-      workerRef.current = null;
+    const prev = activeTimerRef.current;
+    if (!prev) return;
+    const newOriginal = Math.max(1, prev.originalDuration + delta);
+    if (prev.status !== 'running') {
+      setActiveTimer({ ...prev, originalDuration: newOriginal });
       return;
     }
-    workerRef.current = worker;
-    worker.onmessage = (e: MessageEvent<{ type: 'tick'; remainingMs: number } | { type: 'done' }>) => {
-      const msg = e.data;
-      if (msg && (msg.type === 'tick' || msg.type === 'done')) {
-        recalcRef.current();
-      }
+    const newRemaining = Math.max(1, computeRemaining(prev) + delta);
+    const next: PersistedTimer = {
+      ...prev,
+      originalDuration: newOriginal,
+      duration: newRemaining,
+      startedAtEpoch: Date.now(),
+      status: 'running',
     };
-    return () => {
-      try { worker?.terminate(); } catch { /* ignore */ }
-      workerRef.current = null;
-    };
-  }, []);
+    setActiveTimer(next);
+    ensureRestSchedule(scheduleOf(next));
+  }, [computeRemaining, setActiveTimer]);
 
-  // Hydrate on mount: reconcile if running timer expired while away
+  const pauseTimer = useCallback(() => {
+    const prev = activeTimerRef.current;
+    if (!prev || prev.status !== 'running') return;
+    const elapsedAtPause = prev.originalDuration - computeRemaining(prev);
+    releaseRestSchedule();
+    setActiveTimer({
+      ...prev,
+      status: 'paused',
+      startedAtEpoch: 0,
+      elapsedAtPause: Math.max(0, elapsedAtPause),
+    });
+  }, [computeRemaining, setActiveTimer]);
+
+  const resumeTimer = useCallback(() => {
+    const prev = activeTimerRef.current;
+    if (!prev || prev.status !== 'paused') return;
+    const elapsed = prev.elapsedAtPause ?? 0;
+    const next: PersistedTimer = {
+      ...prev,
+      status: 'running',
+      startedAtEpoch: Date.now(),
+      duration: Math.max(1, prev.originalDuration - elapsed),
+      elapsedAtPause: undefined,
+    };
+    setActiveTimer(next);
+    ensureRestSchedule(scheduleOf(next));
+  }, [setActiveTimer]);
+
+  // Hydrate on mount: a cached rest that has already run out is recorded and
+  // cleared. Whether its ending still needs announcing is the scheduler's
+  // call (the sync effect below hands it the rest): a live schedule already
+  // signalled once while this screen was minimized, a cold restore has not.
   useEffect(() => {
-    const t = cachedSession?.activeTimer;
-    if (!t || t.status !== 'running') return;
-    const remaining = computeRemaining(t);
-    if (remaining <= 0) {
-      const key = `${timerIdKey(t.id)}@${t.startedAtEpoch}`;
-      completedFiredFor.current.add(key);
-      soundCaughtUpFor.current.add(key);
-      setRestRecords(r => ({ ...r, [timerIdKey(t.id)]: t.originalDuration }));
-      setActiveTimer(null);
-      fireRestCompleteNotification(true);
-    } else {
-      ensureNotificationPermission().finally(() => scheduleNotification(remaining * 1000));
-      scheduleSound(remaining);
-      // For hydration from cache we don't know the real wall-clock origin —
-      // anchor the worker to `now` so its remaining matches the freshly
-      // computed `remaining` (in seconds).
-      startWorker(Date.now(), remaining * 1000);
-    }
+    const t = activeTimerRef.current;
+    if (!t || t.status !== 'running' || computeRemaining(t) > 0) return;
+    setRestRecords(r => ({ ...r, [timerIdKey(t.id)]: t.originalDuration }));
+    setActiveTimer(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep the worker in sync if the timer's start lifecycle moves outside
-  // the action callbacks (e.g. a status flip from external cache hydration).
+  // Keep the scheduler attached to the timer's wall-clock identity: on mount
+  // (re-attaching to a rest that ran on while minimized) and when the timer
+  // changes outside the controls above (cross-tab cache sync). A running rest
+  // the scheduler already holds is left alone.
   useEffect(() => {
-    if (activeTimer && activeTimer.status === 'running' && workerRef.current) {
-      // Anchor the worker to the timer's own start epoch so re-running this
-      // effect (e.g. after a cross-tab storage sync) produces an identical
-      // remaining time, not one shifted by however long the React render
-      // took.
-      startWorker(activeTimer.startedAtEpoch, activeTimer.duration * 1000);
-    } else {
-      cancelWorker();
+    if (activeTimer?.status === 'running') {
+      ensureRestSchedule(scheduleOf(activeTimer));
+    } else if (activeTimer?.status === 'paused') {
+      releaseRestSchedule();
     }
     // We intentionally depend on the primitive fields, not the `activeTimer`
     // object itself, so this effect re-runs only when the timer's
     // wall-clock identity changes — not on every fast-changing tick render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer?.status, activeTimer?.startedAtEpoch, activeTimer?.duration, startWorker, cancelWorker]);
+  }, [activeTimer?.id.type, activeTimer?.id.blockIdx, activeTimer?.id.setIdx, activeTimer?.id.dropIdx, activeTimer?.status, activeTimer?.startedAtEpoch, activeTimer?.duration]);
+
+  // Re-render on the scheduler's ticks so the countdown stays smooth.
+  useEffect(() => subscribeRestSchedule(() => {
+    setTimerTick(n => (n + 1) % 1000000);
+  }), []);
 
   // Visibility / focus / cross-tab listeners — these are the catch-up path
   // when the main thread was throttled while the tab was hidden. The worker
   // posts ticks that queue while hidden, but a single recalcRestTimer here
   // shortcuts the post-resume drain.
   useEffect(() => {
-    const CACHE_KEY = ACTIVE_SESSION_CACHE_KEY;
     const onVisible = () => {
-      if (document.visibilityState === 'visible') recalcRef.current();
+      if (document.visibilityState === 'visible') recalcRestTimer();
     };
-    const onFocus = () => recalcRef.current();
+    const onFocus = () => recalcRestTimer();
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== CACHE_KEY || !e.newValue) return;
+      if (e.key !== ACTIVE_SESSION_CACHE_KEY || !e.newValue) return;
       try {
         const parsed: ActiveSessionCache = JSON.parse(e.newValue);
         if (parsed.activeTimer !== undefined) {
-          setActiveTimer(parsed.activeTimer ?? null);
+          const next = parsed.activeTimer ?? null;
+          setActiveTimer(next);
+          if (!next) releaseRestSchedule();
         }
         if (parsed.restRecords) {
           setRestRecords(parsed.restRecords);
@@ -355,13 +220,15 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('storage', onStorage);
     };
+  }, [recalcRestTimer, setActiveTimer]);
+
+  // Unmount is either the session being minimized (its cache stays, and so
+  // does the rest — sound, notification and worker keep running until the
+  // screen comes back) or the session ending (Index clears the cache before
+  // it changes screen, so the cache is already gone here).
+  useEffect(() => () => {
+    if (!sessionCacheExists()) releaseRestSchedule();
   }, []);
-
-  // Cleanup notification timeout on unmount
-  useEffect(() => () => cancelNotification(), [cancelNotification]);
-
-  // Cleanup pending sound on unmount
-  useEffect(() => () => cancelPendingSound(), [cancelPendingSound]);
 
   return {
     activeTimer,

@@ -25,6 +25,8 @@ const isLoadedHold = (mode: ExerciseInputMode) => mode === 'time' || mode === 'w
 
 export type BlocksUpdate = (prev: TemplateBlock[]) => TemplateBlock[];
 
+const EMPTY_ROW: TemplateSetRow = { setNumber: 1, targetWeight: '', targetReps: '', targetRpe: '' };
+
 interface TemplateExerciseEditorProps {
   blocks: TemplateBlock[];
   /**
@@ -75,26 +77,26 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
     setShowSupersetLinker(false);
   }, [onChange]);
 
-  const updateSet = useCallback((blockIdx: number, setIdx: number, field: keyof TemplateSetRow, value: string) => {
+  // A template holds one target per exercise (`TemplateExercise` has a set
+  // count next to a single reps/weight/RPE), and only `sets[0]` is read on
+  // save. The editor therefore shows one row and writes every edit to every
+  // row, so the rows can never say something the saved template will not.
+  const updateSet = useCallback((blockIdx: number, field: keyof TemplateSetRow, value: string) => {
     onChange(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
-      const sets = block.sets.map((set, si) => si === setIdx ? { ...set, [field]: value } : set);
-      return { ...block, sets };
+      const rows = block.sets.length > 0 ? block.sets : [EMPTY_ROW];
+      return { ...block, sets: rows.map(set => ({ ...set, [field]: value })) };
     }));
   }, [onChange]);
 
-  const addSet = useCallback((blockIdx: number) => {
+  const setSetCount = useCallback((blockIdx: number, count: number) => {
     onChange(prev => prev.map((block, bi) => {
       if (bi !== blockIdx) return block;
-      const last = block.sets[block.sets.length - 1];
+      const target = Math.max(1, count);
+      const model = block.sets[0] ?? EMPTY_ROW;
       return {
         ...block,
-        sets: [...block.sets, {
-          setNumber: block.sets.length + 1,
-          targetWeight: last?.targetWeight ?? '',
-          targetReps: last?.targetReps ?? '',
-          targetRpe: last?.targetRpe ?? '',
-        }],
+        sets: Array.from({ length: target }, (_, i) => ({ ...(block.sets[i] ?? model), setNumber: i + 1 })),
       };
     }));
   }, [onChange]);
@@ -232,21 +234,26 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
             // A hold carries two inputs that aren't weight+reps, so it doesn't
             // fit the boolean tally below.
             const isWeightTime = isLoadedHold(mode);
-            const headerColCount = isWeightTime ? 4 : [true, showWeight || isTime, showReps, true].filter(Boolean).length; // set + inputs + rpe
-            const headerCols = headerColCount === 4 ? 'grid-cols-[32px_1fr_1fr_42px]' : 'grid-cols-[32px_1fr_42px]';
+            const headerColCount = isWeightTime ? 3 : [showWeight || isTime, showReps, true].filter(Boolean).length; // inputs + rpe
+            const headerCols = headerColCount === 3 ? 'grid-cols-[1fr_1fr_42px]' : 'grid-cols-[1fr_42px]';
             const headerLabels = (() => {
               switch (mode) {
-                case 'time-distance': return ['Set', 'Time (min)', 'RPE'];
+                case 'time-distance': return ['Time (min)', 'RPE'];
                 case 'time':
-                case 'weight-time': return ['Set', weightUnit, 'Time (min)', 'RPE'];
-                case 'distance': return ['Set', 'Dist (km)', 'RPE'];
-                case 'band': return ['Set', 'Band', 'Reps', 'RPE'];
-                default: return ['Set', weightUnit, 'Reps', 'RPE'];
+                case 'weight-time': return [weightUnit, 'Time (min)', 'RPE'];
+                case 'distance': return ['Dist (km)', 'RPE'];
+                case 'band': return ['Band', 'Reps', 'RPE'];
+                default: return [weightUnit, 'Reps', 'RPE'];
               }
             })();
-            const rowColCount = isWeightTime ? 4 : [true, showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
-            const rowCols = rowColCount === 4 ? 'grid-cols-[32px_1fr_1fr_42px]' : 'grid-cols-[32px_1fr_42px]';
+            const rowColCount = isWeightTime ? 3 : [showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
+            const rowCols = rowColCount === 3 ? 'grid-cols-[1fr_1fr_42px]' : 'grid-cols-[1fr_42px]';
             const inputClass = 'w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto';
+            const stepClass = 'w-8 h-8 rounded-md bg-secondary/60 text-base leading-none text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-secondary/60';
+            // Every row carries the same target, so the first stands for all of
+            // them; a block with no rows yet shows a blank one.
+            const row = block.sets[0] ?? EMPTY_ROW;
+            const setCount = block.sets.length;
 
             return (
               <SortableExerciseItem key={block.exerciseId} id={block.exerciseId}>
@@ -335,69 +342,82 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                     <span>sec</span>
                   </div>
 
-                  {/* Table Header & Set Rows — mode aware */}
+                  {/* Table Header & the one target row — mode aware */}
                   <div className={`grid ${headerCols} gap-1 text-xs font-medium text-muted-foreground mb-1 px-1`}>
                     {headerLabels.map((h, idx) => (
-                      <span key={idx} className={idx === 0 ? '' : 'text-center'}>{h}</span>
+                      <span key={idx} className="text-center">{h}</span>
                     ))}
                   </div>
 
-                  {block.sets.map((set, setIdx) => (
-                    <div
-                      key={setIdx}
-                      className={`grid ${rowCols} gap-1 items-center py-1.5 px-1 rounded-md`}
-                    >
-                      <span className="text-xs font-bold text-muted-foreground text-center">{set.setNumber}</span>
-                      {isWeightTime ? (
-                        <>
-                          <input type="number" inputMode="decimal" value={set.targetWeight}
-                            onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="—"
-                            className={inputClass} />
-                          <input type="number" inputMode="decimal" value={set.targetReps}
-                            onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)} placeholder="min"
-                            className={inputClass} />
-                        </>
-                      ) : isTime ? (
-                        <input type="number" inputMode="decimal" value={set.targetReps}
-                          onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)} placeholder="min"
+                  <div className={`grid ${rowCols} gap-1 items-center py-1.5 px-1 rounded-md`}>
+                    {isWeightTime ? (
+                      <>
+                        <input type="number" inputMode="decimal" value={row.targetWeight}
+                          onChange={e => updateSet(blockIdx, 'targetWeight', e.target.value)} placeholder="—"
                           className={inputClass} />
-                      ) : mode === 'distance' ? (
-                        <input type="number" inputMode="decimal" value={set.targetWeight}
-                          onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="km"
+                        <input type="number" inputMode="decimal" value={row.targetReps}
+                          onChange={e => updateSet(blockIdx, 'targetReps', e.target.value)} placeholder="min"
                           className={inputClass} />
-                      ) : mode === 'band' ? (
-                        <select value={set.targetWeight}
-                          onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)}
-                          className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
-                          <option value="">—</option>
-                          {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
-                        </select>
-                      ) : (
-                        <input type="number" inputMode="decimal" value={set.targetWeight}
-                          onChange={e => updateSet(blockIdx, setIdx, 'targetWeight', e.target.value)} placeholder="—"
-                          className={inputClass} />
-                      )}
-                      {showReps && !isTime && mode !== 'distance' && (
-                        <input type="number" inputMode="numeric" value={set.targetReps}
-                          onChange={e => updateSet(blockIdx, setIdx, 'targetReps', e.target.value)}
-                          placeholder={(block.sets[0]?.targetReps ?? '').trim() === '' ? 'Fail' : '—'}
-                          className={inputClass} />
-                      )}
-                      <RpePickerButton
-                        id={`${idPrefix}-rpe-${blockIdx}-${setIdx}`}
-                        value={set.targetRpe}
-                        onChange={v => updateSet(blockIdx, setIdx, 'targetRpe', v)}
-                      />
-                    </div>
-                  ))}
+                      </>
+                    ) : isTime ? (
+                      <input type="number" inputMode="decimal" value={row.targetReps}
+                        onChange={e => updateSet(blockIdx, 'targetReps', e.target.value)} placeholder="min"
+                        className={inputClass} />
+                    ) : mode === 'distance' ? (
+                      <input type="number" inputMode="decimal" value={row.targetWeight}
+                        onChange={e => updateSet(blockIdx, 'targetWeight', e.target.value)} placeholder="km"
+                        className={inputClass} />
+                    ) : mode === 'band' ? (
+                      <select value={row.targetWeight}
+                        onChange={e => updateSet(blockIdx, 'targetWeight', e.target.value)}
+                        className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer">
+                        <option value="">—</option>
+                        {BAND_LEVELS.map(b => (<option key={b.level} value={b.level.toString()}>{getBandLevelLabel(b.level, weightUnit)}</option>))}
+                      </select>
+                    ) : (
+                      <input type="number" inputMode="decimal" value={row.targetWeight}
+                        onChange={e => updateSet(blockIdx, 'targetWeight', e.target.value)} placeholder="—"
+                        className={inputClass} />
+                    )}
+                    {showReps && !isTime && mode !== 'distance' && (
+                      <input type="number" inputMode="numeric" value={row.targetReps}
+                        onChange={e => updateSet(blockIdx, 'targetReps', e.target.value)}
+                        placeholder={row.targetReps.trim() === '' ? 'Fail' : '—'}
+                        className={inputClass} />
+                    )}
+                    <RpePickerButton
+                      id={`${idPrefix}-rpe-${blockIdx}`}
+                      value={row.targetRpe}
+                      onChange={v => updateSet(blockIdx, 'targetRpe', v)}
+                    />
+                  </div>
 
-                  {/* Add Set */}
-                  <button
-                    onClick={() => addSet(blockIdx)}
-                    className="w-full py-2 mt-1 rounded-md bg-secondary/40 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
-                  >
-                    + Add Set
-                  </button>
+                  {/* Set count */}
+                  <div className="flex items-center justify-between mt-1 px-1">
+                    <span className="text-xs font-medium text-muted-foreground">Sets</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSetCount(blockIdx, setCount - 1)}
+                        disabled={setCount <= 1}
+                        aria-label={`Remove a set from ${nameOf(block)}`}
+                        className={stepClass}
+                      >
+                        −
+                      </button>
+                      <span data-testid="set-count" className="min-w-[3.5rem] text-center text-sm font-semibold text-foreground tabular-nums">
+                        {setCount} {setCount === 1 ? 'set' : 'sets'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSetCount(blockIdx, setCount + 1)}
+                        aria-label={`Add a set to ${nameOf(block)}`}
+                        className={stepClass}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </SortableExerciseItem>
             );

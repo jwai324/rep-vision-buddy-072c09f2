@@ -134,8 +134,8 @@ function playViaHtmlAudio(sound: AudibleSound): void {
 // fires on time even when the main thread is throttled (Android background
 // tab). HTMLAudioElement path is the fallback when AudioContext or the
 // decoded buffer is unavailable; setTimeout on the main thread IS throttled
-// when hidden, so the visibility-change catch-up in useSessionRestTimer.ts
-// is what saves that case.
+// when hidden, so the late-completion catch-up in restTimerScheduler.ts is
+// what saves that case.
 function scheduleAt(sound: AudibleSound, delayMs: number): () => void {
   const ctx = getAudioContext();
   const buffer = audioBufferCache[sound];
@@ -173,8 +173,8 @@ function scheduleAt(sound: AudibleSound, delayMs: number): () => void {
  * Vibration uses setTimeout because the Vibration API has no scheduling
  * primitive that survives a hidden tab (navigator.vibrate(pattern) is
  * cancelled when the document becomes inactive). Best-effort vibration is
- * fine — useSessionRestTimer.ts fires the catch-up vibration on
- * visibilitychange. iOS Safari fully suspends JS when the screen locks, so
+ * fine — restTimerScheduler.ts fires the catch-up vibration when a rest is
+ * found to have ended late. iOS Safari fully suspends JS when the screen locks, so
  * neither vibration nor audio scheduling fires until unlock.
  */
 export function scheduleRestTimerSound(durationSeconds: number): () => void {
@@ -235,7 +235,7 @@ export function playPreviewSound(sound: RestTimerSound): void {
 
 /**
  * Fire the rest-timer completion sound + vibration immediately. Used by the
- * visibility-change catch-up path when a timer expired while the tab was
+ * scheduler's late-completion catch-up when a timer expired while the tab was
  * hidden: even if AudioContext fired the scheduled sound on time (Chrome),
  * vibration's setTimeout was throttled and the user missed the haptic, so
  * we re-fire on return.
