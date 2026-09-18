@@ -219,6 +219,27 @@ describe('supersets carried from a template into the live session', () => {
     expect(session.exercises.map(e => e.supersetGroup)).toEqual([4, 4]);
   });
 
+  it('drops the link from a superset whose partner was skipped', () => {
+    // The skipped partner is not in the log, so the one that is done would
+    // otherwise be saved as a superset of one — "Superset A · 1 of 1" for good.
+    const onFinish = vi.fn();
+    render(
+      <ActiveSession
+        exercises={supersetByTypeOnly.exercises.map(e => e.exerciseId)}
+        templateExercises={supersetByTypeOnly.exercises}
+        templateName="Upper"
+        onFinish={onFinish}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('set-complete-0-0'));
+    fireEvent.click(screen.getByTestId('set-complete-2-0'));
+
+    const session = finishSession(onFinish);
+    expect(session.exercises.map(e => e.exerciseId)).toEqual([BENCH, FLY]);
+    expect(session.exercises.map(e => e.supersetGroup)).toEqual([undefined, undefined]);
+  });
+
   it('does not offer a template update for a superset template run exactly as planned', () => {
     const onFinish = vi.fn();
     const onUpdateTemplate = vi.fn();

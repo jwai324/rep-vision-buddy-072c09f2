@@ -5,7 +5,7 @@ import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
 import { BAND_LEVELS, getBandLevelLabel, getBandLevelShortLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
-import { formatWeight, storedBandLevel } from '@/utils/weightConversion';
+import { formatWeight, storedBandLevel, targetWeightToInput } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { format, differenceInCalendarDays } from 'date-fns';
@@ -190,9 +190,12 @@ function previousWeightText(weightKg: number, unit: WeightUnit, isBand: boolean)
   return isBand ? getBandLevelShortLabel(storedBandLevel(weightKg)) : formatWeight(weightKg, unit).display;
 }
 
-/** What tapping the cell puts in the weight input. */
+/**
+ * What tapping the cell puts in the weight input: the number, not the display
+ * text — "1,000" parses as 1.
+ */
 function previousWeightValue(weightKg: number, unit: WeightUnit, isBand: boolean): string {
-  return isBand ? String(storedBandLevel(weightKg)) : formatWeight(weightKg, unit).display;
+  return targetWeightToInput(weightKg, unit, isBand);
 }
 
 /**

@@ -578,6 +578,22 @@ link used to change screen without minimizing — leaving a live session with no
 bar and no way back short of a reload. Both now minimize first. Tests:
 `src/test/activeSessionStaleCache.test.tsx`.
 
+## The stopwatch set is keyed by position
+
+`runningSet` and `countdown` in `ActiveSession` hold a block index and a set
+index into `blocks`, and the mutations in `useBlockMutations` move rows under
+them: 'Add Warm-up Sets' prepends a row, deleting a set or an exercise pulls
+the rows below it up, and drag-reordering permutes the blocks. Every such
+mutation reports the move through `onSetIndicesShifted` /
+`onBlockIndicesShifted` (`handleDragEnd` does the same for reorders), and
+`ActiveSession` remaps the two states — a row that is gone ends what was on
+it. Before this, Stop wrote the set's time and completion to whichever row had
+slid into the index. A new mutation that inserts, removes or reorders rows
+must report through the same callbacks. The rest timer's id and the
+`restRecords` keys are also index-keyed (`useSessionRestTimer`) and are
+**not** remapped yet, so a rest bar can still show under the wrong row after
+one of these edits; that is display-only.
+
 ## The rest timer outlives the screen
 
 `src/utils/restTimerScheduler.ts` holds everything about a rest that must keep

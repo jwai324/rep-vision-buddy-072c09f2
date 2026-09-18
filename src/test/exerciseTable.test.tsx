@@ -351,6 +351,19 @@ describe('ExerciseTable previous column', () => {
     expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'weight', '62.5');
     expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'reps', '5');
   });
+
+  it('copies a four-figure load as the number, not the comma-separated text', () => {
+    // "1,000" is what the cell shows; put in the input it parsed as 1.
+    const onUpdateSet = renderWithPrevious(
+      { previousSets: [{ weight: 453.6, reps: 5 }], weightUnit: 'lbs' },
+    );
+
+    expect(screen.getByText('1,000 × 5')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('1,000 × 5'));
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'weight', '1000');
+    expect(onUpdateSet).toHaveBeenCalledWith(0, 0, 'reps', '5');
+  });
 });
 
 describe('optional load on rep- and time-based rows', () => {

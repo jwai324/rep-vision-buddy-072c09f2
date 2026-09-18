@@ -19,6 +19,11 @@ function formatRpe(n: number): string {
 export const RpeWheelPicker: React.FC<RpeWheelPickerProps> = ({ value, onChange, onClose }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimer = useRef<number | null>(null);
+  // The mount-time scrollTop assignment below fires a scroll event of its
+  // own, and so does the snap-back; only a scroll the user began may commit
+  // a value, or opening the wheel on an empty cell wrote RPE 7 by itself.
+  const userScrolled = useRef(false);
+  const markUserScroll = () => { userScrolled.current = true; };
 
   const currentNum = value ? parseFloat(value) : 7;
   const initialIdx = Math.max(
@@ -34,6 +39,7 @@ export const RpeWheelPicker: React.FC<RpeWheelPickerProps> = ({ value, onChange,
   }, [initialIdx]);
 
   const handleScroll = useCallback(() => {
+    if (!userScrolled.current) return;
     if (scrollTimer.current) window.clearTimeout(scrollTimer.current);
     scrollTimer.current = window.setTimeout(() => {
       const el = scrollRef.current;
@@ -71,6 +77,10 @@ export const RpeWheelPicker: React.FC<RpeWheelPickerProps> = ({ value, onChange,
         <div
           ref={scrollRef}
           onScroll={handleScroll}
+          onPointerDown={markUserScroll}
+          onTouchStart={markUserScroll}
+          onWheel={markUserScroll}
+          onKeyDown={markUserScroll}
           className="overflow-y-scroll no-scrollbar"
           style={{
             height: LIST_HEIGHT,

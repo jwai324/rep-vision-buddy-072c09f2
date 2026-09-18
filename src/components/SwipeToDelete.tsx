@@ -33,6 +33,14 @@ export const SwipeToDelete: React.FC<SwipeToDeleteProps> = ({ onDelete, children
     setOffsetX(0);
   }, [offsetX, onDelete]);
 
+  // Once the browser decides the gesture is a scroll it takes the touch and
+  // ends it with touchcancel, not touchend; the row stayed translated with
+  // the delete strip showing until the next touch.
+  const handleTouchCancel = useCallback(() => {
+    setSwiping(false);
+    setOffsetX(0);
+  }, []);
+
   return (
     <div className={`relative overflow-hidden ${className}`}>
       {/* Delete background */}
@@ -46,6 +54,7 @@ export const SwipeToDelete: React.FC<SwipeToDeleteProps> = ({ onDelete, children
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         style={{ transform: `translateX(-${offsetX}px)`, transition: swiping ? 'none' : 'transform 0.2s ease-out' }}
         className="relative bg-background"
       >
