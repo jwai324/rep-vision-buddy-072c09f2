@@ -76,7 +76,7 @@ function renderBuilder(over: Partial<Props> = {}) {
 const tile = (n: number) => screen.getByText(`Day ${n}`).closest('[data-testid="program-day"]') as HTMLElement;
 /** The footer strip that opens a tile's template; null on a day that has none. */
 const footer = (n: number) => tile(n).querySelector('button[aria-expanded]') as HTMLButtonElement | null;
-/** A tile's reps cells, top to bottom. They are the only numeric inputs bound to reps. */
+/** A tile's reps cells, one per exercise, top to bottom. They are the only numeric inputs bound to reps. */
 const repsCells = (t: HTMLElement) => within(t).getAllByPlaceholderText(/^(Fail|—)$/)
   .filter(el => (el as HTMLInputElement).inputMode === 'numeric') as HTMLInputElement[];
 
@@ -134,8 +134,11 @@ describe('ProgramBuilder tiles', () => {
     expect(screen.getByText('Dumbbell Fly')).toBeInTheDocument();
     expect(screen.getByText('Barbell Bent-Over Row')).toBeInTheDocument();
     expect(screen.getAllByText('Changes apply everywhere this template is used.')).toHaveLength(2);
-    // The saved target is what the cells start from.
+    // The saved target is what the cells start from: one row per exercise,
+    // with the set count next to it rather than a row per set.
+    expect(repsCells(tile(1))).toHaveLength(2);
     expect(repsCells(tile(1))[0]).toHaveValue(10);
+    expect(within(tile(1)).getAllByTestId('set-count').map(n => n.textContent)).toEqual(['3 sets', '3 sets']);
 
     fireEvent.click(footer(1)!);
     expect(screen.queryByText('Flat Barbell Bench Press')).toBeNull();
@@ -183,6 +186,23 @@ describe('editing a template inside its tile', () => {
     rerender(<ProgramBuilder {...props} templates={[saved, pull]} />);
     expect(repsCells(tile(1))[0]).toHaveValue(8);
     expect(within(tile(1)).getByRole('button', { name: 'Save template' })).toBeDisabled();
+  });
+
+  it('saves a set count changed from the tile, with the row typed once behind every set', async () => {
+    const { props } = renderBuilder();
+
+    fireEvent.click(footer(1)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    fireEvent.click(within(tile(1)).getByRole('button', { name: 'Add a set to Flat Barbell Bench Press' }));
+    expect(within(tile(1)).getAllByTestId('set-count')[0]).toHaveTextContent('4 sets');
+    fireEvent.click(within(tile(1)).getByRole('button', { name: 'Remove a set from Dumbbell Fly' }));
+    expect(within(tile(1)).getAllByTestId('set-count')[1]).toHaveTextContent('2 sets');
+
+    fireEvent.click(within(tile(1)).getByRole('button', { name: 'Save template' }));
+    await waitFor(() => expect(props.onSaveTemplate).toHaveBeenCalledTimes(1));
+    const saved = vi.mocked(props.onSaveTemplate).mock.calls[0][0];
+    expect(saved.exercises[0]).toMatchObject({ exerciseId: BENCH, sets: 4, targetReps: 8, targetWeight: 60 });
+    expect(saved.exercises[1]).toMatchObject({ exerciseId: FLY, sets: 2, targetReps: 12 });
   });
 
   it('discards an unsaved edit and puts the saved template back', () => {
@@ -291,5 +311,32 @@ describe('a new program', () => {
       name: 'Starter',
       days: [{ label: 'Day 1', templateId: 'tpl-pull' }],
     });
+  });
+});
+
+describe('saving the program waits for the row', () => {
+  const DRAFT_KEY = 'program_builder_draft';
+
+  it('keeps the draft and says nothing on a failed save, so the user can retry', async () => {
+    const { props } = renderBuilder({ onSave: vi.fn().mockResolvedValue(false) });
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Program' }));
+
+    await waitFor(() => expect(props.onSave).toHaveBeenCalledTimes(1));
+    // The builder used to clear the draft and toast "saved" before the write
+    // resolved, so a failed upsert lost the whole program.
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(props.onCancel).not.toHaveBeenCalled();
+  });
+
+  it('clears the draft and confirms once the save has landed', async () => {
+    renderBuilder({ onSave: vi.fn().mockResolvedValue(true) });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Program' }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
+    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
   });
 });

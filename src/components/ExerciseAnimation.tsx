@@ -1,12 +1,19 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ExerciseAnimationProps {
   exerciseName: string;
   movementPattern?: string;
 }
 
+// Answers the server actually gave. A failed call is not cached, so a
+// transient error (a token refresh racing the call, a 5xx, the minute after a
+// deploy) does not pin an exercise to "no clip" for the rest of the page.
 const cache = new Map<string, string | null>();
+// Set once the function says no key is configured: the feature is off and
+// every further lookup would be a round trip for the same answer.
+let featureOff = false;
 
 export const ExerciseAnimation: React.FC<ExerciseAnimationProps> = ({ exerciseName, movementPattern }) => {
   const [gifUrl, setGifUrl] = useState<string | null | undefined>(undefined);
@@ -16,36 +23,34 @@ export const ExerciseAnimation: React.FC<ExerciseAnimationProps> = ({ exerciseNa
     if (!exerciseName || fetchedRef.current === exerciseName) return;
     fetchedRef.current = exerciseName;
 
+    if (featureOff) {
+      setGifUrl(null);
+      return;
+    }
     if (cache.has(exerciseName)) {
       setGifUrl(cache.get(exerciseName)!);
       return;
     }
 
-    const apiKey = import.meta.env.VITE_EXERCISE_GIF_API;
-    if (!apiKey) {
-      cache.set(exerciseName, null);
-      setGifUrl(null);
-      return;
-    }
-
+    // The lookup goes through the exercise-gif edge function, which holds the
+    // RapidAPI key as a function secret. It used to be read here from a VITE_
+    // variable, and Vite inlines those into the public bundle.
     setGifUrl(undefined);
-    fetch(
-      `https://workoutx-exercise-api-with-gif-animations.p.rapidapi.com/exercises/search?name=${encodeURIComponent(exerciseName)}`,
-      {
-        headers: {
-          'X-RapidAPI-Key': apiKey,
-          'X-RapidAPI-Host': 'workoutx-exercise-api-with-gif-animations.p.rapidapi.com',
-        },
-      }
-    )
-      .then(res => res.json())
-      .then(data => {
-        const url = data?.data?.[0]?.gifUrl ?? null;
+    supabase.functions
+      .invoke<{ gifUrl?: string | null; enabled?: boolean }>('exercise-gif', { body: { name: exerciseName } })
+      .then(({ data, error }) => {
+        if (error || !data) {
+          fetchedRef.current = '';
+          setGifUrl(null);
+          return;
+        }
+        if (data.enabled === false) featureOff = true;
+        const url = typeof data.gifUrl === 'string' ? data.gifUrl : null;
         cache.set(exerciseName, url);
         setGifUrl(url);
       })
       .catch(() => {
-        cache.set(exerciseName, null);
+        fetchedRef.current = '';
         setGifUrl(null);
       });
   }, [exerciseName]);

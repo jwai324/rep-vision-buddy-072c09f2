@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
 import { costMicros, RESERVE_MICROS } from "../_shared/pricing.ts";
 import { consume, recordUsageAggregate, type SupabaseLike } from "../_shared/balance.ts";
+import { requestTooLarge } from "../_shared/requestBounds.ts";
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -25,6 +26,7 @@ const MAX_TOKENS = 8000;
 // in-flight turn, so this also bounds how far a balance can be overshot by
 // requests fired in parallel.
 const MAX_CONCURRENT_TURNS = 3;
+
 
 // Not a secret. The phrase ships in the client bundle and this repo is public,
 // so it is only a convenient way for an operator to ASK for the bypass. Whether
@@ -433,6 +435,8 @@ function streamErrorMessage(err: unknown): string {
 //   { role: 'assistant', content: string|null, tool_calls: [{id, function:{name, arguments}}] }
 //   { role: 'tool', tool_call_id, content }
 // Anthropic expects user/assistant only, with structured content blocks for tool_use / tool_result.
+// Returns the reason a request is over the size limits, or null if it fits.
+// Sizes are measured on the serialized form the model would actually see.
 function toAnthropicMessages(openaiMessages: OpenAIMessage[]): AnthropicMessage[] {
   const out: AnthropicMessage[] = [];
   for (const m of openaiMessages) {
@@ -599,6 +603,15 @@ serve(async (req) => {
     }
 
     const { messages, context, action_results } = await req.json();
+
+    {
+      const tooLarge = requestTooLarge(messages, context, action_results);
+      if (tooLarge) {
+        return new Response(JSON.stringify({ error: tooLarge }), {
+          status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     // The metering bypass is an operator switch, not a client capability. A
     // request may ASK for it by containing the phrase, which ships in the public

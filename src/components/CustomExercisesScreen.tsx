@@ -14,6 +14,8 @@ interface CustomExercisesScreenProps {
   onAdd: (input: CustomExerciseInput) => void;
   onUpdate: (id: string, input: CustomExerciseInput) => void;
   onDelete: (id: string) => void;
+  /** Names of the templates that use this exercise; deletion is refused while any do. */
+  usedBy?: (id: string) => string[];
   onBack: () => void;
   history?: WorkoutSession[];
   weightUnit?: WeightUnit;
@@ -22,7 +24,7 @@ interface CustomExercisesScreenProps {
 }
 
 export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
-  exercises, onAdd, onUpdate, onDelete, onBack,
+  exercises, onAdd, onUpdate, onDelete, onBack, usedBy,
   history = [], weightUnit = 'kg', stickyNotes, onUpdateStickyNotes,
 }) => {
   const [editingExercise, setEditingExercise] = useState<CustomExercise | null>(null);
@@ -120,9 +122,17 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
               </div>
               {confirmDelete === ex.id ? (
                 <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                  <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => { onDelete(ex.id); setConfirmDelete(null); }}>
-                    Delete
-                  </Button>
+                  {(usedBy?.(ex.id).length ?? 0) > 0 ? (
+                    // A deleted exercise leaves every template that used it
+                    // logging under the literal custom-<uuid> id.
+                    <span className="text-[11px] text-muted-foreground self-center max-w-[10rem]">
+                      Used by {usedBy!(ex.id).map(n => `"${n}"`).join(', ')} — remove it there first.
+                    </span>
+                  ) : (
+                    <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => { onDelete(ex.id); setConfirmDelete(null); }}>
+                      Delete
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setConfirmDelete(null)}>
                     Cancel
                   </Button>

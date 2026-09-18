@@ -4,6 +4,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { addDays, addWeeks, format, getDay, isSameDay } from 'date-fns';
 import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
+import { programOccurrencesOn } from '@/utils/programFrequency';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import type {
   WorkoutSession,
@@ -28,47 +29,10 @@ interface Props {
 
 // Compute every program-scheduled entry for a given date. Programs can put
 // multiple ProgramDays on the same weekday, so this returns every match.
-function getProgramScheduled(
-  date: Date,
-  program: WorkoutProgram | null
-): { label: string; templateId: string }[] {
-  if (!program) return [];
-  const start = program.startDate ? parseLocalDate(program.startDate) : new Date();
-  const end = addWeeks(start, program.durationWeeks ?? 8);
-  if (date < start || date >= end) return [];
-
-  const matches: { label: string; templateId: string }[] = [];
-  for (const day of program.days) {
-    if (!day.frequency) continue;
-    const f = day.frequency;
-    let match = false;
-    if (f.type === 'weekly') {
-      const diff = (f.weekday - getDay(start) + 7) % 7;
-      let cur = addDays(start, diff);
-      while (cur < end) {
-        if (isSameDay(cur, date)) { match = true; break; }
-        cur = addDays(cur, 7);
-      }
-    } else if (f.type === 'everyNDays') {
-      const origin = f.startDate ? parseLocalDate(f.startDate) : start;
-      let cur = new Date(origin);
-      while (cur < end) {
-        if (cur >= start && isSameDay(cur, date)) { match = true; break; }
-        cur = addDays(cur, f.interval);
-      }
-    } else if (f.type === 'monthly') {
-      let cur = new Date(start);
-      cur.setDate(f.dayOfMonth);
-      if (cur < start) cur.setMonth(cur.getMonth() + 1);
-      while (cur < end) {
-        if (isSameDay(cur, date)) { match = true; break; }
-        const nxt = new Date(cur); nxt.setMonth(nxt.getMonth() + 1); cur = nxt;
-      }
-    }
-    if (match) matches.push({ label: day.label, templateId: day.templateId });
-  }
-  return matches;
-}
+// What the active program puts on a date that has no stored row: the same
+// walker the scheduler uses, so the calendar cannot disagree with a save.
+const getProgramScheduled = (date: Date, program: WorkoutProgram | null | undefined) =>
+  program ? programOccurrencesOn(program, date) : [];
 
 export const MonthlyCalendarScreen: React.FC<Props> = ({
   history,

@@ -23,6 +23,7 @@ const chatValue = {
   godMode: false,
   consecutiveErrors: 0,
   cooldownActive: false,
+  lockedUntil: 0,
   proposals: {},
   proposalIdsByMessage: {},
   applyProposal: vi.fn(),

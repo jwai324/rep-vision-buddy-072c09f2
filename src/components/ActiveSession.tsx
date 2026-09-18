@@ -12,6 +12,7 @@ import { resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/template
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
+import { releaseRestSchedule } from '@/utils/restTimerScheduler';
 import { useBlockMutations, normalizeBlocks } from '@/hooks/useBlockMutations';
 import { CameraFeed } from '@/components/CameraFeed';
 import { cn } from '@/lib/utils';
@@ -66,7 +67,7 @@ import { supersetInfo } from '@/types/activeSession';
 import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
-const CACHE_KEY = 'active-session-cache';
+import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
 const DEFAULT_LOCATION = 'Home Gym';
 
 // Safe localStorage write — never throws
@@ -82,8 +83,14 @@ function safeWriteCache(cache: ActiveSessionCache) {
 //   distance-only modes  -> no weight at all
 //   band                 -> the level as chosen, never unit-converted
 //   everything else      -> the typed display value converted to kg
+const noopStartTimer = () => {};
+
 export function clearSessionCache() {
   localStorage.removeItem(CACHE_KEY);
+  // The workout is over, so is its rest: the scheduler outlives this screen
+  // on purpose (a minimized session keeps its rest), and this is the one
+  // signal that the session it belonged to is gone.
+  releaseRestSchedule();
 }
 
 export function getSessionCache(): ActiveSessionCache | null {
@@ -256,12 +263,14 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const restTimer = useSessionRestTimer({ cachedSession, hideTimers: hideTimersPref });
   const { activeTimer, restRecords, computeRemaining, recalcRestTimer, startTimer, skipTimer, extendTimer } = restTimer;
 
+  // Re-ticking a set while editing history must not start a real rest timer
+  // (sound, OS notification, permission prompt), so edit mode gets a no-op.
   const blockOps = useBlockMutations(blocks, setBlocks, {
     weightUnit,
     defaultDropSetsEnabled,
     defaultRestSeconds,
     customExercises,
-    startTimer,
+    startTimer: isEditMode ? noopStartTimer : startTimer,
   });
   const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, replaceExercise, toggleDropSets, addWarmupSet } = blockOps;
 
@@ -291,7 +300,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   });
   const [workoutNote, setWorkoutNote] = useState(cachedSession?.workoutNote ?? editSession?.note ?? '');
   const [showNoteDialog, setShowNoteDialog] = useState(false);
-  const [location, setLocation] = useState(cachedSession?.location ?? DEFAULT_LOCATION);
+  // In edit mode there is no cache; falling straight to the default is what
+  // rewrote every edited workout's location to 'Home Gym' on save.
+  const [location, setLocation] = useState(cachedSession?.location ?? editSession?.location ?? DEFAULT_LOCATION);
   const [locations, setLocations] = useState<string[]>(propLocations);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [newLocationInput, setNewLocationInput] = useState('');
@@ -332,6 +343,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // made this timer restart from that stale snapshot and drift from the
   // MinimizedSessionBar, which already reads startTimestamp directly.
   const startTime = useRef(cachedSession ? cachedSession.startTimestamp : Date.now());
+  const trueStart = useRef(cachedSession ? (cachedSession.trueStartTimestamp ?? cachedSession.startTimestamp) : startTime.current);
   // Restore paused elapsed so a mid-pause reload keeps the frozen counter
   // instead of jumping when the user resumes.
   const pausedElapsed = useRef<number | null>(
@@ -389,6 +401,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     if (!editSession) return '';
     return Math.floor(editSession.duration / 60).toString();
   });
+  // The field shows whole minutes; writing it back unconditionally truncated
+  // a 32:40 workout to 32:00 on every edit, whether or not it was touched.
+  // Same for the start: rebuilt from the date and HH:mm fields only when one
+  // of them changed, or every edit dropped the seconds — and moved a workout
+  // that started before midnight (startedAt on one day, date on the next)
+  // forward a day each time it was opened.
+  const initialEditDurationMin = useRef(editDurationMin);
+  const initialEditDate = useRef(editDate);
+  const initialEditTime = useRef(editTime);
 
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
@@ -463,6 +484,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       blocks: s.blocks,
       workoutName: s.workoutName,
       startTimestamp: startTime.current,
+      trueStartTimestamp: trueStart.current,
       elapsedAtCache: s.timerPaused && pausedSec != null
         ? pausedSec
         : Math.floor((Date.now() - startTime.current) / 1000),
@@ -506,6 +528,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       if (writeTimerRef.current) {
         clearTimeout(writeTimerRef.current);
         writeTimerRef.current = null;
+        // A write still pending on unmount belongs to a session being
+        // minimized — a rest started or skipped in the last half-second would
+        // otherwise be in the scheduler but not in the cache, and the screen
+        // would come back without it. A session that ended has had its cache
+        // cleared first, and that must stay cleared.
+        if (localStorage.getItem(CACHE_KEY) !== null) flushCache();
       }
     };
   }, [flushCache]);
@@ -756,8 +784,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     });
   }, []);
 
-  // Register session controller for AI chat mutations
+  // Register session controller for AI chat mutations. Not in edit mode: a
+  // past workout registered as the live one gave the coach a fake
+  // active_session, and its session tools then rewrote history.
   useEffect(() => {
+    if (isEditMode) return;
     registerSession({
       // Each writer wraps setBlocks in flushSync so the functional updater
       // runs and commits before the outer function returns. Without flushSync,
@@ -876,7 +907,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       },
     });
     return () => unregisterSession();
-  }, [blocks, defaultDropSetsEnabled, defaultRestSeconds, activeTimer, exerciseLookup]);
+  }, [blocks, defaultDropSetsEnabled, defaultRestSeconds, activeTimer, exerciseLookup, isEditMode]);
 
   // toggleDropSets and addWarmupSet are provided by useBlockMutations hook
 
@@ -1104,18 +1135,26 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
     if (isEditMode && editSession) {
       sessionDate = editDate || editSession.date.substring(0, 10);
-      duration = editDurationMin ? parseInt(editDurationMin) * 60 : editSession.duration;
-      // Combine editDate + editTime into a startedAt ISO string
-      if (editTime) {
-        const combined = new Date(`${sessionDate}T${editTime}:00`);
-        startedAt = combined.toISOString();
+      duration = editDurationMin && editDurationMin !== initialEditDurationMin.current
+        ? parseInt(editDurationMin) * 60
+        : editSession.duration;
+      const startChanged = editDate !== initialEditDate.current || editTime !== initialEditTime.current;
+      if (editTime && startChanged) {
+        startedAt = new Date(`${sessionDate}T${editTime}:00`).toISOString();
       } else {
         startedAt = editSession.startedAt;
       }
     } else {
-      sessionDate = format(new Date(), 'yyyy-MM-dd');
-      duration = Math.floor((Date.now() - startTime.current) / 1000);
-      startedAt = new Date(startTime.current).toISOString();
+      // Filed under the day it started (a workout crossing midnight kept its
+      // startedAt on one day and its date on the next), timed from the true
+      // start, and with the pause excluded: `startTime` is the resume-shifted
+      // anchor, so now − startTime is the active time, and while paused the
+      // frozen figure is the answer.
+      sessionDate = format(new Date(trueStart.current), 'yyyy-MM-dd');
+      duration = timerPaused && pausedElapsed.current !== null
+        ? pausedElapsed.current
+        : Math.floor((Date.now() - startTime.current) / 1000);
+      startedAt = new Date(trueStart.current).toISOString();
     }
 
     const finalSession: WorkoutSession = {
@@ -1130,6 +1169,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       averageRpe,
       note: workoutNote.trim() || undefined,
       location: location || undefined,
+      // Fields the edit screen has no control for ride through unchanged;
+      // dropping them turned an edited rest day into a plain empty workout.
+      ...(isEditMode && editSession ? { isRestDay: editSession.isRestDay, recoveryActivities: editSession.recoveryActivities } : {}),
     };
 
     // Duration < 30s prompt — defer to an AlertDialog instead of the old
@@ -1141,7 +1183,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
 
     finishWithTemplateCheck(finalSession);
-  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, exerciseLookup]);
+  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, exerciseLookup, timerPaused, location]);
 
   if (showSupersetLinker) {
     return (

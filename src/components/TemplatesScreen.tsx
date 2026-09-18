@@ -20,14 +20,17 @@ interface TemplatesScreenProps {
   onStart: (template: WorkoutTemplate) => void;
   onEdit: (template: WorkoutTemplate) => void;
   onDelete: (id: string) => void;
+  /** Names of the programs that schedule this template; deletion is refused while any do. */
+  usedBy?: (id: string) => string[];
   onDuplicate: (template: WorkoutTemplate) => void;
   onShare: (template: WorkoutTemplate) => void;
   onCreate: () => void;
   onBack: () => void;
 }
 
-export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onStart, onEdit, onDelete, onDuplicate, onShare, onCreate, onBack }) => {
+export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onStart, onEdit, onDelete, onDuplicate, onShare, onCreate, onBack, usedBy }) => {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const blockers = deleteTarget && usedBy ? usedBy(deleteTarget.id) : [];
   const [contextMenu, setContextMenu] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exerciseLookup = useExerciseLookup();
@@ -117,14 +120,22 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Template</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteTarget?.name}"? This action cannot be undone.
+              {blockers.length > 0 ? (
+                // Deleting it anyway would leave the program pointing at nothing,
+                // and the day's scheduled workout would then simply vanish.
+                <>"{deleteTarget?.name}" is used by {blockers.map(n => `"${n}"`).join(', ')}. Remove it from {blockers.length === 1 ? 'that program' : 'those programs'} first.</>
+              ) : (
+                <>Are you sure you want to delete "{deleteTarget?.name}"? This action cannot be undone.</>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteTarget) { onDelete(deleteTarget.id); setDeleteTarget(null); } }}>
-              Delete
-            </AlertDialogAction>
+            <AlertDialogCancel>{blockers.length > 0 ? 'OK' : 'Cancel'}</AlertDialogCancel>
+            {blockers.length === 0 && (
+              <AlertDialogAction onClick={() => { if (deleteTarget) { onDelete(deleteTarget.id); setDeleteTarget(null); } }}>
+                Delete
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

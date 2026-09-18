@@ -74,6 +74,12 @@ export interface ActiveSessionCache {
   // the user paused the session and then minimized.
   timerPaused?: boolean;
   pausedElapsedSec?: number | null;
+  // When the workout really began. `startTimestamp` is the timer's anchor and
+  // is shifted forward on every resume so elapsed stays continuous, which is
+  // exactly why it cannot double as the start time: after one pause it is
+  // wrong by the length of the pause. Absent on caches written before this
+  // field existed, where startTimestamp is the best available answer.
+  trueStartTimestamp?: number;
   // Snapshot of the source template captured at session start. Persisted so
   // the "Update template?" prompt can still fire after a minimize/resume or
   // cold reload — without it the ref inside ActiveSession would be null on

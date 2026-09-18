@@ -8,6 +8,15 @@ const clipLookup = vi.hoisted(() => ({
   current: { clip: null as ExerciseClipAsset | null, loading: false },
 }));
 
+// The animation asks the exercise-gif function for a clip. Without this the
+// real client fires a fetch at localhost from every test that opens the
+// modal, and the tests pass only because the port is closed.
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: {
+    functions: { invoke: vi.fn(async () => ({ data: { gifUrl: null, enabled: false }, error: null })) },
+  },
+}));
+
 vi.mock('@/hooks/useExerciseClip', () => ({
   useExerciseClip: () => clipLookup.current,
 }));

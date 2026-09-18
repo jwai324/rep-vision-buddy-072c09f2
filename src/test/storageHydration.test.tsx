@@ -18,15 +18,23 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
  */
 let releaseQueries: () => void;
 let queryCount = 0;
+/** What the "server" holds per table. A query snapshots it when issued, the
+ *  way a real request does, so a write that lands while it is in flight is
+ *  not in its result. */
+const serverRows: Record<string, Record<string, unknown>[]> = {};
 
-function makeBuilder() {
-  const rows: unknown[] = [];
+function makeBuilder(table: string) {
+  const rows = [...(serverRows[table] ?? [])];
   const pending = new Promise<{ data: unknown[]; error: null }>(resolve => {
     const prior = releaseQueries;
     releaseQueries = () => { prior?.(); resolve({ data: rows, error: null }); };
   });
   const builder: Record<string, unknown> = {
     then: (...args: Parameters<Promise<unknown>['then']>) => pending.then(...args),
+    upsert: (payload: Record<string, unknown>) => {
+      (serverRows[table] ||= []).push(payload);
+      return Promise.resolve({ error: null });
+    },
   };
   for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle']) {
     builder[m] = () => builder;
@@ -36,7 +44,7 @@ function makeBuilder() {
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
-    from: () => { queryCount += 1; return makeBuilder(); },
+    from: (table: string) => { queryCount += 1; return makeBuilder(table); },
   },
 }));
 
@@ -71,6 +79,7 @@ beforeEach(() => {
   localStorage.clear();
   queryCount = 0;
   releaseQueries = () => {};
+  for (const k of Object.keys(serverRows)) delete serverRows[k];
 });
 
 describe('useStorage hydration', () => {
@@ -116,5 +125,27 @@ describe('useStorage hydration', () => {
 
     expect(result.current.loading).toBe(true);
     expect(result.current.history).toHaveLength(0);
+  });
+});
+
+describe('a save that lands while a load is in flight', () => {
+  it('is not painted over by that load', async () => {
+    writeStorageCache(USER_ID, snapshot());
+    const { result } = renderHook(() => useStorage());
+    // Revalidation is in flight (its queries snapshotted an empty server).
+    expect(result.current.refreshing).toBe(true);
+
+    await act(async () => {
+      await result.current.saveTemplate({ id: 't-mid', name: 'Saved mid-load', exercises: [] });
+    });
+    expect(result.current.templates.map(t => t.id)).toContain('t-mid');
+
+    // The stale load resolves. It used to replace every slice wholesale,
+    // dropping the save; now it is discarded and the load runs once more.
+    await act(async () => { releaseQueries(); });
+    await act(async () => { releaseQueries(); });
+    await waitFor(() => expect(result.current.refreshing).toBe(false));
+
+    expect(result.current.templates.map(t => t.id)).toContain('t-mid');
   });
 });

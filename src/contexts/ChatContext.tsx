@@ -165,6 +165,10 @@ interface ChatContextType {
   refreshBalance: () => Promise<void>;
   consecutiveErrors: number;
   cooldownActive: boolean;
+  // Epoch ms until which the coach is locked out after consecutive failures;
+  // 0 when it is not. Clears itself on a timer, so gate on this rather than
+  // on consecutiveErrors.
+  lockedUntil: number;
   proposals: Record<string, Proposal>;
   proposalIdsByMessage: Record<string, string[]>;
   applyProposal: (id: string) => Promise<void>;
@@ -185,6 +189,7 @@ const ChatContext = createContext<ChatContextType>({
   refreshBalance: async () => {},
   consecutiveErrors: 0,
   cooldownActive: false,
+  lockedUntil: 0,
   proposals: {},
   proposalIdsByMessage: {},
   applyProposal: async () => {},
@@ -390,9 +395,15 @@ const DEFAULT_CHIPS = ["Build me a program", "Create a template", "What should I
 // The phrase is now sent as an ordinary message; ai-coach recognises it only
 // for an allowlisted user id. Credits are displayed normally either way — for
 // an allowlisted operator the balance simply stops going down.
-const COOLDOWN_MS = 2000;
+export const COOLDOWN_MS = 2000;
 const MESSAGE_WINDOW = 10;
-const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+export const DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+// A turn with no chunk for this long is abandoned. Without it a connection
+// that stalls (captive portal, sleeping phone, proxy that swallows the tail)
+// left the coach in isLoading until a reload.
+export const STREAM_INACTIVITY_MS = 60 * 1000;
+export const STALLED_STREAM_MESSAGE = "The coach stopped responding — try again.";
+export const LOCKED_OUT_MESSAGE = "AI is temporarily unavailable. You can still build templates manually. Will retry in 5 minutes.";
 
 // Sentinel thrown when the server reports balance_exhausted (HTTP 402). Caught
 // separately from real transport/AI errors — running out of credits is an
@@ -421,6 +432,27 @@ class StreamFailedError extends Error {
   }
 }
 
+// HTTP 413 from ai-coach: the request itself is over the function's size
+// limits, and the body carries the server's sentence saying which. Retrying
+// the same request can only get the same answer, and it is the message that
+// is at fault rather than the service, so it never counts toward the lockout.
+class RequestTooLargeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RequestTooLargeError';
+  }
+}
+
+// Rejects when the signal aborts, so a read on a body that does not honour
+// the abort itself (or a fetch that never hands one back) still unblocks.
+function abortPromise(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    const fail = () => reject(new DOMException('The turn was aborted.', 'AbortError'));
+    if (signal.aborted) fail();
+    else signal.addEventListener('abort', fail, { once: true });
+  });
+}
+
 export const ChatProvider: React.FC<{
   children: React.ReactNode;
   // storage is useStorage()'s return value. Typing this as
@@ -440,8 +472,54 @@ export const ChatProvider: React.FC<{
   const [creditsBalance, setCreditsBalance] = useState<CreditsBalance>(EMPTY_BALANCE);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [cooldownActive, setCooldownActive] = useState(false);
-  const [disabledUntil, setDisabledUntil] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
+  // The error path of a turn runs long after the render that created it, and
+  // a reset that happened inside the same turn (on a good response) is not in
+  // its closure. Both counters are read from refs for that reason; the state
+  // copies exist only to render.
+  const consecutiveErrorsRef = useRef(0);
+  const lockedUntilRef = useRef(0);
   const sendDisabledUntil = useRef(0);
+  // The turn currently streaming, so clearChat and unmount can end it.
+  const turnAbortRef = useRef<AbortController | null>(null);
+
+  const setErrorCount = useCallback((n: number) => {
+    consecutiveErrorsRef.current = n;
+    setConsecutiveErrors(n);
+  }, []);
+
+  const lockOut = useCallback((until: number) => {
+    lockedUntilRef.current = until;
+    setLockedUntil(until);
+  }, []);
+
+  const releaseLockout = useCallback(() => {
+    lockedUntilRef.current = 0;
+    setLockedUntil(0);
+    consecutiveErrorsRef.current = 0;
+    setConsecutiveErrors(0);
+  }, []);
+
+  // Honours the "will retry in 5 minutes" promise: before this the count was
+  // only reset by a successful turn, which the lockout itself prevented.
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const timer = setTimeout(releaseLockout, Math.max(0, lockedUntil - Date.now()));
+    // A background tab's timers are throttled or frozen; on return an overdue
+    // lockout lifts at once rather than sitting at "Back in 0:00".
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() >= lockedUntil) releaseLockout();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [lockedUntil, releaseLockout]);
+
+  useEffect(() => () => {
+    turnAbortRef.current?.abort();
+  }, []);
   const balanceResyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
   const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>({});
@@ -1116,13 +1194,17 @@ export const ChatProvider: React.FC<{
         case 'create_program': {
           if (proposal.after.kind !== 'program' || !proposal.after.program) return;
           const p = proposal.after.program;
-          await storage.saveProgram({
+          // saveProgram toasts its own failure and resolves false. The proposal
+          // then stays pending so Apply can be tapped again; before this it was
+          // marked applied and the thread said so while the toast said failed.
+          const saved = await storage.saveProgram({
             id: p.id,
             name: p.name,
             days: p.days,
             durationWeeks: p.durationWeeks ?? 8,
             startDate: proposal.arguments?.startDate || formatLocalDate(),
           });
+          if (!saved) return;
           break;
         }
         case 'delete_program': {
@@ -1132,7 +1214,7 @@ export const ChatProvider: React.FC<{
         }
         case 'set_active_program': {
           if (proposal.after.kind !== 'active-program' || !proposal.after.programId) return;
-          await storage.setActiveProgram(proposal.after.programId);
+          if (!(await storage.setActiveProgram(proposal.after.programId))) return;
           break;
         }
         case 'add_exercise_to_workout': {
@@ -1238,8 +1320,12 @@ export const ChatProvider: React.FC<{
     // bypasses the gate.
     if (creditsBalance.exhausted) return;
 
-    // Disabled due to consecutive errors
-    if (Date.now() < disabledUntil) return;
+    // Disabled due to consecutive errors. A lockout whose time has passed but
+    // whose timer has not fired (throttled background tab) is released here.
+    if (lockedUntilRef.current) {
+      if (Date.now() < lockedUntilRef.current) return;
+      releaseLockout();
+    }
 
     // Cap input to 500 chars
     const cappedText = text.slice(0, 500);
@@ -1247,6 +1333,34 @@ export const ChatProvider: React.FC<{
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: cappedText };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
+
+    // One controller covers both fetches of the turn. `stalled` records that
+    // the abort came from the inactivity timer rather than clearChat/unmount,
+    // which is the difference between telling the user and saying nothing.
+    const controller = new AbortController();
+    turnAbortRef.current = controller;
+    const aborted = abortPromise(controller.signal);
+    aborted.catch(() => {});
+    let stalled = false;
+    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+    const armInactivityTimer = () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        stalled = true;
+        controller.abort();
+      }, STREAM_INACTIVITY_MS);
+    };
+    const throwIfAborted = () => {
+      if (controller.signal.aborted) throw new DOMException('The turn was aborted.', 'AbortError');
+    };
+    // A chunk that lands in the same tick as the abort must not be applied:
+    // clearChat has already emptied the list it would append a bubble to.
+    const readChunk = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+      armInactivityTimer();
+      const chunk = await Promise.race([reader.read(), aborted]);
+      throwIfAborted();
+      return chunk;
+    };
 
     const context = buildContext();
 
@@ -1259,26 +1373,34 @@ export const ChatProvider: React.FC<{
     // Allocate the assistant message id up front so we can associate proposals with it.
     const assistantMessageId = crypto.randomUUID();
 
-    // Mirror what supabase.functions.invoke sends: both `apikey` and a Bearer
-    // token, preferring the user's session JWT over the anon key when signed in.
-    const { data: { session } } = await supabase.auth.getSession();
     const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-    const bearer = session?.access_token ?? anonKey;
-    const authHeaders = {
-      "Content-Type": "application/json",
-      apikey: anonKey,
-      Authorization: `Bearer ${bearer}`,
-    };
 
     try {
+      armInactivityTimer();
+      // Mirror what supabase.functions.invoke sends: both `apikey` and a Bearer
+      // token, preferring the user's session JWT over the anon key when signed
+      // in. Inside the timer and the abort: a session lookup that never
+      // resolves (auth-js's lock can hang) used to leave the coach loading
+      // until a reload, with nothing able to cancel it.
+      const { data: { session } } = await Promise.race([supabase.auth.getSession(), aborted]);
+      const bearer = session?.access_token ?? anonKey;
+      const authHeaders = {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${bearer}`,
+      };
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ messages: windowedMessages, context }),
+        signal: controller.signal,
       });
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: "" }));
+        if (resp.status === 413) {
+          throw new RequestTooLargeError(err.error || "That message is too large for the coach. Try a shorter one.");
+        }
         if (err.balance_exhausted) {
           setCreditsBalance(prev => ({ ...prev, exhausted: true, availableMicros: 0, credits: 0, estMessagesLeft: 0 }));
           // Signalled distinctly so the catch block below doesn't tick the
@@ -1299,7 +1421,7 @@ export const ChatProvider: React.FC<{
       }
 
       // Reset consecutive errors on success
-      setConsecutiveErrors(0);
+      setErrorCount(0);
 
       // Parse SSE stream
       const reader = resp.body!.getReader();
@@ -1327,7 +1449,7 @@ export const ChatProvider: React.FC<{
       // mid-way through emitting is incomplete.
       let truncatedResponse = false;
       while (!streamDone) {
-        const { done, value } = await reader.read();
+        const { done, value } = await readChunk(reader);
         if (done) break;
         textBuffer += decoder.decode(value, { stream: true });
 
@@ -1458,6 +1580,9 @@ export const ChatProvider: React.FC<{
           }
         }
 
+        // Proposals built while clearChat emptied the panel must not land in it.
+        throwIfAborted();
+
         // Commit proposals to state so the diff cards can render under this message.
         if (newProposals.length) {
           setProposals(prev => {
@@ -1483,10 +1608,12 @@ export const ChatProvider: React.FC<{
           },
         ];
 
+        armInactivityTimer();
         const followResp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-coach`, {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({ messages: followUpMessages, context, action_results: results }),
+          signal: controller.signal,
         });
 
         if (followResp.ok) {
@@ -1495,7 +1622,7 @@ export const ChatProvider: React.FC<{
           let followContent = "";
           let done2 = false;
           while (!done2) {
-            const { done, value } = await followReader.read();
+            const { done, value } = await readChunk(followReader);
             if (done) break;
             followBuffer += decoder.decode(value, { stream: true });
             let nlIdx: number;
@@ -1531,9 +1658,15 @@ export const ChatProvider: React.FC<{
           }
         } else {
           // The proposals are already on screen and applyable; only the
-          // narration failed. Without this the bubble spins forever.
+          // narration failed. Without this the bubble spins forever. A 413
+          // carries the server's reason, which is worth more than the summary
+          // alone because the fix (a shorter request) is the user's to make.
+          const tooLarge = followResp.status === 413
+            ? await followResp.json().then(b => (typeof b?.error === 'string' ? b.error : ''), () => '')
+            : '';
+          const content = [toolCallSummary(parsedToolCalls), tooLarge].filter(Boolean).join(' ');
           setMessages(prev => prev.map(m =>
-            m.id === assistantMessageId ? { ...m, content: toolCallSummary(parsedToolCalls), isLoading: false, toolCalls: parsedToolCalls } : m
+            m.id === assistantMessageId ? { ...m, content, isLoading: false, toolCalls: parsedToolCalls } : m
           ));
         }
       } else {
@@ -1544,6 +1677,24 @@ export const ChatProvider: React.FC<{
         ));
       }
     } catch (err) {
+      // Replaces this turn's bubble, or appends one when the turn never got
+      // that far. Keyed on the id, not "the last message": an "Applied" note
+      // from a proposal accepted mid-stream can be last, and used to be
+      // overwritten.
+      const showReply = (errMsg: string) => setMessages(prev => {
+        if (prev.some(m => m.id === assistantMessageId)) {
+          return prev.map(m => m.id === assistantMessageId ? { ...m, content: errMsg, isLoading: false } : m);
+        }
+        return [...prev, { id: assistantMessageId, role: 'assistant', content: errMsg, isLoading: false }];
+      });
+
+      // An aborted turn is not a fault of the service. clearChat and unmount
+      // have nothing left to say it to; the inactivity timer does.
+      if (controller.signal.aborted) {
+        if (stalled) showReply(STALLED_STREAM_MESSAGE);
+        return;
+      }
+
       console.error('Chat error:', err);
 
       // Balance-exhausted is a normal terminal state, not a fault. Show the
@@ -1551,62 +1702,52 @@ export const ChatProvider: React.FC<{
       // counter that would trip the 5-minute lockout on someone who just
       // needs to top up.
       if (err instanceof BalanceExhaustedError) {
-        setMessages(prev => {
-          const errMsg = "You're out of AI credits. Top up or check your plan to keep chatting.";
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant') {
-            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
-          }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errMsg, isLoading: false }];
-        });
+        showReply("You're out of AI credits. Top up or check your plan to keep chatting.");
         return;
       }
 
-      const newErrorCount = consecutiveErrors + 1;
-      setConsecutiveErrors(newErrorCount);
+      if (err instanceof RequestTooLargeError) {
+        showReply(err.message);
+        return;
+      }
+
+      const newErrorCount = consecutiveErrorsRef.current + 1;
+      setErrorCount(newErrorCount);
 
       // After 2 consecutive failures, disable for 5 minutes
       if (newErrorCount >= 2) {
-        setDisabledUntil(Date.now() + DISABLE_DURATION_MS);
-        setMessages(prev => {
-          const errMsg = "AI is temporarily unavailable. You can still build templates manually. Will retry in 5 minutes.";
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant') {
-            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
-          }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errMsg, isLoading: false }];
-        });
+        lockOut(Date.now() + DISABLE_DURATION_MS);
+        showReply(LOCKED_OUT_MESSAGE);
       } else {
-        setMessages(prev => {
-          const errMsg = err instanceof StreamFailedError
-            ? err.message
-            : `Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}. Try again.`;
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant') {
-            return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: errMsg, isLoading: false } : m);
-          }
-          return [...prev, { id: crypto.randomUUID(), role: 'assistant', content: errMsg, isLoading: false }];
-        });
+        showReply(err instanceof StreamFailedError
+          ? err.message
+          : `Something went wrong: ${err instanceof Error ? err.message : 'Unknown error'}. Try again.`);
       }
     } finally {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      if (turnAbortRef.current === controller) turnAbortRef.current = null;
       setIsLoading(false);
       // Re-sync the authoritative balance after the turn (cost is metered
       // server-side and unknown to the client). god-mode does not deduct.
       resyncBalanceSoon();
     }
-  }, [messages, buildContext, proposeToolCall, creditsBalance, consecutiveErrors, disabledUntil, resyncBalanceSoon]);
+  }, [messages, buildContext, proposeToolCall, creditsBalance, releaseLockout, setErrorCount, lockOut, resyncBalanceSoon]);
 
   const clearChat = useCallback(() => {
+    turnAbortRef.current?.abort();
+    turnAbortRef.current = null;
     setMessages([]);
     setProposals({});
     setProposalIdsByMessage({});
+    // The lockout stays: it is what keeps a failing backend from being
+    // hammered, and the trash icon must not be a one-tap way around it.
   }, []);
 
   return (
     <ChatContext.Provider value={{
       messages, isOpen, isLoading, currentScreen,
       setOpen, sendMessage, clearChat, registerScreen, quickChips,
-      creditsBalance, refreshBalance, consecutiveErrors, cooldownActive,
+      creditsBalance, refreshBalance, consecutiveErrors, cooldownActive, lockedUntil,
       proposals, proposalIdsByMessage, applyProposal, discardProposal,
     }}>
       {children}

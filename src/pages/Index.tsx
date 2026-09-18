@@ -5,6 +5,8 @@ import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
 import { restoredSessionScreen } from '@/utils/sessionRestore';
+import { useScreenHistory } from '@/hooks/useScreenHistory';
+import { setRestTimerHidden } from '@/utils/restTimerScheduler';
 import { MinimizedSessionBar, MINIMIZED_BAR_HEIGHT } from '@/components/MinimizedSessionBar';
 import { StartWorkoutScreen } from '@/components/StartWorkoutScreen';
 import { SessionSummary } from '@/components/SessionSummary';
@@ -124,7 +126,90 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     return id;
   };
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
-  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  const [screen, setScreen] = useScreenHistory<Screen>({ type: 'dashboard' }, {
+    isRoot: s => s.type === 'dashboard',
+    // Back out of a live workout minimizes it; the cache is untouched, so the
+    // bar appears on the screen beneath and Resume brings it straight back.
+    // Back with the summary open closes the summary instead: the user has
+    // not left the workout, they have un-finished it.
+    onUserBack: leaving => {
+      if (leaving.type !== 'activeSession') return;
+      if (pendingSummary) {
+        setPendingSummary(null);
+        return true;
+      }
+      setMinimizedSession(leaving);
+    },
+    // A screen coming back from history holds the object it was left with.
+    // The rows have moved on: a session edited since is re-read so the editor
+    // does not offer to save the pre-edit copy back, and one deleted since is
+    // skipped rather than shown. A live workout restored this way must read
+    // its cache (`resumed`), or a blank remount overwrites the real one.
+    restore: s => {
+      switch (s.type) {
+        case 'activeSession': {
+          const cache = getSessionCache();
+          return cache && (cache.templateId ?? null) === (s.templateId ?? null) ? { ...s, resumed: true } : null;
+        }
+        case 'sessionDetail':
+        case 'editSession': {
+          const session = storage.history.find(h => h.id === s.session.id);
+          return session ? { ...s, session } : null;
+        }
+        case 'futureWorkoutDetail': {
+          const futureWorkout = storage.futureWorkouts.find(f => f.id === s.futureWorkout.id);
+          return futureWorkout ? { ...s, futureWorkout } : null;
+        }
+        case 'templateBuilder': {
+          if (!s.template) return s;
+          const template = storage.templates.find(t => t.id === s.template?.id);
+          return template ? { ...s, template } : null;
+        }
+        case 'programBuilder': {
+          if (!s.program) return s;
+          const program = storage.programs.find(p => p.id === s.program?.id);
+          return program ? { ...s, program } : null;
+        }
+        case 'programView':
+          return storage.programs.some(p => p.id === s.programId) ? s : null;
+        default:
+          return s;
+      }
+    },
+  });
+
+  // The rest timer's "Hide Timers" switch lives in the scheduler, which
+  // outlives the session screen; it has to follow the preference from here,
+  // because Settings is reachable while a session is minimized and the
+  // screen's own hook is unmounted then.
+  useEffect(() => {
+    setRestTimerHidden(storage.preferences.hideTimers);
+  }, [storage.preferences.hideTimers]);
+
+  // #11: a template a program still schedules, or a custom exercise a template
+  // still uses, cannot be deleted — the reference would dangle, today's workout
+  // would vanish from the calendar, and the exercise would log under its raw id.
+  const templateUsedBy = React.useCallback((id: string) => {
+    // A failed programs query reads as "used by nothing"; until every slice
+    // that could reference the template is trusted, the answer is "unknown".
+    if (!storage.dataTrusted) return ['data that is still loading'];
+    const programs = storage.programs.filter(p => p.days.some(d => d.templateId === id));
+    const names = programs.map(p => p.name);
+    const today = formatLocalDate();
+    // Upcoming rows the listed programs do not account for: manual ones, and
+    // rows of a program whose days no longer name this template.
+    const listed = new Set(programs.map(p => p.id));
+    const scheduled = storage.futureWorkouts.filter(fw =>
+      fw.templateId === id && !fw.completed && fw.date >= today && !listed.has(fw.programId)).length;
+    if (scheduled > 0) names.push(`${scheduled} scheduled workout${scheduled === 1 ? '' : 's'}`);
+    return names;
+  }, [storage.programs, storage.futureWorkouts, storage.dataTrusted]);
+  const exerciseUsedBy = React.useCallback(
+    (exerciseId: string) => storage.dataTrusted
+      ? storage.templates.filter(t => t.exercises.some(e => e.exerciseId === exerciseId)).map(t => t.name)
+      : ['data that is still loading'],
+    [storage.templates, storage.dataTrusted],
+  );
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
 
   // Screens swap inside one window-scrolled container, so a screen opened
@@ -150,7 +235,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   useEffect(() => {
     const screenMap: Record<string, string> = {
       dashboard: 'dashboard', startWorkout: 'dashboard', browseExercises: 'exercises',
-      activeSession: 'active_workout', editSession: 'active_workout',
+      // An edit is a past record, not a workout in progress: the coach has no
+      // session to act on and must not be told it is mid-workout.
+      activeSession: 'active_workout', editSession: 'activity',
       summary: 'dashboard', sessionDetail: 'activity', activity: 'activity',
       futureWorkoutDetail: 'activity', templates: 'templates', templateBuilder: 'templates',
       programs: 'programs', programView: 'programs', programBuilder: 'programs', settings: 'settings',
@@ -379,7 +466,18 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       )}
 
       {screen.type === 'activeSession' && (
-        <ErrorBoundary fallbackTitle="Workout session error" onReset={() => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); }}>
+        <ErrorBoundary
+          fallbackTitle="Workout session error"
+          // The boundary unmounted the session when it threw; remounting with
+          // `resumed` rebuilds it from the cache instead of from nothing. This
+          // used to clear the cache — the recovery button was the destructive one.
+          onReset={() => setScreen(s => s.type === 'activeSession' ? { ...s, resumed: true } : s)}
+          destructiveAction={{
+            label: 'Discard workout',
+            confirmLabel: 'Tap again to discard this workout',
+            onClick: () => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); },
+          }}
+        >
           <ActiveSession
             exercises={screen.exercises}
             templateExercises={screen.templateExercises}
@@ -453,8 +551,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             editSession={screen.session}
             onFinish={(session) => guardedSave(async () => {
               // Staying on the edit screen is what lets the user retry; leaving
-              // discards their edits with nothing holding them.
-              const saved = await storage.saveSession(session);
+              // discards their edits with nothing holding them. Correcting a
+              // record is not doing a workout, so it never ticks off a
+              // scheduled one on that date.
+              const saved = await storage.saveSession(session, { markScheduled: false });
               if (!saved) return;
               setScreen({ type: 'activity', initialTab: 'history' });
             })}
@@ -599,6 +699,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onStart={startFromTemplate}
           onEdit={(t) => setScreen({ type: 'templateBuilder', template: t })}
           onDelete={storage.deleteTemplate}
+          usedBy={templateUsedBy}
           onDuplicate={(t) => {
             const copy = { ...t, id: crypto.randomUUID(), name: `${t.name} (2)` };
             storage.saveTemplate(copy);
@@ -664,9 +765,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           initial={screen.program}
           weightUnit={storage.preferences.weightUnit}
           defaultRestSeconds={storage.preferences.defaultRestSeconds}
-          onSave={(p) => {
-            storage.saveProgram(p);
-            setScreen({ type: 'programs' });
+          onSave={async (p) => {
+            const saved = await storage.saveProgram(p);
+            if (saved) setScreen({ type: 'programs' });
+            return saved;
           }}
           onSaveTemplate={storage.saveTemplate}
           onCancel={() => setScreen({ type: 'programs' })}
@@ -725,12 +827,16 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <AIProgramBuilder
           onBack={() => setScreen({ type: 'dashboard' })}
           onSaveProgram={async (program, templates) => {
+            // A failed template save is queued and replayed by useStorage, so
+            // it does not block the program; a failed program save does.
             for (const t of templates) {
               await storage.saveTemplate(t);
             }
-            await storage.saveProgram(program);
+            const saved = await storage.saveProgram(program);
+            if (!saved) return false;
             await storage.setActiveProgram(program.id);
             setScreen({ type: 'programs' });
+            return true;
           }}
         />
       )}
@@ -741,6 +847,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onAdd={addCustomExercise}
           onUpdate={updateCustomExercise}
           onDelete={deleteCustomExercise}
+          usedBy={exerciseUsedBy}
           onBack={() => setScreen({ type: 'settings' })}
           history={storage.history}
           weightUnit={storage.preferences.weightUnit}

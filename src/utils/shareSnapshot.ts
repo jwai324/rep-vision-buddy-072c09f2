@@ -1,4 +1,5 @@
 import { EXERCISES } from '@/types/workout';
+import { sanitizeProgramDays } from '@/utils/programFrequency';
 import { getBodyPartIcon } from '@/data/exercises';
 import type { Exercise } from '@/data/exercises';
 import type {
@@ -220,12 +221,14 @@ export function remapProgram(
   return {
     ...program,
     id: newId(),
-    days: program.days.map(day => ({
+    // The payload is whatever the sharer's client wrote; an everyNDays
+    // interval of 0 in it used to hang the recipient's scheduler.
+    days: sanitizeProgramDays(program.days.map(day => ({
       ...day,
       templateId:
         day.templateId === 'rest'
           ? 'rest'
           : templateIdMap[day.templateId] ?? day.templateId,
-    })),
+    }))),
   };
 }

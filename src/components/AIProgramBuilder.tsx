@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import type { WorkoutTemplate, WorkoutProgram, TemplateExercise, SetType } from '@/types/workout';
 import { formatLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
+import { describeInvokeError } from '@/utils/invokeError';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -113,6 +114,17 @@ interface BuilderDraft {
   customEquipmentText: string;
   showEquipmentOther: boolean;
   generatedProgram: AIProgram | null;
+  // The ids the generated program and its templates are saved under, minted
+  // on the first Save and kept for every retry. Index writes the templates
+  // before the program row, so a failed program save leaves them in the
+  // library (or queued offline); a retry with fresh ids wrote a second set
+  // beside them, and a third tap a third.
+  saveIds: SaveIds | null;
+}
+
+interface SaveIds {
+  programId: string;
+  templateIds: string[];
 }
 
 function loadBuilderDraft(): BuilderDraft | null {
@@ -140,6 +152,7 @@ function loadBuilderDraft(): BuilderDraft | null {
       customEquipmentText: draft.customEquipmentText ?? '',
       showEquipmentOther: draft.showEquipmentOther ?? false,
       generatedProgram: draft.generatedProgram ?? null,
+      saveIds: draft.saveIds ?? null,
     };
   } catch {
     return null;
@@ -160,7 +173,7 @@ function clearBuilderDraft(): void {
 
 interface AIProgramBuilderProps {
   onBack: () => void;
-  onSaveProgram: (program: WorkoutProgram, templates: WorkoutTemplate[]) => void;
+  onSaveProgram: (program: WorkoutProgram, templates: WorkoutTemplate[]) => Promise<boolean>;
 }
 
 export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSaveProgram }) => {
@@ -174,6 +187,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>(restored?.selectedEquipment ?? []);
   const [injuryText, setInjuryText] = useState(restored?.injuryText ?? '');
   const [generatedProgram, setGeneratedProgram] = useState<AIProgram | null>(restored?.generatedProgram ?? null);
+  const [saveIds, setSaveIds] = useState<SaveIds | null>(restored?.saveIds ?? null);
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
   const [swappingExercise, setSwappingExercise] = useState<{ dayIdx: number; exIdx: number } | null>(null);
   const [showOtherInput, setShowOtherInput] = useState(restored?.showOtherInput ?? false);
@@ -182,6 +196,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [showEquipmentOther, setShowEquipmentOther] = useState(restored?.showEquipmentOther ?? false);
   const [additionalNotesText, setAdditionalNotesText] = useState(restored?.additionalNotesText ?? '');
   const [showFullNotes, setShowFullNotes] = useState(false);
+  const [saving, setSaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const otherInputRef = useRef<HTMLInputElement>(null);
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
@@ -213,12 +228,12 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       phase: phase === 'generating' ? 'chat' : phase,
       currentStep, inputs, messages, selectedEquipment,
       injuryText, additionalNotesText, otherText, showOtherInput,
-      customEquipmentText, showEquipmentOther, generatedProgram,
+      customEquipmentText, showEquipmentOther, generatedProgram, saveIds,
     });
   }, [
     phase, currentStep, inputs, messages, selectedEquipment,
     injuryText, additionalNotesText, otherText, showOtherInput,
-    customEquipmentText, showEquipmentOther, generatedProgram,
+    customEquipmentText, showEquipmentOther, generatedProgram, saveIds,
   ]);
 
   // Auto-focus other input when shown
@@ -364,6 +379,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     setInjuryText('');
     setAdditionalNotesText('');
     setGeneratedProgram(null);
+    setSaveIds(null);
     setShowFullNotes(false);
     showAIMessage(0);
   };
@@ -434,7 +450,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
         },
       });
 
-      if (error) throw error;
+      if (error) throw await describeInvokeError(error);
       if (data?.error) throw new Error(data.error);
 
       const program = data.program as AIProgram;
@@ -457,6 +473,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       }
 
       setGeneratedProgram(program);
+      setSaveIds(null);
       setExpandedDays(new Set([0]));
       setPhase('review');
     } catch (e) {
@@ -502,10 +519,14 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
 
   // ─── Save ───────────────────────────────────────────────────────
 
-  const saveProgram = () => {
+  const saveProgram = async () => {
     if (!generatedProgram) return;
 
-    const programId = crypto.randomUUID();
+    const ids: SaveIds = saveIds?.templateIds.length === generatedProgram.training_days.length
+      ? saveIds
+      : { programId: crypto.randomUUID(), templateIds: generatedProgram.training_days.map(() => crypto.randomUUID()) };
+    if (ids !== saveIds) setSaveIds(ids);
+    const programId = ids.programId;
     const templates: WorkoutTemplate[] = [];
     const programDays: WorkoutProgram['days'] = [];
 
@@ -524,7 +545,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     }
 
     generatedProgram.training_days.forEach((day, i) => {
-      const templateId = crypto.randomUUID();
+      const templateId = ids.templateIds[i];
       const templateExercises: TemplateExercise[] = day.exercises.map(ex => {
         const dbEx = EXERCISE_DATABASE.find(e => e.name === ex.exercise_name);
         const repsVal = ex.reps.includes('-') ? parseInt(ex.reps.split('-')[1]) : parseInt(ex.reps);
@@ -557,9 +578,20 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       startDate: formatLocalDate(),
     };
 
-    clearBuilderDraft();
-    onSaveProgram(program, templates);
-    toast.success(`Program "${program.name}" saved.`);
+    // Nothing is torn down until the save has landed. This used to clear the
+    // draft and toast "saved" first, so a failed upsert lost a program the user
+    // had just paid credits to generate — and the caller then activated a
+    // program id that was never written.
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await onSaveProgram(program, templates);
+      if (!saved) return;
+      clearBuilderDraft();
+      toast.success(`Program "${program.name}" saved.`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ─── Render ─────────────────────────────────────────────────────
@@ -583,14 +615,14 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <div className="flex items-center gap-3 p-4 border-b border-border">
-          <button onClick={() => setPhase('chat')} className="p-2 rounded-lg hover:bg-secondary">
+          <button onClick={() => setPhase('chat')} disabled={saving} className="p-2 rounded-lg hover:bg-secondary disabled:opacity-40">
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
           <div className="flex-1">
             <h2 className="text-lg font-bold text-foreground">{generatedProgram.program_name}</h2>
             <p className="text-xs text-muted-foreground">{generatedProgram.days_per_week} days/week · {generatedProgram.weeks} weeks · {generatedProgram.goal}</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={generateProgram}>
+          <Button variant="ghost" size="icon" onClick={generateProgram} disabled={saving} aria-label="Regenerate program">
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -656,7 +688,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
         </div>
 
         <div className="p-4 border-t border-border">
-          <Button variant="neon" size="lg" className="w-full font-bold" onClick={saveProgram}>
+          <Button variant="neon" size="lg" className="w-full font-bold" onClick={saveProgram} disabled={saving}>
             <Check className="w-5 h-5 mr-2" /> Save Program
           </Button>
         </div>

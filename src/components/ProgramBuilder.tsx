@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { format, addDays, addWeeks, getDay } from 'date-fns';
 import { ArrowLeft, CalendarIcon, ChevronDown, ChevronRight } from 'lucide-react';
 import { parseLocalDate } from '@/utils/dateUtils';
+import { monthlyOccurrences, sanitizeFrequency } from '@/utils/programFrequency';
 import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, DayFrequency, ProgramDay } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ interface ProgramBuilderProps {
   initial?: WorkoutProgram;
   weightUnit?: WeightUnit;
   defaultRestSeconds?: number;
-  onSave: (program: WorkoutProgram) => void;
+  onSave: (program: WorkoutProgram) => Promise<boolean>;
   /** Resolves once the template row is written, or queued for retry — see `useStorage.saveTemplate`. */
   onSaveTemplate: (template: WorkoutTemplate) => Promise<boolean>;
   onCancel: () => void;
@@ -196,8 +197,10 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
     const endDate = addWeeks(startDate, durationWeeks);
 
     days.forEach((day) => {
-      if (!day.frequency) return;
-      const freq = day.frequency;
+      // Same validation as the scheduler: an interval of 0 was an infinite
+      // loop here too, on every keystroke in the builder.
+      const freq = sanitizeFrequency(day.frequency);
+      if (!freq) return;
 
       if (freq.type === 'weekly') {
         // Find the first occurrence of this weekday on or after startDate
@@ -221,16 +224,10 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
           current = addDays(current, freq.interval);
         }
       } else if (freq.type === 'monthly') {
-        let current = new Date(startDate);
-        current.setDate(freq.dayOfMonth);
-        if (current < startDate) {
-          current.setMonth(current.getMonth() + 1);
-        }
-        while (current < endDate) {
-          events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-          const next = new Date(current);
-          next.setMonth(next.getMonth() + 1);
-          current = next;
+        // Same helper the scheduler uses, so the preview cannot disagree with
+        // the calendar it previews (and neither overflows a short month).
+        for (const date of monthlyOccurrences(startDate, endDate, freq.dayOfMonth)) {
+          events.push({ date, label: day.label, templateId: day.templateId });
         }
       }
     });
@@ -238,7 +235,9 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
     return events;
   }, [days, durationWeeks, startDate]);
 
-  const save = () => {
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (saving) return;
     if (!name.trim()) {
       toast.error('Enter a program name.');
       return;
@@ -251,15 +250,24 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
       toast.error(`Save or discard your changes to ${unsavedTemplateNames.join(', ')} first.`);
       return;
     }
-    clearDraft();
-    onSave({
-      id: initial?.id ?? crypto.randomUUID(),
-      name: name.trim(),
-      days,
-      durationWeeks,
-      startDate: format(startDate, 'yyyy-MM-dd'),
-    });
-    toast.success(`Program "${name.trim()}" saved.`);
+    // The draft outlives a failed save on purpose: it is the only copy of the
+    // program until the row is written, and the screen stays put on failure so
+    // the user can retry. useStorage has already shown the error toast.
+    setSaving(true);
+    try {
+      const saved = await onSave({
+        id: initial?.id ?? crypto.randomUUID(),
+        name: name.trim(),
+        days,
+        durationWeeks,
+        startDate: format(startDate, 'yyyy-MM-dd'),
+      });
+      if (!saved) return;
+      clearDraft();
+      toast.success(`Program "${name.trim()}" saved.`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -383,7 +391,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
         </div>
       )}
 
-      <Button variant="neon" onClick={save} disabled={!name.trim()} className="w-full">Save Program</Button>
+      <Button variant="neon" onClick={save} disabled={saving || !name.trim()} className="w-full">Save Program</Button>
     </div>
   );
 };

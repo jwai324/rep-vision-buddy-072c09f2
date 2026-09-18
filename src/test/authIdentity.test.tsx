@@ -14,7 +14,7 @@ vi.mock('@/integrations/supabase/client', () => ({
         return { data: { subscription: { unsubscribe: vi.fn() } } };
       },
       getSession: () => Promise.resolve({ data: { session: null } }),
-      signOut: vi.fn().mockResolvedValue(undefined),
+      signOut: vi.fn().mockResolvedValue({ error: null }),
     },
   },
 }));

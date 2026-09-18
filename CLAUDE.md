@@ -39,12 +39,12 @@ New files under `supabase/migrations/` do NOT deploy on their own. After adding 
 
 ## Deploying edge functions
 
-`.github/workflows/deploy-supabase-functions.yml` deploys both functions on every push to `main` that touches `supabase/functions/**` or `supabase/config.toml`. Treat that as the deploy path, but **verify the run went green** — a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces". To deploy by hand (or after a red run) use `supabase functions deploy <name>`, or the Supabase MCP server, and check the deployed version.
+`.github/workflows/deploy-supabase-functions.yml` deploys `ai-coach`, `generate-program` and `exercise-gif` on every push to `main` that touches `supabase/functions/**` or `supabase/config.toml`. Treat that as the deploy path, but **verify the run went green** — a client/server skew here fails *quietly*: the client keeps parsing a stream the old server no longer produces the same way. The 2026-05-18 → 2026-08 skew, for example, left `max_tokens` at 1024 and the `max_tokens` → `finish_reason: "length"` mapping unshipped, so every large template edit came back as "The proposal came back incomplete" instead of the real "too big, ask in smaller pieces". To deploy by hand (or after a red run) use `supabase functions deploy <name>`, or the Supabase MCP server, and check the deployed version.
 
 That workflow took its project ref from a `SUPABASE_PROJECT_REF` secret that was never set, so from 2026-07-16 (when it was added) to 2026-09-06 all 20 of its runs died on "Cannot find project ref" and it deployed nothing, ever. It now reads the ref from `supabase/config.toml`, which is the single source of truth. Nothing was watching it fail: the error-triage routine's post-commit check is scoped to `ci.yml` by design, and this workflow never even runs on a triage commit because `supabase/functions/**` is on that routine's never-touch list. The routine's §4 health sweep now reports any red workflow on `main`.
 
-**A merge to `main` that touches `supabase/functions/**` now deploys both
-functions.** That is new as of 2026-09-14 and it changes how to think about
+**A merge to `main` that touches `supabase/functions/**` now deploys all three
+functions (`ai-coach`, `generate-program`, `exercise-gif`).** That is new as of 2026-09-14 and it changes how to think about
 server-side changes here: they are no longer inert until someone remembers, but
 they also go live the moment the PR lands, with no separate gate. A migration a
 function depends on must therefore be applied *before* the merge, not after.
@@ -115,12 +115,42 @@ Anthropic has already charged for it. Draining to the end is what makes a
 disconnect billable; `stream.currentMessage?.usage` is the fallback if
 `finalMessage()` still rejects.
 
+**Request size.** `requestTooLarge` in `ai-coach/index.ts` bounds what a turn
+may put in front of the model — message count and length, tool-result size,
+and the serialized context — and runs *before* the credit gate, so a rejected
+request never takes a concurrency slot. The gate holds a fixed reserve per
+turn; without these limits a hand-built request could put an arbitrary amount
+of input against that reserve. The ceilings sit well above what the client
+sends (a typed message is capped at 500 characters; the context runs to about
+100 KB, most of it the exercise library) so only a crafted request hits them.
+If the client legitimately grows past one, raise the constant rather than
+removing the check.
+
 **Message shape.** The Messages API rejects two same-role turns in a row with a
 400, and the client writes a second assistant message whenever a proposal is
 applied or discarded. `toAnthropicMessages` merges consecutive assistant turns
 (and consecutive user turns) for that reason, and the window is trimmed to start
 on a user turn. Neither is cosmetic — a 400 here surfaces as "the reply failed
 partway through" and repeats on every retry, because the window is the same.
+
+**Turn lifecycle on the client.** Each `sendMessage` owns one
+`AbortController` covering both fetches of the turn; `clearChat` and unmount
+abort it, and a chunk that lands after the abort is dropped rather than
+appended to a panel that was just emptied. A turn with no chunk for
+`STREAM_INACTIVITY_MS` (60 s) is abandoned with a "stopped responding" reply —
+without it a stalled connection left the coach spinning until a reload. Two
+consecutive failures lock the coach out for `DISABLE_DURATION_MS`; the lockout
+is `lockedUntil` (epoch ms) and **clears itself on a timer**, which the old
+`consecutiveErrors >= 2` gate never did — its only reset was a successful turn,
+which the gate itself prevented, so "will retry in 5 minutes" was a lie until
+reload. A 413 (`requestTooLarge` on the server) is the message's fault, not the
+service's, so it is shown and never counts toward the lockout. The counters are
+read from refs because the error path runs long after the render that created
+the closure. Clearing the chat ends the turn in flight but does **not** lift
+the lockout — the trash icon must not be a one-tap way around it. The session
+lookup (`auth.getSession`) runs inside the timer and the abort too: auth-js's
+lock can hang, and that used to leave the coach loading until a reload. Tests:
+`src/test/aiChatLockout.test.tsx`.
 
 ### `generate-program`
 
@@ -255,7 +285,8 @@ Server-side secrets (set via `supabase secrets set`, never in `.env`):
 
 | Secret                       | Used by             | Purpose                                            |
 | ---------------------------- | ------------------- | -------------------------------------------------- |
-| `ANTHROPIC_API_KEY`          | Both edge functions | Anthropic API key                                  |
+| `ANTHROPIC_API_KEY`          | `ai-coach`, `generate-program` | Anthropic API key                       |
+| `EXERCISE_GIF_API_KEY`       | `exercise-gif`      | RapidAPI key for exercise GIFs; unset = feature off. Mint a fresh key: the old `VITE_` one is in every past bundle |
 | `METERING_BYPASS_USER_IDS`   | `ai-coach`          | Operator metering bypass; unset = off (see below)  |
 | `GRANT_TOKENS_SECRET`        | `grant-tokens`      | Header gate on the Phase 1 purchase stub           |
 | `SUPABASE_URL`               | Auto-set            |                                                    |
@@ -281,6 +312,17 @@ supabase secrets unset METERING_BYPASS_USER_IDS                     # switch off
 
 Never move this decision back to anything the client sends, and never put the
 allowlist in a `VITE_` variable — Vite inlines those into the public bundle.
+
+### No secret ever goes in a `VITE_` variable
+
+The same rule, stated generally, because it has been broken twice. Vite bakes
+every `VITE_*` value into the shipped JavaScript, so a key placed there is
+readable by anyone who opens the bundle — the exercise-GIF RapidAPI key shipped
+that way until 2026-09-17. Any third-party key is held as a Supabase function
+secret and used from an edge function (`exercise-gif` is the template: the
+client sends the one input it controls, the function holds the key). `.env`
+carries only the Supabase URL and the publishable key, both of which are public
+by design.
 
 ## Capacitor (when you're ready for mobile)
 
@@ -324,6 +366,53 @@ If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
 
+**Sign-out clears everything that belongs to the user.** The snapshot and the
+pending-template queue are keyed by user id and clear themselves, but the
+in-progress workout cache and the builder, chat and bug-report drafts are not.
+`src/utils/localDrafts.ts` lists every such key; a new draft key added
+anywhere in the app belongs in that list, or the next account on a shared
+phone inherits it — for the session cache, that meant resuming the previous
+user's half-finished workout and being able to save it into their own history.
+The clearing runs from the **`SIGNED_OUT` event** in `AuthContext`, not from
+the Sign Out button: auth-js also ends the session by itself when a refresh is
+refused — which is what signing out on any *other* device does to this one,
+the default scope being global — and it emits the event in every open tab.
+The button waits for `auth.signOut()` to succeed before clearing anything;
+offline it resolves with an error and keeps the session, and wiping the
+workout first would have lost it for nothing.
+
+**`saveProgram` and `setActiveProgram` resolve `false` on failure** and the
+two program builders wait for that answer before clearing their draft, showing
+"saved" or leaving the screen. They used to do all three first, so a failed
+upsert lost the whole program — and, for the AI builder, the credits spent
+generating it — and then activated a program id that was never written.
+
+**Regenerating a program's calendar never touches its history.** `saveProgram`
+rewrites `future_workouts` only from today forward and only for rows not yet
+completed; past and completed rows carry the done flags, recovery activities
+and hand-shifted dates that *are* the program's record. The new rows go in
+before the old ones come out, so a failed insert leaves the previous schedule
+standing rather than an empty server behind a screen still showing rows. The
+old rows are retired by `created_at < ` the timestamp the server stamped on the
+new ones — never by a list of the new ids, which grew with the program until
+the URL was refused (48 weeks of daily rows is a 13 KB query string), and a
+refused delete doubled every date. A workout already completed on or after
+today is not scheduled a second time beside its completed row.
+
+**A write that lands while a load is in flight wins.** Every write bumps
+`writeSerial`; a load that started before a write and resolved after it is
+discarded and run once more (at most twice), instead of painting rows that are
+older than the screen — which then got pushed back to the server by the next
+preferences save.
+
+**Settings and profile writes send only the changed columns.** An upsert with a
+partial payload updates just those columns on conflict, so a phone and a laptop
+stop overwriting each other's newer values with whatever each had cached.
+`updatePreferences` builds its payload from the keys it was given (plus the
+streak-adjustment pair whenever the mode or target changes, since those are
+derived from it) and never includes `active_program_id`, which has its own
+write path.
+
 `saveSession` resolves `false` rather than throwing when the write does not
 land, so the caller can keep the summary screen and the local session cache
 alive for a retry; every call site in `Index.tsx` awaits it and bails on false.
@@ -346,6 +435,91 @@ press Save again. Anything that resolves a template's fate (a later
 successful save, a delete) must clear its queued entry, or the replay
 resurrects it.
 
+## Program frequencies are validated at every door
+
+`src/utils/programFrequency.ts` is the one place a `DayFrequency` is checked
+(`sanitizeFrequency`) and the one place a frequency is turned into dates
+(`frequencyOccurrences`, with `programOccurrences` / `programOccurrencesOn` on
+top of it). Both exist because the same value arrives from four sources that
+never agreed — the builder, the coach's `create_program` tool, a shared program
+and a restored backup — and the last two carry whatever was in the file. An
+`everyNDays` interval of 0 was an infinite loop (a denial of service by share
+link); a monthly day of 29–31 overflowed a short month and then drifted the
+whole schedule by a day or three for good.
+
+**Every reader walks dates through that one helper**: the scheduler
+(`generateFutureWorkouts`), the dashboard's week strip, the monthly calendar
+and the day-tap helper in `useScreenHelpers`. The first fix validated the
+scheduler alone and left the other three with their own loops, so a program
+saved before validation existed still hung the home screen. Do not add a
+fifth loop. `saveProgram` also writes sanitized days and the load-time repair
+re-saves a stored program whose days sanitize differently, so the database
+heals itself. An invalid frequency makes the day *unscheduled*, never dropped;
+weekday 7 is read as Sunday (an older builder's numbering), the same mapping
+the repair uses.
+
+## Screens live in the browser's history
+
+`useScreenHistory` (`src/hooks/useScreenHistory.ts`) is `Index.tsx`'s screen
+state. Each change of screen *type* pushes one history entry, tagged with its
+depth and a per-load id, and `popstate` restores the screen beneath, so the
+Android Back button goes back a screen instead of leaving the site. In-app
+navigation maps onto the browser's own history wherever it can: going home
+unwinds to the root entry (so Back at home still exits rather than replaying
+the trip), and going to a screen type that is already in the stack unwinds to
+it. That second rule is what keeps "save, back to the list" from leaving the
+editor in the history — Back used to reopen it holding the pre-edit session,
+whose Save then overwrote the edit. A same-type update (a detail screen
+swapping its payload) changes state in place and adds nothing.
+
+Three things about it are easy to get wrong:
+
+- **The screen changes synchronously; the browser catches up.** `history.go`
+  lands on a later task, and the popstate it fires is recognised by depth and
+  ignored. Nothing in the app waits on it, so a cache write or a Finish tapped
+  in that window runs against the new screen, not the one on its way out. Two
+  navigations in one tick are still not supported: the second computes against
+  a browser position the first has not reached.
+- **A restored screen goes through `restore`.** The stored object is whatever
+  the screen held when it was left; the rows have moved on. `Index` re-reads a
+  session, scheduled workout, template or program by id and returns `null` for
+  one that no longer exists, which Back skips. A restored `activeSession` is
+  marked `resumed` when its cache is there and dead when it is not — a screen
+  restored without `resumed` mounted a blank workout over the real cache.
+- **`onUserBack` can keep the screen.** Returning `true` puts the history entry
+  back; `Index` uses it so Back with the summary open closes the summary (the
+  user un-finished the workout) rather than minimizing a finished one. Back out
+  of a live workout otherwise **minimizes** it — the cache is untouched and the
+  bar appears on the screen beneath. A Forward press is undone, since the
+  screens above were discarded.
+
+Deep links and reload survival are deliberately out of scope: a reload starts
+at the root, and entries from an earlier page load pop back to it.
+
+## Editing a past workout is not a workout
+
+`ActiveSession` in edit mode (`editSession` set) must stay out of everything
+that belongs to a live session: it does not register with the session
+controller (the coach saw a fake `active_session` and its tools rewrote
+history), re-ticking a set gets a no-op `startTimer` (no sound, OS
+notification or permission prompt), and the fields the edit screen has no
+control for — `location`, `isRestDay`, `recoveryActivities` — ride through from
+the session being edited. Duration is written back only when the minutes field
+was actually changed; the field shows whole minutes, and writing it back
+unconditionally truncated 32:40 to 32:00 on every edit. `startedAt` likewise
+is rebuilt from the date and HH:mm fields only when one of them changed: the
+unconditional rebuild dropped the seconds and moved a workout that began
+before midnight (startedAt on the 9th, date on the 10th) forward a day on
+every save. Saving an edit passes `markScheduled: false`, so correcting a
+record never ticks off whatever is scheduled on that date, and the coach sees
+an `activity` screen, not an `active_workout`.
+
+A live workout keeps two clocks. `startTime` is the timer's anchor and is
+shifted forward on every resume so elapsed stays continuous; `trueStart`
+(cached as `trueStartTimestamp`) is when the workout began. `startedAt` and the
+session's date come from `trueStart`; duration is `now − startTime` while
+running and the frozen figure while paused, so a pause is never counted.
+
 ## The session cache belongs to one workout
 
 `ActiveSession` rebuilds a workout from `ActiveSessionCache` — blocks, name,
@@ -361,6 +535,10 @@ it was written for, and two rules keep it that way:
   overwrite Push Day with them, and marked Push Day's scheduled entry done.
 - **`ActiveSession` refuses a cache whose `templateId` does not match its own.**
   A backstop for any path that forgets the first rule.
+- **The session's error boundary recovers from the cache.** Try Again remounts
+  the screen with `resumed` set; discarding is a separate two-tap action on the
+  same fallback. Try Again used to clear the cache — the recovery button was the
+  destructive one.
 
 Starting a new workout while one is in progress now asks first
 (`openSession` → the confirm dialog), keyed on the cache rather than on
@@ -368,6 +546,49 @@ Starting a new workout while one is in progress now asks first
 link used to change screen without minimizing — leaving a live session with no
 bar and no way back short of a reload. Both now minimize first. Tests:
 `src/test/activeSessionStaleCache.test.tsx`.
+
+## The rest timer outlives the screen
+
+`src/utils/restTimerScheduler.ts` holds everything about a rest that must keep
+running when `ActiveSession` unmounts: the worker that keeps time in a hidden
+tab, the scheduled sound and vibration, and the "Rest complete" toast and OS
+notification. `useSessionRestTimer` owns only the React state and hands the
+scheduler the rest's identity (`<timer key>@<startedAtEpoch>`, so an extend
+is a new rest and a remount of the same one is not). Before this the hook
+owned all of it, so minimizing a session — which unmounts the screen — killed
+the rest's sound, notification and worker, and its worker's "done" raced the
+throttled completion timeout and cancelled the notification it was racing.
+
+Rules that keep it correct:
+
+- **Completion is signalled once per rest, from `recalcRestSchedule`.** The
+  worker's "done", the completion timeout and the visibility catch-up all route
+  through it; whichever lands first fires, the rest are no-ops.
+- **`ensureRestSchedule` is a no-op for the live key.** A remounting hook
+  re-attaches rather than restarting; `releaseRestSchedule` is the only
+  teardown. It is called by skip/pause/replace, by `clearSessionCache`
+  (the workout is over), by sign-out, and by the hook's unmount only when no
+  session cache exists (a minimized session keeps its rest). As a backstop, a
+  rest scheduled while a cache existed polls for that cache once a second and
+  releases itself when it is gone, so a workout discarded from the minimized
+  bar cannot ring later.
+- **Hide Timers silences the whole feature**: no sound, no vibration, no
+  permission prompt, no toast, no OS notification (`setRestTimerHidden`). The
+  old hook silenced the sound only and still prompted for notification
+  permission and toasted; that was an oversight, not a design. `Index` sets it
+  from the preference, because Settings is reachable while a session is
+  minimized and the session hook is unmounted then; the hook sets it too for
+  the in-session toggle.
+- **A pending cache write is flushed on unmount while the cache exists.** A
+  rest started or skipped in the last half-second before minimizing was in the
+  scheduler but not in the cache, and the screen came back without it.
+- **Notifications on Chrome for Android go through the service worker.** Its
+  page-level `Notification` constructor throws, so `main.tsx` registers
+  `public/sw.js`, which handles nothing but the notification click. It
+  deliberately has no fetch handler and no cache; keep it that way, or it
+  starts sitting between the app and the network.
+
+Tests: `src/test/restTimerScheduler.test.ts` and `src/test/restTimerHook.test.tsx`.
 
 ## Exercise names are resolved, never trusted
 
@@ -524,6 +745,14 @@ has an unsaved draft, rather than dropping or saving it silently. The editor's
 localStorage draft (`program_builder_draft`) carries the template drafts too,
 keyed to the program; the back arrow clears it, as Cancel did.
 
+The editor shows **one target row per exercise and a set-count stepper**,
+because that is what a template can hold: `TemplateExercise` has a set count
+next to a single reps/weight/RPE, and `blockToExercise` reads only `sets[0]`.
+Every edit is written to every row of the block and the stepper clones the
+row, so a draft's rows can never disagree with what will be saved. The old
+per-set rows were how "clear set 3 to mark it to failure" looked like an edit
+and saved nothing.
+
 The exercise picker and the superset linker open as fixed full-screen overlays
 from inside the editor, because a tile cannot hand over the whole screen the
 way the old builder's early return did. The block conversions live in
@@ -624,25 +853,21 @@ red, so keep the workflow's steps identical to the local gate.
 each traced to a file and line by one reviewer and re-checked by another, with the
 critical and high ones also given to a reviewer told to disprove them. Start there.
 
-**All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`;
-the audit's status note says which ship where. 73 medium and 98 low findings remain
-open — its "Everything else" section is the backlog, grouped by area.
+**All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`,
+and a second pass closed the 20 highest-exposure items from the backlog; the
+audit's status note lists both passes and says which ship where. Its "Everything
+else" section is the remaining backlog, grouped by area.
 
 Two facts from that audit change how you work in this repo:
 
-- **Edge-function deploys were broken from 2026-05-15 to 2026-09-15.** All twenty runs
-  of `.github/workflows/deploy-supabase-functions.yml` failed on an unset
-  `SUPABASE_PROJECT_REF`, which is the real reason `generate-program` is still on the
-  May build. The workflow now falls back to `project_id` in `supabase/config.toml`, so
-  the only thing it still needs is a `SUPABASE_ACCESS_TOKEN` repository secret. Until
-  that exists, an edit under `supabase/functions/` ships only if you deploy it by hand.
 - **The repo's migration filenames no longer match the live migration history.** Eight
   were applied through the Supabase MCP server, which stamps its own version. Running
   the documented `supabase db push` against the linked project will fail until the
   versions are repaired. When you apply through the MCP server, read the version it
   recorded and rename the local file to match, as
-  `20260915170641_lock_down_token_credits.sql` and
-  `20260915182136_atomic_ai_turn_gate.sql` do.
+  `20260915170641_lock_down_token_credits.sql`,
+  `20260915182136_atomic_ai_turn_gate.sql` and
+  `20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql` do.
 - **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
   Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). Rates now live in
   `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap with no entry bills at the
@@ -654,6 +879,25 @@ Two facts from that audit change how you work in this repo:
   allowance and cost figure as 3x inflated. `user_ai_usage` does hold per-day token
   counts going back further, so a correction pass is possible there; nothing has run
   one, and `ai_usage_daily_summary.cost_usd` still overstates historical spend 3x.
+
+Still open from the audit's own high-severity list, as things the fixes could not
+close on their own:
+
+- **`grant-tokens` is an uncapped credit faucet.** Its only gate is a static
+  `x-admin-secret` header, it credits whatever `target_user_id` the body names, and
+  `micros` has no ceiling. It has never been deployed and is deliberately absent from
+  the deploy workflow, so there is no live exposure — but it is one deploy away from
+  being one. Before it ships it needs to verify the caller's JWT, drop
+  `target_user_id`, bound the amount, and grant only from a verified receipt.
+- **Balances consumed at the 3x rate were never corrected.** Nothing has re-priced
+  them; see the token-price note above for what the data does and does not allow.
+
+**Deleting something still referenced is refused, not cascaded.** A template a
+program schedules (or a manual scheduled workout points at) and a custom
+exercise a template uses cannot be deleted from their screens; the dialog names
+what references them. `Index.tsx` computes `templateUsedBy` / `exerciseUsedBy`
+from loaded state. Cascading was the alternative and was rejected: the
+reference is a plan the user made, not a row to clean up.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
 gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated

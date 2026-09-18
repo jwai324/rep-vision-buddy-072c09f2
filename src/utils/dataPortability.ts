@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { sanitizeProgramDays } from '@/utils/programFrequency';
+import type { ProgramDay } from '@/types/workout';
 
 // v1 backups (pre-body_measurements) still import cleanly — the field is
 // treated as empty when missing. Bumped to 2 so we can distinguish shapes.
@@ -219,7 +221,14 @@ export async function importUserData(
 
     for (const [table, rows] of tables) {
       if (!rows || rows.length === 0) continue;
-      const stamped = stampUserId(rows, userId).map(stripServerColumns);
+      let stamped = stampUserId(rows, userId).map(stripServerColumns);
+      if (table === 'workout_programs') {
+        // A backup is a file: its frequencies were never validated, and an
+        // interval of 0 hangs the scheduler on the next load.
+        stamped = stamped.map(row => Array.isArray(row.days)
+          ? { ...row, days: sanitizeProgramDays(row.days as ProgramDay[]) }
+          : row);
+      }
       const error = await upsert(table, stamped, 'id');
       if (error) return { success: false, error: describeFailure(table, error, imported), imported };
       imported[table] = stamped.length;
