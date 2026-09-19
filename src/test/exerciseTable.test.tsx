@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ExerciseTable } from '@/components/ExerciseTableComponent';
-import type { ExerciseBlock } from '@/types/activeSession';
+import type { ExerciseBlock, DropRow } from '@/types/activeSession';
 
 function makeBlock(overrides: Partial<ExerciseBlock> = {}): ExerciseBlock {
   return {
@@ -230,6 +230,62 @@ describe('ExerciseTable inline validation', () => {
     expect(weightInput).toBeTruthy();
     expect(weightInput.className).toMatch(/ring-destructive/);
     expect(weightInput.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  describe('drop rows', () => {
+    const renderDrop = (dropRow: Partial<DropRow>) => {
+      const onUpdateDrop = vi.fn();
+      const block = makeBlock({
+        dropSetsEnabled: true,
+        sets: [{
+          setNumber: 1, weight: '135', reps: '10', rpe: '', time: '', completed: true, type: 'normal',
+          drops: [{ weight: '', reps: '', rpe: '', completed: false, ...dropRow }],
+        }],
+      });
+      render(
+        <ExerciseTable
+          {...baseProps}
+          block={block}
+          blockIdx={0}
+          blocks={[block]}
+          onUpdateSet={vi.fn()}
+          onToggleComplete={vi.fn()}
+          onUpdateDrop={onUpdateDrop}
+        />,
+      );
+      return onUpdateDrop;
+    };
+
+    it('rings an invalid drop weight and disables the drop tick, as the main row does', () => {
+      const onUpdateDrop = renderDrop({ weight: '-250', reps: '8' });
+
+      const weight = document.getElementById('input-0-0-d0-weight') as HTMLInputElement;
+      expect(weight.className).toMatch(/ring-destructive/);
+      expect(weight.getAttribute('aria-invalid')).toBe('true');
+      const reps = document.getElementById('input-0-0-d0-reps') as HTMLInputElement;
+      expect(reps.className).not.toMatch(/ring-destructive/);
+
+      const tick = screen.getByTestId('drop-complete-0-0-0') as HTMLButtonElement;
+      expect(tick).toBeDisabled();
+      fireEvent.click(tick);
+      expect(onUpdateDrop).not.toHaveBeenCalled();
+    });
+
+    it('rings invalid drop reps too', () => {
+      renderDrop({ weight: '100', reps: '99999' });
+
+      const reps = document.getElementById('input-0-0-d0-reps') as HTMLInputElement;
+      expect(reps.className).toMatch(/ring-destructive/);
+      expect(reps.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('leaves a valid drop unringed and lets its tick through', () => {
+      const onUpdateDrop = renderDrop({ weight: '100', reps: '8' });
+
+      expect((document.getElementById('input-0-0-d0-weight') as HTMLInputElement).className).not.toMatch(/ring-destructive/);
+      fireEvent.click(screen.getByTestId('drop-complete-0-0-0'));
+      expect(onUpdateDrop).toHaveBeenCalledWith(0, 0, 0, 'completed', true);
+    });
   });
 });
 

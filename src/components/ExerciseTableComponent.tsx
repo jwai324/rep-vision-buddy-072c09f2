@@ -367,6 +367,11 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
   (e.target as HTMLInputElement).blur();
 }
 
+/** The ring an input wears for its field's error; main rows and drop rows share it so the two cannot drift. */
+function fieldRingClass(errors: SetFieldErrors, field: keyof SetFieldErrors): string {
+  return errors[field] ? 'ring-1 ring-destructive focus:ring-destructive' : 'focus:ring-1 focus:ring-primary';
+}
+
 /* ---------- Exercise Menu ---------- */
 
 const EXERCISE_MENU_ITEMS = [
@@ -523,9 +528,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
         const setLabelClass = `text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`;
         const setErrors = getSetFieldErrors({ weight: set.weight, reps: set.reps, rpe: set.rpe }, weightUnit, inputMode);
         const setHasError = hasFieldErrors(setErrors);
-        const errorRingClass = (field: keyof SetFieldErrors) => setErrors[field]
-          ? 'ring-1 ring-destructive focus:ring-destructive'
-          : 'focus:ring-1 focus:ring-primary';
+        const errorRingClass = (field: keyof SetFieldErrors) => fieldRingClass(setErrors, field);
         const completeBtn = (
           <button
             id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
@@ -672,9 +675,18 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
 
         const renderDropRow = (drop: DropRow, dropIdx: number) => {
           const dropLabel = `${set.setNumber}D${superscripts[dropIdx] ?? `${dropIdx + 1}`}`;
+          const dropErrors = getSetFieldErrors({ weight: drop.weight, reps: drop.reps, rpe: drop.rpe }, weightUnit, inputMode);
+          const dropHasError = hasFieldErrors(dropErrors);
+          const dropRingClass = (field: keyof SetFieldErrors) => fieldRingClass(dropErrors, field);
           const dropCompleteBtn = (
-            <button onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
-              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${drop.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'}`}>
+            <button onClick={() => { if (!dropHasError) onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed); }}
+              disabled={dropHasError}
+              aria-disabled={dropHasError}
+              data-testid={`drop-complete-${blockIdx}-${setIdx}-${dropIdx}`}
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                dropHasError ? 'bg-secondary/30 text-muted-foreground/40 pointer-events-none opacity-50 cursor-not-allowed' :
+                drop.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+              }`}>
               <Check className="w-4 h-4" />
             </button>
           );
@@ -712,7 +724,8 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <span className="text-xs text-muted-foreground text-center">—</span>
                   <input id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} type="number" inputMode="decimal" value={drop.weight}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
-                    placeholder="—" className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    placeholder="—" aria-invalid={!!dropErrors.weight}
+                    className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${dropRingClass('weight')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   {dropCompleteBtn}
@@ -734,12 +747,14 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     <input id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} type="number" inputMode="decimal" value={drop.weight}
                       onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
                       onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)} placeholder="—"
-                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                      aria-invalid={!!dropErrors.weight}
+                      className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${dropRingClass('weight')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   )}
                   <input id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)} type="number" inputMode="numeric" value={drop.reps}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
                     onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps', dropIdx)} placeholder="—"
-                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    aria-invalid={!!dropErrors.reps}
+                    className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${dropRingClass('reps')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} small />
                   {dropCompleteBtn}
