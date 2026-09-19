@@ -1,7 +1,7 @@
 import type { WorkoutTemplate, TemplateExercise, ExerciseId, SetType } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { getExerciseInputMode, usesWeight } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, usesWeight, isDistanceBased, fromMeters, toMeters } from '@/utils/exerciseInputMode';
 import { targetWeightToInput, inputToTargetWeight } from '@/utils/weightConversion';
 import { linkedSetType, resolveTemplateSupersets } from '@/utils/templateSupersets';
 
@@ -15,6 +15,8 @@ export interface TemplateSetRow {
   targetWeight: string;
   targetReps: string;
   targetRpe: string;
+  /** Km as typed, '' for none. The template stores metres; only distance-based work reads it back. */
+  targetDistance: string;
 }
 
 export interface TemplateBlock {
@@ -55,6 +57,7 @@ export function exerciseToBlock(
       // has no input bound to it, so its stored value rides through untouched.
       targetReps: ex.targetReps === 'failure' && mode !== 'distance' ? '' : ex.targetReps.toString(),
       targetRpe: ex.targetRpe?.toString() ?? '',
+      targetDistance: ex.targetDistance != null ? String(fromMeters(ex.targetDistance, 'km')) : '',
     })),
   };
 }
@@ -82,6 +85,17 @@ export function blockToExercise(
   const reps = toFailure ? 'failure' as const : Number.isFinite(typedReps) ? Math.max(1, Math.round(typedReps)) : 10;
   // The picker offers half steps, which parseInt silently rounded down.
   const rpe = parseFloat(firstSet?.targetRpe ?? '');
+  // Read back for every distance-based mode, not only the one the editor
+  // renders the km box for: every built-in run, row and swim is time-distance,
+  // which has no cell, so the string `exerciseToBlock` filled from the stored
+  // target rides through untouched and must round-trip. Gating on the
+  // distance-only mode alone erased a coach-set target on any save that did
+  // not touch the row. Rounded to the metre: 1.005 km is 1005, not
+  // 1004.9999999999999.
+  const km = parseFloat(firstSet?.targetDistance ?? '');
+  const targetDistance = isDistanceBased(mode) && Number.isFinite(km) && km > 0
+    ? Math.round(toMeters(km, 'km'))
+    : undefined;
   return {
     exerciseId: block.exerciseId,
     sets: block.sets.length,
@@ -94,6 +108,7 @@ export function blockToExercise(
       ? inputToTargetWeight(firstSet?.targetWeight, weightUnit, mode === 'band')
       : undefined,
     targetRpe: Number.isFinite(rpe) ? rpe : undefined,
+    targetDistance,
     supersetGroup: block.supersetGroup,
   };
 }

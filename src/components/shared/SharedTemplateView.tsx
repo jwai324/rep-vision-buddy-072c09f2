@@ -3,7 +3,7 @@ import type { SharedCustomExercise, SharedExerciseMeta } from '@/types/share';
 import type { WorkoutTemplate } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeightString, storedBandLevel } from '@/utils/weightConversion';
-import { getBandLevelShortLabel, getExerciseInputMode } from '@/utils/exerciseInputMode';
+import { getBandLevelShortLabel, getExerciseInputMode, isDistanceBased, distanceUnitFromWeightUnit, fromMeters } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
 import { resolveTemplateSupersets } from '@/utils/templateSupersets';
 import { supersetInfo } from '@/types/activeSession';
@@ -16,6 +16,13 @@ interface SharedTemplateViewProps {
   unit: WeightUnit;
   /** Rendered inside a program's day list, where the name is already a heading. */
   hideName?: boolean;
+}
+
+// Metres in the template, the viewer's unit on screen, and no trailing
+// zeros: a 5 km target reads "5 km", not "5.00 km".
+function formatTargetDistance(meters: number, unit: WeightUnit): string {
+  const distanceUnit = distanceUnitFromWeightUnit(unit);
+  return `${Number(fromMeters(meters, distanceUnit).toFixed(2))} ${distanceUnit}`;
 }
 
 /**
@@ -71,12 +78,16 @@ export const SharedTemplateView: React.FC<SharedTemplateViewProps> = ({
             const info = meta[ex.exerciseId];
             const superset = supersetInfo(exercises, i);
             const mode = getExerciseInputMode(ex.exerciseId, customLite);
+            // Work measured by distance has no load column (every built-in run,
+            // row and swim is time-distance), so its target is the distance.
             const target =
-              ex.targetWeight == null
-                ? null
-                : mode === 'band'
-                  ? getBandLevelShortLabel(storedBandLevel(ex.targetWeight))
-                  : formatWeightString(ex.targetWeight, unit);
+              isDistanceBased(mode)
+                ? (ex.targetDistance == null ? null : formatTargetDistance(ex.targetDistance, unit))
+                : ex.targetWeight == null
+                  ? null
+                  : mode === 'band'
+                    ? getBandLevelShortLabel(storedBandLevel(ex.targetWeight))
+                    : formatWeightString(ex.targetWeight, unit);
 
             return (
               <div

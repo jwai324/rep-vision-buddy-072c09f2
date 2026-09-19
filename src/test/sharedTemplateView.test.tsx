@@ -52,3 +52,38 @@ describe('SharedTemplateView — supersets', () => {
     expect(screen.getByText('2 exercises · 6 sets')).toBeTruthy();
   });
 });
+
+describe('SharedTemplateView — distance target', () => {
+  // The definition travels with the snapshot; without it the exercise would
+  // read as reps-and-weight and the target would not be shown at all.
+  const run = {
+    sourceId: 'custom-run', name: 'Trail Run', primaryBodyPart: 'Cardio', equipment: 'None',
+    difficulty: 'Beginner' as const, exerciseType: 'Compound' as const, movementPattern: 'Lunge',
+    secondaryMuscles: [], isRecovery: false, measurementType: 'Distance' as const,
+  };
+  const runMeta = [{ exerciseId: 'custom-run', name: 'Trail Run', icon: '🏃' }];
+  const runTemplate = (over: Partial<TemplateExercise> = {}): WorkoutTemplate => ({
+    id: 'tpl-run', name: 'Run',
+    exercises: [ex({ exerciseId: 'custom-run', sets: 1, targetReps: 'failure', ...over })],
+  });
+
+  it.each([['kg', '@ 5 km'], ['lbs', '@ 3.11 mi']] as const)('shows the target in the %s viewer\'s unit, without trailing zeros', (unit, shown) => {
+    render(<SharedTemplateView template={runTemplate({ targetDistance: 5000 })} exerciseMeta={runMeta} customExercises={[run]} unit={unit} />);
+    expect(screen.getByText(shown)).toBeTruthy();
+  });
+
+  it('shows the target on built-in time-and-distance work, which is what a run or a row is', () => {
+    const rowing: WorkoutTemplate = {
+      id: 'tpl-row', name: 'Row',
+      exercises: [ex({ exerciseId: 'rowing-machine', sets: 1, targetReps: 20, targetDistance: 5000 })],
+    };
+    const rowingMeta = [{ exerciseId: 'rowing-machine', name: 'Rowing Machine', icon: '🚣' }];
+    render(<SharedTemplateView template={rowing} exerciseMeta={rowingMeta} customExercises={[]} unit="kg" />);
+    expect(screen.getByText('@ 5 km')).toBeTruthy();
+  });
+
+  it('shows no target for a payload frozen before the field existed', () => {
+    render(<SharedTemplateView template={runTemplate()} exerciseMeta={runMeta} customExercises={[run]} unit="kg" />);
+    expect(screen.queryByText(/^@ /)).toBeNull();
+  });
+});

@@ -3,7 +3,7 @@ import { format, addDays, addWeeks, getDay, isSameDay } from 'date-fns';
 import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
 import { programOccurrencesOn } from '@/utils/programFrequency';
 import { repairFlatSets } from '@/utils/dropsetRepair';
-import { getExerciseInputMode, isTimeBased, usesReps } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, isDistanceBased, isTimeBased, usesReps } from '@/utils/exerciseInputMode';
 import type { CustomExercise } from '@/hooks/useCustomExercises';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 
@@ -45,6 +45,10 @@ export function templateFromSession(
         restSeconds: defaultRestSeconds,
         // Session weights are already in the canonical kg that targetWeight uses.
         targetWeight: first?.weight,
+        // Likewise metres for distance, on any exercise measured by it. Rounded
+        // to the metre as the builder saves it: an lbs user's miles land in
+        // the log as a fractional metre count.
+        targetDistance: isDistanceBased(mode) && first?.distance ? Math.round(first.distance) : undefined,
         supersetGroup: ex.supersetGroup,
       };
     }),

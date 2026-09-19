@@ -57,7 +57,8 @@ export interface TemplateExercise {
   targetWeight?: number;
   targetRpe?: number;
   /**
-   * Target distance in metres, for distance-only work (a run, a row). The
+   * Target distance in metres, for work measured by distance (a run, a row,
+   * whether the exercise is distance-only or time-and-distance). The
    * editor's "Dist (km)" box used to write into targetWeight, which the save
    * path rightly refused to keep for distance modes, so the number was
    * dropped on every save.

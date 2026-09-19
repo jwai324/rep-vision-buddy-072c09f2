@@ -3,6 +3,7 @@ import { templateFromSession } from '@/hooks/useScreenHelpers';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { getExerciseInputMode } from '@/utils/exerciseInputMode';
 import type { WorkoutSession, WorkoutSet } from '@/types/workout';
+import type { CustomExercise } from '@/hooks/useCustomExercises';
 
 const set = (o: Partial<WorkoutSet> = {}): WorkoutSet => ({ setNumber: 1, type: 'normal', reps: 10, weight: 60, ...o });
 
@@ -70,5 +71,30 @@ describe('templateFromSession', () => {
     const s = session();
     s.exercises = [{ exerciseId: timed!.id, exerciseName: timed!.name, sets: [set({ reps: 1, weight: undefined, time: 90 })] }];
     expect(templateFromSession(s).exercises[0].targetReps).toBe(2);
+  });
+
+  it('targets a distance-only exercise by the metres it logged, and nothing else by them', () => {
+    // No built-in exercise is pure Distance, so the case needs a custom one.
+    const run: CustomExercise = {
+      ...EXERCISE_DATABASE[0], id: 'custom-run', name: 'Trail Run', measurementType: 'Distance',
+      isCustom: true, isRecovery: false, excludeFromVolume: false,
+    };
+    const s = session();
+    s.exercises = [{ exerciseId: run.id, exerciseName: run.name, sets: [set({ reps: 1, weight: undefined, distance: 5000 })] }];
+    expect(templateFromSession(s, undefined, 90, [run]).exercises[0].targetDistance).toBe(5000);
+
+    // A lift that somehow logged a distance is not planned by it.
+    const lift = session();
+    lift.exercises[0].sets = [set({ distance: 5000 })];
+    expect(templateFromSession(lift).exercises[0].targetDistance).toBeUndefined();
+  });
+
+  it('targets built-in time-and-distance work by its logged metres, rounded to the metre', () => {
+    // Every built-in run, row and swim is Time + Distance. The finish path
+    // stores an lbs user's miles as an unrounded metre count.
+    const rowing = EXERCISE_DATABASE.find(e => e.id === 'rowing-machine')!;
+    const s = session();
+    s.exercises = [{ exerciseId: rowing.id, exerciseName: rowing.name, sets: [set({ reps: 1, weight: undefined, time: 1200, distance: 5005.05984 })] }];
+    expect(templateFromSession(s).exercises[0].targetDistance).toBe(5005);
   });
 });

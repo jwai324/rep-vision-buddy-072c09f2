@@ -40,15 +40,17 @@ const formatExerciseRow = (
   return `${name} · ${sets}×${reps}${rest}${rpe}${type}`;
 };
 
-// The target load is in kg by the tool contract and the superset id is
-// internal, so neither is written into the row; a change to either still has
-// to mark the row, or the user approves an edit the card calls unchanged.
+// The target load and distance are in kg and metres by the tool contract and
+// the superset id is internal, so none of them is written into the row; a
+// change to any still has to mark the row, or the user approves an edit the
+// card calls unchanged.
 const sameField = (a: unknown, b: unknown) => (a ?? undefined) === (b ?? undefined);
 const exerciseChanged = (a: ExerciseInput, b: ExerciseInput) =>
   a.sets !== b.sets || a.targetReps !== b.targetReps || a.restSeconds !== b.restSeconds ||
   (a.setType ?? 'normal') !== (b.setType ?? 'normal') ||
   !sameField(a.supersetGroup, b.supersetGroup) ||
   !sameField(a.targetWeight, b.targetWeight) ||
+  !sameField(a.targetDistance, b.targetDistance) ||
   !sameField(a.targetRpe, b.targetRpe);
 
 const TemplateDiff: React.FC<{ before: ProposalSnapshot; after: ProposalSnapshot }> = ({ before, after }) => {

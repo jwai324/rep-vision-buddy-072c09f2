@@ -151,3 +151,26 @@ describe('unknownProgramTemplates', () => {
     expect(unknownProgramTemplates([{ templateId: 'ghost' }, { templateId: 'ghost' }, { label: 'Day 3' }], known)).toEqual(['ghost', 'undefined']);
   });
 });
+
+describe('templateExerciseIssues — targetDistance', () => {
+  it('accepts a distance in metres and an omitted one', () => {
+    expect(templateExerciseIssues(ex({ exerciseId: 'a', targetDistance: 5000 }), 'Run')).toEqual([]);
+    expect(templateExerciseIssues(ex({ exerciseId: 'a', targetDistance: undefined }), 'Run')).toEqual([]);
+  });
+
+  it('refuses zero, negative, non-finite and absurd distances, naming the exercise', () => {
+    for (const bad of [0, -100, NaN, Infinity, 2_000_000]) {
+      const issues = templateExerciseIssues(ex({ exerciseId: 'a', targetDistance: bad }), 'Run');
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatch(/^Run: targetDistance/);
+    }
+  });
+});
+
+describe('templateChangedSince — targetDistance', () => {
+  it('treats a changed distance target as a change', () => {
+    const before = { name: 'Run', exercises: [ex({ exerciseId: 'r', targetDistance: 5000 })] };
+    expect(templateChangedSince(before, { name: 'Run', exercises: [ex({ exerciseId: 'r', targetDistance: 5000 })] })).toBe(false);
+    expect(templateChangedSince(before, { name: 'Run', exercises: [ex({ exerciseId: 'r', targetDistance: 8000 })] })).toBe(true);
+  });
+});

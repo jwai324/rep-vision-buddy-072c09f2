@@ -26,7 +26,7 @@ const isLoadedHold = (mode: ExerciseInputMode) => mode === 'time' || mode === 'w
 
 export type BlocksUpdate = (prev: TemplateBlock[]) => TemplateBlock[];
 
-const EMPTY_ROW: TemplateSetRow = { setNumber: 1, targetWeight: '', targetReps: '', targetRpe: '' };
+const EMPTY_ROW: TemplateSetRow = { setNumber: 1, targetWeight: '', targetReps: '', targetRpe: '', targetDistance: '' };
 
 interface TemplateExerciseEditorProps {
   blocks: TemplateBlock[];
@@ -141,6 +141,7 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
             targetWeight: '',
             targetReps: '10',
             targetRpe: '',
+            targetDistance: '',
           })),
         }));
       return [...prev, ...newBlocks];
@@ -372,8 +373,8 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                         onChange={e => updateSet(blockIdx, 'targetReps', e.target.value)} placeholder="min"
                         className={inputClass} />
                     ) : mode === 'distance' ? (
-                      <input type="number" inputMode="decimal" value={row.targetWeight}
-                        onChange={e => updateSet(blockIdx, 'targetWeight', e.target.value)} placeholder="km"
+                      <input type="number" inputMode="decimal" value={row.targetDistance}
+                        onChange={e => updateSet(blockIdx, 'targetDistance', e.target.value)} placeholder="km"
                         className={inputClass} />
                     ) : mode === 'band' ? (
                       <select value={row.targetWeight}
