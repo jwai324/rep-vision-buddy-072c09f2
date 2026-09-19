@@ -18,7 +18,7 @@ RepVision is a workout tracking PWA. The user plans workouts (templates → prog
 src/
   pages/              Top-level routes (Auth, etc.)
   components/         Feature components (AIProgramBuilder, ActiveSession, ...)
-  contexts/           App-wide React contexts (notably ChatContext.tsx — 680 lines, holds the AI chat loop)
+  contexts/           App-wide React contexts (notably ChatContext.tsx, which holds the AI chat loop)
   hooks/              Custom hooks (useStorage is the data layer)
   integrations/
     supabase/         Generated types + client (do not edit by hand; regenerate via Supabase CLI)
@@ -29,8 +29,11 @@ supabase/
   config.toml         Supabase project config
   migrations/         SQL migrations
   functions/
+    _shared/          Pricing, balance and request-bound helpers each function bundles
     ai-coach/         Streaming chat endpoint with tool use
     generate-program/ One-shot program builder, returns JSON
+    exercise-gif/     Holds the RapidAPI key; the client sends only the exercise
+    grant-tokens/     Purchase stub, never deployed (see "Deploying edge functions")
 ```
 
 ## Applying schema changes
@@ -71,7 +74,7 @@ Note that `SYSTEM_PROMPT` and the other prompt blocks are template literals: a s
 
 ### `ai-coach`
 
-Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an OpenAI-style SSE stream. To avoid rewriting the 680-line ChatContext, the edge function **translates Anthropic stream events into OpenAI-shaped SSE chunks** (see `translateStream` in `supabase/functions/ai-coach/index.ts`). When making changes to either side:
+Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an OpenAI-style SSE stream. To avoid rewriting ChatContext, the edge function **translates Anthropic stream events into OpenAI-shaped SSE chunks** (see `translateStream` in `supabase/functions/ai-coach/index.ts`). When making changes to either side:
 
 - Client expects `data: {"choices":[{"delta":{...},"finish_reason":null}]}` lines, terminated by `data: [DONE]`.
 - Anthropic emits `content_block_start`, `content_block_delta` (with `text_delta` or `input_json_delta`), and `message_delta`. The translator maps those to the OpenAI shape.
@@ -79,6 +82,24 @@ Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an
 - A `stop_reason` of `max_tokens` is translated to `finish_reason: "length"`. That matters because a tool call cut off mid-`input_json_delta` reaches the client as unparseable JSON; `parseAccumulatedToolCalls` in ChatContext flags those instead of letting them fall through validation as empty arguments. Tool JSON for a full-workout template runs to a few thousand tokens, so keep `MAX_TOKENS` well above that.
 
 Template mutations come in two flavours, and the split exists for output-budget reasons: `edit_template` replaces the whole exercise list (so the model must re-send everything that should survive), while `add_exercises_to_template` appends only the new ones. Additions must use the append tool — a full re-send of a long template is thousands of tokens of tool JSON and is what pushes a reply into truncation. The client dedupes on `exerciseId` (`appendableTemplateExercises`) so a model that re-sends the list anyway can't duplicate rows.
+
+A template proposal is applied against the template **as it is at Apply time**, not
+the snapshot on the card. `edit_template` replaces the list, so `applyProposal`
+refuses it (`templateChangedSince`, "changed since this was proposed") when the
+template's name or rows differ from the ones it was built on — an edit made in
+the builder in between used to be silently overwritten. `add_exercises_to_template`
+re-derives instead: its additions are deduped against and appended to the
+current rows, which is also what lets two append proposals from one reply both
+apply. A proposal whose save is in flight is `status: 'applying'` (the card's
+buttons are disabled; a second tap is a no-op), and it goes back to `pending`
+when the write resolves `false`, so a refused delete or save never reads as
+Applied. What the model may write is bounded at proposal time — `SetType`
+outside the known list becomes `normal`, `sets`/`count` are 1–20 (they become
+array lengths), a `create_program` day must name an existing template or
+`rest`, and a `delete_template` obeys the same "used by a program" refusal as
+the Templates screen (`templateDeleteBlockers` mirrors `templateUsedBy` in
+`Index.tsx`; keep the two rules the same). Tests: `src/test/aiChatProposals.test.tsx`,
+`src/test/chatProposalGuards.test.ts`.
 
 A stream that dies after it has started (upstream billing, rate limit, dropped connection) is reported as a bare `data: {"error": "<plain sentence>"}` chunk with no `choices`. The client surfaces that sentence as the coach's reply — before this it skipped the payload and rendered an empty bubble, so an out-of-credits API key looked like the app silently doing nothing.
 
@@ -124,7 +145,9 @@ of input against that reserve. The ceilings sit well above what the client
 sends (a typed message is capped at 500 characters; the context runs to about
 100 KB, most of it the exercise library) so only a crafted request hits them.
 If the client legitimately grows past one, raise the constant rather than
-removing the check.
+removing the check. `generate-program` has the same check in
+`programRequestTooLarge` (exercise count and row size, every `userInputs`
+value, and the whole), placed before `begin_ai_turn` for the same reason.
 
 **Message shape.** The Messages API rejects two same-role turns in a row with a
 400, and the client writes a second assistant message whenever a proposal is
@@ -208,11 +231,14 @@ easy to undo by accident:
   place, and a Send tapped in that instant goes out without them. The engine
   therefore never hands words over from inside a React effect — `stop()`
   between sessions finishes on a fresh task for exactly that reason.
-- A session opens `RESTART_DELAY_MS` after the previous recognizer was told
-  to abort (chaining, or a tap right after a send or a double tap). Chrome for
-  Android tears the native recognizer down asynchronously and reports a start
-  that races it as `not-allowed`, which would otherwise surface as a false
-  "microphone blocked" toast.
+- A session opens `RESTART_DELAY_MS` after the previous one closed, whether
+  it was told to abort (a tap right after a send, a double tap) or ended by
+  itself (chaining, and a run started from inside `onEnd` — which is how the
+  bug-report sheet moves the mic between its boxes). Chrome for Android tears
+  the native recognizer down asynchronously, after `onend` as well, and
+  reports a start that races it as `not-allowed`, which would otherwise
+  surface as a false "microphone blocked" toast. `lastClosedAt` in the engine
+  is recorded on both paths for that reason.
 
 Browser facts the design leans on (verified in Chromium and WebKit source):
 Chrome and WebKit only ever append finals and keep at most one interim, always
@@ -258,14 +284,17 @@ If you need to provision a fresh Supabase project (e.g., moving off the old `wek
 2. Install the Supabase CLI: `npm install -g supabase`. Log in: `supabase login`.
 3. Link locally: `supabase link --project-ref <new-project-ref>`.
 4. Push the schema: `supabase db push` (applies everything under `supabase/migrations/`).
-5. Set the Anthropic API key as a function secret:
+5. Set the function secrets. The Anthropic key is required; the RapidAPI key
+   is optional and the exercise-GIF feature is simply off without it:
    ```bash
    supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   supabase secrets set EXERCISE_GIF_API_KEY=...
    ```
-6. Deploy both edge functions:
+6. Deploy the three live edge functions (the same set the deploy workflow ships):
    ```bash
    supabase functions deploy ai-coach
    supabase functions deploy generate-program
+   supabase functions deploy exercise-gif
    ```
 7. Configure Google OAuth in the dashboard (Auth → Providers → Google) and add `http://localhost:8080` plus your production URL to the allowed redirect list.
 8. Update `.env` with the new project URL and anon key (copy them from Settings → API in the dashboard).
@@ -433,7 +462,10 @@ had nothing to retry from and the change was gone — while the session itself
 still saved, because the user was sitting on the summary screen and could
 press Save again. Anything that resolves a template's fate (a later
 successful save, a delete) must clear its queued entry, or the replay
-resurrects it.
+resurrects it. `saveTemplate` and `deleteTemplate` also **wait for the replay
+in flight** (`pendingFlush`) before writing: a queued version is older than
+anything the user does after reopening the app, and its upsert landing second
+silently replaced the newer edit. That `await` is not a needless delay.
 
 ## Program frequencies are validated at every door
 
@@ -452,7 +484,10 @@ whole schedule by a day or three for good.
 and the day-tap helper in `useScreenHelpers`. The first fix validated the
 scheduler alone and left the other three with their own loops, so a program
 saved before validation existed still hung the home screen. Do not add a
-fifth loop. `saveProgram` also writes sanitized days and the load-time repair
+fifth loop. The program editor's calendar preview is `programOccurrences` over
+the draft, the same call `saveProgram` schedules from — its own loops used to
+drop today's every-N-days occurrence, so the preview and the saved calendar
+disagreed. `saveProgram` also writes sanitized days and the load-time repair
 re-saves a stored program whose days sanitize differently, so the database
 heals itself. An invalid frequency makes the day *unscheduled*, never dropped;
 weekday 7 is read as Sunday (an older builder's numbering), the same mapping
@@ -502,7 +537,9 @@ at the root, and entries from an earlier page load pop back to it.
 that belongs to a live session: it does not register with the session
 controller (the coach saw a fake `active_session` and its tools rewrote
 history), re-ticking a set gets a no-op `startTimer` (no sound, OS
-notification or permission prompt), and the fields the edit screen has no
+notification or permission prompt), the rest bars between sets and between
+exercises are not rendered at all (they took the live `startTimer`, so the
+no-op never reached them), and the fields the edit screen has no
 control for — `location`, `isRestDay`, `recoveryActivities` — ride through from
 the session being edited. Duration is written back only when the minutes field
 was actually changed; the field shows whole minutes, and writing it back
@@ -547,6 +584,23 @@ link used to change screen without minimizing — leaving a live session with no
 bar and no way back short of a reload. Both now minimize first. Tests:
 `src/test/activeSessionStaleCache.test.tsx`.
 
+## The stopwatch set is keyed by position
+
+`runningSet` and `countdown` in `ActiveSession` hold a block index and a set
+index into `blocks`, and the mutations in `useBlockMutations` move rows under
+them: 'Add Warm-up Sets' prepends a row, deleting a set or an exercise pulls
+the rows below it up, and drag-reordering permutes the blocks. Every such
+mutation reports the move through `onSetIndicesShifted` /
+`onBlockIndicesShifted` (`handleDragEnd` does the same for reorders), and
+`ActiveSession` remaps the two states — a row that is gone ends what was on
+it. Before this, Stop wrote the set's time and completion to whichever row had
+slid into the index. A new mutation that inserts, removes or reorders rows
+must report through the same callbacks. The rest timer's id and the
+`restRecords` keys are index-keyed the same way (`useSessionRestTimer`), and
+`ActiveSession` forwards every remap to `remapTimerIds`, so the rest bar and
+the rest chips move with their rows too; a drop-row remap
+(`onDropIndicesShifted`) covers a stopwatch running on a drop.
+
 ## The rest timer outlives the screen
 
 `src/utils/restTimerScheduler.ts` holds everything about a rest that must keep
@@ -564,6 +618,12 @@ Rules that keep it correct:
 - **Completion is signalled once per rest, from `recalcRestSchedule`.** The
   worker's "done", the completion timeout and the visibility catch-up all route
   through it; whichever lands first fires, the rest are no-ops.
+- **A cross-tab `storage` event is applied only when its timer or records
+  actually differ** (`sameTimer` / `sameRecords` in `useSessionRestTimer`).
+  Setting the freshly parsed objects as they come re-ran this tab's cache
+  writer, whose write was the other tab's next storage event: two tabs on one
+  workout rewrote the cache every half-second and the last writer owned the
+  blocks.
 - **`ensureRestSchedule` is a no-op for the live key.** A remounting hook
   re-attaches rather than restarting; `releaseRestSchedule` is the only
   teardown. It is called by skip/pause/replace, by `clearSessionCache`
@@ -775,7 +835,10 @@ out of volume and set aggregates without hiding it from the log.
 - Applied to: weekly sets by body part (`Dashboard`), both charts in
   `analytics/VolumeTab`, movement-pattern sets in `analytics/BalanceTab`, and
   the AI coach's `summary` / `volume_by_muscle` analyses so its numbers match
-  the charts.
+  the charts. The coach counts the way the charts count, too:
+  `volume_by_muscle` is working sets only (no warm-ups, like the Dashboard's
+  Weekly Sets and the Volume tab's body-part lines) and `frequency` counts a
+  body part once per session (like the Frequency tab), not once per exercise.
 - Deliberately *not* applied to: per-session summaries, per-exercise history
   (`exercise_progression`, `weekly_volume_by_exercise`, `ExerciseDetailModal`),
   streaks, and consistency — those answer "what did I do" and "did I show up",
@@ -812,6 +875,12 @@ import into their own library.
   missing ones are created (deduped by name) and each `exerciseId` is rewritten.
   An imported program is deliberately **not** activated: activating it would
   regenerate the viewer's `future_workouts`, which is destructive.
+- **`sharedBy` is never an email address.** Sign-up seeds `display_name` from
+  the email, so an account that never renamed itself would put its address on
+  a public page. `publishableSharedBy` drops anything that could be one, at
+  share time in the snapshot builders and again on read in `SharedItem`
+  (payloads frozen before the guard still carry it). Route any new reader or
+  writer of `sharedBy` through it.
 - Snapshot shape changes must bump `SHARE_SNAPSHOT_VERSION` in
   `src/types/share.ts`; the public page refuses payloads newer than it knows.
 - Links preview with the generic RepVision card — this is a client-rendered SPA
@@ -854,9 +923,10 @@ each traced to a file and line by one reviewer and re-checked by another, with t
 critical and high ones also given to a reviewer told to disprove them. Start there.
 
 **All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`,
-and a second pass closed the 20 highest-exposure items from the backlog; the
-audit's status note lists both passes and says which ship where. Its "Everything
-else" section is the remaining backlog, grouped by area.
+a second pass closed the 20 highest-exposure items from the backlog, and a third
+pass (`claude/code-audit-batch-one`) closed 69 more that were unambiguous
+defects. The audit's status note lists all three passes, names the 64 rows still
+open, and says which ship where.
 
 Two facts from that audit change how you work in this repo:
 
@@ -900,9 +970,10 @@ from loaded state. Cascading was the alternative and was rejected: the
 reference is a plan the user made, not a row to clean up.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
-gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated
+gone, `ActiveSession.tsx` is about 1,750 lines rather than the 2,737 it quotes (measure
+with `wc -l` rather than trusting either figure), and the unpaginated
 `workout_sessions` read is now an explicit, documented 500-row cap. Its two surviving
-items are `Index.tsx` (724 lines, still a god-router) and the decomposition of
+items are `Index.tsx` (about 970 lines, still a god-router) and the decomposition of
 `ActiveSession.tsx`.
 
 ## Conventions

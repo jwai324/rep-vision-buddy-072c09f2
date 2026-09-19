@@ -8,7 +8,7 @@ import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldE
 import { parseLocalDate } from '@/utils/dateUtils';
 import { findPreviousPerformance } from '@/utils/previousPerformance';
 import { repairBlockNames, resolveExerciseName } from '@/utils/exerciseNames';
-import { resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
+import { resolveTemplateSupersets, withoutLoneSupersetGroups, withoutLoneSupersets } from '@/utils/templateSupersets';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
@@ -263,6 +263,62 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const restTimer = useSessionRestTimer({ cachedSession, hideTimers: hideTimersPref });
   const { activeTimer, restRecords, computeRemaining, recalcRestTimer, startTimer, skipTimer, extendTimer } = restTimer;
 
+  // Per-set live timing state (5s countdown -> running)
+  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
+  const [runningSet, setRunningSet] = useState<RunningSetState | null>(
+    cachedSession?.runningSet ?? null
+  );
+
+  // Both are positions into `blocks`, and the mutations move rows under
+  // them: a warm-up prepended above a stopwatch set, or a row or exercise
+  // deleted above it, left the index on a different row and Stop wrote the
+  // time and completion there. A row that is gone ends what was on it.
+  // The rest timer and the recorded rests are keyed by the same positions.
+  const { remapTimerIds } = restTimer;
+  const shiftSetIndices = useCallback((blockIdx: number, remap: (setIdx: number) => number | null) => {
+    const shifted = <T extends { blockIdx: number; setIdx: number }>(s: T | null): T | null => {
+      if (!s || s.blockIdx !== blockIdx) return s;
+      const setIdx = remap(s.setIdx);
+      return setIdx === null ? null : setIdx === s.setIdx ? s : { ...s, setIdx };
+    };
+    setRunningSet(shifted);
+    setCountdown(shifted);
+    remapTimerIds(id => {
+      if (id.blockIdx !== blockIdx || id.setIdx === undefined) return id;
+      const setIdx = remap(id.setIdx);
+      return setIdx === null ? null : setIdx === id.setIdx ? id : { ...id, setIdx };
+    });
+  }, [remapTimerIds]);
+  const shiftBlockIndices = useCallback((remap: (blockIdx: number) => number | null) => {
+    const shifted = <T extends { blockIdx: number }>(s: T | null): T | null => {
+      if (!s) return s;
+      const blockIdx = remap(s.blockIdx);
+      return blockIdx === null ? null : blockIdx === s.blockIdx ? s : { ...s, blockIdx };
+    };
+    setRunningSet(shifted);
+    setCountdown(shifted);
+    remapTimerIds(id => {
+      const blockIdx = remap(id.blockIdx);
+      return blockIdx === null ? null : blockIdx === id.blockIdx ? id : { ...id, blockIdx };
+    });
+  }, [remapTimerIds]);
+  const shiftDropIndices = useCallback((blockIdx: number, setIdx: number | null, remap: (dropIdx: number) => number | null) => {
+    const shifted = <T extends { blockIdx: number; setIdx: number; dropIdx?: number }>(s: T | null): T | null => {
+      if (!s || s.blockIdx !== blockIdx || s.dropIdx === undefined) return s;
+      if (setIdx !== null && s.setIdx !== setIdx) return s;
+      const dropIdx = remap(s.dropIdx);
+      return dropIdx === null ? null : dropIdx === s.dropIdx ? s : { ...s, dropIdx };
+    };
+    setRunningSet(shifted);
+    setCountdown(shifted);
+    remapTimerIds(id => {
+      if (id.blockIdx !== blockIdx || id.dropIdx === undefined) return id;
+      if (setIdx !== null && id.setIdx !== setIdx) return id;
+      const dropIdx = remap(id.dropIdx);
+      return dropIdx === null ? null : dropIdx === id.dropIdx ? id : { ...id, dropIdx };
+    });
+  }, [remapTimerIds]);
+
   // Re-ticking a set while editing history must not start a real rest timer
   // (sound, OS notification, permission prompt), so edit mode gets a no-op.
   const blockOps = useBlockMutations(blocks, setBlocks, {
@@ -271,6 +327,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     defaultRestSeconds,
     customExercises,
     startTimer: isEditMode ? noopStartTimer : startTimer,
+    onSetIndicesShifted: shiftSetIndices,
+    onBlockIndicesShifted: shiftBlockIndices,
+    onDropIndicesShifted: shiftDropIndices,
   });
   const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, replaceExercise, toggleDropSets, addWarmupSet } = blockOps;
 
@@ -425,11 +484,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   // Rest timer state is managed by useSessionRestTimer hook (above)
 
-  // Per-set live timing state (5s countdown -> running)
-  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
-  const [runningSet, setRunningSet] = useState<RunningSetState | null>(
-    cachedSession?.runningSet ?? null
-  );
   const blockRefs = useRef<Record<number, HTMLDivElement | null>>({});
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
@@ -569,10 +623,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const { blockIdx, setIdx, dropIdx, startedAt } = runningSet;
     const endedAt = Date.now() + bonusSeconds * 1000;
     const seconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
-    let restSec = 90;
+    // Read from the render's blocks, not from inside the updater: React only
+    // runs an updater eagerly when nothing else is queued on this screen, so
+    // a value assigned in there was sometimes still unset when the rest began.
+    const restSec = blocks[blockIdx]?.restSeconds ?? defaultRestSeconds;
     setBlocks(prev => prev.map((b, bi) => {
       if (bi !== blockIdx) return b;
-      restSec = b.restSeconds;
       const completedSet = b.sets[setIdx];
       return {
         ...b,
@@ -601,7 +657,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }));
     setRunningSet(null);
     startTimer({ type: 'set', blockIdx, setIdx, dropIdx }, restSec);
-  }, [runningSet, startTimer]);
+  }, [runningSet, startTimer, blocks, defaultRestSeconds]);
 
   // Helper: find first incomplete drop in a set
   const findIncompleteDrop = (set: SetRow): number | undefined => {
@@ -776,13 +832,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    setBlocks(prev => {
-      const oldIndex = prev.findIndex(b => b.exerciseId === active.id);
-      const newIndex = prev.findIndex(b => b.exerciseId === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
+    const oldIndex = blocks.findIndex(b => b.exerciseId === active.id);
+    const newIndex = blocks.findIndex(b => b.exerciseId === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    setBlocks(prev => arrayMove(prev, oldIndex, newIndex));
+    shiftBlockIndices(i => {
+      if (i === oldIndex) return newIndex;
+      if (oldIndex < newIndex && i > oldIndex && i <= newIndex) return i - 1;
+      if (oldIndex > newIndex && i >= newIndex && i < oldIndex) return i + 1;
+      return i;
     });
-  }, []);
+  }, [blocks, shiftBlockIndices]);
 
   // Register session controller for AI chat mutations. Not in edit mode: a
   // past workout registered as the live one gave the coach a fake
@@ -853,7 +913,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             return {
               ...block,
               sets: block.sets.map(set => {
-                if (set.setNumber !== setNumber) return set;
+                // Warm-ups are numbered 1..n on their own; "set 1" from the
+                // coach means working set 1, not both.
+                if (set.type === 'warmup' || set.setNumber !== setNumber) return set;
                 found = true;
                 return {
                   ...set,
@@ -971,10 +1033,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       // A partner skipped outright leaves its group with one member, which is
       // no longer a superset — and writing it back would park a link the
       // template can never resolve.
+      // Only working sets count: an exercise that got no further than its
+      // warm-up is a skipped one, not a template entry of one warm-up set.
+      // Unless the template entry is itself warm-up typed (the coach's tools
+      // allow it): then its warm-up rows are the plan, done as planned.
+      const isWorking = (b: ExerciseBlock, s: SetRow) =>
+        s.completed && (s.type !== 'warmup'
+          || originalTemplateSnapshot.current?.find(e => e.exerciseId === b.exerciseId)?.setType === 'warmup');
       const completedBlocks: FinishedBlockLite[] = withoutLoneSupersets(blocks
-        .filter(b => b.sets.some(s => s.completed))
+        .filter(b => b.sets.some(s => isWorking(b, s)))
         .map(b => {
-          const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
+          const completed = b.sets.filter(s => isWorking(b, s));
           const lastSet = completed[completed.length - 1];
           const lastReps = completed.length > 0 ? parseInt(lastSet.reps) || null : null;
           const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
@@ -1065,7 +1134,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       }
     }
 
-    const exerciseLogs: ExerciseLog[] = normalizeBlocks(blocks)
+    // A partner with nothing completed is left out of the log, so the one
+    // that remains must not keep a group of its own — that reads as
+    // "Superset A · 1 of 1" on the summary and in history for good.
+    const exerciseLogs: ExerciseLog[] = withoutLoneSupersetGroups(normalizeBlocks(blocks)
       .filter(b => b.sets.some(s => s.completed))
       .map(b => {
         const mode = getExerciseInputMode(b.exerciseId, customExercises);
@@ -1107,7 +1179,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           sets,
           note: b.note?.trim() || undefined,
         };
-      });
+      }));
 
     const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
@@ -1255,13 +1327,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 <FileText className="w-4 h-4" />
                 {workoutNote ? 'Edit Note' : 'Add Note'}
               </button>
-              <button
-                onClick={() => { setHideTimers(prev => { const next = !prev; onUpdateHideTimers?.(next); return next; }); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
-              >
-                <Timer className="w-4 h-4" />
-                {hideTimers ? 'Show Timers' : 'Hide Timers'}
-              </button>
+              {!isEditMode && (
+                <button
+                  onClick={() => { setHideTimers(prev => { const next = !prev; onUpdateHideTimers?.(next); return next; }); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
+                >
+                  <Timer className="w-4 h-4" />
+                  {hideTimers ? 'Show Timers' : 'Hide Timers'}
+                </button>
+              )}
             </PopoverContent>
           </Popover>
           {!isEditMode && (
@@ -1464,7 +1538,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 && blocks[blockIdx - 1].supersetGroup === block.supersetGroup;
               return (
               <React.Fragment key={block.exerciseId}>
-                {!hideTimers && blockIdx > 0 && !withinSuperset && (
+                {!hideTimers && !isEditMode && blockIdx > 0 && !withinSuperset && (
                   <ExerciseRestTimer
                     timerId={betweenId}
                     defaultDuration={blocks[blockIdx - 1].restSeconds}
@@ -1506,7 +1580,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                         onExtendTimer={extendTimer}
                         onTitleTap={() => setDetailExerciseId(block.exerciseId)}
                         isEditMode={isEditMode}
-                        hideTimers={hideTimers}
+                        // A record of a past workout has no rest to start; the
+                        // bars would drive the live scheduler from edit mode.
+                        hideTimers={hideTimers || isEditMode}
                         runningSet={runningSet}
                         onStartNextSet={handleStartNextSet}
                         onStopSet={handleStopSetClick}

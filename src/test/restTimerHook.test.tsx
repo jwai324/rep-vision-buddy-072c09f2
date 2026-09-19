@@ -99,6 +99,32 @@ describe('useSessionRestTimer and the schedule that outlives it', () => {
     second.unmount();
   });
 
+  it('the rest and the recorded rests follow their rows when rows move, and a gone row ends the rest', () => {
+    const hook = mountHook();
+    act(() => { hook.result.current.startTimer({ type: 'set', blockIdx: 0, setIdx: 1 }, 30); });
+    act(() => { hook.result.current.skipTimer(); });
+    expect(Object.keys(hook.result.current.restRecords)).toEqual(['set-0-1-']);
+    act(() => { hook.result.current.startTimer({ type: 'set', blockIdx: 0, setIdx: 2 }, 30); });
+    const startedAt = hook.result.current.activeTimer?.startedAtEpoch;
+
+    // A warm-up prepended above both: everything on block 0 moves down one.
+    act(() => {
+      hook.result.current.remapTimerIds(id => (id.blockIdx === 0 && id.setIdx !== undefined ? { ...id, setIdx: id.setIdx + 1 } : id));
+    });
+    expect(hook.result.current.activeTimer?.id).toEqual({ type: 'set', blockIdx: 0, setIdx: 3 });
+    // Same rest, not a restart.
+    expect(hook.result.current.activeTimer?.startedAtEpoch).toBe(startedAt);
+    expect(Object.keys(hook.result.current.restRecords)).toEqual(['set-0-2-']);
+
+    // The row under the running rest is deleted: the rest ends.
+    act(() => {
+      hook.result.current.remapTimerIds(id => (id.setIdx === 3 ? null : id));
+    });
+    expect(hook.result.current.activeTimer).toBeNull();
+    expect(workerCancelled()).toBe(true);
+    hook.unmount();
+  });
+
   it('a rest that ends while minimized is announced once, not again on expand', async () => {
     const first = mountHook();
     act(() => { first.result.current.startTimer(SET_ONE, 30); });
@@ -178,6 +204,30 @@ describe('useSessionRestTimer and the schedule that outlives it', () => {
     expect(thirdCancel).toHaveBeenCalledTimes(1);
     expect(hook.result.current.activeTimer).toBeNull();
     expect(workerCancelled()).toBe(true);
+    hook.unmount();
+  });
+
+  it('leaves its state alone on a cross-tab cache echo that carries nothing new', () => {
+    // The other tab's cache write carries this tab's own timer back. Applying
+    // it as fresh objects re-ran the cache writer here, whose write was the
+    // other tab's next echo — every half-second, for as long as both stayed open.
+    const hook = mountHook();
+    act(() => { hook.result.current.startTimer(SET_ONE, 30); });
+    const timer = hook.result.current.activeTimer;
+    const records = hook.result.current.restRecords;
+
+    const echo = (cache: ActiveSessionCache) => act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: ACTIVE_SESSION_CACHE_KEY, newValue: JSON.stringify(cache) }));
+    });
+
+    echo({ ...cacheWith(timer), restRecords: { ...records } });
+    expect(hook.result.current.activeTimer).toBe(timer);
+    expect(hook.result.current.restRecords).toBe(records);
+
+    // A change made in the other tab is still taken.
+    echo({ ...cacheWith(null), restRecords: { 'set-0-0-': 12 } });
+    expect(hook.result.current.activeTimer).toBeNull();
+    expect(hook.result.current.restRecords).toEqual({ 'set-0-0-': 12 });
     hook.unmount();
   });
 

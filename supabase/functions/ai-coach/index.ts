@@ -799,6 +799,9 @@ serve(async (req) => {
         }
       } catch (e) {
         console.error("ai-coach metering failed:", e);
+        // Anthropic billed the turn whether or not the debit landed; an
+        // unbilled turn that leaves no row anywhere is invisible to triage.
+        await logError(supabase, userId, "metering_failed", String((e as { message?: string } | undefined)?.message ?? e));
       } finally {
         await releaseSlot();
       }
@@ -871,7 +874,9 @@ serve(async (req) => {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    // The detail stays in the function log: a raw message here named the
+    // missing secret or the Postgres error to whoever sent the request.
+    return new Response(JSON.stringify({ error: "The coach hit a server error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } finally {

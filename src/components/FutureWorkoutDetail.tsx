@@ -29,9 +29,11 @@ interface FutureWorkoutDetailProps {
   futureWorkout: FutureWorkout;
   template: WorkoutTemplate | null;
   onPerformWorkout: (template: WorkoutTemplate) => void;
-  onUpdateFutureWorkout?: (fw: FutureWorkout) => void;
+  // A handler that resolves false did not land; the screen then stays put
+  // rather than saying done. One that returns nothing is taken as done.
+  onUpdateFutureWorkout?: (fw: FutureWorkout) => void | Promise<boolean>;
   onSaveRestDay?: (fw: FutureWorkout) => void;
-  onDeleteFutureWorkout?: (id: string) => void;
+  onDeleteFutureWorkout?: (id: string) => void | Promise<boolean>;
   onPushProgramBack?: (programId: string, fromDate: string, days: number) => void;
   onBack: () => void;
 }
@@ -120,16 +122,16 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
 
   const dateChanged = localDate !== futureWorkout.date;
 
-  const handleReschedule = () => {
+  const handleReschedule = async () => {
     if (!onUpdateFutureWorkout || !dateChanged) return;
-    onUpdateFutureWorkout({ ...futureWorkout, date: localDate });
+    if (await onUpdateFutureWorkout({ ...futureWorkout, date: localDate }) === false) return;
     toast.success('Workout rescheduled');
     onBack();
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (!onDeleteFutureWorkout) return;
-    onDeleteFutureWorkout(futureWorkout.id);
+    if (await onDeleteFutureWorkout(futureWorkout.id) === false) return;
     toast.success('Workout skipped');
     onBack();
   };
@@ -299,9 +301,11 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">Recovery Plan</p>
               <div className="flex flex-col gap-2">
                 {activities.map(a => {
-                  const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId);
+                  // A custom recovery exercise is in neither static table, and
+                  // a row that resolves to nothing still has to be removable.
+                  const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId)
+                    ?? customExercises.find(ex => ex.id === a.activityId);
                   const lookup = EXERCISES[a.activityId];
-                  if (!info && !lookup) return null;
                   const name = info?.name ?? lookup?.name ?? a.activityId;
                   const icon = lookup?.icon ?? '🏋️';
                   return (

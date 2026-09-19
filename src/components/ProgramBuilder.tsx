@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
-import { format, addDays, addWeeks, getDay } from 'date-fns';
+import { format } from 'date-fns';
 import { ArrowLeft, CalendarIcon, ChevronDown, ChevronRight } from 'lucide-react';
-import { parseLocalDate } from '@/utils/dateUtils';
-import { monthlyOccurrences, sanitizeFrequency } from '@/utils/programFrequency';
+import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
+import { programOccurrences } from '@/utils/programFrequency';
 import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, DayFrequency, ProgramDay } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { Button } from '@/components/ui/button';
@@ -87,7 +87,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
   const [draft] = useState(() => loadDraft(initial));
   const [name, setName] = useState(draft.name);
   const [durationWeeks, setDurationWeeks] = useState(draft.durationWeeks);
-  const [startDate] = useState(() => initial?.startDate ? new Date(initial.startDate + 'T00:00:00') : new Date());
+  const [startDate] = useState(() => parseLocalDate(initial?.startDate ?? formatLocalDate()));
   const [days, setDays] = useState<ProgramDay[]>(draft.days);
   const [templateDrafts, setTemplateDrafts] = useState<TemplateDrafts>(draft.templateDrafts);
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
@@ -191,49 +191,13 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
     return names;
   }, [days, templatesById, templateDrafts]);
 
-  // Build calendar events from days + frequency + duration
-  const calendarEvents = useMemo(() => {
-    const events: { date: Date; label: string; templateId: string }[] = [];
-    const endDate = addWeeks(startDate, durationWeeks);
-
-    days.forEach((day) => {
-      // Same validation as the scheduler: an interval of 0 was an infinite
-      // loop here too, on every keystroke in the builder.
-      const freq = sanitizeFrequency(day.frequency);
-      if (!freq) return;
-
-      if (freq.type === 'weekly') {
-        // Find the first occurrence of this weekday on or after startDate
-        let current = startDate;
-        const targetDay = freq.weekday;
-        const currentDay = getDay(current);
-        const diff = (targetDay - currentDay + 7) % 7;
-        current = addDays(current, diff);
-
-        while (current < endDate) {
-          events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-          current = addDays(current, 7);
-        }
-      } else if (freq.type === 'everyNDays') {
-        const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(startDate);
-        let current = new Date(origin);
-        while (current < endDate) {
-          if (current >= startDate) {
-            events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-          }
-          current = addDays(current, freq.interval);
-        }
-      } else if (freq.type === 'monthly') {
-        // Same helper the scheduler uses, so the preview cannot disagree with
-        // the calendar it previews (and neither overflows a short month).
-        for (const date of monthlyOccurrences(startDate, endDate, freq.dayOfMonth)) {
-          events.push({ date, label: day.label, templateId: day.templateId });
-        }
-      }
-    });
-
-    return events;
-  }, [days, durationWeeks, startDate]);
+  // The scheduler's own walker, so the preview cannot disagree with the
+  // calendar it previews. Its own loops used to: a start date carrying the
+  // time of day hid today's every-N-days occurrence that saving then scheduled.
+  const calendarEvents = useMemo(
+    () => programOccurrences({ days, durationWeeks, startDate: format(startDate, 'yyyy-MM-dd') }),
+    [days, durationWeeks, startDate],
+  );
 
   const [saving, setSaving] = useState(false);
   const save = async () => {

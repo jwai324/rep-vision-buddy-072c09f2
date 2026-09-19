@@ -70,6 +70,7 @@ async function reconcileCustomExercises(
     secondary_muscles: ce.secondaryMuscles,
     is_recovery: ce.isRecovery,
     measurement_type: ce.measurementType ?? null,
+    exclude_from_volume: ce.excludeFromVolume ?? false,
   }));
 
   const { data: inserted, error: insertError } = await supabase

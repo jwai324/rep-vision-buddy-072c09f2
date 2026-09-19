@@ -524,7 +524,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               const saved = await storage.saveSession(pendingSummary, { templateId: screen.templateId });
               if (!saved) return;
               clearSessionCache();
-              storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds));
+              storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds, customExercises));
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
@@ -580,7 +580,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             const saved = await storage.saveSession(screen.session);
             if (!saved) return;
             clearSessionCache();
-            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds, customExercises));
             setScreen({ type: 'dashboard' });
           })}
           onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
@@ -613,15 +613,23 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         const canPersist = hasValidProgramId && !isManual;
 
         const handleUpdate = canPersist
-          ? (incoming: FutureWorkout) => {
+          ? async (incoming: FutureWorkout) => {
               let next = incoming;
               if (incoming.id.startsWith('synthetic-')) {
+                // Minted before the write so a rest day's activity taps all
+                // share one id; put the synthetic row back if the write does
+                // not land, or the screen shows a reschedule that never saved.
                 next = { ...incoming, id: crypto.randomUUID() };
                 setScreen(prev => prev.type === 'futureWorkoutDetail'
                   ? { ...prev, futureWorkout: next }
                   : prev);
               }
-              storage.updateFutureWorkout(next);
+              // The detail screen waits for this before it says "done".
+              const ok = await storage.updateFutureWorkout(next);
+              if (!ok && next !== incoming) {
+                setScreen(prev => prev.type === 'futureWorkoutDetail' ? { ...prev, futureWorkout: fw } : prev);
+              }
+              return ok;
             }
           : undefined;
 
@@ -667,12 +675,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           isViewMode
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => {
-            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds, customExercises));
             toast.success('Template saved');
           }}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onReperform={(session) => {
-            startFromTemplate(templateFromSession(session, undefined, storage.preferences.defaultRestSeconds));
+            startFromTemplate(templateFromSession(session, undefined, storage.preferences.defaultRestSeconds, customExercises));
           }}
           onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {
@@ -957,7 +965,10 @@ const Index = () => {
   }, [storage]);
   return (
     <CustomExercisesProvider>
-      <ErrorBoundary fallbackTitle="Chat unavailable — try reloading">
+      {/* Wraps everything below the auth provider, so a crash anywhere in the
+          app lands here; the title used to blame the chat, and the bug-report
+          handle it unmounted is the one thing the user needs on this screen. */}
+      <ErrorBoundary fallbackTitle="Something went wrong" fallbackExtra={<ErrorReportButton screen="crash" />}>
         <ChatProvider storage={storage}>
           <TutorialProvider onComplete={handleTutorialComplete}>
             <IndexInner storage={storage} />

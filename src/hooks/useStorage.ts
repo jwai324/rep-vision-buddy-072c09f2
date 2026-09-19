@@ -248,9 +248,19 @@ function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; pre
  * after a successful load, so a connection good enough to read is the signal
  * to try writing again. Stops at the first failure and leaves the rest queued
  * rather than burning through a batch that is clearly still offline.
+ *
+ * saveTemplate and deleteTemplate wait for the replay before writing: a
+ * queued version is older than anything the user does after reopening the
+ * app, and its upsert landing second would silently replace their edit.
  */
 async function flushPendingTemplateWrites(userId: string, pending: PendingTemplateWrite[]): Promise<void> {
-  for (const { template } of pending) {
+  for (const { template, queuedAt } of pending) {
+    // The queue was captured at load. An entry cleared since — a save that
+    // landed from another tab, a delete — must not be written over that.
+    const stillQueued = readPendingTemplates(userId).some(
+      e => e.template.id === template.id && e.queuedAt === queuedAt,
+    );
+    if (!stillQueued) continue;
     try {
       const { error } = await supabase.from('workout_templates').upsert({
         id: template.id,
@@ -267,6 +277,16 @@ async function flushPendingTemplateWrites(userId: string, pending: PendingTempla
       console.error('[useStorage] pending template flush failed:', e);
       return;
     }
+  }
+}
+
+// postgrest-js resolves `{ error }` for a server refusal, but an offline fetch
+// rejects; a write that promises a boolean needs the two as one value.
+async function writeError(query: PromiseLike<{ error: unknown }>): Promise<unknown> {
+  try {
+    return (await query).error;
+  } catch (e) {
+    return e;
   }
 }
 
@@ -318,6 +338,9 @@ export function useStorage() {
   // back to the server. Such a load is thrown away and run once more.
   const writeSerial = useRef(0);
   const noteWrite = useCallback(() => { writeSerial.current += 1; }, []);
+  // The replay of queued template writes after a load. Template writes wait
+  // for it, so a queued (older) version can never land on top of a new one.
+  const pendingFlush = useRef<Promise<void>>(Promise.resolve());
 
   // Load all data from Supabase on mount / user change
   useEffect(() => {
@@ -371,7 +394,10 @@ export function useStorage() {
           // Uses MAX_ROWS like the other paginated tables so a daily
           // bodyweight logger keeps more than a year of history. Previously
           // capped at 366 rows which silently truncated after ~1 year.
-          supabase.from('body_measurements').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
+          // Two entries on one day are told apart by when they were logged.
+          // Ordered by date alone, a reload could put the older one first,
+          // and the profile and the coach would show it as the latest.
+          supabase.from('body_measurements').select('*').eq('user_id', userId).order('date', { ascending: false }).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
         ]);
         if (cancelled) return;
         if (writeSerial.current !== serialAtStart && reloads < 2) {
@@ -405,7 +431,7 @@ export function useStorage() {
           // it wins on screen while the replay below catches the row up.
           const pending = readPendingTemplates(userId);
           setTemplates(pending.length ? overlayPendingTemplates(loaded, pending) : loaded);
-          if (pending.length) void flushPendingTemplateWrites(userId, pending);
+          if (pending.length) pendingFlush.current = flushPendingTemplateWrites(userId, pending);
         }
         if (programsRes.data) setPrograms(programsRes.data.map(mapProgram));
         if (futureRes.data) setFutureWorkouts(futureRes.data.map(mapFutureWorkout));
@@ -600,6 +626,11 @@ export function useStorage() {
   const saveTemplate = useCallback(async (template: WorkoutTemplate): Promise<boolean> => {
     noteWrite();
     if (!user) return false;
+    // Applied before the round trip: the edit is kept whatever the outcome
+    // below, and a list that lacked the template until the server answered
+    // is what invited a second tap on Duplicate.
+    applyTemplateLocally(template);
+    await pendingFlush.current;
     let error: unknown = null;
     try {
       ({ error } = await supabase.from('workout_templates').upsert({
@@ -615,28 +646,31 @@ export function useStorage() {
     if (error) {
       console.error('[useStorage] saveTemplate error:', error);
       toast.error('Failed to save template — it will retry when you\'re back online');
-      applyTemplateLocally(template);
       queuePendingTemplate(user.id, template);
       return false;
     }
     clearPendingTemplate(user.id, template.id);
+    // Applied again once the row is on the server: a load that resolved in
+    // between read the pre-write rows and painted over the early apply.
     applyTemplateLocally(template);
     return true;
   }, [user, applyTemplateLocally]);
 
-  const deleteTemplate = useCallback(async (id: string) => {
+  const deleteTemplate = useCallback(async (id: string): Promise<boolean> => {
     noteWrite();
-    if (!user) return;
-    const { error } = await supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id);
+    if (!user) return false;
+    await pendingFlush.current;
+    const error = await writeError(supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id));
     if (error) {
       console.error('[useStorage] deleteTemplate error:', error);
       toast.error('Failed to delete template');
-      return;
+      return false;
     }
     // Otherwise a queued write for this template would recreate it on the
     // next load.
     clearPendingTemplate(user.id, id);
     setTemplates(prev => prev.filter(t => t.id !== id));
+    return true;
   }, [user]);
 
   // Resolves true only once the program row is written. Both builders used to
@@ -793,20 +827,6 @@ export function useStorage() {
   // produced a break is set up further below, after updatePreferences is
   // defined — see the "clearedAdjustmentAt" effect.
 
-  const deleteProgram = useCallback(async (id: string) => {
-    noteWrite();
-    if (!user) return;
-    await supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id);
-    const { error } = await supabase.from('workout_programs').delete().eq('id', id).eq('user_id', user.id);
-    if (error) {
-      console.error('[useStorage] deleteProgram error:', error);
-      toast.error('Failed to delete program');
-      return;
-    }
-    setPrograms(prev => prev.filter(p => p.id !== id));
-    setFutureWorkouts(prev => prev.filter(fw => fw.programId !== id));
-  }, [user]);
-
   const setActiveProgram = useCallback(async (id: string | null): Promise<boolean> => {
     noteWrite();
     if (!user) return false;
@@ -825,6 +845,33 @@ export function useStorage() {
     return true;
   }, [user, activeProgramId]);
 
+  // Resolves true only once the program row is gone. The calendar rows go
+  // first and their delete is checked: there is no foreign key between the
+  // two tables, so a row left pointing at a deleted program is a ghost that
+  // reappears on every load and blocks deleting the templates it names.
+  const deleteProgram = useCallback(async (id: string): Promise<boolean> => {
+    noteWrite();
+    if (!user) return false;
+    const calendarError = await writeError(supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id));
+    if (calendarError) {
+      console.error('[useStorage] deleteProgram error:', calendarError);
+      toast.error('Failed to delete program');
+      return false;
+    }
+    setFutureWorkouts(prev => prev.filter(fw => fw.programId !== id));
+    const error = await writeError(supabase.from('workout_programs').delete().eq('id', id).eq('user_id', user.id));
+    if (error) {
+      console.error('[useStorage] deleteProgram error:', error);
+      toast.error('Failed to delete program');
+      return false;
+    }
+    setPrograms(prev => prev.filter(p => p.id !== id));
+    // Settings and the coach's context would otherwise keep naming a program
+    // that no longer exists.
+    if (activeProgramId === id) await setActiveProgram(null);
+    return true;
+  }, [user, activeProgramId, setActiveProgram]);
+
   const deleteSession = useCallback(async (id: string) => {
     noteWrite();
     if (!user) return;
@@ -840,10 +887,10 @@ export function useStorage() {
     }
   }, [user, history]);
 
-  const updateFutureWorkout = useCallback(async (updated: FutureWorkout) => {
+  const updateFutureWorkout = useCallback(async (updated: FutureWorkout): Promise<boolean> => {
     noteWrite();
-    if (!user) return;
-    const { error } = await supabase.from('future_workouts').upsert({
+    if (!user) return false;
+    const error = await writeError(supabase.from('future_workouts').upsert({
       id: updated.id,
       user_id: user.id,
       program_id: updated.programId,
@@ -852,29 +899,31 @@ export function useStorage() {
       label: updated.label,
       completed: updated.completed ?? false,
       recovery_activities: updated.recoveryActivities as unknown as Database['public']['Tables']['future_workouts']['Insert']['recovery_activities'] ?? null,
-    });
+    }));
     if (error) {
       console.error('[useStorage] updateFutureWorkout error:', error);
       toast.error('Failed to update future workout');
-      return;
+      return false;
     }
     setFutureWorkouts(prev => {
       const exists = prev.some(fw => fw.id === updated.id);
       if (exists) return prev.map(fw => fw.id === updated.id ? updated : fw);
       return [...prev, updated];
     });
+    return true;
   }, [user]);
 
-  const deleteFutureWorkout = useCallback(async (id: string) => {
+  const deleteFutureWorkout = useCallback(async (id: string): Promise<boolean> => {
     noteWrite();
-    if (!user) return;
-    const { error } = await supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id);
+    if (!user) return false;
+    const error = await writeError(supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id));
     if (error) {
       console.error('[useStorage] deleteFutureWorkout error:', error);
       toast.error('Failed to delete scheduled workout');
-      return;
+      return false;
     }
     setFutureWorkouts(prev => prev.filter(fw => fw.id !== id));
+    return true;
   }, [user]);
 
   const pushProgramBack = useCallback(async (programId: string, fromDate: string, days: number) => {

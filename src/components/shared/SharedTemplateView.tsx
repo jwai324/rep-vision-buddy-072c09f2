@@ -5,6 +5,9 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { formatWeightString, storedBandLevel } from '@/utils/weightConversion';
 import { getBandLevelShortLabel, getExerciseInputMode } from '@/utils/exerciseInputMode';
 import { formatMmSs } from '@/utils/timeFormat';
+import { resolveTemplateSupersets } from '@/utils/templateSupersets';
+import { supersetInfo } from '@/types/activeSession';
+import { SupersetBadge } from '@/components/SupersetBadge';
 
 interface SharedTemplateViewProps {
   template: WorkoutTemplate;
@@ -40,7 +43,14 @@ export const SharedTemplateView: React.FC<SharedTemplateViewProps> = ({
     [customExercises],
   );
 
-  const totalSets = template.exercises.reduce((sum, e) => sum + e.sets, 0);
+  // The same resolution every editor and session runs, so an older template
+  // that links by setType alone shows its pairs here too.
+  const exercises = useMemo(
+    () => resolveTemplateSupersets(template.exercises),
+    [template.exercises],
+  );
+
+  const totalSets = exercises.reduce((sum, e) => sum + e.sets, 0);
 
   return (
     <div className="flex flex-col gap-3">
@@ -48,17 +58,18 @@ export const SharedTemplateView: React.FC<SharedTemplateViewProps> = ({
         <div>
           <h2 className="text-xl font-extrabold text-foreground">{template.name}</h2>
           <p className="text-xs text-muted-foreground">
-            {template.exercises.length} exercises · {totalSets} sets
+            {exercises.length} exercises · {totalSets} sets
           </p>
         </div>
       )}
 
-      {template.exercises.length === 0 ? (
+      {exercises.length === 0 ? (
         <p className="text-sm text-muted-foreground">This template has no exercises.</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {template.exercises.map((ex, i) => {
+          {exercises.map((ex, i) => {
             const info = meta[ex.exerciseId];
+            const superset = supersetInfo(exercises, i);
             const mode = getExerciseInputMode(ex.exerciseId, customLite);
             const target =
               ex.targetWeight == null
@@ -68,7 +79,10 @@ export const SharedTemplateView: React.FC<SharedTemplateViewProps> = ({
                   : formatWeightString(ex.targetWeight, unit);
 
             return (
-              <div key={`${ex.exerciseId}-${i}`} className="bg-card rounded-xl p-3 border border-border">
+              <div
+                key={`${ex.exerciseId}-${i}`}
+                className={`rounded-xl p-3 border border-border ${superset ? superset.colorClass : 'bg-card'}`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span aria-hidden>{info?.icon ?? '🏋️'}</span>
@@ -76,10 +90,10 @@ export const SharedTemplateView: React.FC<SharedTemplateViewProps> = ({
                       {info?.name ?? ex.exerciseId}
                     </span>
                   </div>
-                  {ex.supersetGroup !== undefined && (
-                    <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-set-superset/20 text-muted-foreground">
-                      Superset {ex.supersetGroup}
-                    </span>
+                  {superset && (
+                    <div className="shrink-0">
+                      <SupersetBadge info={superset} />
+                    </div>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs text-muted-foreground">

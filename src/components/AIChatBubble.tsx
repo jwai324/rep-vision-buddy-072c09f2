@@ -14,6 +14,7 @@ const MAX_CHAT_CHARS = 500;
 // without letting the input consume too much of the chat panel.
 const MAX_INPUT_ROWS = 3;
 const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
+const PULSE_SEEN_KEY = 'ai-chat-pulse-seen';
 
 const TypingIndicator = () => (
   <div className="flex items-center gap-1 px-3 py-2">
@@ -78,9 +79,13 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     }
   }, [input]);
 
-  const [hasSeenPulse, setHasSeenPulse] = useState(() =>
-    localStorage.getItem('ai-chat-pulse-seen') === 'true'
-  );
+  const [hasSeenPulse, setHasSeenPulse] = useState(() => {
+    try {
+      return localStorage.getItem(PULSE_SEEN_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -181,7 +186,11 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const handleFabClick = () => {
     if (!hasSeenPulse) {
       setHasSeenPulse(true);
-      localStorage.setItem('ai-chat-pulse-seen', 'true');
+      try {
+        localStorage.setItem(PULSE_SEEN_KEY, 'true');
+      } catch {
+        // storage unavailable — the pulse just shows again next time
+      }
     }
     setOpen(!isOpen);
   };

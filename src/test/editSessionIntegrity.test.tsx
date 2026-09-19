@@ -65,6 +65,25 @@ describe('editing a past workout', () => {
     expect(registerSession).not.toHaveBeenCalled();
   });
 
+  it('shows no rest bars — a record has no rest to start', () => {
+    // The bars drove the live scheduler (sound, notification, toast) from
+    // edit mode, where the no-op timer given to set completion never reached.
+    const twoExercises: WorkoutSession = {
+      ...past,
+      exercises: [
+        { ...past.exercises[0], sets: [{ setNumber: 1, type: 'normal', reps: 8, weight: 60 }, { setNumber: 2, type: 'normal', reps: 8, weight: 60 }] },
+        { exerciseId: 'incline-dumbbell-press', exerciseName: 'Incline Dumbbell Press', sets: [{ setNumber: 1, type: 'normal', reps: 10, weight: 20 }] },
+      ],
+    };
+    const { unmount } = render(<ActiveSession exercises={[]} editSession={twoExercises} onFinish={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByText('Start Rest')).toBeNull();
+    unmount();
+
+    // The same layout in a live workout keeps its bars.
+    render(<ActiveSession exercises={['flat-barbell-bench-press', 'incline-dumbbell-press']} onFinish={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getAllByText('Start Rest').length).toBeGreaterThan(0);
+  });
+
   it('leaves startedAt alone when neither the date nor the time was touched', () => {
     // The time field shows HH:mm; rebuilding startedAt from it on every edit
     // dropped the seconds and, worse, moved a workout that began before

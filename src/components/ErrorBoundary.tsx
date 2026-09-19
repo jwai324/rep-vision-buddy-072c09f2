@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 interface ErrorBoundaryProps {
   children: React.ReactNode;
   fallbackTitle?: string;
+  /** Rendered beside the fallback, for a control that must survive the crash (the bug-report handle). */
+  fallbackExtra?: React.ReactNode;
   onReset?: () => void;
   /**
    * A second, destructive way out (e.g. "Discard workout"). It takes two taps:
@@ -69,6 +71,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 : this.props.destructiveAction.label}
             </Button>
           )}
+          {this.props.fallbackExtra}
         </div>
       );
     }

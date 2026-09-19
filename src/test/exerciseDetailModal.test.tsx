@@ -285,3 +285,79 @@ describe('ExerciseDetailModal — demonstration clip', () => {
     expect(document.querySelector('video')).toBeNull();
   });
 });
+
+describe('ExerciseDetailModal — History tab', () => {
+  const logged = (exerciseId: string, date: string, sets: WorkoutSession['exercises'][number]['sets']): WorkoutSession => ({
+    id: `${exerciseId}-${date}`,
+    date,
+    exercises: [{ exerciseId, exerciseName: 'x', sets }],
+    duration: 600,
+    totalVolume: 0,
+    totalSets: sets.length,
+    totalReps: 0,
+  });
+  const historyDates = () => screen.getAllByText(/^Aug \d+$/).map(n => n.textContent);
+
+  it('orders sessions by date rather than by where they sit in the array', () => {
+    // Server order is newest first; the middle row was 5 Aug and had its
+    // date corrected to 20 Aug, which replaces it in place.
+    render(
+      <ExerciseDetailModal
+        exerciseId={CUSTOM_ID}
+        onClose={vi.fn()}
+        history={[
+          session({ exerciseId: CUSTOM_ID, date: '2026-08-12' }),
+          session({ exerciseId: CUSTOM_ID, date: '2026-08-20' }),
+          session({ exerciseId: CUSTOM_ID, date: '2026-08-01' }),
+        ]}
+      />,
+    );
+
+    openTab(/history/i);
+    expect(historyDates()).toEqual(['Aug 1', 'Aug 12', 'Aug 20']);
+  });
+
+  it('renders a timed set as a duration, not as reps', () => {
+    render(
+      <ExerciseDetailModal
+        exerciseId="plank"
+        onClose={vi.fn()}
+        weightUnit="kg"
+        history={[logged('plank', '2026-08-10', [
+          { setNumber: 1, type: 'normal', reps: 1, time: 45 },
+          { setNumber: 2, type: 'normal', reps: 1, time: 60, weight: 20 },
+        ])]}
+      />,
+    );
+
+    openTab(/history/i);
+    expect(screen.getByText('0:45')).toBeInTheDocument();
+    expect(screen.getByText('20 kg × 1:00')).toBeInTheDocument();
+    expect(screen.queryByText(/1 reps/)).not.toBeInTheDocument();
+  });
+
+  it('renders a band set by its level and a cardio set by time and distance', () => {
+    const { unmount } = render(
+      <ExerciseDetailModal
+        exerciseId="band-chest-press"
+        onClose={vi.fn()}
+        weightUnit="lbs"
+        history={[logged('band-chest-press', '2026-08-10', [{ setNumber: 1, type: 'normal', reps: 12, weight: 3 }])]}
+      />,
+    );
+    openTab(/history/i);
+    expect(screen.getByText('Medium × 12 reps')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <ExerciseDetailModal
+        exerciseId="swimming-cardio"
+        onClose={vi.fn()}
+        weightUnit="kg"
+        history={[logged('swimming-cardio', '2026-08-10', [{ setNumber: 1, type: 'normal', reps: 1, time: 600, distance: 1000 }])]}
+      />,
+    );
+    openTab(/history/i);
+    expect(screen.getByText('10:00 · 1.00 km')).toBeInTheDocument();
+  });
+});
