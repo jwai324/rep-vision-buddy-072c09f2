@@ -985,67 +985,88 @@ export function useStorage() {
     return true;
   }, [user]);
 
+  // A second tap while a shift is in flight would move the calendar twice:
+  // the RPC has no idempotency key and the button stays live until it answers.
+  const shiftInFlight = useRef(false);
+
   const pushProgramBack = useCallback(async (programId: string, fromDate: string, days: number) => {
-    noteWrite();
     if (!user || days <= 0) return;
-    // Already-completed entries are a record of what happened on that date, so
-    // they stay put even though they still live in future_workouts.
-    const targets = futureWorkouts.filter(fw => fw.programId === programId && fw.date >= fromDate && !fw.completed);
-    if (targets.length === 0) return;
-    const updates = targets.map(fw => {
-      const d = parseLocalDate(fw.date);
-      d.setDate(d.getDate() + days);
-      const newDate = format(d, 'yyyy-MM-dd');
-      return { ...fw, date: newDate };
-    });
-    const results = await Promise.all(updates.map(u =>
-      supabase.from('future_workouts').update({ date: u.date }).eq('id', u.id).eq('user_id', user.id)
-    ));
-    const failed = results.find(r => r.error);
-    if (failed?.error) {
-      console.error('[useStorage] pushProgramBack error:', failed.error);
-      toast.error('Failed to shift program dates');
+    if (days > 366) {
+      toast.error('Shift by 1 to 366 days');
       return;
     }
-    setFutureWorkouts(prev => {
-      const map = new Map(updates.map(u => [u.id, u.date]));
-      return prev.map(fw => map.has(fw.id) ? { ...fw, date: map.get(fw.id)! } : fw)
-        .sort((a, b) => a.date.localeCompare(b.date));
-    });
-
-    // Also shift the program's startDate and frequency startDates
+    if (shiftInFlight.current) return;
     const program = programs.find(p => p.id === programId);
-    if (program) {
-      const shiftDate = (dateStr: string | undefined): string | undefined => {
-        if (!dateStr) return dateStr;
-        const d = parseLocalDate(dateStr);
-        d.setDate(d.getDate() + days);
-        return format(d, 'yyyy-MM-dd');
-      };
-      const updatedProgram: WorkoutProgram = {
+    // The RPC writes the program's days as given, so without the local copy
+    // there is nothing correct to send.
+    if (!program) return;
+    // Noted only once a write is actually attempted: a refused double tap
+    // must not make an in-flight load discard itself.
+    noteWrite();
+    shiftInFlight.current = true;
+    try {
+      const isIsoDay = (dateStr: string) => /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+      const shiftDate = (dateStr: string): string => format(addDays(parseLocalDate(dateStr), days), 'yyyy-MM-dd');
+      // Sanitized before the anchors move, as saveProgram does: a malformed
+      // anchor (a restored backup is written verbatim) is dropped rather than
+      // parsed, and the shifted result is valid by construction. This one
+      // object is what is sent and what is shown. A start date that is not a
+      // YYYY-MM-DD is dropped the same way rather than thrown on by `format`
+      // (or refused by the function, which would leave the program unshiftable).
+      const shifted: WorkoutProgram = {
         ...program,
-        startDate: shiftDate(program.startDate),
-        days: program.days.map(day => ({
-          ...day,
-          frequency: day.frequency && day.frequency.type === 'everyNDays' && day.frequency.startDate
-            ? { ...day.frequency, startDate: shiftDate(day.frequency.startDate) }
-            : day.frequency,
-        })),
+        startDate: program.startDate && isIsoDay(program.startDate) ? shiftDate(program.startDate) : undefined,
+        days: sanitizeProgramDays(program.days).map(day => (
+          day.frequency?.type === 'everyNDays' && day.frequency.startDate
+            ? { ...day, frequency: { ...day.frequency, startDate: shiftDate(day.frequency.startDate) } }
+            : day
+        )),
       };
-      const { error: progUpdateError } = await supabase.from('workout_programs').update({
-        start_date: updatedProgram.startDate ?? null,
-        days: updatedProgram.days as unknown as Database['public']['Tables']['workout_programs']['Update']['days'],
-      }).eq('id', programId).eq('user_id', user.id);
-      if (progUpdateError) {
-        console.error('[useStorage] pushProgramBack program update error:', progUpdateError);
-        toast.error('Failed to reschedule program');
+
+      // One transaction moves the rows and the program's dates together, so
+      // a failure leaves nothing half-shifted (audit 4.19). The generated Args
+      // say string and Json, but the function takes NULL for a program with
+      // no start date (an imported one has none) and days is a ProgramDay[]
+      // bound for a jsonb column.
+      type ShiftArgs = Database['public']['Functions']['shift_program_workouts']['Args'];
+      let moved = 0;
+      let error: unknown = null;
+      try {
+        const res = await supabase.rpc('shift_program_workouts', {
+          p_program_id: programId,
+          p_from_date: fromDate,
+          p_days: days,
+          p_start_date: (shifted.startDate ?? null) as unknown as ShiftArgs['p_start_date'],
+          p_program_days: shifted.days as unknown as ShiftArgs['p_program_days'],
+        });
+        error = res.error;
+        moved = res.data ?? 0;
+      } catch (e) {
+        // An offline fetch rejects rather than resolving with an error payload.
+        error = e;
+      }
+      if (error) {
+        console.error('[useStorage] pushProgramBack error:', error);
+        toast.error('Failed to shift program dates');
         return;
       }
-      setPrograms(prev => prev.map(p => p.id === programId ? updatedProgram : p));
-    }
 
-    toast.success(`Shifted ${updates.length} workout${updates.length === 1 ? '' : 's'} forward by ${days} day${days === 1 ? '' : 's'}`);
-  }, [user, futureWorkouts, programs]);
+      // The same rows the function moved: this program, on or after fromDate,
+      // not completed (a completed entry is the record of what happened on
+      // that date), and a real YYYY-MM-DD, which the function leaves alone
+      // rather than failing the shift. The server's count is the truth for
+      // the toast; the local list may not hold every row it moved.
+      const movesLocally = (fw: FutureWorkout) =>
+        fw.programId === programId && fw.date >= fromDate && !fw.completed && isIsoDay(fw.date);
+      setFutureWorkouts(prev => prev
+        .map(fw => movesLocally(fw) ? { ...fw, date: shiftDate(fw.date) } : fw)
+        .sort((a, b) => a.date.localeCompare(b.date)));
+      setPrograms(prev => prev.map(p => p.id === programId ? shifted : p));
+      toast.success(`Shifted ${moved} workout${moved === 1 ? '' : 's'} forward by ${days} day${days === 1 ? '' : 's'}`);
+    } finally {
+      shiftInFlight.current = false;
+    }
+  }, [user, programs]);
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
     noteWrite();
