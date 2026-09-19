@@ -22,7 +22,7 @@ export interface CachedStorage {
 
 const KEY_PREFIX = 'repvision:storage:';
 // Bump when CachedStorage changes shape. Old keys are swept on the next write.
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 /**
  * Sessions are by far the biggest slice and localStorage writes are

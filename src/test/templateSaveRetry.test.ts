@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
+import { toast } from 'sonner';
 import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate } from '@/utils/pendingTemplateWrites';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram } from '@/types/workout';
 
@@ -12,7 +13,12 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 /** Rows each table hands back, and how the next upsert should behave. */
 const rows: Record<string, unknown[]> = {};
-let upsertOutcome: 'ok' | 'error' | 'throw' = 'ok';
+type UpsertOutcome = 'ok' | 'error' | 'throw';
+let upsertOutcome: UpsertOutcome = 'ok';
+/** Outcomes for the next upserts in send order, one each; `upsertOutcome` applies once this runs dry. */
+const upsertOutcomes: UpsertOutcome[] = [];
+/** The `updated_at` the "server" stamps on every upsert that lands. */
+let upsertStamp = '2026-09-19T10:00:00.000Z';
 /** While set, every upsert sent is held until it resolves. */
 let upsertGate: Promise<void> | null = null;
 /** How a delete on a table answers; tables absent from it succeed. */
@@ -27,9 +33,21 @@ function makeBuilder(table: string) {
   // An insert echoes its rows back (with ids) from .select(); anything else
   // reads the table's seeded rows.
   let inserted: Record<string, unknown>[] | null = null;
+  let upserted: unknown = null;
   let op = 'select';
+  const runUpsert = async () => {
+    // Decided when the upsert is sent, not when the gate lets it through, so
+    // two held upserts can be given different fates.
+    const outcome = upsertOutcomes.shift() ?? upsertOutcome;
+    if (upsertGate) await upsertGate;
+    if (outcome === 'throw') throw new TypeError('Failed to fetch');
+    if (outcome === 'error') return { data: null, error: { message: 'network' } };
+    landed.push([table, 'upsert', upserted]);
+    return { data: { updated_at: upsertStamp }, error: null };
+  };
   const builder: Record<string, unknown> = {
     then: (...args: Parameters<Promise<unknown>['then']>) => {
+      if (op === 'upsert') return runUpsert().then(...args);
       if (op === 'delete') {
         const outcome = deleteOutcome[table];
         if (outcome === 'throw') return Promise.reject(new TypeError('Failed to fetch')).then(...args);
@@ -39,16 +57,17 @@ function makeBuilder(table: string) {
       const data = inserted ? inserted.map((r, i) => ({ id: `new-${i}`, created_at: '2026-09-18T12:00:00.000Z', ...r })) : (rows[table] ?? []);
       return Promise.resolve({ data, error: null }).then(...args);
     },
-    upsert: async (payload: unknown) => {
+    // Answers through .then like the real builder, so the hook can chain
+    // .select().single() on it to read the stamp the row was given.
+    upsert: (payload: unknown) => {
       upserts.push({ table, payload });
-      if (upsertGate) await upsertGate;
-      if (upsertOutcome === 'throw') throw new TypeError('Failed to fetch');
-      if (upsertOutcome === 'ok') landed.push([table, 'upsert', payload]);
-      return upsertOutcome === 'error' ? { error: { message: 'network' } } : { error: null };
+      upserted = payload;
+      op = 'upsert';
+      return builder;
     },
     insert: (payload: Record<string, unknown>[]) => { inserted = payload; chain.push([table, 'insert', payload.length]); return builder; },
   };
-  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'update', 'delete', 'gte', 'lte', 'lt', 'neq', 'or', 'not', 'in']) {
+  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'single', 'update', 'delete', 'gte', 'lte', 'lt', 'neq', 'or', 'not', 'in']) {
     builder[m] = (...args: unknown[]) => { if (m === 'delete') op = m; chain.push([table, m, ...args]); return builder; };
   }
   return builder;
@@ -74,7 +93,7 @@ const tpl = (over: Partial<WorkoutTemplate> = {}): WorkoutTemplate => ({
   ...over,
 });
 
-const templateRow = (name: string) => ({ id: 'tpl-1', name, exercises: [] });
+const templateRow = (name: string, updated_at?: string) => ({ id: 'tpl-1', name, exercises: [], updated_at });
 
 beforeEach(() => {
   localStorage.clear();
@@ -82,6 +101,8 @@ beforeEach(() => {
   chain.length = 0;
   landed.length = 0;
   upsertOutcome = 'ok';
+  upsertOutcomes.length = 0;
+  upsertStamp = '2026-09-19T10:00:00.000Z';
   upsertGate = null;
   for (const k of Object.keys(rows)) delete rows[k];
   for (const k of Object.keys(deleteOutcome)) delete deleteOutcome[k];
@@ -208,6 +229,125 @@ describe('pending writes on the next load', () => {
   });
 });
 
+// The queue used to replay last-write-wins without looking at the server
+// row: the phone's gym-day update, queued offline, landed over the edit the
+// laptop made that evening, and a template deleted on the laptop came back.
+describe('a queued write is replayed only over the row it was built on', () => {
+  const templateUpserts = () => upserts.filter(u => u.table === 'workout_templates');
+
+  it('loads each template with the stamp of the row it came from', async () => {
+    rows.workout_templates = [templateRow('Push', 'stamp-1')];
+    const { result } = await mounted();
+    expect(result.current.templates[0].updatedAt).toBe('stamp-1');
+  });
+
+  it('replays a write whose baseline is still the server row, and stamps the row it leaves behind', async () => {
+    upsertStamp = 'stamp-replayed';
+    queuePendingTemplate(USER_ID, tpl({ name: 'Saved at the gym' }), 'stamp-1');
+    rows.workout_templates = [templateRow('Server copy', 'stamp-1')];
+
+    const { result } = await mounted();
+
+    await waitFor(() => expect(readPendingTemplates(USER_ID)).toEqual([]));
+    expect(templateUpserts()).toHaveLength(1);
+    const row = result.current.templates.find(t => t.id === 'tpl-1');
+    expect(row?.name).toBe('Saved at the gym');
+    await waitFor(() => expect(result.current.templates.find(t => t.id === 'tpl-1')?.updatedAt).toBe('stamp-replayed'));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('drops a write whose row changed on another device and keeps the server row', async () => {
+    const queuedAt = new Date(2026, 8, 18, 12).getTime();
+    queuePendingTemplate(USER_ID, tpl({ name: 'Saved at the gym' }), 'stamp-1', queuedAt);
+    rows.workout_templates = [templateRow('Edited on the laptop', 'stamp-2')];
+
+    const { result } = await mounted();
+
+    expect(readPendingTemplates(USER_ID)).toEqual([]);
+    expect(templateUpserts()).toHaveLength(0);
+    expect(result.current.templates.map(t => t.name)).toEqual(['Edited on the laptop']);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      'Saved at the gym changed elsewhere — your unsaved update from Sep 18 was not applied',
+    );
+  });
+
+  it('drops a write whose template was deleted on another device', async () => {
+    queuePendingTemplate(USER_ID, tpl({ name: 'Saved at the gym' }), 'stamp-1');
+    rows.workout_templates = [];
+
+    const { result } = await mounted();
+
+    expect(readPendingTemplates(USER_ID)).toEqual([]);
+    expect(templateUpserts()).toHaveLength(0);
+    expect(result.current.templates).toEqual([]);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      'Saved at the gym was deleted elsewhere — your unsaved update was dropped',
+    );
+  });
+
+  it('still replays an entry queued before baselines existed', async () => {
+    queuePendingTemplate(USER_ID, tpl({ name: 'Saved at the gym' }));
+    rows.workout_templates = [templateRow('Server copy', 'stamp-2')];
+
+    const { result } = await mounted();
+
+    await waitFor(() => expect(readPendingTemplates(USER_ID)).toEqual([]));
+    expect(templateUpserts()).toHaveLength(1);
+    expect(result.current.templates.map(t => t.name)).toEqual(['Saved at the gym']);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('replays a template that was new here and is still unknown to the server', async () => {
+    queuePendingTemplate(USER_ID, tpl({ name: 'Built offline' }), null);
+    rows.workout_templates = [];
+
+    const { result } = await mounted();
+
+    await waitFor(() => expect(readPendingTemplates(USER_ID)).toEqual([]));
+    expect(templateUpserts()).toHaveLength(1);
+    expect(result.current.templates.map(t => t.name)).toEqual(['Built offline']);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('keeps the stamp a save came back with, and queues it as the baseline of a later failed save', async () => {
+    upsertStamp = 'stamp-saved';
+    const { result } = await mounted();
+    await act(async () => { await result.current.saveTemplate(tpl()); });
+    expect(result.current.templates.find(t => t.id === 'tpl-1')?.updatedAt).toBe('stamp-saved');
+
+    upsertOutcome = 'error';
+    await act(async () => { await result.current.saveTemplate(tpl({ name: 'Second edit' })); });
+
+    const [entry] = readPendingTemplates(USER_ID);
+    expect(entry.template.name).toBe('Second edit');
+    expect(entry.baseline).toBe('stamp-saved');
+  });
+
+  it('queues a template new to this device with a null baseline', async () => {
+    const { result } = await mounted();
+    upsertOutcome = 'error';
+    await act(async () => { await result.current.saveTemplate(tpl({ id: 'brand-new' })); });
+    expect(readPendingTemplates(USER_ID)[0].baseline).toBeNull();
+  });
+
+  it('keeps the first failed save\'s baseline when a second one fails too', async () => {
+    rows.workout_templates = [templateRow('Push', 'stamp-1')];
+    const { result } = await mounted();
+    upsertOutcome = 'error';
+    // Neither attempt carries a stamp of its own, the way a builder that
+    // constructs the template afresh sends it; the second is built on the
+    // first's local version, whose stamp is therefore unknown.
+    await act(async () => { await result.current.saveTemplate(tpl({ name: 'Attempt 1' })); });
+    await act(async () => { await result.current.saveTemplate(tpl({ name: 'Attempt 2' })); });
+
+    const [entry] = readPendingTemplates(USER_ID);
+    expect(entry.template.name).toBe('Attempt 2');
+    expect(entry.baseline).toBe('stamp-1');
+  });
+});
+
 // The replay is older than anything the user does after reopening the app.
 // Left unsynchronised, its upsert could land after — and silently replace —
 // an edit made in the seconds the replay was in flight.
@@ -233,6 +373,45 @@ describe('a template write made while queued writes are replaying', () => {
     expect(templateWrites().map(([, , p]) => (p as { name: string }).name)).toEqual(['Queued offline', 'Edited after reopening']);
     expect(readPendingTemplates(USER_ID)).toEqual([]);
     expect(result.current.templates.find(t => t.id === 'tpl-1')?.name).toBe('Edited after reopening');
+  });
+
+  it('queues, if it then fails, against the stamp the replay left rather than the one it read first', async () => {
+    // The queued copy carries the row's stamp, as the end-of-workout prompt's
+    // spread of the template does, so the save reads a real baseline.
+    queuePendingTemplate(USER_ID, tpl({ name: 'Queued offline', updatedAt: 'stamp-1' }), 'stamp-1');
+    rows.workout_templates = [templateRow('Server copy', 'stamp-1')];
+    upsertStamp = 'stamp-replayed';
+    upsertOutcomes.push('ok', 'error');
+    const release = holdUpserts();
+    const { result } = await mounted();
+    await waitFor(() => expect(upserts.filter(u => u.table === 'workout_templates')).toHaveLength(1));
+
+    let saved!: Promise<boolean>;
+    act(() => { saved = result.current.saveTemplate(tpl({ name: 'Edited after reopening', updatedAt: 'stamp-1' })); });
+    release();
+    await act(async () => { expect(await saved).toBe(false); });
+
+    // Queued against 'stamp-1', the edit would read as a conflict with the
+    // replay's own write on the next load and be dropped — right after the
+    // toast promised it would retry.
+    const [entry] = readPendingTemplates(USER_ID);
+    expect(entry.template.name).toBe('Edited after reopening');
+    expect(entry.baseline).toBe('stamp-replayed');
+  });
+
+  it('does not carry a replay\'s stamp into a later save whose row has moved on', async () => {
+    queuePendingTemplate(USER_ID, tpl({ name: 'Queued offline', updatedAt: 'stamp-1' }), 'stamp-1');
+    rows.workout_templates = [templateRow('Server copy', 'stamp-1')];
+    upsertStamp = 'stamp-replayed';
+    const { result } = await mounted();
+    await waitFor(() => expect(result.current.templates.find(t => t.id === 'tpl-1')?.updatedAt).toBe('stamp-replayed'));
+
+    upsertStamp = 'stamp-saved';
+    await act(async () => { expect(await result.current.saveTemplate(tpl({ name: 'First edit' }))).toBe(true); });
+    upsertOutcome = 'error';
+    await act(async () => { expect(await result.current.saveTemplate(tpl({ name: 'Second edit' }))).toBe(false); });
+
+    expect(readPendingTemplates(USER_ID)[0].baseline).toBe('stamp-saved');
   });
 
   it('does not let the replay resurrect a template deleted meanwhile', async () => {

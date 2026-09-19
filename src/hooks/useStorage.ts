@@ -9,7 +9,7 @@ import { parseLocalDate } from '@/utils/dateUtils';
 import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
 import { getFutureWorkoutsCompletedBySession } from '@/utils/scheduledWorkout';
 import { readStorageCache, writeStorageCache, type CachedStorage } from '@/utils/storageCache';
-import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate, type PendingTemplateWrite } from '@/utils/pendingTemplateWrites';
+import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate, resolvePendingTemplates, type PendingTemplateWrite, type PendingTemplateConflict } from '@/utils/pendingTemplateWrites';
 import { programOccurrences, programWindow, sanitizeProgramDays } from '@/utils/programFrequency';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
@@ -113,6 +113,7 @@ function mapTemplate(row: TemplateRow): WorkoutTemplate {
     id: row.id,
     name: row.name,
     exercises: row.exercises as unknown as WorkoutTemplate['exercises'],
+    updatedAt: row.updated_at,
   };
 }
 
@@ -247,13 +248,19 @@ function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; pre
  * Replay template writes that an earlier session couldn't get through. Runs
  * after a successful load, so a connection good enough to read is the signal
  * to try writing again. Stops at the first failure and leaves the rest queued
- * rather than burning through a batch that is clearly still offline.
+ * rather than burning through a batch that is clearly still offline. The
+ * caller has already dropped the entries whose row moved on elsewhere
+ * (`resolvePendingTemplates`); everything that arrives here is safe to write.
  *
  * saveTemplate and deleteTemplate wait for the replay before writing: a
  * queued version is older than anything the user does after reopening the
  * app, and its upsert landing second would silently replace their edit.
  */
-async function flushPendingTemplateWrites(userId: string, pending: PendingTemplateWrite[]): Promise<void> {
+async function flushPendingTemplateWrites(
+  userId: string,
+  pending: PendingTemplateWrite[],
+  onReplayed: (templateId: string, updatedAt: string) => void,
+): Promise<void> {
   for (const { template, queuedAt } of pending) {
     // The queue was captured at load. An entry cleared since — a save that
     // landed from another tab, a delete — must not be written over that.
@@ -262,17 +269,18 @@ async function flushPendingTemplateWrites(userId: string, pending: PendingTempla
     );
     if (!stillQueued) continue;
     try {
-      const { error } = await supabase.from('workout_templates').upsert({
+      const { data, error } = await supabase.from('workout_templates').upsert({
         id: template.id,
         user_id: userId,
         name: template.name,
         exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
-      });
+      }).select('updated_at').single();
       if (error) {
         console.error('[useStorage] pending template flush failed:', error);
         return;
       }
       clearPendingTemplate(userId, template.id);
+      onReplayed(template.id, data.updated_at);
     } catch (e) {
       console.error('[useStorage] pending template flush failed:', e);
       return;
@@ -288,6 +296,13 @@ async function writeError(query: PromiseLike<{ error: unknown }>): Promise<unkno
   } catch (e) {
     return e;
   }
+}
+
+function pendingConflictMessage({ entry, reason }: PendingTemplateConflict): string {
+  const { name } = entry.template;
+  return reason === 'deleted'
+    ? `${name} was deleted elsewhere — your unsaved update was dropped`
+    : `${name} changed elsewhere — your unsaved update from ${format(entry.queuedAt, 'MMM d')} was not applied`;
 }
 
 /** Loaded rows with any not-yet-written edits laid back over the top. */
@@ -309,6 +324,15 @@ export function useStorage() {
   const userId = user?.id ?? null;
   const [history, setHistory] = useState<WorkoutSession[]>([]);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  // Mirrors `templates` for a callback that has to read it without taking it
+  // as a dependency: saveTemplate would otherwise change identity on every
+  // edit of any template.
+  const templatesRef = useRef(templates);
+  templatesRef.current = templates;
+  // The stamp each replayed write left on its row, for a save that waited on
+  // that replay: it read its baseline before the row moved, and the re-stamped
+  // row has not rendered into templatesRef by the time it resumes.
+  const replayedStamps = useRef(new Map<string, string>());
   const [programs, setPrograms] = useState<WorkoutProgram[]>([]);
   const [activeProgramId, setActiveProgramIdState] = useState<string | null>(null);
   const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>([]);
@@ -427,11 +451,25 @@ export function useStorage() {
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
         if (templatesRes.data) {
           const loaded = templatesRes.data.map(mapTemplate);
-          // A queued write is newer than what the server just handed back, so
-          // it wins on screen while the replay below catches the row up.
-          const pending = readPendingTemplates(userId);
-          setTemplates(pending.length ? overlayPendingTemplates(loaded, pending) : loaded);
-          if (pending.length) pendingFlush.current = flushPendingTemplateWrites(userId, pending);
+          // A queued write is newer than the row it was built on, so it wins
+          // on screen while the replay below catches the row up. A row that
+          // has since changed or gone on another device is the newer one
+          // instead: that write is dropped and said so, never laid over it.
+          const { replay, conflicts } = resolvePendingTemplates(readPendingTemplates(userId), loaded);
+          for (const conflict of conflicts) {
+            clearPendingTemplate(userId, conflict.entry.template.id);
+            toast.error(pendingConflictMessage(conflict));
+          }
+          setTemplates(replay.length ? overlayPendingTemplates(loaded, replay) : loaded);
+          if (replay.length) {
+            pendingFlush.current = flushPendingTemplateWrites(userId, replay, (id, updatedAt) => {
+              replayedStamps.current.set(id, updatedAt);
+              // Only the stamp: the row on screen may already hold an edit
+              // made while the replay was in flight, which saveTemplate is
+              // waiting on this flush to write.
+              setTemplates(prev => prev.map(t => (t.id === id ? { ...t, updatedAt } : t)));
+            });
+          }
         }
         if (programsRes.data) setPrograms(programsRes.data.map(mapProgram));
         if (futureRes.data) setFutureWorkouts(futureRes.data.map(mapFutureWorkout));
@@ -626,19 +664,36 @@ export function useStorage() {
   const saveTemplate = useCallback(async (template: WorkoutTemplate): Promise<boolean> => {
     noteWrite();
     if (!user) return false;
+    // The stamp of the row this edit was built on, read before the local
+    // apply below replaces it; a queued write is checked against it on
+    // replay. null is a template new to this device. undefined is one whose
+    // stamp is not known, which the queue replays unconditionally.
+    const current = templatesRef.current.find(t => t.id === template.id);
+    let baseline = current ? current.updatedAt : null;
     // Applied before the round trip: the edit is kept whatever the outcome
     // below, and a list that lacked the template until the server answered
     // is what invited a second tap on Duplicate.
     applyTemplateLocally(template);
     await pendingFlush.current;
+    // A replay that landed during that wait is what the row carries now, and
+    // queued against the older stamp this edit would be dropped as a conflict
+    // on the next load. Taken once: a later save's own row holds anything newer.
+    const replayed = replayedStamps.current.get(template.id);
+    if (replayed !== undefined) {
+      baseline = replayed;
+      replayedStamps.current.delete(template.id);
+    }
+    let updatedAt: string | undefined;
     let error: unknown = null;
     try {
-      ({ error } = await supabase.from('workout_templates').upsert({
+      const res = await supabase.from('workout_templates').upsert({
         id: template.id,
         user_id: user.id,
         name: template.name,
         exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
-      }));
+      }).select('updated_at').single();
+      error = res.error;
+      updatedAt = res.data?.updated_at;
     } catch (e) {
       // An offline fetch rejects rather than resolving with an error payload.
       error = e;
@@ -646,13 +701,14 @@ export function useStorage() {
     if (error) {
       console.error('[useStorage] saveTemplate error:', error);
       toast.error('Failed to save template — it will retry when you\'re back online');
-      queuePendingTemplate(user.id, template);
+      queuePendingTemplate(user.id, template, baseline);
       return false;
     }
     clearPendingTemplate(user.id, template.id);
-    // Applied again once the row is on the server: a load that resolved in
-    // between read the pre-write rows and painted over the early apply.
-    applyTemplateLocally(template);
+    // Applied again once the row is on the server, now carrying the stamp the
+    // server gave it: a load that resolved in between read the pre-write rows
+    // and painted over the early apply.
+    applyTemplateLocally({ ...template, updatedAt });
     return true;
   }, [user, applyTemplateLocally]);
 
@@ -669,6 +725,9 @@ export function useStorage() {
     // Otherwise a queued write for this template would recreate it on the
     // next load.
     clearPendingTemplate(user.id, id);
+    // The row is gone, so a stamp the replay left on it is no baseline for
+    // anything written under this id again.
+    replayedStamps.current.delete(id);
     setTemplates(prev => prev.filter(t => t.id !== id));
     return true;
   }, [user]);
