@@ -22,6 +22,14 @@ const LIST_COLUMNS = 'id, token, kind, title, source_id, revoked_at, view_count,
 // message rather than letting an opaque jsonb write error surface.
 const MAX_PAYLOAD_BYTES = 1_000_000;
 
+// `shares_title_length_check` counts characters, so the clamp walks code
+// points rather than UTF-16 units and never leaves half an emoji behind.
+const MAX_TITLE_CHARS = 200;
+const clampTitle = (title: string) => Array.from(title.trim()).slice(0, MAX_TITLE_CHARS).join('');
+
+/** The server refusing the row for size (`shares_payload_size_check`) or title length — what the client guard above missed. */
+const isCheckViolation = (error: { code?: string } | null) => error?.code === '23514';
+
 function mapShare(row: Pick<ShareRow, 'id' | 'token' | 'kind' | 'title' | 'source_id' | 'revoked_at' | 'view_count' | 'created_at' | 'updated_at'>): ShareListItem {
   return {
     id: row.id,
@@ -115,14 +123,16 @@ export function useShares({ autoFetch = true }: UseSharesOptions = {}) {
       return null;
     }
 
+    const title = clampTitle(args.title);
+
     if (existing) {
       const { error } = await supabase
         .from('shares')
-        .update({ title: args.title, payload: JSON.parse(serialized) })
+        .update({ title, payload: JSON.parse(serialized) })
         .eq('id', existing.id);
       if (error) {
         console.error('[useShares] update error:', error);
-        toast.error('Could not update the link');
+        toast.error(isCheckViolation(error) ? 'This is too large to share.' : 'Could not update the link');
         return null;
       }
       await refreshList();
@@ -135,7 +145,7 @@ export function useShares({ autoFetch = true }: UseSharesOptions = {}) {
         user_id: userId,
         kind: args.kind,
         source_id: args.sourceId,
-        title: args.title,
+        title,
         payload: JSON.parse(serialized),
       })
       .select('token')
@@ -143,7 +153,7 @@ export function useShares({ autoFetch = true }: UseSharesOptions = {}) {
 
     if (error || !data) {
       console.error('[useShares] insert error:', error);
-      toast.error('Could not create a link');
+      toast.error(isCheckViolation(error) ? 'This is too large to share.' : 'Could not create a link');
       return null;
     }
     await refreshList();

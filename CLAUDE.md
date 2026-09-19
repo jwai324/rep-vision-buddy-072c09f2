@@ -353,6 +353,17 @@ client sends the one input it controls, the function holds the key). `.env`
 carries only the Supabase URL and the publishable key, both of which are public
 by design.
 
+### Browser security headers
+
+`vercel.json` sends `X-Frame-Options: DENY`, `Content-Security-Policy:
+frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and
+`Referrer-Policy: strict-origin-when-cross-origin` on every route. The session
+token in localStorage is partitioned inside a cross-site iframe, so this is
+hygiene rather than a closed exploit. A full `script-src` CSP was deliberately
+not attempted: it needs an inventory of every origin the bundle talks to and
+breaks silently when one is missed. There is no `Permissions-Policy`; the
+coach's mic button needs the microphone.
+
 ## Capacitor (when you're ready for mobile)
 
 The app isn't wrapped for native yet. When you're ready:
@@ -428,6 +439,18 @@ the URL was refused (48 weeks of daily rows is a 13 KB query string), and a
 refused delete doubled every date. A workout already completed on or after
 today is not scheduled a second time beside its completed row.
 
+**Shifting a program's calendar is one transaction.** `pushProgramBack` calls
+`shift_program_workouts` (`20260919141335_atomic_program_shift.sql`, `SECURITY
+INVOKER` under RLS), which writes the program's shifted start date and days
+and moves every uncompleted row on or after the from-date by N days, or does
+none of it. It used to be one UPDATE per row fired in parallel: a failure
+part-way left some rows moved with the screen showing none, and the program's
+own anchors unshifted. The client still computes the shifted program (only
+every-N-days anchors move) and runs it through `sanitizeProgramDays` before
+sending, applies the same object locally on success, toasts the server's row
+count, bounds days to 1–366 as the function does, and is single-flight so a
+double tap cannot shift twice.
+
 **A write that lands while a load is in flight wins.** Every write bumps
 `writeSerial`; a load that started before a write and resolved after it is
 discarded and run once more (at most twice), instead of painting rows that are
@@ -466,6 +489,19 @@ resurrects it. `saveTemplate` and `deleteTemplate` also **wait for the replay
 in flight** (`pendingFlush`) before writing: a queued version is older than
 anything the user does after reopening the app, and its upsert landing second
 silently replaced the newer edit. That `await` is not a needless delay.
+
+A queued write also **replays only over the row it was built on**. Templates
+carry the server's `updated_at` (`updatedAt`, selected back on every
+successful upsert), and a queued entry records the stamp of the row the edit
+started from as its `baseline` (`null` for a template that did not exist yet;
+absent on entries queued before this rule, which replay as before). At load,
+an entry whose row now carries a different stamp, or no row at all, is dropped
+with a toast naming the template rather than laid over the loaded rows: the
+phone's gym-day update used to overwrite the laptop's edit from that evening,
+and a template deleted elsewhere came back. The baseline is captured *after*
+the pending flush the save waits for, so a replay in flight cannot make the
+next save read as a conflict, and a second failed save keeps the first
+entry's baseline (its "before" is the local version, not the server's).
 
 ## Program frequencies are validated at every door
 
@@ -747,6 +783,27 @@ encoding back to the level. Never hand a stored band weight straight to
 `getBandLevelShortLabel` — that is how the Previous column, the summary and
 the strength chart came to say "Level 2.72".
 
+**A template can carry a distance target.** `TemplateExercise.targetDistance`
+is metres; the builder edits it in km on its own block field (it used to write
+into `targetWeight`, which `blockToExercise` rightly refused to keep for
+distance work, so the number was dropped on every save). It round-trips
+through `templateBlocks.ts` for distance *and* time-and-distance modes (no
+built-in exercise is distance-only; rowing and walking are
+time-and-distance), prefills the set's distance when a workout starts from the
+template, comes back through `templateFromSession`, shows on the shared page,
+and is accepted and bounded (0 < m <= 1,000,000) by the coach's template
+tools, with `carryTemplateOnlyFields` keeping it across an `edit_template`
+that does not mention it.
+
+**A drop row obeys the main row's rules at every door.** `completionBlocker`
+in `useBlockMutations` holds the `canCompleteSet` check and its wordings once;
+`toggleSetComplete` and `updateDrop` both call it, the finish guard validates
+each completed drop under a completed set with `getSetFieldErrors` (drops
+under an incomplete parent never reach the log), and the table's drop inputs
+carry the same error ring and disabled tick through `fieldRingClass`. Before
+this a drop could be ticked with blank reps or a five-figure weight and saved
+into the volume totals.
+
 ## Supersets are links, not a set type
 
 A superset is `supersetGroup` shared by two or more exercises; it is made from
@@ -804,6 +861,17 @@ expanded tile says so. Save Program refuses while a referenced template still
 has an unsaved draft, rather than dropping or saving it silently. The editor's
 localStorage draft (`program_builder_draft`) carries the template drafts too,
 keyed to the program; the back arrow clears it, as Cancel did.
+
+**A builder draft is restored only over an unchanged source.** Both drafts
+carry a fingerprint (`src/utils/draftFingerprint.ts`, a 32-bit FNV-1a over a
+key-sorted serialisation) of the item they were taken from: name and
+exercises for a template, name, duration and days for a program, and one per
+template for the program editor's tile drafts. A draft whose source now
+fingerprints differently is stale (edited on another device, by the coach, or
+by an import) and is discarded silently, because restoring it and saving
+overwrote the newer version. A new item has no source and keeps its draft;
+drafts without a fingerprint, from before this rule, are discarded once for
+existing items.
 
 The editor shows **one target row per exercise and a set-count stepper**,
 because that is what a template can hold: `TemplateExercise` has a set count
@@ -873,16 +941,38 @@ import into their own library.
 - **Import remaps every id** (`src/utils/shareImport.ts`). Custom exercise ids
   are `custom-<row uuid>`, so the recipient's copies necessarily differ —
   missing ones are created (deduped by name) and each `exerciseId` is rewritten.
+  A custom id the snapshot carries **no definition for** (the sharer's library
+  had not loaded, or the exercise was deleted) is created for the viewer from
+  the snapshot's name when it has a real one, and otherwise removed from the
+  template and counted in the import toast; a stub is inserted with its
+  defaulted columns spelled out, because postgrest-js sends every key of the
+  row and an `undefined` lands as a NOT NULL violation. The sharer side is
+  gated too: the dialog waits for the custom library to load, and
+  `ShareTarget.buildPayload` takes the library at publish time rather than
+  closing over the list the screen held when Share was tapped, which was empty
+  in exactly the case the wait exists for.
   An imported program is deliberately **not** activated: activating it would
   regenerate the viewer's `future_workouts`, which is destructive.
+- **The table bounds what a share can be.** `public.shares` has CHECKs of
+  1 MiB on `payload` (`pg_column_size`) and 200 characters on `title`
+  (`20260919141231_share_payload_bounds.sql`); without them a hand-built
+  request could store any size, and `get_shared_item` streams the whole
+  payload to anyone with the link on the project's egress. The client clamps
+  the title, keeps its own 1,000,000-character payload guard, and reads a
+  `23514` refusal as "too large to share". The two limits measure different
+  things (JSON text length vs jsonb binary size) and only agree to within a
+  factor; real payloads are 50–100 KB, so neither is hit by legitimate use.
 - **`sharedBy` is never an email address.** Sign-up seeds `display_name` from
   the email, so an account that never renamed itself would put its address on
   a public page. `publishableSharedBy` drops anything that could be one, at
   share time in the snapshot builders and again on read in `SharedItem`
   (payloads frozen before the guard still carry it). Route any new reader or
   writer of `sharedBy` through it.
-- Snapshot shape changes must bump `SHARE_SNAPSHOT_VERSION` in
-  `src/types/share.ts`; the public page refuses payloads newer than it knows.
+- A snapshot shape change an older page could not render correctly must bump
+  `SHARE_SNAPSHOT_VERSION` in `src/types/share.ts`; the public page refuses
+  payloads newer than it knows. An added *optional* field (`targetDistance`
+  was one) needs no bump: an older page renders the payload exactly as before,
+  and a bump would only make it refuse a link it could show.
 - Links preview with the generic RepVision card — this is a client-rendered SPA
   behind a catch-all rewrite, so per-share OG tags would need a prerender step.
 
@@ -923,10 +1013,11 @@ each traced to a file and line by one reviewer and re-checked by another, with t
 critical and high ones also given to a reviewer told to disprove them. Start there.
 
 **All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`,
-a second pass closed the 20 highest-exposure items from the backlog, and a third
+a second pass closed the 20 highest-exposure items from the backlog, a third
 pass (`claude/code-audit-batch-one`) closed 69 more that were unambiguous
-defects. The audit's status note lists all three passes, names the 64 rows still
-open, and says which ship where.
+defects, and a fourth (`claude/code-audit-batch-two`) closed 8 the owner
+approved one by one from the remaining list. The audit's status note lists all
+four passes, names the 56 rows still open, and says which ship where.
 
 Two facts from that audit change how you work in this repo:
 
@@ -936,8 +1027,10 @@ Two facts from that audit change how you work in this repo:
   versions are repaired. When you apply through the MCP server, read the version it
   recorded and rename the local file to match, as
   `20260915170641_lock_down_token_credits.sql`,
-  `20260915182136_atomic_ai_turn_gate.sql` and
-  `20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql` do.
+  `20260915182136_atomic_ai_turn_gate.sql`,
+  `20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql`,
+  `20260919141231_share_payload_bounds.sql` and
+  `20260919141335_atomic_program_shift.sql` do.
 - **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
   Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). Rates now live in
   `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap with no entry bills at the

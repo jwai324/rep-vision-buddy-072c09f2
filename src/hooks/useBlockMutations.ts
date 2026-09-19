@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import type { ExerciseId, SetType, WorkoutSession, TemplateExercise } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
 import type { ExerciseBlock, SetRow, DropRow, ActiveSessionCache, RunningSetState } from '@/types/activeSession';
-import { getExerciseInputMode, isTimeBased, isDistanceBased, usesReps, usesWeight, toMeters } from '@/utils/exerciseInputMode';
+import { getExerciseInputMode, isTimeBased, isDistanceBased, usesReps, usesWeight, toMeters, type ExerciseInputMode } from '@/utils/exerciseInputMode';
 import { canCompleteSet } from '@/utils/setValidation';
 import type { WeightUnit } from '@/hooks/useStorage';
 import type { CustomExercise } from '@/hooks/useCustomExercises';
@@ -26,6 +26,23 @@ export function normalizeBlocks(blocks: ExerciseBlock[]): ExerciseBlock[] {
     });
     return needsFix ? { ...b, sets } : b;
   });
+}
+
+/**
+ * Why a row cannot be ticked yet, or null when it can. A drop is held to
+ * exactly the rules of the set it hangs off, so both ticks ask here rather
+ * than each carrying its own copy of the check and the wording.
+ */
+function completionBlocker(
+  row: Pick<DropRow, 'weight' | 'reps' | 'time' | 'distance'>,
+  mode: ExerciseInputMode,
+  weightUnit: WeightUnit,
+): string | null {
+  if (canCompleteSet(row.weight, row.reps, weightUnit, isTimeBased(mode), row.time ?? '', mode, row.distance)) return null;
+  return isTimeBased(mode) ? 'Enter a time before completing this set.'
+    : isDistanceBased(mode) ? 'Enter a distance before completing this set.'
+    : mode === 'reps' ? 'Enter reps before completing this set.'
+    : 'Enter valid weight and reps before completing this set.';
 }
 
 interface UseBlockMutationsOptions {
@@ -95,14 +112,9 @@ export function useBlockMutations(
       const wasCompleted = set.completed;
 
       if (!wasCompleted) {
-        const mode = getExerciseInputMode(block.exerciseId, customExercises);
-        const isCardio = isTimeBased(mode);
-        if (!canCompleteSet(set.weight, set.reps, weightUnit, isCardio, set.time, mode, set.distance)) {
-          const errorMsg = isTimeBased(mode) ? 'Enter a time before completing this set.'
-            : isDistanceBased(mode) ? 'Enter a distance before completing this set.'
-            : mode === 'reps' ? 'Enter reps before completing this set.'
-            : 'Enter valid weight and reps before completing this set.';
-          toast.error(errorMsg);
+        const blocker = completionBlocker(set, getExerciseInputMode(block.exerciseId, customExercises), weightUnit);
+        if (blocker) {
+          toast.error(blocker);
           return prev;
         }
       }
@@ -170,17 +182,28 @@ export function useBlockMutations(
   }, [setBlocks]);
 
   const updateDrop = useCallback((blockIdx: number, setIdx: number, dropIdx: number, field: keyof DropRow, value: string | boolean) => {
-    setBlocks(prev => prev.map((block, bi) => {
-      if (bi !== blockIdx) return block;
-      return {
-        ...block,
-        sets: block.sets.map((set, si) => {
-          if (si !== setIdx || !set.drops) return set;
-          return { ...set, drops: set.drops.map((d, di) => di === dropIdx ? { ...d, [field]: value } : d) };
-        }),
-      };
-    }));
-  }, [setBlocks]);
+    setBlocks(prev => {
+      if (field === 'completed' && value === true) {
+        const block = prev[blockIdx];
+        const drop = block?.sets[setIdx]?.drops?.[dropIdx];
+        const blocker = drop && completionBlocker(drop, getExerciseInputMode(block.exerciseId, customExercises), weightUnit);
+        if (blocker) {
+          toast.error(blocker);
+          return prev;
+        }
+      }
+      return prev.map((block, bi) => {
+        if (bi !== blockIdx) return block;
+        return {
+          ...block,
+          sets: block.sets.map((set, si) => {
+            if (si !== setIdx || !set.drops) return set;
+            return { ...set, drops: set.drops.map((d, di) => di === dropIdx ? { ...d, [field]: value } : d) };
+          }),
+        };
+      });
+    });
+  }, [setBlocks, weightUnit, customExercises]);
 
   const removeSet = useCallback((blockIdx: number, setIdx: number) => {
     // Read from the render's blocks, not inside the updater: React runs an

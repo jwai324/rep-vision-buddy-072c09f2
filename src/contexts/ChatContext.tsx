@@ -31,6 +31,7 @@ export interface ExerciseInput {
   targetRpe?: number;
   supersetGroup?: number;
   targetWeight?: number;
+  targetDistance?: number;
 }
 
 export interface ProgramDayInput {
@@ -352,6 +353,7 @@ export function carryTemplateOnlyFields(
       targetRpe: e.targetRpe ?? prior.targetRpe,
       supersetGroup: e.supersetGroup ?? prior.supersetGroup,
       targetWeight: e.targetWeight ?? prior.targetWeight,
+      targetDistance: e.targetDistance ?? prior.targetDistance,
     };
   });
 }
@@ -369,6 +371,10 @@ export function normalizeSetType(value: unknown): SetType {
 const isInt = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 const isLoad = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+// An upper bound so a km-as-metres slip (a "5000 km" run) is refused rather than saved.
+const MAX_TARGET_DISTANCE_M = 1_000_000;
+const isDistance = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= MAX_TARGET_DISTANCE_M;
 
 export const NUMERIC_BOUNDS = {
   sets: [1, 20],
@@ -402,6 +408,9 @@ export function templateExerciseIssues(e: ExerciseInput, name: string): string[]
   }
   if (e.targetWeight != null && !isLoad(e.targetWeight)) {
     issues.push(`${name}: targetWeight must be a number of 0 or more (got ${JSON.stringify(e.targetWeight)}).`);
+  }
+  if (e.targetDistance != null && !isDistance(e.targetDistance)) {
+    issues.push(`${name}: targetDistance must be a number of metres above 0 and at most ${MAX_TARGET_DISTANCE_M} (got ${JSON.stringify(e.targetDistance)}).`);
   }
   return issues;
 }
@@ -472,7 +481,7 @@ export function templateChangedSince(
   const a = before.exercises ?? [];
   const b = current.exercises ?? [];
   if (a.length !== b.length) return true;
-  const fields = ['exerciseId', 'sets', 'targetReps', 'setType', 'restSeconds', 'targetWeight', 'targetRpe', 'supersetGroup'] as const;
+  const fields = ['exerciseId', 'sets', 'targetReps', 'setType', 'restSeconds', 'targetWeight', 'targetDistance', 'targetRpe', 'supersetGroup'] as const;
   return a.some((x, i) => fields.some(f => !sameValue(x[f], b[i][f])));
 }
 
@@ -955,6 +964,7 @@ export const ChatProvider: React.FC<{
             targetRpe: e.targetRpe,
             supersetGroup: e.supersetGroup,
             targetWeight: e.targetWeight,
+            targetDistance: e.targetDistance,
           })),
         };
         const proposal: Proposal = {
@@ -988,6 +998,7 @@ export const ChatProvider: React.FC<{
             targetRpe: e.targetRpe,
             supersetGroup: e.supersetGroup,
             targetWeight: e.targetWeight,
+            targetDistance: e.targetDistance,
           }));
         }
         const after = { ...existing, name: args.name || existing.name, exercises };
@@ -1028,6 +1039,7 @@ export const ChatProvider: React.FC<{
           targetRpe: e.targetRpe,
           supersetGroup: e.supersetGroup,
           targetWeight: e.targetWeight,
+          targetDistance: e.targetDistance,
         }));
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,

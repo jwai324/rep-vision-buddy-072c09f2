@@ -13,14 +13,22 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { shareUrlFor, useShares } from '@/hooks/useShares';
+import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import type { ShareKind, ShareSnapshot } from '@/types/share';
+import type { CustomExerciseLite } from '@/utils/shareSnapshot';
 
 export interface ShareTarget {
   kind: ShareKind;
   sourceId: string;
   title: string;
   /** Built lazily so a snapshot is only assembled when the user actually shares. */
-  buildPayload: () => ShareSnapshot;
+  /**
+   * Built at publish time, with the custom library as it is then. The dialog
+   * waits for the library to load before it lets the user publish, and that
+   * wait is only worth anything if the payload is built from the loaded
+   * library rather than from whatever the screen held when Share was tapped.
+   */
+  buildPayload: (customExercises: CustomExerciseLite[]) => ShareSnapshot;
 }
 
 interface ShareDialogProps {
@@ -54,6 +62,13 @@ async function copyToClipboard(url: string, input: HTMLInputElement | null): Pro
 
 export const ShareDialog: React.FC<ShareDialogProps> = ({ target, onClose }) => {
   const { createOrUpdateShare, findLiveShare } = useShares({ autoFetch: false });
+  // The snapshot resolves custom exercises through the library, which loads
+  // from Supabase after mount with no local cache. Publishing before it lands
+  // freezes bare `custom-<uuid>` ids into the payload with no definition and
+  // the raw id as the name, and the viewer's import then has nothing to copy.
+  // The context's default is `loading: true`, so a dialog mounted outside
+  // CustomExercisesProvider (Index wraps it) stays disabled rather than erroring.
+  const { loading: exercisesLoading, exercises: customExercises } = useCustomExercisesContext();
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -79,18 +94,22 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ target, onClose }) => 
 
   const publish = useCallback(async () => {
     if (!target) return;
+    if (exercisesLoading) {
+      toast.error('Still loading your exercises — try again in a moment');
+      return;
+    }
     setBusy(true);
     const token = await createOrUpdateShare({
       kind: target.kind,
       sourceId: target.sourceId,
       title: target.title,
-      payload: target.buildPayload(),
+      payload: target.buildPayload(customExercises),
     });
     setBusy(false);
     if (!token) return;
     setUrl(shareUrlFor(token));
     toast.success(url ? 'Shared copy updated' : 'Link created');
-  }, [target, createOrUpdateShare, url]);
+  }, [target, exercisesLoading, customExercises, createOrUpdateShare, url]);
 
   const handleCopy = useCallback(async () => {
     if (!url) return;
@@ -142,14 +161,14 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ target, onClose }) => 
                 </Button>
               )}
             </div>
-            <Button variant="ghost" size="sm" onClick={publish} disabled={busy} className="w-full">
+            <Button variant="ghost" size="sm" onClick={publish} disabled={busy || exercisesLoading} className="w-full">
               {busy ? 'Updating…' : 'Update shared copy'}
             </Button>
           </div>
         )}
 
         {!url && !checking && (
-          <Button variant="neon" onClick={publish} disabled={busy} className="w-full gap-2">
+          <Button variant="neon" onClick={publish} disabled={busy || exercisesLoading} className="w-full gap-2">
             <Link2 className="w-4 h-4" />
             {busy ? 'Creating link…' : 'Create link'}
           </Button>

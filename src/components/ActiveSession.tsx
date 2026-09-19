@@ -250,6 +250,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           setNumber: i + 1,
           weight: targetWeightToInput(tpl?.targetWeight, weightUnit, isBand),
           reps: tpl?.targetReps === 'failure' ? '' : (tpl?.targetReps?.toString() ?? ''),
+          // Stored in metres; the box holds the user's unit, trimmed to two
+          // decimals so a 5000 m target reads 3.11 mi rather than 17 digits.
+          distance: tpl?.targetDistance != null ? String(Number(fromMeters(tpl.targetDistance, distanceUnit).toFixed(2))) : '',
           completed: false,
           type: tpl?.setType ?? 'normal',
           rpe: '',
@@ -1120,16 +1123,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
 
     // Guard: any completed set with invalid field values blocks finishing.
+    // A drop is checked only under a completed parent, because those are the
+    // only drops the log built below keeps.
+    const invalidField = (row: { weight: string; reps: string; rpe: string }, mode: ExerciseInputMode) => {
+      const errs = getSetFieldErrors(row, weightUnit, mode);
+      return errs.weight ? 'weight' : errs.reps ? 'reps' : errs.rpe ? 'RPE' : null;
+    };
     for (const block of blocks) {
       const mode = getExerciseInputMode(block.exerciseId, customExercises);
-      for (let si = 0; si < block.sets.length; si++) {
-        const s = block.sets[si];
+      for (const s of block.sets) {
         if (!s.completed) continue;
-        const errs = getSetFieldErrors({ weight: s.weight, reps: s.reps, rpe: s.rpe }, weightUnit, mode);
-        const badField = errs.weight ? 'weight' : errs.reps ? 'reps' : errs.rpe ? 'RPE' : null;
+        const badField = invalidField(s, mode);
         if (badField) {
           toast.error(`Fix invalid ${badField} in ${block.exerciseName}, Set ${s.setNumber}`);
           return;
+        }
+        for (const [di, d] of (s.drops ?? []).entries()) {
+          if (!d.completed) continue;
+          const badDropField = invalidField(d, mode);
+          if (badDropField) {
+            toast.error(`Fix invalid ${badDropField} in ${block.exerciseName}, Set ${s.setNumber} drop ${di + 1}`);
+            return;
+          }
         }
       }
     }

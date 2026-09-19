@@ -340,3 +340,87 @@ describe('saving the program waits for the row', () => {
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
   });
 });
+
+describe('the draft is restored only over the rows it was taken from', () => {
+  const DRAFT_KEY = 'program_builder_draft';
+  const storedDraft = () => JSON.parse(localStorage.getItem(DRAFT_KEY)!);
+
+  it('comes back after a reload when the program is unchanged', () => {
+    const { unmount } = renderBuilder();
+    fireEvent.change(screen.getByLabelText('Program name'), { target: { value: 'Push/Pull v2' } });
+    expect(storedDraft().source).toMatch(/^[0-9a-f]{8}$/);
+    unmount();
+
+    renderBuilder();
+    expect(screen.getByLabelText('Program name')).toHaveValue('Push/Pull v2');
+  });
+
+  it('is dropped when the program changed since, so the newer version is what opens', () => {
+    const { unmount } = renderBuilder();
+    fireEvent.change(screen.getByLabelText('Program name'), { target: { value: 'Push/Pull v2' } });
+    unmount();
+
+    // Another device, the coach or an import saved the program at 12 weeks in between.
+    renderBuilder({ initial: { ...program, durationWeeks: 12 } });
+    expect(screen.getByLabelText('Program name')).toHaveValue('Push/Pull');
+    expect(screen.getByLabelText('Duration')).toHaveValue('12');
+  });
+
+  it('is kept for a new program, which has nothing to conflict with', () => {
+    const { unmount } = renderBuilder({ initial: undefined });
+    fireEvent.change(screen.getByLabelText('Program name'), { target: { value: 'Starter' } });
+    expect(storedDraft()).toMatchObject({ id: null, source: null });
+    unmount();
+
+    renderBuilder({ initial: undefined });
+    expect(screen.getByLabelText('Program name')).toHaveValue('Starter');
+  });
+
+  it('drops a draft written before the source was recorded, which cannot be checked', () => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      id: program.id, name: 'Stale', durationWeeks: 4, days: program.days, templateDrafts: {},
+    }));
+
+    renderBuilder();
+    expect(screen.getByLabelText('Program name')).toHaveValue('Push/Pull');
+    expect(screen.getByLabelText('Duration')).toHaveValue('8');
+  });
+
+  it('drops only the template draft whose template changed elsewhere, and keeps the program draft', () => {
+    const { unmount } = renderBuilder();
+    fireEvent.change(screen.getByLabelText('Program name'), { target: { value: 'Push/Pull v2' } });
+    fireEvent.click(footer(1)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    fireEvent.click(footer(3)!);
+    fireEvent.change(repsCells(tile(3))[0], { target: { value: '5' } });
+    expect(Object.keys(storedDraft().templateSources).sort()).toEqual(['tpl-pull', 'tpl-push']);
+    unmount();
+
+    // Push Day was saved at 6 reps from somewhere else; Pull Day is as it was.
+    const pushEditedElsewhere: WorkoutTemplate = {
+      ...push,
+      exercises: [{ ...push.exercises[0], targetReps: 6 }, push.exercises[1]],
+    };
+    renderBuilder({ templates: [pushEditedElsewhere, pull] });
+
+    expect(screen.getByLabelText('Program name')).toHaveValue('Push/Pull v2');
+    expect(within(tile(1)).queryByText('Unsaved changes')).toBeNull();
+    fireEvent.click(footer(1)!);
+    expect(repsCells(tile(1))[0]).toHaveValue(6);
+    expect(within(tile(3)).getByText('Unsaved changes')).toBeInTheDocument();
+    fireEvent.click(footer(3)!);
+    expect(repsCells(tile(3))[0]).toHaveValue(5);
+  });
+
+  it('drops a template draft whose template no longer exists', () => {
+    const { unmount } = renderBuilder();
+    fireEvent.click(footer(1)!);
+    fireEvent.change(repsCells(tile(1))[0], { target: { value: '8' } });
+    expect(storedDraft().templateDrafts).toHaveProperty('tpl-push');
+    unmount();
+
+    renderBuilder({ templates: [pull] });
+    expect(footer(1)).toBeNull();
+    expect(storedDraft().templateDrafts).toEqual({});
+  });
+});

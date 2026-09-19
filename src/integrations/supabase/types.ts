@@ -775,6 +775,16 @@ export type Database = {
           new_balance_micros: number
         }[]
       }
+      shift_program_workouts: {
+        Args: {
+          p_days: number
+          p_from_date: string
+          p_program_days: Json
+          p_program_id: string
+          p_start_date: string
+        }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

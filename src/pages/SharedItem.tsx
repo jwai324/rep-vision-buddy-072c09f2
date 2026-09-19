@@ -80,7 +80,11 @@ const SharedItem: React.FC = () => {
         result.templatesCreated ? `${result.templatesCreated} template${result.templatesCreated === 1 ? '' : 's'}` : null,
         result.customExercisesCreated ? `${result.customExercisesCreated} exercise${result.customExercisesCreated === 1 ? '' : 's'}` : null,
       ].filter(Boolean);
-      toast.success(`Saved ${parts.join(', ')} to your workouts`);
+      const dropped = result.exercisesDropped;
+      toast.success(
+        `Saved ${parts.join(', ')} to your workouts`
+        + (dropped ? `. ${dropped} exercise${dropped === 1 ? '' : 's'} couldn't be brought over.` : ''),
+      );
       navigate('/');
     } catch (err) {
       console.error('[SharedItem] import error:', err);

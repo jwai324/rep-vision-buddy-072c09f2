@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { blocksToExercises, templateToBlocks, type TemplateBlock } from '@/utils/templateBlocks';
+import { fingerprint } from '@/utils/draftFingerprint';
 import { TemplateExerciseEditor, type BlocksUpdate } from '@/components/TemplateExerciseEditor';
 
 interface ProgramBuilderProps {
@@ -47,17 +48,41 @@ interface ProgramDraft {
   templateDrafts: TemplateDrafts;
 }
 
-function loadDraft(initial?: WorkoutProgram): ProgramDraft {
+/** What the draft was taken from; null for a program that does not exist yet. */
+const programSource = (program?: WorkoutProgram): string | null =>
+  program ? fingerprint({ name: program.name, durationWeeks: program.durationWeeks, days: program.days }) : null;
+
+const templateSource = (template: WorkoutTemplate): string =>
+  fingerprint({ name: template.name, exercises: template.exercises });
+
+/**
+ * A draft is restored only over the rows it was taken from. One abandoned on
+ * a device used to come up over a version saved since on another (or by the
+ * coach, or an import), and Save wrote the stale one back. The program and
+ * each template draft are checked on their own, so a template edited elsewhere
+ * drops only its own draft; a new program has no source to drift from. A
+ * draft written before the sources were recorded cannot be checked and is
+ * dropped, as is a template draft whose template is gone.
+ */
+function loadDraft(initial: WorkoutProgram | undefined, templates: WorkoutTemplate[]): ProgramDraft {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (raw) {
       const draft = JSON.parse(raw);
-      if ((draft.id ?? null) === (initial?.id ?? null)) {
+      const sameProgram = (draft.id ?? null) === (initial?.id ?? null);
+      const sameSource = !initial || draft.source === programSource(initial);
+      if (sameProgram && sameSource) {
+        const templateSources: Record<string, string> = draft.templateSources ?? {};
+        const templateDrafts: TemplateDrafts = {};
+        for (const [id, blocks] of Object.entries<TemplateBlock[]>(draft.templateDrafts ?? {})) {
+          const live = templates.find(t => t.id === id);
+          if (live && templateSources[id] === templateSource(live)) templateDrafts[id] = blocks;
+        }
         return {
           name: draft.name ?? '',
           durationWeeks: draft.durationWeeks ?? 8,
           days: draft.days ?? [{ label: 'Day 1', templateId: 'rest' }],
-          templateDrafts: draft.templateDrafts ?? {},
+          templateDrafts,
         };
       }
     }
@@ -84,7 +109,7 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
 }) => {
   const exerciseLookup = useExerciseLookup();
   const { exercises: customExercises } = useCustomExercisesContext();
-  const [draft] = useState(() => loadDraft(initial));
+  const [draft] = useState(() => loadDraft(initial, templates));
   const [name, setName] = useState(draft.name);
   const [durationWeeks, setDurationWeeks] = useState(draft.durationWeeks);
   const [startDate] = useState(() => parseLocalDate(initial?.startDate ?? formatLocalDate()));
@@ -94,21 +119,29 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
 
-  // Cache draft to localStorage on every change
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, durationWeeks, days, templateDrafts }));
-    } catch { /* ignore */ }
-  }, [name, durationWeeks, days, templateDrafts, initial?.id]);
-
-  const clearDraft = React.useCallback(() => {
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-  }, []);
-
   const templatesById = useMemo(
     () => Object.fromEntries(templates.map(t => [t.id, t])) as Record<string, WorkoutTemplate>,
     [templates],
   );
+
+  // Cache draft to localStorage on every change, stamped with the rows it is
+  // a draft of (see `loadDraft`).
+  const source = useMemo(() => programSource(initial), [initial]);
+  React.useEffect(() => {
+    try {
+      const templateSources: Record<string, string> = {};
+      for (const id of Object.keys(templateDrafts)) {
+        if (templatesById[id]) templateSources[id] = templateSource(templatesById[id]);
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        id: initial?.id ?? null, name, durationWeeks, days, templateDrafts, source, templateSources,
+      }));
+    } catch { /* ignore */ }
+  }, [name, durationWeeks, days, templateDrafts, initial?.id, source, templatesById]);
+
+  const clearDraft = React.useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }, []);
 
   // What a tile shows until the user touches the template. Recomputed when the
   // custom library lands so names and band levels resolve, as the template

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React, { useEffect } from 'react';
 import { render, screen, act } from '@testing-library/react';
 import type { Session, User } from '@supabase/supabase-js';
+import { readStorageCache, writeStorageCache, type CachedStorage } from '@/utils/storageCache';
 
 type AuthCallback = (event: string, session: Session | null) => void;
 let emit: AuthCallback;
@@ -114,12 +115,31 @@ describe('signing out clears the cached snapshot', () => {
     return <button onClick={() => signOut()}>sign out</button>;
   };
 
+  // Written and read back through the cache's own API, so the test follows
+  // the key's version rather than spelling out one that a bump leaves behind.
+  const snapshot: CachedStorage = {
+    history: [], templates: [], programs: [], activeProgramId: null, futureWorkouts: [],
+    preferences: {
+      weightUnit: 'kg', defaultRestSeconds: 90, defaultDropSetsEnabled: false,
+      streakMode: 'daily', streakWeeklyTarget: 3, streakAdjustment: 0,
+      streakAdjustmentSetAt: null, tutorialCompleted: true, hideTimers: false,
+      customLocations: [], stickyNotes: {},
+    },
+    profile: {
+      displayName: null, goal: null, hybridGoals: [], coachNotes: null,
+      experienceLevel: null, equipment: [], injuries: [], age: null,
+      sex: null, heightCm: null, subscriptionTier: 'premium',
+    },
+    bodyMeasurements: [],
+  };
+
   it('removes any repvision storage snapshot from the device', async () => {
-    localStorage.setItem('repvision:storage:v1:u1', JSON.stringify({ history: [], templates: [] }));
+    writeStorageCache('u1', snapshot);
+    expect(readStorageCache('u1')).not.toBeNull();
     await mountAndSettle(<AuthProvider><SignOutButton /></AuthProvider>);
 
     await act(async () => { screen.getByRole('button').click(); });
 
-    expect(localStorage.getItem('repvision:storage:v1:u1')).toBeNull();
+    expect(readStorageCache('u1')).toBeNull();
   });
 });

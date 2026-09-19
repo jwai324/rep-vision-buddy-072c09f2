@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { WorkoutTemplate } from '@/types/workout';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { resolveTemplateSupersets } from '@/utils/templateSupersets';
 import { blocksToExercises, templateToBlocks, type CustomExerciseLite, type TemplateBlock } from '@/utils/templateBlocks';
+import { fingerprint } from '@/utils/draftFingerprint';
 import { TemplateExerciseEditor, type BlocksUpdate } from '@/components/TemplateExerciseEditor';
 
 interface TemplateBuilderProps {
@@ -18,6 +19,10 @@ interface TemplateBuilderProps {
 
 const DRAFT_KEY = 'template_builder_draft';
 
+/** What the draft was taken from; null for a template that does not exist yet. */
+const templateSource = (template?: WorkoutTemplate): string | null =>
+  template ? fingerprint({ name: template.name, exercises: template.exercises }) : null;
+
 function loadDraft(
   initialTemplate?: WorkoutTemplate,
   weightUnit: WeightUnit = 'kg',
@@ -27,8 +32,15 @@ function loadDraft(
     const raw = localStorage.getItem(DRAFT_KEY);
     if (raw) {
       const draft = JSON.parse(raw);
-      // Only restore if editing the same template (or both are new)
-      if ((draft.id ?? null) === (initialTemplate?.id ?? null)) {
+      // Only restore if editing the same template (or both are new), and only
+      // while that template is still the one the draft was taken from. A draft
+      // abandoned on one device used to come up over a version saved since on
+      // another (or by the coach, or an import), and Save wrote the stale one
+      // back. A new template has no source to drift from; a draft written
+      // before the source was recorded cannot be checked, so it is dropped.
+      const sameTemplate = (draft.id ?? null) === (initialTemplate?.id ?? null);
+      const sameSource = !initialTemplate || draft.source === templateSource(initialTemplate);
+      if (sameTemplate && sameSource) {
         // A draft from before supersets became links may still carry the
         // old per-exercise pill, so it is resolved the same way a template is.
         const blocks: TemplateBlock[] = draft.blocks ?? [];
@@ -63,11 +75,12 @@ const LoadedTemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weight
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial, weightUnit, customExercises).blocks);
   const onBlocksChange = useCallback((update: BlocksUpdate) => setBlocks(update), []);
 
+  const source = useMemo(() => templateSource(initial), [initial]);
   React.useEffect(() => {
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, blocks }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, blocks, source }));
     } catch { /* quota exceeded, ignore */ }
-  }, [name, blocks, initial?.id]);
+  }, [name, blocks, initial?.id, source]);
 
   const clearDraft = useCallback(() => {
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
