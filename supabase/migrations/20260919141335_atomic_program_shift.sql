@@ -53,15 +53,20 @@ BEGIN
 
   -- Completed rows are the record of what happened on that date; they stay.
   -- Dates are YYYY-MM-DD text, which orders as a date, so the comparison is
-  -- textual on purpose. A row whose date does not parse is left where it is
-  -- rather than failing the whole shift.
+  -- textual on purpose. A row whose date is not a real YYYY-MM-DD date (the
+  -- column is unconstrained text, and a restored backup is written verbatim)
+  -- is left where it is rather than failing the whole shift: the shape check
+  -- keeps the textual comparison honest, and pg_input_is_valid is a real
+  -- parse, so an impossible date such as 2026-02-30 is skipped rather than
+  -- raising from the cast.
   UPDATE public.future_workouts AS fw
      SET date = to_char(fw.date::date + p_days, 'YYYY-MM-DD')
    WHERE fw.program_id = p_program_id
      AND fw.user_id = auth.uid()
      AND fw.date >= p_from_date
      AND COALESCE(fw.completed, false) = false
-     AND fw.date ~ '^\d{4}-\d{2}-\d{2}$';
+     AND fw.date ~ '^\d{4}-\d{2}-\d{2}$'
+     AND pg_input_is_valid(fw.date, 'date');
   GET DIAGNOSTICS v_moved = ROW_COUNT;
 
   RETURN v_moved;
