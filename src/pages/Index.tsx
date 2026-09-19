@@ -224,7 +224,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
   // Everything a snapshot needs beyond the item itself. Built here because
   // this is the one place that has preferences, profile, and custom exercises
-  // in hand at the same time.
+  // in hand at the same time. The custom library is overridden at publish
+  // time by the dialog (see ShareTarget.buildPayload): a Share tapped while
+  // the library was still loading used to freeze the empty list into the
+  // closure, so the dialog's wait for the library protected nothing.
   const snapshotContext = React.useMemo(() => ({
     weightUnit: storage.preferences.weightUnit,
     sharedBy: storage.profile.displayName,
@@ -696,7 +699,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             kind: 'session',
             sourceId: session.id,
             title: `Workout on ${parseLocalDate(session.date).toLocaleDateString()}`,
-            buildPayload: () => buildSessionSnapshot(session, snapshotContext),
+            buildPayload: (customExercises) => buildSessionSnapshot(session, { ...snapshotContext, customExercises }),
           })}
         />
       )}
@@ -716,7 +719,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             kind: 'template',
             sourceId: t.id,
             title: t.name,
-            buildPayload: () => buildTemplateSnapshot(t, snapshotContext),
+            buildPayload: (customExercises) => buildTemplateSnapshot(t, { ...snapshotContext, customExercises }),
           })}
           onCreate={() => setScreen({ type: 'templateBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}
@@ -749,7 +752,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             kind: 'program',
             sourceId: p.id,
             title: p.name,
-            buildPayload: () => buildProgramSnapshot(p, storage.templates, snapshotContext),
+            buildPayload: (customExercises) => buildProgramSnapshot(p, storage.templates, { ...snapshotContext, customExercises }),
           })}
           onCreate={() => setScreen({ type: 'programBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}

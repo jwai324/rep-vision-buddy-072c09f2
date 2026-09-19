@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ShareSnapshot, SharedCustomExercise } from '@/types/share';
 import type { WorkoutTemplate } from '@/types/workout';
-import { remapProgram, remapTemplate } from '@/utils/shareSnapshot';
+import { isCustomExerciseId, remapProgram, remapTemplate } from '@/utils/shareSnapshot';
+import { withoutLoneSupersets } from '@/utils/templateSupersets';
 import { templateFromSession } from '@/hooks/useScreenHelpers';
 
 /**
@@ -16,9 +17,22 @@ export interface ImportResult {
   templatesCreated: number;
   programsCreated: number;
   customExercisesCreated: number;
+  /**
+   * Rows left out of the copy because the snapshot carried neither a
+   * definition nor a name for their custom exercise id.
+   */
+  exercisesDropped: number;
 }
 
 type CustomExerciseRow = { id: string; name: string };
+
+/**
+ * A custom exercise the snapshot names but does not define. The sharer's
+ * library had not resolved the id when the payload was built (it loads after
+ * mount, or the exercise had since been deleted), so only the name travelled;
+ * the viewer's row is written with the table's defaults for everything else.
+ */
+type CustomExerciseStub = Pick<SharedCustomExercise, 'sourceId' | 'name'> & Partial<SharedCustomExercise>;
 
 const normalizeName = (name: string) => name.trim().toLowerCase();
 
@@ -32,7 +46,7 @@ const normalizeName = (name: string) => name.trim().toLowerCase();
 async function reconcileCustomExercises(
   supabase: SupabaseClient,
   userId: string,
-  shared: SharedCustomExercise[],
+  shared: CustomExerciseStub[],
 ): Promise<{ map: Record<string, string>; created: number }> {
   if (shared.length === 0) return { map: {}, created: 0 };
 
@@ -48,7 +62,7 @@ async function reconcileCustomExercises(
   }
 
   const map: Record<string, string> = {};
-  const toCreate: SharedCustomExercise[] = [];
+  const toCreate: CustomExerciseStub[] = [];
   for (const ce of shared) {
     const match = byName.get(normalizeName(ce.name));
     // Matching on name means importing the same link twice reuses the
@@ -59,16 +73,22 @@ async function reconcileCustomExercises(
 
   if (toCreate.length === 0) return { map, created: 0 };
 
+  // A stub's missing fields are filled with the table's own defaults (the
+  // `custom_exercises` migration) rather than left undefined: postgrest-js
+  // lists every key of every row in the `columns=` param, `JSON.stringify`
+  // then drops the undefined ones from the body, and PostgREST inserts NULL
+  // for a listed column the payload does not carry — a NOT NULL refusal that
+  // failed the whole import.
   const rows = toCreate.map(ce => ({
     user_id: userId,
     name: ce.name,
-    primary_body_part: ce.primaryBodyPart,
-    equipment: ce.equipment,
-    difficulty: ce.difficulty,
-    exercise_type: ce.exerciseType,
-    movement_pattern: ce.movementPattern,
-    secondary_muscles: ce.secondaryMuscles,
-    is_recovery: ce.isRecovery,
+    primary_body_part: ce.primaryBodyPart ?? 'Full Body',
+    equipment: ce.equipment ?? 'None',
+    difficulty: ce.difficulty ?? 'Intermediate',
+    exercise_type: ce.exerciseType ?? 'Isolation',
+    movement_pattern: ce.movementPattern ?? 'Other',
+    secondary_muscles: ce.secondaryMuscles ?? [],
+    is_recovery: ce.isRecovery ?? false,
     measurement_type: ce.measurementType ?? null,
     exclude_from_volume: ce.excludeFromVolume ?? false,
   }));
@@ -89,6 +109,57 @@ async function reconcileCustomExercises(
   }
 
   return { map, created: inserted?.length ?? 0 };
+}
+
+/**
+ * The name a snapshot gives an exercise id, or nothing. Templates and programs
+ * carry `exerciseMeta`; a session's logs embed the name. The builders write
+ * the raw id in place of a name they could not resolve, so that reads as no
+ * name either.
+ */
+function snapshotNameFor(snapshot: ShareSnapshot, exerciseId: string): string | null {
+  const name = snapshot.kind === 'session'
+    ? snapshot.session.exercises.find(e => e.exerciseId === exerciseId)?.exerciseName
+    : snapshot.exerciseMeta.find(m => m.exerciseId === exerciseId)?.name;
+  const trimmed = name?.trim() ?? '';
+  return trimmed && trimmed !== exerciseId ? trimmed : null;
+}
+
+/**
+ * Stubs for the custom ids the snapshot uses and names without defining.
+ * Definitions are absent when the sharer's library had not resolved the id at
+ * share time (ShareDialog now waits for it), and a payload frozen before that
+ * guard is still out there. An id with no name either is left for
+ * `withoutUnresolved`.
+ */
+function undefinedCustomExercises(snapshot: ShareSnapshot): CustomExerciseStub[] {
+  const used = snapshot.kind === 'template' ? snapshot.template.exercises
+    : snapshot.kind === 'session' ? snapshot.session.exercises
+    : snapshot.templates.flatMap(t => t.exercises);
+  const defined = new Set(snapshot.customExercises.map(ce => ce.sourceId));
+  const stubs = new Map<string, CustomExerciseStub>();
+  for (const { exerciseId } of used) {
+    if (!isCustomExerciseId(exerciseId) || defined.has(exerciseId) || stubs.has(exerciseId)) continue;
+    const name = snapshotNameFor(snapshot, exerciseId);
+    if (name) stubs.set(exerciseId, { sourceId: exerciseId, name });
+  }
+  return Array.from(stubs.values());
+}
+
+/**
+ * Leave out every row whose custom id the viewer's library cannot hold — no
+ * definition and no name came with it, so a copy would render as a raw id and
+ * log as reps-and-weight. A superset partner left on its own is unlinked. A
+ * template emptied this way is still imported.
+ */
+function withoutUnresolved(
+  template: WorkoutTemplate,
+  exerciseIdMap: Record<string, string>,
+): { template: WorkoutTemplate; dropped: number } {
+  const kept = template.exercises.filter(e => !isCustomExerciseId(e.exerciseId) || e.exerciseId in exerciseIdMap);
+  const dropped = template.exercises.length - kept.length;
+  if (dropped === 0) return { template, dropped };
+  return { template: { ...template, exercises: withoutLoneSupersets(kept) }, dropped };
 }
 
 async function insertTemplates(
@@ -114,8 +185,11 @@ export async function importSharedSnapshot(
   snapshot: ShareSnapshot,
   titleFallback: string,
 ): Promise<ImportResult> {
-  const { map: exerciseIdMap, created: customExercisesCreated } =
-    await reconcileCustomExercises(supabase, userId, snapshot.customExercises);
+  const { map: exerciseIdMap, created: customExercisesCreated } = await reconcileCustomExercises(
+    supabase,
+    userId,
+    [...snapshot.customExercises, ...undefinedCustomExercises(snapshot)],
+  );
 
   if (snapshot.kind === 'template' || snapshot.kind === 'session') {
     const source = snapshot.kind === 'template'
@@ -123,16 +197,20 @@ export async function importSharedSnapshot(
       // A logged session isn't a template, so turn it into one — that's the
       // only shape the recipient can actually reuse.
       : templateFromSession(snapshot.session, titleFallback);
-    const copy = remapTemplate(source, exerciseIdMap);
+    const { template, dropped: exercisesDropped } = withoutUnresolved(source, exerciseIdMap);
+    const copy = remapTemplate(template, exerciseIdMap);
     await insertTemplates(supabase, userId, [copy]);
-    return { templatesCreated: 1, programsCreated: 0, customExercisesCreated };
+    return { templatesCreated: 1, programsCreated: 0, customExercisesCreated, exercisesDropped };
   }
 
   // Programs: create the embedded templates first so the day list can point at
   // the recipient's new ids.
   const templateIdMap: Record<string, string> = {};
+  let exercisesDropped = 0;
   const copies = snapshot.templates.map(t => {
-    const copy = remapTemplate(t, exerciseIdMap);
+    const { template, dropped } = withoutUnresolved(t, exerciseIdMap);
+    exercisesDropped += dropped;
+    const copy = remapTemplate(template, exerciseIdMap);
     templateIdMap[t.id] = copy.id;
     return copy;
   });
@@ -156,5 +234,6 @@ export async function importSharedSnapshot(
     templatesCreated: copies.length,
     programsCreated: 1,
     customExercisesCreated,
+    exercisesDropped,
   };
 }
