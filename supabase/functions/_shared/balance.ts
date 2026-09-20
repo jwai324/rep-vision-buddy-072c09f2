@@ -1,7 +1,9 @@
 // Shared token-balance helpers for the edge functions. All mutating accounting
 // goes through the Postgres RPCs `consume_tokens` / `grant_tokens` which row-lock
 // (FOR UPDATE) so concurrent calls (e.g. a turn's initial + follow-up ai-coach
-// invocations) serialize correctly — no read-modify-write race in TS.
+// invocations) serialize correctly — no read-modify-write race in TS. The daily
+// usage aggregate goes through `record_ai_usage` for the same reason: it is one
+// upsert that increments, not a read and a write.
 
 import { monthlyAllowanceMicros, RESERVE_MICROS } from "./pricing.ts";
 
@@ -149,8 +151,24 @@ export async function grantPaid(
   return row?.new_balance_micros ?? 0;
 }
 
-// Upsert the daily analytics aggregate in user_ai_usage (UTC date key, kept for
-// continuity with historical rows and the ai_usage_daily_summary view).
+// Non-negative integer, or 0 for anything that isn't a finite number. The
+// counters land in integer/bigint columns, and a fractional or NaN value is
+// rejected by Postgres at the RPC boundary rather than stored.
+function counter(value: number | null | undefined): number {
+  return Number.isFinite(value as number) ? Math.max(0, Math.round(value as number)) : 0;
+}
+
+// Adds one turn to the daily analytics aggregate in user_ai_usage (UTC date
+// key, kept for continuity with historical rows and the ai_usage_daily_summary
+// view) through the `record_ai_usage` RPC — one INSERT .. ON CONFLICT DO UPDATE
+// that increments the stored counters. Read-modify-write in TS lost a turn
+// whenever two settled at once, and collided on the unique key on the first
+// turn of a day (audit 9.4).
+//
+// This is reporting, not billing: it never throws. A user's coach turn must not
+// fail because the operator's usage report could not be written — but the
+// failure is logged rather than swallowed, because an aggregate that quietly
+// stops being written is exactly the defect it is being fixed for.
 export async function recordUsageAggregate(
   supabase: SupabaseLike,
   userId: string,
@@ -162,42 +180,23 @@ export async function recordUsageAggregate(
   },
   costMicrosValue: number,
 ): Promise<void> {
-  const today = new Date().toISOString().split("T")[0];
-  const inTok = Math.max(0, usage.input_tokens ?? 0);
-  const outTok = Math.max(0, usage.output_tokens ?? 0);
-  const ccTok = Math.max(0, usage.cache_creation_input_tokens ?? 0);
-  const crTok = Math.max(0, usage.cache_read_input_tokens ?? 0);
-
-  const { data: existing } = await supabase
-    .from("user_ai_usage")
-    .select("message_count, total_input_tokens, total_output_tokens, total_cache_creation_tokens, total_cache_read_tokens, total_cost_micros")
-    .eq("user_id", userId)
-    .eq("date", today)
-    .maybeSingle();
-
-  if (existing) {
-    await supabase
-      .from("user_ai_usage")
-      .update({
-        message_count: (existing.message_count ?? 0) + 1,
-        total_input_tokens: (existing.total_input_tokens ?? 0) + inTok,
-        total_output_tokens: (existing.total_output_tokens ?? 0) + outTok,
-        total_cache_creation_tokens: (existing.total_cache_creation_tokens ?? 0) + ccTok,
-        total_cache_read_tokens: (existing.total_cache_read_tokens ?? 0) + crTok,
-        total_cost_micros: (existing.total_cost_micros ?? 0) + costMicrosValue,
-      })
-      .eq("user_id", userId)
-      .eq("date", today);
-  } else {
-    await supabase.from("user_ai_usage").insert({
-      user_id: userId,
-      date: today,
-      message_count: 1,
-      total_input_tokens: inTok,
-      total_output_tokens: outTok,
-      total_cache_creation_tokens: ccTok,
-      total_cache_read_tokens: crTok,
-      total_cost_micros: costMicrosValue,
+  try {
+    const { error } = await supabase.rpc("record_ai_usage", {
+      p_user_id: userId,
+      p_input_tokens: counter(usage?.input_tokens),
+      p_output_tokens: counter(usage?.output_tokens),
+      p_cache_creation_tokens: counter(usage?.cache_creation_input_tokens),
+      p_cache_read_tokens: counter(usage?.cache_read_input_tokens),
+      p_cost_micros: counter(costMicrosValue),
     });
+    if (error) {
+      console.error(
+        `record_ai_usage failed for ${userId}: ${error?.message ?? String(error)}`,
+      );
+    }
+  } catch (e) {
+    console.error(
+      `record_ai_usage threw for ${userId}: ${String((e as { message?: string } | undefined)?.message ?? e)}`,
+    );
   }
 }
