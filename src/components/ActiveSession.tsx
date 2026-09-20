@@ -70,6 +70,14 @@ export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTab
 import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
 const DEFAULT_LOCATION = 'Home Gym';
 
+// Bounds for the in-session rest-length editor. The floor is 5s rather than 0
+// because a zero-length rest reaches `ensureRestSchedule` already expired and
+// fires the "Rest complete" toast and notification the instant the set is
+// ticked; the ceiling keeps a typo out of a 15-minute rest bar.
+const MIN_REST_SECONDS = 5;
+const MAX_REST_SECONDS = 900;
+const REST_PRESETS = [60, 90, 120, 180];
+
 // Safe localStorage write — never throws
 function safeWriteCache(cache: ActiveSessionCache) {
   try {
@@ -491,6 +499,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
   const [noteText, setNoteText] = useState('');
+  // Rest-length editing state (the exercise menu's "Update Rest Timer")
+  const [editingRest, setEditingRest] = useState<{ exerciseId: string } | null>(null);
+  const [restInput, setRestInput] = useState('');
 
   // Elapsed timer — uses Date.now() anchor for absolute start, recalculates on tick
   useEffect(() => {
@@ -1003,8 +1014,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         setReplaceIdx(blockIdx);
         setShowExercisePicker(true);
         break;
+      case 'Update Rest Timer':
+        // The menu hides this while editing a past workout; this is the
+        // backstop for any caller that does not pass isEditMode.
+        if (isEditMode) break;
+        setRestInput(String(block.restSeconds));
+        setEditingRest({ exerciseId: block.exerciseId });
+        break;
     }
-  }, [blocks, getStickyNote, toggleDropSets, addWarmupSet]);
+  }, [blocks, getStickyNote, toggleDropSets, addWarmupSet, isEditMode]);
 
   const saveNote = useCallback(() => {
     if (!editingNote) return;
@@ -1016,6 +1034,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
     setEditingNote(null);
   }, [editingNote, noteText, blocks, setStickyNote]);
+
+  /**
+   * The exercise's own rest, for the remainder of this session only — the
+   * template is not touched here. A rest already running keeps the length it
+   * was started with, because `startTimer` reads `restSeconds` at the moment
+   * the rest begins and nothing re-reads it afterwards.
+   */
+  const saveRest = useCallback(() => {
+    if (!editingRest) return;
+    const seconds = Number(restInput.trim());
+    if (!Number.isInteger(seconds) || seconds < MIN_REST_SECONDS || seconds > MAX_REST_SECONDS) {
+      toast.error(`Rest must be a whole number of seconds from ${MIN_REST_SECONDS} to ${MAX_REST_SECONDS}.`);
+      return;
+    }
+    const { exerciseId } = editingRest;
+    // Addressed by id rather than by the index the dialog was opened at: a
+    // coach proposal applying underneath the overlay can insert, remove or
+    // reorder blocks, and every other position-keyed state here is remapped
+    // for the same reason.
+    setBlocks(prev => prev.map(b => b.exerciseId === exerciseId ? { ...b, restSeconds: seconds } : b));
+    setEditingRest(null);
+  }, [editingRest, restInput]);
 
   const handleSupersetSave = useCallback((groups: Record<string, number | undefined>) => {
     setBlocks(prev => prev.map(b => ({ ...b, supersetGroup: groups[b.exerciseId] })));
@@ -1508,7 +1548,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
       {/* Note Editor Modal */}
       {editingNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        // Above Focus Mode for the same reason as the rest dialog below: its
+        // kebab menu offers Add Note from an opaque z-50 overlay, and an
+        // equal level put this dialog behind it.
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-card border border-border rounded-xl w-full max-w-md p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">
@@ -1533,6 +1576,56 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setEditingNote(null)}>Cancel</Button>
               <Button variant="neon" size="sm" onClick={saveNote}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rest Length Editor Modal */}
+      {editingRest && (
+        // Above Focus Mode, which offers the same menu from an opaque z-50
+        // overlay (its floating clone is z-[60]); at an equal level the
+        // dialog opens underneath it and the tap reads as doing nothing.
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-xl w-full max-w-md p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">⏱️ Rest Timer</h3>
+              <button onClick={() => setEditingRest(null)} aria-label="Close rest timer editor" className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Rest between sets of {blocks.find(b => b.exerciseId === editingRest.exerciseId)?.exerciseName} for the rest of this workout. A rest already
+              running keeps its countdown; this applies from the next one.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={MIN_REST_SECONDS}
+                max={MAX_REST_SECONDS}
+                step={5}
+                aria-label="Rest seconds"
+                value={restInput}
+                onChange={e => setRestInput(e.target.value)}
+                className="w-24 bg-secondary/60 border border-border rounded-lg p-2 text-base text-center text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="text-xs text-muted-foreground">seconds ({MIN_REST_SECONDS}–{MAX_REST_SECONDS})</span>
+            </div>
+            <div className="flex gap-2">
+              {REST_PRESETS.map(preset => (
+                <button
+                  key={preset}
+                  onClick={() => setRestInput(String(preset))}
+                  className="px-3 py-1 rounded-md bg-secondary/60 text-xs text-foreground hover:bg-secondary transition-colors"
+                >
+                  {preset}s
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setEditingRest(null)}>Cancel</Button>
+              <Button variant="neon" size="sm" onClick={saveRest}>Save</Button>
             </div>
           </div>
         </div>

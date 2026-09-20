@@ -378,7 +378,10 @@ const EXERCISE_MENU_ITEMS = [
   { icon: FileText, label: 'Add Note' },
   { icon: StickyNote, label: 'Add Sticky Note' },
   { icon: Flame, label: 'Add Warm-up Sets' },
-  { icon: Timer, label: 'Update Rest Timer' },
+  // Editing a past workout renders no rest bars and runs a no-op timer, so an
+  // exercise's rest length means nothing there — hidden, like the header's
+  // Hide Timers item.
+  { icon: Timer, label: 'Update Rest Timer', liveOnly: true },
   { icon: RefreshCw, label: 'Replace Exercise' },
   { icon: Layers, label: 'Create Superset' },
   { icon: ChevronDown, label: 'Drop Sets', toggle: true },
@@ -467,7 +470,7 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
             </button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-52 p-1">
-            {EXERCISE_MENU_ITEMS.map(item => (
+            {EXERCISE_MENU_ITEMS.filter(item => !(isEditMode && 'liveOnly' in item && item.liveOnly)).map(item => (
               <button
                 key={item.label}
                 onClick={() => { setMenuOpen(false); onMenuAction(item.label, blockIdx); }}
