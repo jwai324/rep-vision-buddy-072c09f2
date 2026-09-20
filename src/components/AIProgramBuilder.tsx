@@ -6,6 +6,16 @@ import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw, Check, ArrowRight, Sparkl
 import { EXERCISE_DATABASE, EQUIPMENT_LIST, type Exercise } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
 import { useChatContext } from '@/contexts/ChatContext';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import type { WorkoutTemplate, WorkoutProgram, TemplateExercise, SetType } from '@/types/workout';
 import { formatLocalDate } from '@/utils/dateUtils';
@@ -114,6 +124,10 @@ interface BuilderDraft {
   customEquipmentText: string;
   showEquipmentOther: boolean;
   generatedProgram: AIProgram | null;
+  // Whether the reviewed plan carries hand-made exercise swaps, so the
+  // regenerate confirmation still says what is about to be lost after a
+  // remount restores the plan.
+  swappedExercises: boolean;
   // The ids the generated program and its templates are saved under, minted
   // on the first Save and kept for every retry. Index writes the templates
   // before the program row, so a failed program save leaves them in the
@@ -152,6 +166,7 @@ function loadBuilderDraft(): BuilderDraft | null {
       customEquipmentText: draft.customEquipmentText ?? '',
       showEquipmentOther: draft.showEquipmentOther ?? false,
       generatedProgram: draft.generatedProgram ?? null,
+      swappedExercises: draft.swappedExercises ?? false,
       saveIds: draft.saveIds ?? null,
     };
   } catch {
@@ -187,6 +202,8 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>(restored?.selectedEquipment ?? []);
   const [injuryText, setInjuryText] = useState(restored?.injuryText ?? '');
   const [generatedProgram, setGeneratedProgram] = useState<AIProgram | null>(restored?.generatedProgram ?? null);
+  const [swappedExercises, setSwappedExercises] = useState(restored?.swappedExercises ?? false);
+  const [confirmingRegenerate, setConfirmingRegenerate] = useState(false);
   const [saveIds, setSaveIds] = useState<SaveIds | null>(restored?.saveIds ?? null);
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
   const [swappingExercise, setSwappingExercise] = useState<{ dayIdx: number; exIdx: number } | null>(null);
@@ -228,12 +245,12 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       phase: phase === 'generating' ? 'chat' : phase,
       currentStep, inputs, messages, selectedEquipment,
       injuryText, additionalNotesText, otherText, showOtherInput,
-      customEquipmentText, showEquipmentOther, generatedProgram, saveIds,
+      customEquipmentText, showEquipmentOther, generatedProgram, swappedExercises, saveIds,
     });
   }, [
     phase, currentStep, inputs, messages, selectedEquipment,
     injuryText, additionalNotesText, otherText, showOtherInput,
-    customEquipmentText, showEquipmentOther, generatedProgram, saveIds,
+    customEquipmentText, showEquipmentOther, generatedProgram, swappedExercises, saveIds,
   ]);
 
   // Auto-focus other input when shown
@@ -379,6 +396,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     setInjuryText('');
     setAdditionalNotesText('');
     setGeneratedProgram(null);
+    setSwappedExercises(false);
     setSaveIds(null);
     setShowFullNotes(false);
     showAIMessage(0);
@@ -473,6 +491,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       }
 
       setGeneratedProgram(program);
+      setSwappedExercises(false);
       setSaveIds(null);
       setExpandedDays(new Set([0]));
       setPhase('review');
@@ -514,6 +533,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       };
     });
     setGeneratedProgram(updated);
+    setSwappedExercises(true);
     setSwappingExercise(null);
   };
 
@@ -622,7 +642,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
             <h2 className="text-lg font-bold text-foreground">{generatedProgram.program_name}</h2>
             <p className="text-xs text-muted-foreground">{generatedProgram.days_per_week} days/week · {generatedProgram.weeks} weeks · {generatedProgram.goal}</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={generateProgram} disabled={saving} aria-label="Regenerate program">
+          <Button variant="ghost" size="icon" onClick={() => setConfirmingRegenerate(true)} disabled={saving} aria-label="Regenerate program">
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -693,6 +713,25 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
             <Check className="w-5 h-5 mr-2" /> Save Program
           </Button>
         </div>
+
+        <AlertDialog open={confirmingRegenerate} onOpenChange={open => { if (!open) setConfirmingRegenerate(false); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Generate a new program?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {swappedExercises
+                  ? 'This replaces the program below, including the exercise swaps you made, and cannot be undone. Generating a new program spends AI credits.'
+                  : 'This replaces the program below and cannot be undone. Generating a new program spends AI credits.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep this program</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setConfirmingRegenerate(false); void generateProgram(); }}>
+                Generate new
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
