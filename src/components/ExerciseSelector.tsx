@@ -125,6 +125,10 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
           </div>
           <button
             onClick={() => setShowFilters(!showFilters)}
+            // The badge's number is inside the button, so a bare label would
+            // replace it: the count has to be part of the name to survive.
+            aria-label={`${showFilters ? 'Hide' : 'Show'} filters${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
+            aria-expanded={showFilters}
             className={`px-3 rounded-lg border transition-colors flex items-center gap-1.5 ${
               showFilters || activeFilterCount > 0
                 ? 'border-primary bg-primary/10 text-primary'

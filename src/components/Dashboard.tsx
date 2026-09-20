@@ -148,6 +148,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[]; todayKey: stri
       <div className="flex items-center justify-between mb-3">
         <button
           onClick={() => setWeekOffset(o => o - 1)}
+          aria-label="Previous week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -155,6 +156,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[]; todayKey: stri
         <span className="text-xs font-semibold text-muted-foreground">{weekLabel}</span>
         <button
           onClick={() => setWeekOffset(o => o + 1)}
+          aria-label="Next week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronRight className="w-4 h-4" />
@@ -247,6 +249,7 @@ const WeeklyProgramCalendar: React.FC<{
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => setWeekOffset(o => o - 1)}
+          aria-label="Previous week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -254,6 +257,7 @@ const WeeklyProgramCalendar: React.FC<{
         <span className="text-xs font-semibold text-muted-foreground">{weekLabel}</span>
         <button
           onClick={() => setWeekOffset(o => o + 1)}
+          aria-label="Next week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronRight className="w-4 h-4" />
@@ -401,6 +405,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
           <button
             onClick={onGoToSettings}
+            aria-label="Settings"
             className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
           >
             <Settings className="w-5 h-5" />

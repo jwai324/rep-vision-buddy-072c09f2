@@ -65,7 +65,7 @@ export const CustomExercisesScreen: React.FC<CustomExercisesScreenProps> = ({
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4 overflow-y-auto">
       <div className="flex items-center gap-3 pt-2">
-        <button onClick={onBack} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+        <button onClick={onBack} aria-label="Back" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-extrabold text-foreground">My Exercises</h1>

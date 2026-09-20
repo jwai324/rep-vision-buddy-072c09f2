@@ -165,6 +165,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       <div className="flex items-center gap-3 pt-2">
         <button
           onClick={onBack}
+          aria-label="Back"
           className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />

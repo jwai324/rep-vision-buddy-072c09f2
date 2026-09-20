@@ -113,7 +113,7 @@ const LoadedTemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weight
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
-        <button onClick={handleCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+        <button onClick={handleCancel} aria-label="Cancel" className="text-sm text-muted-foreground hover:text-foreground">✕</button>
         <div className="flex flex-col items-end gap-1">
           <Button
             variant="neon"

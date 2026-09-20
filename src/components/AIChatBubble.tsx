@@ -225,6 +225,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
       {!isOpen && (
         <button
           onClick={handleFabClick}
+          aria-label="Open AI coach"
           className={cn(
             "fixed bottom-6 right-4 z-50 w-14 h-14 rounded-full gradient-green",
             "flex items-center justify-center shadow-lg",
@@ -279,7 +280,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                   )}
                 </div>
               </div>
-              <button onClick={clearChat} className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-secondary">
+              <button onClick={clearChat} aria-label="Clear chat" className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-secondary">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

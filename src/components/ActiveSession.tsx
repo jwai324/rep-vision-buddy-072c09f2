@@ -1320,9 +1320,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
         {isEditMode ? (
-          <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+          <button onClick={onCancel} aria-label="Cancel editing" className="text-sm text-muted-foreground hover:text-foreground">✕</button>
         ) : (
-          <button onClick={onMinimize ?? onCancel} className="text-muted-foreground hover:text-foreground">
+          <button onClick={onMinimize ?? onCancel} aria-label="Back" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
@@ -1330,7 +1330,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           {/* 3-dot menu */}
           <Popover>
             <PopoverTrigger asChild>
-              <button className="text-muted-foreground hover:text-foreground p-1">
+              <button aria-label="Workout options" className="text-muted-foreground hover:text-foreground p-1">
                 <MoreVertical className="w-5 h-5" />
               </button>
             </PopoverTrigger>
@@ -1429,6 +1429,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                   />
                   <button
                     onClick={addCustomLocation}
+                    aria-label="Add location"
                     disabled={!newLocationInput.trim()}
                     className="text-primary hover:text-primary/80 disabled:opacity-30"
                   >
@@ -1513,7 +1514,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
               <h3 className="text-sm font-semibold text-foreground">
                 {editingNote.type === 'sticky' ? '📌 Sticky Note' : '📝 Session Note'}
               </h3>
-              <button onClick={() => setEditingNote(null)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setEditingNote(null)} aria-label="Close note editor" className="text-muted-foreground hover:text-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>

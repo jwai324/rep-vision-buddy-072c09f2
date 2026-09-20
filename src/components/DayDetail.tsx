@@ -20,7 +20,7 @@ export const DayDetail: React.FC<DayDetailProps> = ({ date, template, onStartWor
     <div className="min-h-screen bg-background p-4 flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6 pt-2">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
+        <button onClick={onBack} aria-label="Back" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>

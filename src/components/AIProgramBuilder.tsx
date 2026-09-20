@@ -615,7 +615,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <div className="flex items-center gap-3 p-4 border-b border-border">
-          <button onClick={() => setPhase('chat')} disabled={saving} className="p-2 rounded-lg hover:bg-secondary disabled:opacity-40">
+          <button onClick={() => setPhase('chat')} disabled={saving} aria-label="Back" className="p-2 rounded-lg hover:bg-secondary disabled:opacity-40">
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
           <div className="flex-1">
@@ -658,6 +658,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                       </div>
                       <button
                         onClick={() => setSwappingExercise(swappingExercise?.dayIdx === dayIdx && swappingExercise?.exIdx === exIdx ? null : { dayIdx, exIdx })}
+                        aria-label={`Swap ${ex.exercise_name}`}
                         className="ml-2 p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10"
                       >
                         <Replace className="w-4 h-4" />
@@ -706,7 +707,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b border-border">
-        <button onClick={currentStep > 0 ? goBack : onBack} className="p-2 rounded-lg hover:bg-secondary">
+        <button onClick={currentStep > 0 ? goBack : onBack} aria-label="Back" className="p-2 rounded-lg hover:bg-secondary">
           <ArrowLeft className="w-5 h-5 text-foreground" />
         </button>
         <div className="flex-1">
@@ -845,7 +846,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                   {selectedEquipment.filter(e => !ALL_EQUIPMENT.includes(e)).map(custom => (
                     <span key={custom} className="px-2 py-1 rounded-lg text-xs bg-primary text-primary-foreground flex items-center gap-1">
                       {custom}
-                      <button onClick={() => setSelectedEquipment(prev => prev.filter(e => e !== custom))} className="hover:opacity-70">×</button>
+                      <button onClick={() => setSelectedEquipment(prev => prev.filter(e => e !== custom))} aria-label={`Remove ${custom}`} className="hover:opacity-70">×</button>
                     </span>
                   ))}
                 </div>
@@ -882,7 +883,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                   className="flex-1"
                   onKeyDown={(e) => e.key === 'Enter' && confirmInjuries(injuryText)}
                 />
-                <Button variant="neon" size="sm" onClick={() => confirmInjuries(injuryText)}>
+                <Button variant="neon" size="sm" aria-label="Continue" onClick={() => confirmInjuries(injuryText)}>
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
@@ -935,7 +936,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                   className="flex-1"
                   onKeyDown={(e) => e.key === 'Enter' && submitOtherText()}
                 />
-                <Button variant="neon" size="sm" onClick={submitOtherText}>
+                <Button variant="neon" size="sm" aria-label="Continue" onClick={submitOtherText}>
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>

@@ -131,7 +131,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
             <p className="text-xs text-muted-foreground">Available on rest days</p>
           </div>
         </div>
-        <Switch checked={isRecovery} onCheckedChange={setIsRecovery} />
+        <Switch aria-label="Rest day activity" checked={isRecovery} onCheckedChange={setIsRecovery} />
       </div>
 
       <div className="flex items-center justify-between">
@@ -142,7 +142,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
             <p className="text-xs text-muted-foreground">Still logged, but left out of weekly volume and set counts</p>
           </div>
         </div>
-        <Switch checked={excludeFromVolume} onCheckedChange={setExcludeFromVolume} />
+        <Switch aria-label="Exclude from volume" checked={excludeFromVolume} onCheckedChange={setExcludeFromVolume} />
       </div>
 
       <div className="flex gap-2">
