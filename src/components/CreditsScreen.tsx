@@ -58,7 +58,7 @@ const signedCredits = (micros: number): string => {
 
 export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateProfile, onBack }) => {
   const { user } = useAuth();
-  const { creditsBalance, refreshBalance } = useChatContext();
+  const { creditsBalance, creditsBalanceKnown, refreshBalance } = useChatContext();
   const { toast } = useToast();
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
 
@@ -152,25 +152,33 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
         <div className="px-4 py-5 flex flex-col items-center gap-1">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
-            <span className="text-3xl font-extrabold text-foreground">{creditsBalance.credits}</span>
-            <span className="text-sm text-muted-foreground">credits</span>
+            {creditsBalanceKnown ? (
+              <>
+                <span className="text-3xl font-extrabold text-foreground">{creditsBalance.credits}</span>
+                <span className="text-sm text-muted-foreground">credits</span>
+              </>
+            ) : (
+              // The numbers below are a placeholder allowance until a read
+              // lands, so they are held back rather than shown as a balance.
+              <span className="text-xl font-bold text-muted-foreground">Couldn't load your balance</span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
-            ≈ {creditsBalance.estMessagesLeft} messages left
+            {creditsBalanceKnown ? `≈ ${creditsBalance.estMessagesLeft} messages left` : 'Check your connection and pull to refresh.'}
           </p>
         </div>
         <div className="grid grid-cols-2 border-t border-border">
           <div className="px-4 py-3 border-r border-border">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Monthly allowance</p>
             <p className="text-sm font-semibold text-foreground">
-              {creditsFromMicros(creditsBalance.freeRemainingMicros)} credits
+              {creditsBalanceKnown ? `${creditsFromMicros(creditsBalance.freeRemainingMicros)} credits` : '—'}
             </p>
             <p className="text-[11px] text-muted-foreground">Resets {nextReset}</p>
           </div>
           <div className="px-4 py-3">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Purchased</p>
             <p className="text-sm font-semibold text-foreground">
-              {creditsFromMicros(Math.max(0, creditsBalance.paidMicros))} credits
+              {creditsBalanceKnown ? `${creditsFromMicros(Math.max(0, creditsBalance.paidMicros))} credits` : '—'}
             </p>
           </div>
         </div>
