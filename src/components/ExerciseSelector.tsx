@@ -64,7 +64,14 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
     return searchExercises(filteredByCategory, debouncedSearch);
   }, [allExercises, debouncedSearch, bodyPartFilter, equipmentFilter, difficultyFilter, typeFilter]);
 
+  // A search returns its results ranked; grouping them by body part and sorting
+  // each group alphabetically threw that ranking away, which is how a typed
+  // query opened on whatever happened to sort first. Browsing has no ranking to
+  // preserve, so it keeps the grouped, alphabetical list.
+  const searchActive = debouncedSearch.trim().length > 0;
+
   const grouped = useMemo(() => {
+    if (searchActive) return {};
     const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     const groups: Record<string, typeof filtered> = {};
     for (const ex of sorted) {
@@ -72,7 +79,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
       groups[ex.primaryBodyPart].push(ex);
     }
     return groups;
-  }, [filtered]);
+  }, [filtered, searchActive]);
 
   const toggleSelect = (id: ExerciseId) => {
     if (browseMode && onExerciseTap) {
@@ -107,6 +114,69 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
     setEquipmentFilter('All');
     setDifficultyFilter('All');
     setTypeFilter('All');
+  };
+
+  // `key` is passed in rather than derived from `ex.id`: the library ships two
+  // rows sharing the id `medicine-ball-chest-pass`, and the flat search list is
+  // the one place they can be siblings (grouped browsing separates them by body
+  // part), where a repeated key makes React drop one of the two rows.
+  const renderExercise = (ex: Exercise, key: string) => {
+    const isSelected = selected.has(ex.id);
+    return (
+      <button
+        key={key}
+        onClick={() => toggleSelect(ex.id)}
+        className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors flex items-center justify-between group ${
+          isSelected
+            ? 'bg-primary/10 border border-primary/30'
+            : 'hover:bg-secondary/80'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {multiSelect && (
+            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+              isSelected
+                ? 'bg-primary border-primary'
+                : 'border-muted-foreground/30'
+            }`}>
+              {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <span className="text-sm font-medium text-foreground block truncate">{ex.name}</span>
+            <div className="flex items-center gap-2 mt-0.5">
+              {/* Ranked results have no body-part headings above them, so the row carries it. */}
+              {searchActive && (
+                <>
+                  <span className="text-xs text-muted-foreground">{ex.primaryBodyPart}</span>
+                  <span className="text-xs text-muted-foreground/50">·</span>
+                </>
+              )}
+              <span className="text-xs text-muted-foreground">{ex.equipment}</span>
+              <span className="text-xs text-muted-foreground/50">·</span>
+              <span className={`text-xs ${
+                ex.difficulty === 'Beginner' ? 'text-green-400' :
+                ex.difficulty === 'Intermediate' ? 'text-yellow-400' : 'text-red-400'
+              }`}>{ex.difficulty}</span>
+              {(() => {
+                const badge = getMeasurementBadge(getExerciseInputMode(ex.id, customExercises));
+                return badge ? (
+                  <>
+                    <span className="text-xs text-muted-foreground/50">·</span>
+                    <span className="text-[10px] text-primary/80 font-medium">{badge.icon} {badge.label}</span>
+                  </>
+                ) : null;
+              })()}
+            </div>
+          </div>
+        </div>
+        {!multiSelect && !browseMode && (
+          <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium">
+            + Add
+          </span>
+        )}
+      </button>
+    );
   };
 
   return (
@@ -276,68 +346,24 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
             </button>
           )}
 
-          {Object.entries(grouped).map(([bodyPart, exercises]) => (
-            <div key={bodyPart}>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <span>{getBodyPartIcon(bodyPart)}</span>
-                {bodyPart}
-                <span className="text-muted-foreground/50">({exercises.length})</span>
-              </h3>
-              <div className="space-y-0.5">
-                {exercises.map(ex => {
-                  const isSelected = selected.has(ex.id);
-                  return (
-                    <button
-                      key={ex.id}
-                      onClick={() => toggleSelect(ex.id)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors flex items-center justify-between group ${
-                        isSelected
-                          ? 'bg-primary/10 border border-primary/30'
-                          : 'hover:bg-secondary/80'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {multiSelect && (
-                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-                            isSelected
-                              ? 'bg-primary border-primary'
-                              : 'border-muted-foreground/30'
-                          }`}>
-                            {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <span className="text-sm font-medium text-foreground block truncate">{ex.name}</span>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-muted-foreground">{ex.equipment}</span>
-                            <span className="text-xs text-muted-foreground/50">·</span>
-                            <span className={`text-xs ${
-                              ex.difficulty === 'Beginner' ? 'text-green-400' :
-                              ex.difficulty === 'Intermediate' ? 'text-yellow-400' : 'text-red-400'
-                            }`}>{ex.difficulty}</span>
-                            {(() => {
-                              const badge = getMeasurementBadge(getExerciseInputMode(ex.id, customExercises));
-                              return badge ? (
-                                <>
-                                  <span className="text-xs text-muted-foreground/50">·</span>
-                                  <span className="text-[10px] text-primary/80 font-medium">{badge.icon} {badge.label}</span>
-                                </>
-                              ) : null;
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                      {!multiSelect && !browseMode && (
-                        <span className="text-primary opacity-0 group-hover:opacity-100 transition-opacity text-xs font-medium">
-                          + Add
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+          {searchActive ? (
+            <div data-testid="exercise-results" className="space-y-0.5">
+              {filtered.map((ex, i) => renderExercise(ex, `${ex.id}-${i}`))}
             </div>
-          ))}
+          ) : (
+            Object.entries(grouped).map(([bodyPart, exercises]) => (
+              <div key={bodyPart}>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <span>{getBodyPartIcon(bodyPart)}</span>
+                  {bodyPart}
+                  <span className="text-muted-foreground/50">({exercises.length})</span>
+                </h3>
+                <div className="space-y-0.5">
+                  {exercises.map(ex => renderExercise(ex, ex.id))}
+                </div>
+              </div>
+            ))
+          )}
 
           {filtered.length === 0 && !showCreateForm && (
             <div className="text-center py-8 text-muted-foreground text-sm">

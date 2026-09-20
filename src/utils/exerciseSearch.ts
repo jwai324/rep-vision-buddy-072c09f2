@@ -118,40 +118,57 @@ export function scoreExercise(ex: Exercise, normalizedQuery: string): number {
 }
 
 /**
- * Multi-word search: all words must appear in canonical name/bodyPart/equipment OR aliases.
- * Includes fuzzy matching for individual tokens.
- * Returns rank (lower = better) or -1 for no match.
+ * 'exact' requires every search word to appear as a substring.
+ * 'fuzzy' additionally allows a near-miss spelling (Levenshtein ≤ 2), but only
+ * against the exercise's own name and aliases — see `scoreExerciseMultiWord`.
  */
-export function scoreExerciseMultiWord(ex: Exercise, searchWords: string[]): number {
+export type SearchMatchMode = 'exact' | 'fuzzy';
+
+/** The words spelling tolerance is allowed to match against. */
+function spellableWords(ex: Exercise, includeAliases: boolean): string[] {
+  const words = normalizeSearch(ex.name).split(' ');
+  if (includeAliases && ex.aliases) {
+    for (const alias of ex.aliases) words.push(...normalizeSearch(alias).split(' '));
+  }
+  return words.filter(Boolean);
+}
+
+function wordMatches(word: string, target: string, spellable: string[]): boolean {
+  if (target.includes(word)) return true;
+  if (word.length < 4) return false;
+  return spellable.some(cw => cw.length >= 3 && levenshtein(cw, word) <= 2);
+}
+
+/**
+ * Multi-word search: all words must appear in canonical name/bodyPart/equipment OR aliases.
+ * Returns rank (lower = better) or -1 for no match.
+ *
+ * Spelling tolerance is deliberately scoped to the exercise's own name and
+ * aliases, and never to its body-part or equipment label: those labels are
+ * shared by dozens of rows, so one near miss matched a whole category.
+ * levenshtein('full', 'curl') is 2, which is why "curl" used to return every
+ * "Full Body" exercise — 58 of them, ahead of any bicep curl.
+ */
+export function scoreExerciseMultiWord(
+  ex: Exercise,
+  searchWords: string[],
+  mode: SearchMatchMode = 'exact',
+): number {
   const canonTarget = normalizeSearch(`${ex.name} ${ex.primaryBodyPart} ${ex.equipment}`);
   const aliasTarget = ex.aliases
     ? normalizeSearch(ex.aliases.join(' '))
     : '';
 
   const combinedTarget = `${canonTarget} ${aliasTarget}`;
-  const combinedWords = combinedTarget.split(' ');
+  const nameWords = mode === 'fuzzy' ? spellableWords(ex, false) : [];
+  const nameAndAliasWords = mode === 'fuzzy' ? spellableWords(ex, true) : [];
 
-  // Check if all search words match (exact substring or fuzzy)
-  const allMatch = searchWords.every(w => {
-    // Exact substring match
-    if (combinedTarget.includes(w)) return true;
-    // Fuzzy match: Levenshtein ≤ 2 for tokens ≥ 4 chars
-    if (w.length >= 4) {
-      return combinedWords.some(cw => cw.length >= 3 && levenshtein(cw, w) <= 2);
-    }
-    return false;
-  });
+  const allMatch = searchWords.every(w => wordMatches(w, combinedTarget, nameAndAliasWords));
 
   if (!allMatch) return -1;
 
   // Determine best rank based on where the match is
-  const canonOnly = searchWords.every(w => {
-    if (canonTarget.includes(w)) return true;
-    if (w.length >= 4) {
-      return canonTarget.split(' ').some(cw => cw.length >= 3 && levenshtein(cw, w) <= 2);
-    }
-    return false;
-  });
+  const canonOnly = searchWords.every(w => wordMatches(w, canonTarget, nameWords));
 
   if (canonOnly) {
     const joinedQuery = searchWords.join(' ');
@@ -197,19 +214,27 @@ export function searchExercises(exercises: Exercise[], query: string): Exercise[
   const searchWords = rawWords.flatMap(t => expandShorthand(t).split(/\s+/)).filter(Boolean);
   const normalized = searchWords.join(' ');
 
-  // Primary: multi-word AND matching with ranking
-  const scored: SearchMatch[] = [];
-  for (const ex of exercises) {
-    const rank = scoreExerciseMultiWord(ex, searchWords);
-    if (rank >= 0) {
-      scored.push({ exercise: ex, rank });
+  const rankedBy = (mode: SearchMatchMode): Exercise[] => {
+    const scored: SearchMatch[] = [];
+    for (const ex of exercises) {
+      const rank = scoreExerciseMultiWord(ex, searchWords, mode);
+      if (rank >= 0) {
+        scored.push({ exercise: ex, rank });
+      }
     }
-  }
-
-  if (scored.length > 0) {
+    // Array#sort is stable, so equal ranks keep library order.
     scored.sort((a, b) => a.rank - b.rank);
     return scored.map(s => s.exercise);
-  }
+  };
+
+  // Primary: multi-word AND matching on the words as typed.
+  const exactMatches = rankedBy('exact');
+  if (exactMatches.length > 0) return exactMatches;
+
+  // Only once nothing matched as typed is a near-miss spelling considered, so a
+  // real word never drags in the rows that merely resemble it.
+  const fuzzyMatches = rankedBy('fuzzy');
+  if (fuzzyMatches.length > 0) return fuzzyMatches;
 
   // For multi-token queries, AND-filter found nothing — return empty (no OR fallback).
   if (searchWords.length > 1) return [];

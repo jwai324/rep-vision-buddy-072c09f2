@@ -411,7 +411,6 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'running-interval', name: 'Running (Interval)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Glutes'], measurementType: 'Time + Distance' },
   { id: 'running-tempo', name: 'Running (Tempo)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Glutes'], measurementType: 'Time + Distance' },
   { id: 'high-knees', name: 'High Knees', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hip Flexors', 'Calves', 'Core'], measurementType: 'Time' },
-  { id: 'swimming-cardio', name: 'Swimming', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads'], measurementType: 'Time + Distance' },
 
   // Recovery / Wellness
   { id: 'sleep-focus', name: 'Sleep Focus', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },
