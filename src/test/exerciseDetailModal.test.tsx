@@ -351,10 +351,10 @@ describe('ExerciseDetailModal — History tab', () => {
 
     render(
       <ExerciseDetailModal
-        exerciseId="swimming-cardio"
+        exerciseId="swimming-full-body"
         onClose={vi.fn()}
         weightUnit="kg"
-        history={[logged('swimming-cardio', '2026-08-10', [{ setNumber: 1, type: 'normal', reps: 1, time: 600, distance: 1000 }])]}
+        history={[logged('swimming-full-body', '2026-08-10', [{ setNumber: 1, type: 'normal', reps: 1, time: 600, distance: 1000 }])]}
       />,
     );
     openTab(/history/i);

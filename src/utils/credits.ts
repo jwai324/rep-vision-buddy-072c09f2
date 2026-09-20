@@ -9,8 +9,15 @@ export const PREMIUM_MONTHLY_MICROS = 7_000_000; // ~$7.00 / month
 export function monthlyAllowanceMicros(tier: string | null | undefined): number {
   return tier === 'premium' ? PREMIUM_MONTHLY_MICROS : FREE_MONTHLY_MICROS;
 }
-export const AVG_TURN_MICROS = 50_000; // rough cost of one turn, for estimates
-export const RESERVE_MICROS = 50_000; // server pre-call gate threshold
+// Blended cost of one coach turn, for the "≈ N messages left" estimate only.
+// ~47.5k micros when the prompt cache hits, ~277.5k when it is written, ~37.5k
+// per extra metered round; pricing.ts carries the full arithmetic, the size of
+// the cached prefix it rests on, and is the source of truth. A turn is NOT the
+// 50k these two used to share.
+export const AVG_TURN_MICROS = 110_000;
+// Server pre-call gate threshold — one fifth of the free monthly allowance.
+// Mirror of pricing.ts; the server decides, this only shapes the display.
+export const RESERVE_MICROS = 100_000;
 export const LOW_THRESHOLD = 2 * AVG_TURN_MICROS;
 
 export function currentPeriodUTC(): string {
@@ -19,6 +26,17 @@ export function currentPeriodUTC(): string {
 
 export function creditsFromMicros(micros: number): number {
   return Math.max(0, Math.floor(micros / MICROS_PER_CREDIT));
+}
+
+// The estimate and the gate must agree in both directions. Below the reserve
+// the gate refuses, so the estimate is 0 however the division rounds; at or
+// above it the gate lets one through, so the estimate is never 0 even though
+// the blended average is larger than the reserve. Without both clamps a balance
+// between the two constants reads "≈ 1 message left" on a screen that calls it
+// exhausted, or "0 left" on a screen that will happily send one.
+export function estMessagesLeft(availableMicros: number): number {
+  if (availableMicros < RESERVE_MICROS) return 0;
+  return Math.max(1, Math.floor(availableMicros / AVG_TURN_MICROS));
 }
 
 export interface CreditsBalance {
@@ -52,7 +70,7 @@ export function deriveBalance(
     paidMicros: paid,
     freeRemainingMicros: freeRemaining,
     credits: creditsFromMicros(available),
-    estMessagesLeft: Math.max(0, Math.floor(available / AVG_TURN_MICROS)),
+    estMessagesLeft: estMessagesLeft(available),
     lowBalance: available < LOW_THRESHOLD,
     exhausted: available < RESERVE_MICROS,
   };
@@ -66,7 +84,7 @@ export const EMPTY_BALANCE: CreditsBalance = {
   paidMicros: 0,
   freeRemainingMicros: PREMIUM_MONTHLY_MICROS,
   credits: creditsFromMicros(PREMIUM_MONTHLY_MICROS),
-  estMessagesLeft: Math.floor(PREMIUM_MONTHLY_MICROS / AVG_TURN_MICROS),
+  estMessagesLeft: estMessagesLeft(PREMIUM_MONTHLY_MICROS),
   lowBalance: PREMIUM_MONTHLY_MICROS < LOW_THRESHOLD,
   exhausted: false,
 };

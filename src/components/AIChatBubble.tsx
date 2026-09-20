@@ -37,7 +37,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
     clearChat, quickChips,
-    creditsBalance, cooldownActive, lockedUntil,
+    creditsBalance, creditsBalanceKnown, cooldownActive, lockedUntil,
     proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
 
@@ -271,12 +271,17 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
-                  {(
+                  {creditsBalanceKnown ? (
                     <p className="text-[11px] text-muted-foreground leading-tight">
                       <span className="font-bold text-foreground">{creditsBalance.credits.toLocaleString()}</span>
                       {' '}credits
                       <span className="text-muted-foreground/70"> · ~{creditsBalance.estMessagesLeft} msgs left</span>
                     </p>
+                  ) : (
+                    // Never read successfully: the figure behind it is a
+                    // placeholder allowance, and showing it as a balance is
+                    // how an out-of-credits user came to see a full bar.
+                    <p className="text-[11px] text-muted-foreground/70 leading-tight">Credits unavailable</p>
                   )}
                 </div>
               </div>

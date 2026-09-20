@@ -775,6 +775,17 @@ export type Database = {
           new_balance_micros: number
         }[]
       }
+      record_ai_usage: {
+        Args: {
+          p_cache_creation_tokens?: number
+          p_cache_read_tokens?: number
+          p_cost_micros?: number
+          p_input_tokens?: number
+          p_output_tokens?: number
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       shift_program_workouts: {
         Args: {
           p_days: number

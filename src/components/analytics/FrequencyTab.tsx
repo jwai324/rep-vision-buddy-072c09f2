@@ -2,11 +2,11 @@ import React, { useMemo, useState } from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { subDays, isAfter } from 'date-fns';
 import { Info } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { sessionsInWindow } from '@/utils/historyAnalysis';
 
 const BODY_PARTS = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings',
@@ -29,11 +29,11 @@ export const FrequencyTab: React.FC<FrequencyTabProps> = ({ history }) => {
   }, [customExercises]);
 
   const data = useMemo(() => {
-    const cutoff = subDays(new Date(), period);
-    const recentSessions = history.filter(s => {
-      const d = new Date(s.date.substring(0, 10) + 'T00:00:00');
-      return isAfter(d, cutoff) && !s.isRestDay;
-    });
+    // The far edge of the window is inclusive: a workout done exactly `period`
+    // days ago counts. This is the coach's own helper (rest days excluded), so
+    // the bars and the frequency the coach quotes for the same window cannot
+    // disagree by a day.
+    const recentSessions = sessionsInWindow(history, period);
 
     const counts: Record<string, number> = {};
     for (const s of recentSessions) {

@@ -774,7 +774,10 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
 
         return (
           <React.Fragment key={setIdx}>
-            <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
+            <SwipeToDelete
+              onDelete={() => onRemoveSet(blockIdx, setIdx)}
+              removeLabel={`Remove ${set.type === 'warmup' ? 'warm-up set' : 'set'} ${set.setNumber} in ${block.exerciseName}`}
+            >
               {renderSetRow()}
             </SwipeToDelete>
 
@@ -791,7 +794,11 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
 
             {/* Drop rows */}
             {set.drops?.map((drop, dropIdx) => (
-              <SwipeToDelete key={`drop-${setIdx}-${dropIdx}`} onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}>
+              <SwipeToDelete
+                key={`drop-${setIdx}-${dropIdx}`}
+                onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}
+                removeLabel={`Remove drop ${dropIdx + 1} of set ${set.setNumber} in ${block.exerciseName}`}
+              >
                 {renderDropRow(drop, dropIdx)}
               </SwipeToDelete>
             ))}

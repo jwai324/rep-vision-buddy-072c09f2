@@ -126,6 +126,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     return id;
   };
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
+  // Set by the edit screen while it is mounted; read by onUserBack below.
+  const editGuardRef = React.useRef<{ hasChanges: boolean; confirm: () => void } | null>(null);
   const [screen, setScreen] = useScreenHistory<Screen>({ type: 'dashboard' }, {
     isRoot: s => s.type === 'dashboard',
     // Back out of a live workout minimizes it; the cache is untouched, so the
@@ -133,6 +135,17 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     // Back with the summary open closes the summary instead: the user has
     // not left the workout, they have un-finished it.
     onUserBack: leaving => {
+      // Back out of an edit asks before discarding, exactly as the X does:
+      // on a phone Back is how most people leave a screen, so without this
+      // the confirmation guards the rarer of the two exits.
+      if (leaving.type === 'editSession') {
+        const guard = editGuardRef.current;
+        if (guard?.hasChanges) {
+          guard.confirm();
+          return true;
+        }
+        return;
+      }
       if (leaving.type !== 'activeSession') return;
       if (pendingSummary) {
         setPendingSummary(null);
@@ -552,6 +565,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             defaultRestSeconds={storage.preferences.defaultRestSeconds}
             editSession={screen.session}
+            editGuard={editGuardRef}
             onFinish={(session) => guardedSave(async () => {
               // Staying on the edit screen is what lets the user retry; leaving
               // discards their edits with nothing holding them. Correcting a

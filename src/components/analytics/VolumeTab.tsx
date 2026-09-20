@@ -6,6 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format, addDays, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { volumeExcludedIds, excludedSessionTotals } from '@/utils/volumeExclusions';
+import { getExerciseInputMode } from '@/utils/exerciseInputMode';
 import { fromKg, formatVolume } from '@/utils/weightConversion';
 
 const BODY_PART_COLORS: Record<string, string> = {
@@ -32,6 +33,19 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
     return map;
   }, [customExercises]);
   const excludedIds = useMemo(() => volumeExcludedIds(customExercises), [customExercises]);
+  // A band set's weight is a level, not a mass, so the finish path keeps band
+  // work out of a session's stored totalVolume entirely. The netting below has
+  // to know which rows those are, and `getExerciseInputMode` is the rule it used.
+  const bandIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const ex of EXERCISE_DATABASE) {
+      if (getExerciseInputMode(ex.id, customExercises) === 'band') ids.add(ex.id);
+    }
+    for (const ce of customExercises) {
+      if (getExerciseInputMode(ce.id, customExercises) === 'band') ids.add(ce.id);
+    }
+    return ids;
+  }, [customExercises]);
 
   const weeklyData = useMemo(() => {
     if (history.length === 0) return [];
@@ -53,25 +67,34 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
         return isWithinInterval(d, { start: week.weekStart, end: week.weekEnd });
       });
       // Aggregate in kg, convert to display unit at the end (reps are unit-invariant).
-      // totalVolume is frozen at save time, so exercises the user has since
-      // excluded are netted back out rather than the total being re-derived —
-      // that keeps warmups and every other quirk of the stored number intact.
-      const totalVolumeKg = weekSessions.reduce(
-        (sum, s) => sum + s.totalVolume - excludedSessionTotals(s, excludedIds).volume,
-        0
-      );
+      // totalVolume is frozen at save time and is netted *down* rather than
+      // re-derived, so the quirks of the stored number survive instead of a
+      // recompute silently rewriting old rows. Warmups are netted out of it
+      // because the body-part lines underneath never counted them, and the two
+      // charts have to add up. Each set is classified once, by that one rule:
+      // it either leaves the week's total or joins a body part — so the two
+      // cannot drift apart again.
+      let totalVolumeKg = 0;
       const bodyPartVolumes: Record<string, number> = {};
       for (const bp of VISIBLE_BODY_PARTS) bodyPartVolumes[bp] = 0;
       for (const session of weekSessions) {
+        let netOutKg = excludedSessionTotals(session, excludedIds).volume;
         for (const ex of session.exercises) {
           if (excludedIds.has(ex.exerciseId)) continue;
           const bp = exerciseBodyPartMap.get(ex.exerciseId) || 'Other';
-          const volKg = ex.sets.reduce(
-            (s, set) => (set.type === 'warmup' ? s : s + (set.weight || 0) * set.reps),
-            0
-          );
-          bodyPartVolumes[bp] = (bodyPartVolumes[bp] || 0) + volKg;
+          // Band volume was never in the stored total, so netting a band
+          // warmup out of it would subtract volume the total never carried.
+          const isBand = bandIds.has(ex.exerciseId);
+          for (const set of ex.sets) {
+            const volKg = (set.weight || 0) * set.reps;
+            if (set.type === 'warmup') {
+              if (!isBand) netOutKg += volKg;
+            } else {
+              bodyPartVolumes[bp] = (bodyPartVolumes[bp] || 0) + volKg;
+            }
+          }
         }
+        totalVolumeKg += Math.max(0, session.totalVolume - netOutKg);
       }
       const convertedBodyPartVolumes: Record<string, number> = {};
       for (const bp of Object.keys(bodyPartVolumes)) {
@@ -79,7 +102,7 @@ export const VolumeTab: React.FC<VolumeTabProps> = ({ history, weightUnit }) => 
       }
       return { week: week.label, totalVolume: Math.round(fromKg(totalVolumeKg, weightUnit)), ...convertedBodyPartVolumes };
     });
-  }, [history, weightUnit, exerciseBodyPartMap, excludedIds]);
+  }, [history, weightUnit, exerciseBodyPartMap, excludedIds, bandIds]);
 
   const bodyPartsWithData = useMemo(() => {
     const parts = new Set<string>();

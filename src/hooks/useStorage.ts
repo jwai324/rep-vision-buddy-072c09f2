@@ -89,6 +89,49 @@ export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWork
   return workouts;
 }
 
+/**
+ * The reverse of `getFutureWorkoutsCompletedBySession`: which of a date's
+ * ticked-off scheduled entries no longer have a logged session behind them,
+ * given `remaining` — everything still logged on that date.
+ *
+ * Nothing records which entry a given session ticked. The forward pass decides
+ * that from the origin template, which lives only in the screen that started
+ * the workout, so there is no note to undo. This replays the forward rule over
+ * the sessions that are left and releases whatever none of them claims, which
+ * is why two workouts logged on one day give back one tick each rather than
+ * both: the first remaining session claims the entry it would have claimed
+ * when it was saved, and only the surplus is released.
+ */
+export function futureWorkoutsReleasedOnDate(
+  date: string,
+  isRestDay: boolean,
+  futureWorkouts: FutureWorkout[],
+  remaining: WorkoutSession[],
+  templates: WorkoutTemplate[],
+): FutureWorkout[] {
+  const dateStr = format(parseLocalDate(date), 'yyyy-MM-dd');
+  const ticked = futureWorkouts.filter(fw =>
+    fw.completed === true &&
+    format(parseLocalDate(fw.date), 'yyyy-MM-dd') === dateStr &&
+    // A rest-day session only ever ticks scheduled rest, and a workout only
+    // ever ticks scheduled workouts — the same split the forward pass makes.
+    (isRestDay ? fw.templateId === 'rest' : fw.templateId !== 'rest'),
+  );
+  if (ticked.length === 0) return [];
+
+  let pool: FutureWorkout[] = ticked.map(fw => ({ ...fw, completed: false }));
+  const claimed = new Set<string>();
+  for (const session of remaining) {
+    if (format(parseLocalDate(session.date), 'yyyy-MM-dd') !== dateStr) continue;
+    if ((session.isRestDay === true) !== isRestDay) continue;
+    for (const fw of getFutureWorkoutsCompletedBySession(session, pool, { templates })) {
+      claimed.add(fw.id);
+    }
+    pool = pool.map(fw => (claimed.has(fw.id) ? { ...fw, completed: true } : fw));
+  }
+  return ticked.filter(fw => !claimed.has(fw.id));
+}
+
 // Map DB row to app type — typed row inputs
 function mapSession(row: SessionRow): WorkoutSession {
   return {
@@ -323,6 +366,10 @@ export function useStorage() {
   // re-runs it, which is what used to throw the whole app back to a spinner.
   const userId = user?.id ?? null;
   const [history, setHistory] = useState<WorkoutSession[]>([]);
+  // Read by the save path to see the record as it was before this write, and
+  // by the scheduled-completion release to see what is still logged on a date.
+  const historyRef = useRef(history);
+  historyRef.current = history;
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   // Mirrors `templates` for a callback that has to read it without taking it
   // as a dependency: saveTemplate would otherwise change identity on every
@@ -336,6 +383,8 @@ export function useStorage() {
   const [programs, setPrograms] = useState<WorkoutProgram[]>([]);
   const [activeProgramId, setActiveProgramIdState] = useState<string | null>(null);
   const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>([]);
+  const futureWorkoutsRef = useRef(futureWorkouts);
+  futureWorkoutsRef.current = futureWorkouts;
   const [preferences, setPreferencesState] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [profile, setProfileState] = useState<UserProfile>(DEFAULT_PROFILE);
   const [bodyMeasurements, setBodyMeasurements] = useState<BodyMeasurement[]>([]);
@@ -557,6 +606,35 @@ export function useStorage() {
   }, []);
 
   /**
+   * Put back the ticks a date no longer has a session behind. The mirror of
+   * the completion write below, down to only applying the rows the server
+   * took; a refused update leaves the entry ticked rather than lying locally.
+   */
+  const releaseScheduledCompletions = useCallback(async (
+    date: string,
+    isRestDay: boolean,
+    remaining: WorkoutSession[],
+  ): Promise<void> => {
+    if (!user) return;
+    const release = futureWorkoutsReleasedOnDate(
+      date, isRestDay, futureWorkoutsRef.current, remaining, templatesRef.current,
+    );
+    if (release.length === 0) return;
+    const errors = await Promise.all(release.map(fw =>
+      writeError(
+        supabase.from('future_workouts').update({ completed: false }).eq('id', fw.id).eq('user_id', user.id),
+      ),
+    ));
+    const clearedIds = new Set(
+      release.filter((_, i) => !errors[i]).map(fw => fw.id),
+    );
+    if (clearedIds.size < release.length) {
+      console.error('[useStorage] scheduled workout release: some updates failed');
+    }
+    setFutureWorkouts(prev => prev.map(fw => clearedIds.has(fw.id) ? { ...fw, completed: false } : fw));
+  }, [user]);
+
+  /**
    * Persist a session. `origin.templateId` is the template the workout was
    * started from, when there is one; it decides which of the day's scheduled
    * workouts the session marks done, and is not stored on the session itself.
@@ -571,6 +649,8 @@ export function useStorage() {
   const saveSessionNow = useCallback(async (session: WorkoutSession, origin: SaveSessionOrigin = {}): Promise<boolean> => {
     noteWrite();
     if (!user) return false;
+    // Captured before the write: the record as this date's calendar knew it.
+    const priorRecord = historyRef.current.find(s => s.id === session.id);
     let error: unknown = null;
     try {
       ({ error } = await supabase.from('workout_sessions').upsert({
@@ -603,6 +683,21 @@ export function useStorage() {
       return [session, ...prev];
     });
 
+    // A record moved to another day leaves the old day's plan ticked off with
+    // nothing behind it. The old tick is cleared rather than carried across:
+    // which entry a session ticked is never stored, so there is nothing to
+    // move, and the new date is marked from scratch by the rule below — which
+    // already knows about that day's own plan and whatever else is logged on
+    // it. Guessing an entry on the new date would tick off a workout the user
+    // never did.
+    if (priorRecord && priorRecord.date !== session.date) {
+      await releaseScheduledCompletions(
+        priorRecord.date,
+        priorRecord.isRestDay === true,
+        historyRef.current.filter(s => s.id !== session.id),
+      );
+    }
+
     // Flag matching scheduled workouts as done rather than deleting them — the
     // day's plan stays on the calendar and can still be started again.
     const matchingFws = origin.markScheduled === false ? [] : getFutureWorkoutsCompletedBySession(session, futureWorkouts, {
@@ -626,7 +721,7 @@ export function useStorage() {
       setFutureWorkouts(prev => prev.map(fw => updatedIds.has(fw.id) ? { ...fw, completed: true } : fw));
     }
     return true;
-  }, [user, futureWorkouts, templates]);
+  }, [user, futureWorkouts, templates, releaseScheduledCompletions]);
 
   // Writes to one session row are chained rather than raced. The summary's
   // recovery-activity chips fire a save per tap, and two in flight at once
@@ -936,6 +1031,7 @@ export function useStorage() {
     if (!user) return;
     // Capture for rollback
     const previous = history;
+    const removed = previous.find(s => s.id === id);
     setHistory(prev => prev.filter(s => s.id !== id));
     const { error } = await supabase.from('workout_sessions').delete().eq('id', id).eq('user_id', user.id);
     if (error) {
@@ -944,7 +1040,17 @@ export function useStorage() {
       setHistory(previous); // rollback
       return;
     }
-  }, [user, history]);
+    // The plan this workout ticked off goes back to outstanding (or missed,
+    // once the date is past). Without it the calendar shows an empty day
+    // sitting over a day the program still counts as done.
+    if (removed) {
+      await releaseScheduledCompletions(
+        removed.date,
+        removed.isRestDay === true,
+        previous.filter(s => s.id !== id),
+      );
+    }
+  }, [user, history, releaseScheduledCompletions]);
 
   const updateFutureWorkout = useCallback(async (updated: FutureWorkout): Promise<boolean> => {
     noteWrite();
