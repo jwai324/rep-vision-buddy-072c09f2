@@ -12,6 +12,7 @@ import { parseLocalDate } from '@/utils/dateUtils';
 interface ActivityScreenProps {
   history: WorkoutSession[];
   futureWorkouts: FutureWorkout[];
+  activeProgramId: string | null;
   templates: WorkoutTemplate[];
   onSelectSession: (session: WorkoutSession) => void;
   onSelectFutureWorkout: (fw: FutureWorkout) => void;
@@ -28,7 +29,7 @@ function formatDuration(s: number) {
 }
 
 export const ActivityScreen: React.FC<ActivityScreenProps> = ({
-  history, futureWorkouts, templates, onSelectSession, onSelectFutureWorkout, onStartTemplate, onBack, initialTab = 'future', filterDate, weightUnit = DEFAULT_PREFERENCES.weightUnit,
+  history, futureWorkouts, activeProgramId, templates, onSelectSession, onSelectFutureWorkout, onStartTemplate, onBack, initialTab = 'future', filterDate, weightUnit = DEFAULT_PREFERENCES.weightUnit,
 }) => {
   const exerciseLookup = useExerciseLookup();
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
@@ -45,17 +46,27 @@ export const ActivityScreen: React.FC<ActivityScreenProps> = ({
     return items;
   }, [history, showRestDays, filterDate]);
 
+  // Only show future workouts tied to the active program (or manually
+  // scheduled), so disabled/previous programs don't leak into the Upcoming
+  // list — the same rule the dashboard, the calendar and Start Workout use.
+  const visibleFuture = useMemo(
+    () => futureWorkouts.filter(f => f.programId === activeProgramId || f.programId === 'manual'),
+    [futureWorkouts, activeProgramId]
+  );
+
   const filteredFuture = useMemo(() => {
-    let items = showRestDays ? futureWorkouts : futureWorkouts.filter(fw => fw.templateId !== 'rest');
+    let items = showRestDays ? visibleFuture : visibleFuture.filter(fw => fw.templateId !== 'rest');
     // A single day's view shows that day's whole plan, done entries included, so
     // an already-logged workout can still be repeated. The unfiltered list is a
     // to-do list, so finished entries drop out of it.
     if (filterDate) items = items.filter(f => f.date === filterDate);
     else items = items.filter(f => !f.completed);
     return items;
-  }, [futureWorkouts, showRestDays, filterDate]);
+  }, [visibleFuture, showRestDays, filterDate]);
 
-  const restCount = history.filter(s => s.isRestDay).length + futureWorkouts.filter(f => f.templateId === 'rest').length;
+  // Counted off the same rows the tabs can show, or a retired program's rest
+  // days alone would put a toggle on screen that hides nothing.
+  const restCount = history.filter(s => s.isRestDay).length + visibleFuture.filter(f => f.templateId === 'rest').length;
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-4">

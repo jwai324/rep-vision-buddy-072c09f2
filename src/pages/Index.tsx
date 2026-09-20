@@ -594,6 +594,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <ActivityScreen
           history={storage.history}
           futureWorkouts={storage.futureWorkouts}
+          activeProgramId={storage.activeProgramId}
           templates={storage.templates}
           onSelectSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'activity' })}
           onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'activity' })}
