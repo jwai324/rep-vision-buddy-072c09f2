@@ -23,7 +23,6 @@ import { Button } from '@/components/ui/button';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin, Focus, Camera } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
@@ -93,6 +92,33 @@ function safeWriteCache(cache: ActiveSessionCache) {
 //   everything else      -> the typed display value converted to kg
 const noopStartTimer = () => {};
 
+/**
+ * Everything the edit screen can change about a saved workout, as one string.
+ * Cancelling an edit asks before discarding, and only when there is something
+ * to discard — so this deliberately leaves out what the screen rewrites on the
+ * way in without being asked: `exerciseName` (re-resolved once the custom
+ * library lands), `restSeconds` and `dropSetsEnabled` (neither is editable
+ * here, and neither is written back). Comparing whole blocks would read that
+ * normalisation as an edit and make closing an untouched record a two-tap job.
+ */
+function editStateSignature(
+  blocks: ExerciseBlock[],
+  scalars: { note: string; location: string; date: string; startTime: string; durationMin: string },
+): string {
+  return JSON.stringify({
+    ...scalars,
+    blocks: blocks.map(b => ({
+      id: b.exerciseId,
+      group: b.supersetGroup ?? null,
+      note: b.note ?? '',
+      sets: b.sets.map(set => [
+        set.setNumber, set.type, set.weight, set.reps, set.rpe, set.time ?? '', set.distance ?? '', set.completed,
+        (set.drops ?? []).map(d => [d.weight, d.reps, d.rpe, d.time ?? '', d.distance ?? '', d.completed]),
+      ]),
+    })),
+  });
+}
+
 export function clearSessionCache() {
   localStorage.removeItem(CACHE_KEY);
   // The workout is over, so is its rest: the scheduler outlives this screen
@@ -127,6 +153,13 @@ interface ActiveSessionProps {
   defaultRestSeconds?: number;
   cachedSession?: ActiveSessionCache | null;
   editSession?: WorkoutSession | null;
+  /**
+   * Kept pointed at this screen's unsaved-edit state so the router can ask
+   * before Back throws an edit away. The X in the corner asks directly; on a
+   * phone Back is the way most people leave, and it owns the history entry,
+   * so the question has to be reachable from there too.
+   */
+  editGuard?: React.MutableRefObject<{ hasChanges: boolean; confirm: () => void } | null>;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
   onMinimize?: () => void;
@@ -137,7 +170,7 @@ interface ActiveSessionProps {
 
 // normalizeBlocks is imported from useBlockMutations
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession: cachedSessionProp, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession: cachedSessionProp, editSession, editGuard, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
   // A cache belongs to the workout it was written for. Mounting one whose
   // template differs from the screen's is how starting a workout on top of a
@@ -247,7 +280,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const tpl = resolvedTemplateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
       const restSec = tpl?.restSeconds ?? defaultRestSeconds;
-      const isBand = getExerciseInputMode(id, customExercises) === 'band';
+      const mode = getExerciseInputMode(id, customExercises);
+      const isBand = mode === 'band';
+      // A timed exercise's planned duration lives in the template's targetReps
+      // — that is the cell the builder labels "Time (min)" — and the session's
+      // time field holds seconds, so it is carried over multiplied by 60. Like
+      // the distance target above, it is a prefill: the box opens holding the
+      // plan instead of empty, and a set ticked without touching it records
+      // the planned time as performed.
+      const plannedSeconds = isTimeBased(mode) && typeof tpl?.targetReps === 'number' && tpl.targetReps > 0
+        ? Math.round(tpl.targetReps * 60)
+        : null;
       return {
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? customExercises.find(c => c.id === id)?.name ?? id,
@@ -264,7 +307,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           completed: false,
           type: tpl?.setType ?? 'normal',
           rpe: '',
-          time: '',
+          time: plannedSeconds != null ? String(plannedSeconds) : '',
         })),
       };
     });
@@ -480,6 +523,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const initialEditDurationMin = useRef(editDurationMin);
   const initialEditDate = useRef(editDate);
   const initialEditTime = useRef(editTime);
+
+  // Cancelling an edit throws the work away, so it asks first — but only when
+  // something was actually changed, so opening a record and closing it stays
+  // one tap. The baseline is taken on the first render, from the same blocks
+  // the screen was seeded with, rather than recomputed from `editSession`:
+  // recomputing would move under us when the custom-exercise library loads and
+  // read as an edit nobody made.
+  const editSignature = useMemo(
+    () => (isEditMode
+      ? editStateSignature(blocks, {
+          note: workoutNote,
+          location,
+          date: editDate,
+          startTime: editTime,
+          durationMin: editDurationMin,
+        })
+      : ''),
+    [isEditMode, blocks, workoutNote, location, editDate, editTime, editDurationMin],
+  );
+  const [editBaselineSignature] = useState(() => editSignature);
+  const editHasChanges = isEditMode && editSignature !== editBaselineSignature;
+  const [showDiscardEditsConfirm, setShowDiscardEditsConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!editGuard) return;
+    editGuard.current = { hasChanges: editHasChanges, confirm: () => setShowDiscardEditsConfirm(true) };
+    return () => { editGuard.current = null; };
+  }, [editGuard, editHasChanges]);
 
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
@@ -1360,7 +1431,11 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
         {isEditMode ? (
-          <button onClick={onCancel} aria-label="Cancel editing" className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+          <button
+            onClick={() => (editHasChanges ? setShowDiscardEditsConfirm(true) : onCancel())}
+            aria-label="Cancel editing"
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >✕</button>
         ) : (
           <button onClick={onMinimize ?? onCancel} aria-label="Back" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-5 h-5" />
@@ -1794,6 +1869,30 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => { setShowDiscardConfirm(false); onCancel(); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Leaving an edit with unsaved changes — the same question the live
+          workout's Discard asks, because the X in the corner sits where every
+          other screen's back arrow does and used to throw the edit away on
+          one tap with nothing kept. */}
+      <AlertDialog open={showDiscardEditsConfirm} onOpenChange={setShowDiscardEditsConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your changes to this workout have not been saved. Discard them and leave the record as it was?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setShowDiscardEditsConfirm(false); onCancel(); }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Discard
