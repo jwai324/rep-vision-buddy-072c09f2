@@ -3,7 +3,9 @@ import { EXERCISE_DATABASE, type Exercise } from '@/data/exercises';
 import type { SetType, WorkoutSession } from '@/types/workout';
 import { supabase } from '@/integrations/supabase/client';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
-import { getSessionController, isSessionActive } from '@/hooks/useSessionController';
+import { getSessionController, isSessionActive, type SessionMutations } from '@/hooks/useSessionController';
+import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
+import type { ActiveSessionCache, ExerciseBlock as SessionBlock, SetRow as SessionSetRow } from '@/types/activeSession';
 import { formatLocalDate } from '@/utils/dateUtils';
 import { volumeExcludedIds, countedSessionTotals } from '@/utils/volumeExclusions';
 import { deriveBalance, EMPTY_BALANCE, type CreditsBalance } from '@/utils/credits';
@@ -141,6 +143,13 @@ export interface Proposal {
   suggestions?: string[];
   summary: string;
   appliedAt?: number;
+  /**
+   * For the four session tools: which workout the proposal was built against
+   * (`sessionWorkoutKey`). Apply refuses a different one, so a card left over
+   * from a workout that was discarded and replaced cannot land its change in
+   * the new workout. Null when no workout was in progress.
+   */
+  sessionKey?: string | null;
 }
 
 interface RawToolCallAccumulator {
@@ -266,6 +275,215 @@ function emptySnapshotFor(name: ToolCall['name']): ProposalSnapshot {
     default:
       return { kind: 'session', rows: [] };
   }
+}
+
+/* ===== The workout with no screen on it ==================================
+ *
+ * `ActiveSession` registers a session controller while it is mounted and drops
+ * it on unmount — and minimizing a workout unmounts it. The workout itself is
+ * not gone: it lives on in the session cache, which is what the "Workout in
+ * progress" bar shows and what Resume rebuilds the screen from. Serving the
+ * coach from the registered controller alone is what made it answer "no active
+ * workout" to a user looking straight at that bar, and turned a suggestion made
+ * a moment earlier into a card that could never be applied.
+ *
+ * So the coach reads whichever of the two IS the workout right now, and there
+ * is exactly one writer of the cache at any moment:
+ *
+ *   screen mounted   -> the screen owns the workout. Its own debounced write is
+ *                       the only thing that touches the cache; the coach goes
+ *                       through the registered controller, and
+ *                       `cachedSessionController` returns null so it cannot
+ *                       write behind the screen's back (a write there would be
+ *                       overwritten by the next flush half a second later).
+ *   screen unmounted -> the cache IS the workout, and the coach writes it.
+ *                       The screen reads it back when it mounts again, which is
+ *                       how a change made while minimized is on screen after
+ *                       Resume.
+ *
+ * Editing a PAST workout stays invisible either way: the edit screen registers
+ * no controller and writes no cache, so the coach sees the minimized live
+ * workout if there is one and no workout at all otherwise.
+ */
+
+export const WORKOUT_CHANGED_MESSAGE =
+  'That workout is no longer the one in progress — ask the coach again.';
+
+function readSessionCache(): ActiveSessionCache | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ActiveSessionCache | null;
+    return parsed && Array.isArray(parsed.blocks) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionCache(cache: ActiveSessionCache): boolean {
+  try {
+    localStorage.setItem(ACTIVE_SESSION_CACHE_KEY, JSON.stringify(cache));
+    return true;
+  } catch (e) {
+    console.warn('[chat] Failed to write session cache:', e);
+    return false;
+  }
+}
+
+/**
+ * Which workout a cache holds: the template it was started from and the moment
+ * it began. Both are fixed for the life of one workout — the timer's anchor is
+ * not, it shifts forward on every resume — so this survives a minimize, a
+ * resume and a pause, and changes the instant a different workout is started.
+ * A session proposal records it and refuses to apply against anything else,
+ * which is the same rule `ActiveSession` applies when it refuses a cache whose
+ * templateId is not its own.
+ */
+function sessionWorkoutKey(cache: ActiveSessionCache | null): string | null {
+  if (!cache) return null;
+  return `${cache.templateId ?? ''}@${cache.trueStartTimestamp ?? cache.startTimestamp ?? ''}`;
+}
+
+function currentWorkoutKey(): string | null {
+  return sessionWorkoutKey(readSessionCache());
+}
+
+interface CachedSessionOptions {
+  nameFor: (exerciseId: string) => string;
+  defaultRestSeconds: number;
+  defaultDropSetsEnabled: boolean;
+}
+
+/**
+ * The same four mutations `ActiveSession` registers, applied to the cache
+ * instead of to React state, for a workout whose screen is not mounted.
+ * Returns null when a screen is mounted (it owns the workout) or when there is
+ * no workout in progress at all.
+ */
+function cachedSessionController(opts: CachedSessionOptions): SessionMutations | null {
+  if (isSessionActive()) return null;
+  const opened = readSessionCache();
+  if (!opened) return null;
+  const key = sessionWorkoutKey(opened);
+
+  // Re-read on every call rather than closing over `opened`: the workout can
+  // be discarded, or replaced by another one, between the proposal and the tap.
+  const read = (): ActiveSessionCache | null => {
+    const cache = readSessionCache();
+    return cache && sessionWorkoutKey(cache) === key ? cache : null;
+  };
+
+  // None of the four mutations below moves or removes a row — they append a
+  // block, append sets, or rewrite a row in place — so the rest timer, the rest
+  // records and the running set held in the same cache stay pointed at the rows
+  // they were on. One that did move rows would have to remap those the way
+  // `useBlockMutations` does on screen.
+  const mutate = (fn: (blocks: SessionBlock[]) => SessionBlock[] | null): boolean => {
+    const cache = read();
+    if (!cache) return false;
+    // A screen that mounted in between owns the workout now; its next flush
+    // would overwrite whatever we wrote here.
+    if (isSessionActive()) return false;
+    const blocks = fn(cache.blocks);
+    if (!blocks) return false;
+    return writeSessionCache({ ...cache, blocks });
+  };
+
+  const setRow = (over: Partial<SessionSetRow> & { setNumber: number }): SessionSetRow => ({
+    weight: '', reps: '', completed: false, type: 'normal', rpe: '', time: '', ...over,
+  });
+
+  return {
+    addExercise: (exerciseId, sets = 3, targetReps, weight) => mutate(blocks => {
+      if (blocks.some(b => b.exerciseId === exerciseId)) return null;
+      return [...blocks, {
+        exerciseId,
+        exerciseName: opts.nameFor(exerciseId),
+        restSeconds: opts.defaultRestSeconds,
+        dropSetsEnabled: opts.defaultDropSetsEnabled,
+        sets: Array.from({ length: sets }, (_, i) => setRow({
+          setNumber: i + 1,
+          weight: weight?.toString() ?? '',
+          reps: targetReps?.toString() ?? '',
+        })),
+      }];
+    }),
+    addSets: (identifier, count) => mutate(blocks => {
+      let found = false;
+      const next = blocks.map((block, idx) => {
+        const match = block.exerciseName.toLowerCase() === identifier.toLowerCase()
+          || idx.toString() === identifier;
+        if (!match) return block;
+        found = true;
+        const lastSet = block.sets[block.sets.length - 1];
+        const normalCount = block.sets.filter(s => s.type !== 'warmup').length;
+        const newSets = Array.from({ length: count }, (_, i) => setRow({
+          setNumber: normalCount + i + 1,
+          weight: lastSet?.weight ?? '',
+          reps: lastSet?.reps ?? '',
+          type: lastSet?.type === 'warmup' ? 'normal' : lastSet?.type ?? 'normal',
+        }));
+        return { ...block, sets: [...block.sets, ...newSets] };
+      });
+      return found ? next : null;
+    }),
+    updateSet: (exerciseName, setNumber, updates) => mutate(blocks => {
+      let found = false;
+      const next = blocks.map(block => {
+        if (block.exerciseName.toLowerCase() !== exerciseName.toLowerCase()) return block;
+        return {
+          ...block,
+          sets: block.sets.map(set => {
+            // Warm-ups carry their own 1..n numbering; "set 1" is working set 1,
+            // exactly as the mounted screen reads it.
+            if (set.type === 'warmup' || set.setNumber !== setNumber) return set;
+            found = true;
+            return {
+              ...set,
+              ...(updates.weight !== undefined ? { weight: updates.weight.toString() } : {}),
+              ...(updates.reps !== undefined ? { reps: updates.reps.toString() } : {}),
+            };
+          }),
+        };
+      });
+      return found ? next : null;
+    }),
+    swapExercise: (currentName, newExerciseId) => mutate(blocks => {
+      let found = false;
+      const next = blocks.map(block => {
+        if (block.exerciseName.toLowerCase() !== currentName.toLowerCase()) return block;
+        found = true;
+        return { ...block, exerciseId: newExerciseId, exerciseName: opts.nameFor(newExerciseId) };
+      });
+      return found ? next : null;
+    }),
+    getBlocks: () => read()?.blocks ?? [],
+    getStartTime: () => {
+      // A hand-edited or half-written cache must not reach `new Date(...)` as
+      // undefined: that throws, and it would take the whole turn down with it.
+      const started = read()?.startTimestamp ?? opened.startTimestamp;
+      return typeof started === 'number' && Number.isFinite(started) ? started : Date.now();
+    },
+    getActiveRestTimer: () => {
+      const timer = read()?.activeTimer;
+      if (!timer) return null;
+      const raw = timer.status === 'paused'
+        ? timer.elapsedAtPause ?? 0
+        : timer.status === 'running'
+          ? Math.floor((Date.now() - timer.startedAtEpoch) / 1000)
+          : timer.originalDuration;
+      const elapsed = Math.min(Math.max(0, raw), timer.originalDuration);
+      return {
+        status: timer.status,
+        exerciseIndex: timer.id.blockIdx,
+        setIndex: timer.id.setIdx,
+        durationSeconds: timer.duration,
+        originalDurationSeconds: timer.originalDuration,
+        elapsedSeconds: elapsed,
+        remainingSeconds: Math.max(0, timer.originalDuration - elapsed),
+      };
+    },
+  };
 }
 
 // Turn the raw streamed accumulators into tool calls, separating out the ones
@@ -850,6 +1068,20 @@ export const ChatProvider: React.FC<{
     return dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : null;
   }, [storage.history]);
 
+  /**
+   * The workout in progress, from whichever of the two holds it: the mounted
+   * screen's controller, or the session cache while the workout is minimized.
+   * Null when there is no workout at all — which is also what a past workout
+   * being edited looks like, since the edit screen registers nothing.
+   */
+  const sessionController = useCallback((): SessionMutations | null => (
+    getSessionController() ?? cachedSessionController({
+      nameFor: (exerciseId: string) => exerciseById.get(exerciseId)?.name ?? exerciseId,
+      defaultRestSeconds: storage.preferences?.defaultRestSeconds ?? 90,
+      defaultDropSetsEnabled: storage.preferences?.defaultDropSetsEnabled ?? false,
+    })
+  ), [exerciseById, storage.preferences?.defaultRestSeconds, storage.preferences?.defaultDropSetsEnabled]);
+
   const buildContext = useCallback(() => {
     const memberDays = daysSinceMember();
     const historyMax = historyHorizonDays(memberSince, earliestSessionDate);
@@ -923,45 +1155,46 @@ export const ChatProvider: React.FC<{
       ctx.active_program_id = storage.activeProgramId;
     }
 
-    // Include active session state when in a workout
-    if (isSessionActive()) {
-      const controller = getSessionController();
-      if (controller) {
-        const blocks = controller.getBlocks();
-        const startTime = controller.getStartTime();
-        ctx.active_session = {
-          started_at: new Date(startTime).toISOString(),
-          elapsed_seconds: Math.max(0, Math.floor((Date.now() - startTime) / 1000)),
-          active_rest_timer: controller.getActiveRestTimer(),
-          exercises: blocks.map((b, i) => {
-            const completedSets = b.sets.filter(s => s.completed).length;
-            return {
-              index: i,
-              exerciseId: b.exerciseId,
-              exerciseName: b.exerciseName,
-              rest_seconds: b.restSeconds,
-              completed_sets: completedSets,
-              total_sets: b.sets.length,
-              fully_completed: completedSets > 0 && completedSets === b.sets.length,
-              sets: b.sets.map(s => ({
-                setNumber: s.setNumber,
-                weight: s.weight,
-                reps: s.reps,
-                completed: s.completed,
-                type: s.type,
-              })),
-            };
-          }),
-        };
-      }
+    // The workout in progress — from its screen while that is mounted, from
+    // the session cache while it is minimized. Same workout either way;
+    // `minimized` is the only difference the coach is told about, so it does
+    // not talk as though the user were looking at the sets.
+    const session = sessionController();
+    if (session) {
+      const blocks = session.getBlocks();
+      const startTime = session.getStartTime();
+      ctx.active_session = {
+        minimized: !isSessionActive(),
+        started_at: new Date(startTime).toISOString(),
+        elapsed_seconds: Math.max(0, Math.floor((Date.now() - startTime) / 1000)),
+        active_rest_timer: session.getActiveRestTimer(),
+        exercises: blocks.map((b, i) => {
+          const completedSets = b.sets.filter(s => s.completed).length;
+          return {
+            index: i,
+            exerciseId: b.exerciseId,
+            exerciseName: b.exerciseName,
+            rest_seconds: b.restSeconds,
+            completed_sets: completedSets,
+            total_sets: b.sets.length,
+            fully_completed: completedSets > 0 && completedSets === b.sets.length,
+            sets: b.sets.map(s => ({
+              setNumber: s.setNumber,
+              weight: s.weight,
+              reps: s.reps,
+              completed: s.completed,
+              type: s.type,
+            })),
+          };
+        }),
+      };
     }
 
     return ctx;
-  }, [storage, memberSince, daysSinceMember, earliestSessionDate, exerciseById, exerciseListLean]);
+  }, [storage, memberSince, daysSinceMember, earliestSessionDate, exerciseById, exerciseListLean, sessionController]);
 
   const getSessionRows = useCallback((): SessionExerciseRow[] => {
-    if (!isSessionActive()) return [];
-    const controller = getSessionController();
+    const controller = sessionController();
     if (!controller) return [];
     // Block sets carry weight/reps as strings (they come straight from the
     // DOM input values). SessionExerciseRow.sets is typed as numbers so the
@@ -983,7 +1216,7 @@ export const ChatProvider: React.FC<{
         completed: s.completed,
       })),
     }));
-  }, []);
+  }, [sessionController]);
 
   const proposeToolCall = useCallback(async (tc: ToolCall, messageId: string): Promise<{ result: ToolCallResult; proposal?: Proposal }> => {
     if (!AI_ALLOWED_ACTIONS.has(tc.name)) {
@@ -1206,7 +1439,7 @@ export const ChatProvider: React.FC<{
         const args = tc.arguments;
         const validation = validateExerciseReference(args.exerciseId, args.exerciseName, exerciseById, mergedExercises);
         if (!validation.valid) return mkInvalid({ kind: 'session', rows: getSessionRows() }, validation.error!, validation.suggestions);
-        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session. Start a workout first.');
+        if (!sessionController()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session. Start a workout first.');
         const rows = getSessionRows();
         if (rows.some(r => r.exerciseId === args.exerciseId)) {
           return mkInvalid({ kind: 'session', rows }, 'Exercise is already in the workout.');
@@ -1222,6 +1455,7 @@ export const ChatProvider: React.FC<{
         };
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          sessionKey: currentWorkoutKey(),
           before: { kind: 'session', rows },
           after: { kind: 'session', rows: [...rows, newRow] },
           status: 'pending',
@@ -1232,7 +1466,7 @@ export const ChatProvider: React.FC<{
 
       case 'add_sets_to_exercise': {
         const args = tc.arguments;
-        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
+        if (!sessionController()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
         const rows = getSessionRows();
         const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
         if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
@@ -1244,6 +1478,7 @@ export const ChatProvider: React.FC<{
         const after = rows.map(r => r.exerciseId === args.exerciseId ? { ...r, sets: [...r.sets, ...newSets] } : r);
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          sessionKey: currentWorkoutKey(),
           before: { kind: 'session', rows },
           after: { kind: 'session', rows: after },
           status: 'pending',
@@ -1254,7 +1489,7 @@ export const ChatProvider: React.FC<{
 
       case 'update_set_weight_reps': {
         const args = tc.arguments;
-        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
+        if (!sessionController()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
         const rows = getSessionRows();
         const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
         if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
@@ -1271,6 +1506,7 @@ export const ChatProvider: React.FC<{
           : r);
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          sessionKey: currentWorkoutKey(),
           before: { kind: 'session', rows },
           after: { kind: 'session', rows: after },
           status: 'pending',
@@ -1283,7 +1519,7 @@ export const ChatProvider: React.FC<{
         const args = tc.arguments;
         const newValidation = validateExerciseReference(args.newExerciseId, args.newExerciseName, exerciseById, mergedExercises);
         if (!newValidation.valid) return mkInvalid({ kind: 'session', rows: getSessionRows() }, newValidation.error!, newValidation.suggestions);
-        if (!isSessionActive()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
+        if (!sessionController()) return mkInvalid({ kind: 'session', rows: [] }, 'No active workout session.');
         const rows = getSessionRows();
         const targetRow = rows.find(r => r.exerciseId === args.exerciseId);
         if (!targetRow) return mkInvalid({ kind: 'session', rows }, `Exercise id "${args.exerciseId}" is not in the current workout.`);
@@ -1298,6 +1534,7 @@ export const ChatProvider: React.FC<{
           : r);
         const proposal: Proposal = {
           id: tc.id, messageId, toolName: tc.name, arguments: tc.arguments,
+          sessionKey: currentWorkoutKey(),
           before: { kind: 'session', rows },
           after: { kind: 'session', rows: after },
           status: 'pending',
@@ -1449,7 +1686,7 @@ export const ChatProvider: React.FC<{
       default:
         return { result: { error: `Action is not allowed.` } };
     }
-  }, [storage, getSessionRows, daysSinceMember, exerciseById, mergedExercises, memberSince, earliestSessionDate, volumeExcluded]);
+  }, [storage, getSessionRows, sessionController, daysSinceMember, exerciseById, mergedExercises, memberSince, earliestSessionDate, volumeExcluded]);
 
   // Proposals whose save is in flight. The status in `proposals` is the same
   // signal for the card, but a second tap in the same tick reads the closure
@@ -1475,6 +1712,26 @@ export const ChatProvider: React.FC<{
     }));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const currentTemplate = (templateId: string) => storage.templates.find((t: any) => t.id === templateId);
+    // The workout the four session tools write — its screen if one is mounted,
+    // its cache if it is minimized — but only if it is still the workout this
+    // proposal was built against. A card left over from a workout that was
+    // discarded and replaced would otherwise put its change in the new one.
+    const sessionTarget = (): SessionMutations | null => {
+      const controller = sessionController();
+      if (!controller) {
+        invalidate('No active workout session.');
+        return null;
+      }
+      const key = currentWorkoutKey();
+      // A key is missing only in the half-second before a just-started workout
+      // has been cached; there is nothing to compare then, and the tool's own
+      // "that exercise is no longer in the session" checks still apply.
+      if (proposal.sessionKey && key && key !== proposal.sessionKey) {
+        invalidate(WORKOUT_CHANGED_MESSAGE);
+        return null;
+      }
+      return controller;
+    };
 
     try {
       switch (proposal.toolName) {
@@ -1580,11 +1837,8 @@ export const ChatProvider: React.FC<{
         }
         case 'add_exercise_to_workout': {
           const args = proposal.arguments;
-          const controller = getSessionController();
-          if (!controller) {
-            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
-            return;
-          }
+          const controller = sessionTarget();
+          if (!controller) return;
           const ok = controller.addExercise(args.exerciseId, args.sets || 3, args.targetReps, args.weight);
           if (!ok) {
             setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'Exercise is already in the workout.' } }));
@@ -1594,11 +1848,8 @@ export const ChatProvider: React.FC<{
         }
         case 'add_sets_to_exercise': {
           const args = proposal.arguments;
-          const controller = getSessionController();
-          if (!controller) {
-            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
-            return;
-          }
+          const controller = sessionTarget();
+          if (!controller) return;
           const blocks = controller.getBlocks();
           const targetBlock = blocks.find(b => b.exerciseId === args.exerciseId);
           if (!targetBlock) {
@@ -1614,11 +1865,8 @@ export const ChatProvider: React.FC<{
         }
         case 'update_set_weight_reps': {
           const args = proposal.arguments;
-          const controller = getSessionController();
-          if (!controller) {
-            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
-            return;
-          }
+          const controller = sessionTarget();
+          if (!controller) return;
           const blocks = controller.getBlocks();
           const targetBlock = blocks.find(b => b.exerciseId === args.exerciseId);
           if (!targetBlock) {
@@ -1634,11 +1882,8 @@ export const ChatProvider: React.FC<{
         }
         case 'swap_exercise_in_workout': {
           const args = proposal.arguments;
-          const controller = getSessionController();
-          if (!controller) {
-            setProposals(prev => ({ ...prev, [id]: { ...prev[id], status: 'invalid', error: 'No active workout session.' } }));
-            return;
-          }
+          const controller = sessionTarget();
+          if (!controller) return;
           const blocks = controller.getBlocks();
           const targetBlock = blocks.find(b => b.exerciseId === args.exerciseId);
           if (!targetBlock) {
@@ -1668,7 +1913,7 @@ export const ChatProvider: React.FC<{
       // A save that resolved false leaves the proposal pending for another tap.
       setProposals(prev => prev[id]?.status === 'applying' ? { ...prev, [id]: { ...prev[id], status: 'pending' } } : prev);
     }
-  }, [proposals, storage, exerciseById]);
+  }, [proposals, storage, exerciseById, sessionController]);
 
   const discardProposal = useCallback((id: string) => {
     const proposal = proposals[id];

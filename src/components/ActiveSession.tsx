@@ -127,6 +127,20 @@ export function clearSessionCache() {
   releaseRestSchedule();
 }
 
+/**
+ * The workout in progress, as it was last written.
+ *
+ * Which of the two copies is the workout is a rule, not a race. While this
+ * screen is mounted it owns the workout and its debounced flush is the only
+ * writer of this cache: the AI coach reaches the workout through the session
+ * controller registered below and deliberately does not touch the cache, whose
+ * next flush would overwrite anything it wrote. The moment the screen unmounts
+ * — which is what minimizing a workout does — the cache IS the workout, and the
+ * coach reads and writes it directly, so a suggestion made before the minimize
+ * can still be applied after it. This screen reads the result back the next
+ * time it mounts, which is why the change is on screen after Resume. The other
+ * half of the rule is "The workout with no screen on it" in ChatContext.
+ */
 export function getSessionCache(): ActiveSessionCache | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -931,7 +945,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   // Register session controller for AI chat mutations. Not in edit mode: a
   // past workout registered as the live one gave the coach a fake
-  // active_session, and its session tools then rewrote history.
+  // active_session, and its session tools then rewrote history — and because
+  // the edit screen writes no cache either, editing a past workout stays
+  // invisible to the coach through both doors.
+  //
+  // Unregistering on unmount is not the coach losing the workout: with no
+  // screen mounted it falls back to the session cache (see `getSessionCache`
+  // above), which is the same workout by another name.
   useEffect(() => {
     if (isEditMode) return;
     registerSession({
