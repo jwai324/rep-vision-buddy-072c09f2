@@ -423,7 +423,10 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
           )}
 
           {/* Save Rest Day to History */}
-          {activities.length > 0 && onSaveRestDay && (
+          {/* Offered from the moment the screen opens: a rest day is a thing
+              you did, and gating Save on a recovery activity meant marking a
+              day as rest and leaving recorded nothing at all. */}
+          {onSaveRestDay && (
             <div className="mt-auto pb-4">
               <Button
                 variant={allCompleted ? 'default' : 'outline'}
@@ -432,7 +435,9 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                 onClick={handleSaveRestDay}
               >
                 <Check className="w-5 h-5 mr-2" />
-                {allCompleted ? 'Complete Rest Day' : 'Save Rest Day'}
+                {activities.length === 0
+                  ? 'Log Rest Day'
+                  : allCompleted ? 'Complete Rest Day' : 'Save Rest Day'}
               </Button>
             </div>
           )}
