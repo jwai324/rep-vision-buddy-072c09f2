@@ -28,7 +28,7 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
   return (
     <div className="p-4 flex flex-col gap-4 overflow-x-hidden min-w-0 max-w-full">
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground">←</button>
+        <button onClick={onBack} aria-label="Back" className="text-muted-foreground hover:text-foreground">←</button>
         <h2 className="text-xl font-bold text-foreground">Programs</h2>
       </div>
 

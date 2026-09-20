@@ -353,6 +353,15 @@ client sends the one input it controls, the function holds the key). `.env`
 carries only the Supabase URL and the publishable key, both of which are public
 by design.
 
+### What the credits screen may claim
+
+Every allowance figure on the credits screen, including the toast raised when
+the plan changes, is derived from `FREE_MONTHLY_MICROS` and
+`PREMIUM_MONTHLY_MICROS` rather than typed. The Premium toast used to say
+"Unlimited AI coach access" while the same screen, and the server's own meter,
+gave 7,000 credits a month. A figure written by hand in one of four places is
+how that starts; keep them on the one source.
+
 ### Browser security headers
 
 `vercel.json` sends `X-Frame-Options: DENY`, `Content-Security-Policy:
@@ -592,6 +601,25 @@ shifted forward on every resume so elapsed stays continuous; `trueStart`
 (cached as `trueStartTimestamp`) is when the workout began. `startedAt` and the
 session's date come from `trueStart`; duration is `now − startTime` while
 running and the frozen figure while paused, so a pause is never counted.
+
+## Dialogs opened from a workout sit above Focus Mode
+
+`ActiveSession` renders its note editor and its rest-length editor before
+`FocusMode` in the tree, and Focus Mode is an opaque `fixed inset-0 z-50`
+overlay whose kebab menu opens those same dialogs. At an equal level the
+dialog lands *underneath* it and the tap reads as doing nothing, which is
+exactly the defect "Update Rest Timer" was reported for. Both dialogs are
+`z-[70]`; Focus Mode's own floating clone is `z-[60]`. A new dialog reachable
+from the exercise menu belongs at the same level.
+
+The rest editor addresses its exercise **by id, not by row**: a coach proposal
+applying underneath the overlay can insert, remove or reorder blocks, the same
+reason the stopwatch and the rest timer remap their indices. Its value is
+session-scoped and deliberately not written back to the template;
+`TemplateSnapshotEntry` carries no `restSeconds`, so the end-of-workout update
+prompt neither mentions nor saves it. The floor of 5 seconds is not cosmetic:
+a rest of 0 is already complete when it starts, so it fires the toast and the
+notification and never arms the sound or the worker.
 
 ## The session cache belongs to one workout
 
@@ -1054,6 +1082,18 @@ close on their own:
   `target_user_id`, bound the amount, and grant only from a verified receipt.
 - **Balances consumed at the 3x rate were never corrected.** Nothing has re-priced
   them; see the token-price note above for what the data does and does not allow.
+
+**Scheduled workouts are shown for the active program only.** The dashboard's
+week strip, the monthly calendar, the start-workout screen, the calendar day
+tap and the Activity screen's Upcoming tab all filter
+`futureWorkouts` on `programId === activeProgramId || programId === 'manual'`.
+That rule is load-bearing because nothing ever removes a deactivated program's
+rows: `setActiveProgram` writes one settings field, and `saveProgram` retires
+rows only for the program being saved, so a plan switched off keeps its
+remaining weeks of scheduled rows for as long as the program exists. Activity
+was the one reader without the filter and listed every plan the user had ever
+run, each row offering Perform. A new reader of `futureWorkouts` needs the same
+expression, and a count beside a list needs to be taken from the filtered rows.
 
 **Deleting something still referenced is refused, not cascaded.** A template a
 program schedules (or a manual scheduled workout points at) and a custom

@@ -145,7 +145,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
       <div className="flex items-center gap-3 pt-2">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
+        <button onClick={onBack} aria-label="Back" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-0">
@@ -319,6 +319,8 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                     >
                       <button
                         onClick={() => toggleActivityComplete(a.id)}
+                        aria-label={`${name} complete`}
+                        aria-pressed={a.completed}
                         className={`w-7 h-7 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
                           a.completed
                             ? 'bg-primary border-primary text-primary-foreground'
@@ -340,6 +342,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                       </div>
                       <button
                         onClick={() => removeActivity(a.id)}
+                        aria-label={`Remove ${name}`}
                         className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -369,6 +372,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                 <p className="text-sm font-bold text-foreground">Add Exercise</p>
                 <button
                   onClick={() => { setShowPicker(false); setSearch(''); }}
+                  aria-label="Close exercise picker"
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <X className="w-4 h-4" />

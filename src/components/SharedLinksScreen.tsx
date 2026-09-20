@@ -43,7 +43,7 @@ export const SharedLinksScreen: React.FC<SharedLinksScreenProps> = ({ onBack }) 
   return (
     <div className="p-4 flex flex-col gap-4">
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
+        <button onClick={onBack} aria-label="Back" className="text-muted-foreground hover:text-foreground">
           <ChevronLeft className="w-5 h-5" />
         </button>
         <h2 className="text-xl font-extrabold text-foreground">Shared Links</h2>

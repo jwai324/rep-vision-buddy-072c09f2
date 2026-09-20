@@ -71,7 +71,7 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
   return (
     <div className="p-4 flex flex-col gap-4">
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground">←</button>
+        <button onClick={onBack} aria-label="Back" className="text-muted-foreground hover:text-foreground">←</button>
         <h2 className="text-xl font-bold text-foreground">Templates</h2>
       </div>
 

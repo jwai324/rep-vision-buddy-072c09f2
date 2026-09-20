@@ -311,7 +311,7 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                     <div className="bg-secondary/50 rounded-lg border border-border p-3 mb-2">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Similar Exercises</p>
-                        <button onClick={() => setSwapTarget(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                        <button onClick={() => setSwapTarget(null)} aria-label="Close similar exercises" className="text-xs text-muted-foreground hover:text-foreground">✕</button>
                       </div>
                       <div className="space-y-1 max-h-48 overflow-y-auto">
                         {getSimilarExercises(block.exerciseId).map(ex => (

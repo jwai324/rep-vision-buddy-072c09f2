@@ -165,7 +165,7 @@ const RpeHeaderPopover: React.FC = () => (
 const TimerHeaderPopover: React.FC = () => (
   <Popover>
     <PopoverTrigger asChild>
-      <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+      <button aria-label="About the time column" className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
         <Timer className="w-3 h-3 mx-auto" />
       </button>
     </PopoverTrigger>
@@ -378,7 +378,10 @@ const EXERCISE_MENU_ITEMS = [
   { icon: FileText, label: 'Add Note' },
   { icon: StickyNote, label: 'Add Sticky Note' },
   { icon: Flame, label: 'Add Warm-up Sets' },
-  { icon: Timer, label: 'Update Rest Timer' },
+  // Editing a past workout renders no rest bars and runs a no-op timer, so an
+  // exercise's rest length means nothing there — hidden, like the header's
+  // Hide Timers item.
+  { icon: Timer, label: 'Update Rest Timer', liveOnly: true },
   { icon: RefreshCw, label: 'Replace Exercise' },
   { icon: Layers, label: 'Create Superset' },
   { icon: ChevronDown, label: 'Drop Sets', toggle: true },
@@ -462,12 +465,12 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
           )}
           <Popover open={menuOpen} onOpenChange={setMenuOpen}>
           <PopoverTrigger asChild>
-            <button className="text-muted-foreground hover:text-foreground p-1">
+            <button aria-label={`Options for ${block.exerciseName}`} className="text-muted-foreground hover:text-foreground p-1">
               <MoreHorizontal className="w-4 h-4" />
             </button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-52 p-1">
-            {EXERCISE_MENU_ITEMS.map(item => (
+            {EXERCISE_MENU_ITEMS.filter(item => !(isEditMode && 'liveOnly' in item && item.liveOnly)).map(item => (
               <button
                 key={item.label}
                 onClick={() => { setMenuOpen(false); onMenuAction(item.label, blockIdx); }}
@@ -534,6 +537,10 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
             id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
             onClick={() => { if (!setHasError) onToggleComplete(blockIdx, setIdx); }}
             disabled={setHasError}
+            // The name stays put and aria-pressed carries the state: a name that
+            // flips with it too is announced as "...as not done, pressed".
+            aria-label={`${set.type === 'warmup' ? 'Warm-up set' : 'Set'} ${set.setNumber} complete`}
+            aria-pressed={set.completed}
             aria-disabled={setHasError}
             data-testid={`set-complete-${blockIdx}-${setIdx}`}
             className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
@@ -681,6 +688,8 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
           const dropCompleteBtn = (
             <button onClick={() => { if (!dropHasError) onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed); }}
               disabled={dropHasError}
+              aria-label={`Drop ${dropIdx + 1} of set ${set.setNumber} complete`}
+              aria-pressed={drop.completed}
               aria-disabled={dropHasError}
               data-testid={`drop-complete-${blockIdx}-${setIdx}-${dropIdx}`}
               className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${

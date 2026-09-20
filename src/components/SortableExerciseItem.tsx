@@ -33,6 +33,7 @@ export const SortableExerciseItem: React.FC<SortableExerciseItemProps> = ({ id, 
           className="mt-1 p-2 -m-1 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing [touch-action:pan-y]"
           {...attributes}
           {...listeners}
+          aria-label="Reorder exercise"
         >
           <GripVertical className="w-4 h-4" />
         </button>
