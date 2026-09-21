@@ -60,12 +60,14 @@ describe('ExerciseSelector result order', () => {
     expect(screen.getByRole('heading', { name: /chest/i })).toBeInTheDocument();
   });
 
-  // The library ships two rows sharing the id `medicine-ball-chest-pass`. The
-  // grouped view puts them under different body parts, but the ranked search
-  // list is flat, so keying it by id made them siblings with the same key —
-  // React warns and may drop one, and the warning is swept into every bug
-  // report filed afterwards by the console-error buffer.
-  it('renders both rows of a duplicated exercise id without a React key clash', async () => {
+  // The library used to ship two rows sharing the id
+  // `medicine-ball-chest-pass`; the duplicate is gone and
+  // `exerciseLibraryIntegrity.test.ts` guards against another one. The flat
+  // ranked search list is still where two rows sharing an id would be
+  // siblings, so this keeps checking that the list renders every ranked row
+  // with no React key warning — which the console-error buffer would otherwise
+  // sweep into every bug report filed afterwards.
+  it('renders every ranked row without a React key clash', async () => {
     const keyErrors: string[] = [];
     const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       keyErrors.push(args.map(String).join(' '));
@@ -75,7 +77,7 @@ describe('ExerciseSelector result order', () => {
       await waitFor(() => expect(renderedNames().length).toBeGreaterThan(0), { timeout: 3000 });
 
       const expected = searchExercises(EXERCISE_DATABASE, 'chest pass');
-      expect(expected.filter(e => e.id === 'medicine-ball-chest-pass')).toHaveLength(2);
+      expect(expected.filter(e => e.id === 'medicine-ball-chest-pass')).toHaveLength(1);
       expect(renderedNames()).toEqual(expected.map(e => e.name));
     } finally {
       spy.mockRestore();
