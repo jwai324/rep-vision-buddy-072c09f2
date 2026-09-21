@@ -92,14 +92,29 @@ BEGIN
   FOREACH target IN ARRAY targets LOOP
     fk_name := target || '_user_id_fkey';
 
-    -- Refuse to guess. If the table or its user_id column is not there, say so
-    -- and stop, rather than silently skipping a table the audit expects to be
-    -- covered.
+    -- A table that is absent here is not necessarily a mistake.
+    -- workout_templates_superset_backup was created by hand, outside the
+    -- migration history, so a database built by replaying these files — a fresh
+    -- project set up through the runbook's `supabase db push`, a branch, a
+    -- restored copy — reaches this point without it. Raising there would abort
+    -- the whole push on a table that is a recovery snapshot of one project's
+    -- data and that a new project has no reason to own. Skip it and say so.
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = target
+    ) THEN
+      RAISE NOTICE '%: no such table in this database, skipping', target;
+      CONTINUE;
+    END IF;
+
+    -- A table that IS here but has no user_id is still a real contradiction:
+    -- the list below names it as user-scoped and the schema disagrees. Refuse
+    -- to guess.
     IF NOT EXISTS (
       SELECT 1 FROM information_schema.columns
       WHERE table_schema = 'public' AND table_name = target AND column_name = 'user_id'
     ) THEN
-      RAISE EXCEPTION 'public.% has no user_id column; the table list in this migration is out of date', target;
+      RAISE EXCEPTION 'public.% exists but has no user_id column; the table list in this migration is out of date', target;
     END IF;
 
     IF EXISTS (
