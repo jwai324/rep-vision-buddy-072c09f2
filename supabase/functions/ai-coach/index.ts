@@ -81,6 +81,7 @@ RULES:
    - Hybrid: read user_profile.hybrid_goals — it lists 1+ of the goals above the user is training for at once. Blend the defaults: e.g. strength + endurance means heavy compounds in the 3-6 range PLUS conditioning/higher-rep accessory work in the same session or week; strength + hypertrophy means low-rep primary lifts followed by 8-12 rep accessories. If hybrid_goals is empty, ask the user which goals to blend before proposing a program or template.
 8. Always put compound movements before isolation movements.
 8a. A superset is a LINK, not a set type: give every exercise performed back-to-back the SAME integer supersetGroup (1, 2, 3... within the template), and list them next to each other. Two exercises per group is the norm; use three only for a genuine tri-set. Leave supersetGroup off anything done on its own, and never give a group to a single exercise. When you re-send an exercise you are not changing, re-send its existing supersetGroup so the link survives the edit.
+8b. Any exercise measured by distance (a run, a row, a swim, a ride, with or without a time) carries its target as targetDistance, in metres (a 5 km run is 5000), never as targetWeight, which is a load in kg or a band level. Re-send an existing targetDistance for an exercise you are not changing.
 9. If you can't do something (e.g., the user asks about nutrition and you don't have that data), say so directly and suggest what you can help with.
 10. Adding exercises to a template the user already has: call add_exercises_to_template with ONLY the new exercises. edit_template replaces the whole list, so reserve it for renaming, reordering, dropping exercises, or changing the sets/reps of ones already there — and only then re-send the full list. Emitting a full template you were only asked to add to wastes the reply budget and risks the tool call being cut off mid-write.
 
@@ -117,7 +118,9 @@ PROGRAM CREATION (create_program):
 - Every day in the array MUST have a UNIQUE frequency.weekday. Never assign two days to the same weekday — the second one gets overwritten and disappears from the calendar. Before you emit the tool call, mentally walk Sun→Sat and confirm each weekday appears at most once.
 - For a 7-day program, cover every weekday exactly once — use rest entries (templateId: "rest") for any day the user isn't training so the calendar shows a rest badge instead of a blank cell.
 - Order the days array in the SAME order as the weekdays you assign, so Day 1 corresponds to the earliest weekday, Day 2 to the next, and so on. The label field is just what shows on the calendar tile — use a short label like "Day 1", "Push A", or "Rest".
-- templateId must be an existing template id from the user's \`templates\` context, or the literal string "rest". Do not invent template ids. If you need a template that doesn't exist yet, propose create_template first, then reference the id the user's tool_result gives back in a follow-up create_program call.
+- templateId must be an existing template id from the user's \`templates\` context, or the literal string "rest". Do not invent template ids.
+- A template you propose in this reply does NOT exist yet — it only exists once the user taps Apply on its card, and the id create_template hands back is the id it WILL have then. So never reference a template you have just proposed from a create_program call in the same reply: that call is rejected for naming a template that does not exist.
+- When a program needs templates the user does not have, propose the templates and stop there: ask the user to apply those workouts and then ask you for the program. On that later message the new ids are in the \`templates\` context and create_program can reference them.
 
 CONTEXT: You receive the user's current screen, user_profile, templates, programs, active session, and available exercises with every message. user_profile fields:
 - display_name, weight_unit ('kg'|'lbs'), member_since, days_since_member, earliest_logged_workout (date of the oldest logged workout, or null if none), history_window_max_days, total_sessions_logged (always present)
@@ -153,6 +156,7 @@ const tools = [
               restSeconds: { type: "number" },
               targetRpe: { type: "number" },
               targetWeight: { type: "number", description: "Target load in kg, or the band level for band work. Omit for no target." },
+              targetDistance: { type: "number", description: "Target distance in metres for any exercise measured by distance (a run, a row, a swim). Omit for no target." },
               supersetGroup: { type: "number", description: "Shared integer id linking exercises performed back-to-back. Same id = same superset. Omit for an exercise done on its own." },
             },
             required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
@@ -182,6 +186,7 @@ const tools = [
               setType: { type: "string" },
               restSeconds: { type: "number" },
               targetWeight: { type: "number", description: "Target load in kg, or the band level for band work. Re-send the existing value for an exercise you are not changing." },
+              targetDistance: { type: "number", description: "Target distance in metres for any exercise measured by distance (a run, a row, a swim). Re-send the existing value for an exercise you are not changing." },
               supersetGroup: { type: "number", description: "Shared integer id linking exercises performed back-to-back. Re-send the existing value for an exercise you are not changing, or its superset is broken." },
             },
             required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
@@ -212,6 +217,7 @@ const tools = [
               restSeconds: { type: "number" },
               targetRpe: { type: "number" },
               targetWeight: { type: "number", description: "Target load in kg, or the band level for band work. Omit for no target." },
+              targetDistance: { type: "number", description: "Target distance in metres for any exercise measured by distance (a run, a row, a swim). Omit for no target." },
               supersetGroup: { type: "number", description: "Shared integer id linking exercises performed back-to-back. Same id = same superset. Omit for an exercise done on its own." },
             },
             required: ["exerciseId", "sets", "targetReps", "setType", "restSeconds"],
@@ -799,6 +805,9 @@ serve(async (req) => {
         }
       } catch (e) {
         console.error("ai-coach metering failed:", e);
+        // Anthropic billed the turn whether or not the debit landed; an
+        // unbilled turn that leaves no row anywhere is invisible to triage.
+        await logError(supabase, userId, "metering_failed", String((e as { message?: string } | undefined)?.message ?? e));
       } finally {
         await releaseSlot();
       }
@@ -871,7 +880,9 @@ serve(async (req) => {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    // The detail stays in the function log: a raw message here named the
+    // missing secret or the Postgres error to whoever sent the request.
+    return new Response(JSON.stringify({ error: "The coach hit a server error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } finally {

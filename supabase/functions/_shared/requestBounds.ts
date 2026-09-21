@@ -29,6 +29,17 @@ export const MAX_CONTEXT_CHARS = 256_000;
 // window; this is what actually bounds the spend of one turn (~100k tokens).
 export const MAX_REQUEST_CHARS = 400_000;
 
+// generate-program's equivalent, with the same shape of reasoning. The client
+// sends the built-in library filtered by equipment and experience (365 rows,
+// ~49k characters serialized, no row over 200) and a handful of short answers,
+// the longest a 300-character notes field. Each answer is interpolated into
+// the prompt with `${}`, so an array or object sent in its place is measured
+// serialized rather than trusted to be a string.
+export const MAX_PROGRAM_EXERCISES = 2_000;
+export const MAX_PROGRAM_EXERCISE_CHARS = 1_000;
+export const MAX_PROGRAM_INPUT_CHARS = 4_000;
+export const MAX_PROGRAM_REQUEST_CHARS = 256_000;
+
 const size = (v: unknown): number => (typeof v === "string" ? v : JSON.stringify(v ?? "")).length;
 
 /** The reason a request is too large to send to the model, or null. */
@@ -65,5 +76,25 @@ export function requestTooLarge(messages: unknown, context: unknown, actionResul
     total += chars;
   }
   if (total > MAX_REQUEST_CHARS) return "This request is too large to send to the coach.";
+  return null;
+}
+
+/** The reason a program request is too large to send to the model, or null. */
+export function programRequestTooLarge(userInputs: unknown, exercises: unknown): string | null {
+  const list = Array.isArray(exercises) ? exercises : [];
+  if (list.length > MAX_PROGRAM_EXERCISES) return "Too many exercises in this request.";
+  let total = 0;
+  for (const e of list) {
+    const chars = size(e);
+    if (chars > MAX_PROGRAM_EXERCISE_CHARS) return "An exercise in this request is too long.";
+    total += chars;
+  }
+  if (userInputs != null && typeof userInputs === "object") {
+    for (const v of Object.values(userInputs as Record<string, unknown>)) {
+      if (size(v) > MAX_PROGRAM_INPUT_CHARS) return "An answer in this request is too long.";
+    }
+    total += size(userInputs);
+  }
+  if (total > MAX_PROGRAM_REQUEST_CHARS) return "This request is too large to build a program from.";
   return null;
 }

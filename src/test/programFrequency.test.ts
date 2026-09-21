@@ -104,6 +104,19 @@ describe('frequencyOccurrences', () => {
     expect(out).toEqual(['2026-09-20', '2026-09-23', '2026-09-26', '2026-09-29']);
   });
 
+  it('anchors an every-N-days day with no startDate on the program start, not on the day asked about', () => {
+    // Walking from the queried day made such a day land on every day; the
+    // scheduler and the month view anchor it on the program start.
+    const program = {
+      startDate: '2026-09-01', durationWeeks: 4,
+      days: [{ label: 'A', templateId: 't', frequency: { type: 'everyNDays' as const, interval: 3 } }],
+    };
+    expect(programOccurrencesOn(program, new Date(2026, 8, 2))).toEqual([]);
+    expect(programOccurrencesOn(program, new Date(2026, 8, 1)).map(o => o.label)).toEqual(['A']);
+    expect(programOccurrencesOn(program, new Date(2026, 8, 4)).map(o => o.label)).toEqual(['A']);
+    expect(programOccurrencesOn(program, new Date(2026, 8, 7)).map(o => o.label)).toEqual(['A']);
+  });
+
   it('answers "what is scheduled on this date" the same way the calendar walk does', () => {
     const program = {
       startDate: '2026-09-01', durationWeeks: 8,

@@ -18,7 +18,7 @@ RepVision is a workout tracking PWA. The user plans workouts (templates → prog
 src/
   pages/              Top-level routes (Auth, etc.)
   components/         Feature components (AIProgramBuilder, ActiveSession, ...)
-  contexts/           App-wide React contexts (notably ChatContext.tsx — 680 lines, holds the AI chat loop)
+  contexts/           App-wide React contexts (notably ChatContext.tsx, which holds the AI chat loop)
   hooks/              Custom hooks (useStorage is the data layer)
   integrations/
     supabase/         Generated types + client (do not edit by hand; regenerate via Supabase CLI)
@@ -29,13 +29,45 @@ supabase/
   config.toml         Supabase project config
   migrations/         SQL migrations
   functions/
+    _shared/          Pricing, balance and request-bound helpers each function bundles
     ai-coach/         Streaming chat endpoint with tool use
     generate-program/ One-shot program builder, returns JSON
+    exercise-gif/     Holds the RapidAPI key; the client sends only the exercise
+    grant-tokens/     Purchase stub, never deployed (see "Deploying edge functions")
 ```
 
 ## Applying schema changes
 
-New files under `supabase/migrations/` do NOT deploy on their own. After adding a migration you must either run `supabase db push` locally or apply it via the Supabase MCP server (`mcp__Supabase__apply_migration`), then regenerate the TypeScript types (`supabase gen types typescript --linked > src/integrations/supabase/types.ts`) so `Database` reflects the new schema. Shipping migration SQL without applying it produces silent client-side upsert failures against the missing columns.
+New files under `supabase/migrations/` do NOT deploy on their own. Shipping
+migration SQL without applying it produces silent client-side upsert failures
+against the missing columns.
+
+**Apply through the Supabase MCP server (`mcp__Supabase__apply_migration`).**
+That is the one path, not one of two. The two are not interchangeable: the MCP
+server stamps the moment of application as the recorded version and ignores the
+name of your local file, so the repository and the live history drift apart
+every time one is applied and the file is left as it was. Eight had drifted
+that way, two of them into the wrong order relative to each other, which is
+what broke the documented `supabase db push`.
+
+So the rule has two halves, and the second is the one that gets forgotten:
+
+1. Write the file with any name (`PENDING_<name>.sql` while it is unapplied is
+   a useful convention), apply it through the MCP server, then
+2. read the version the server recorded (`mcp__Supabase__list_migrations`) and
+   **rename the local file to `<version>_<name>.sql`** so the two agree.
+
+Then regenerate the types (`supabase gen types typescript --linked > src/integrations/supabase/types.ts`)
+so `Database` reflects the new schema. As of 2026-09-21 all 40 local filenames
+match the recorded history exactly; keep it that way and `supabase db push`
+stays usable as a check, even though it is not the apply path.
+
+Regenerating is its own discipline and has been skipped before: `types.ts`
+currently under-describes `token_ledger` (missing `model` and the four token
+counts), `begin_ai_turn`'s `reason`, and five of `consume_tokens`' nine
+parameters — all added by `20260915200720` and all still absent. Nothing shipped
+reads them, so it is latent rather than broken, but do not treat the file as a
+faithful mirror of the schema.
 
 ## Deploying edge functions
 
@@ -71,7 +103,7 @@ Note that `SYSTEM_PROMPT` and the other prompt blocks are template literals: a s
 
 ### `ai-coach`
 
-Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an OpenAI-style SSE stream. To avoid rewriting the 680-line ChatContext, the edge function **translates Anthropic stream events into OpenAI-shaped SSE chunks** (see `translateStream` in `supabase/functions/ai-coach/index.ts`). When making changes to either side:
+Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an OpenAI-style SSE stream. To avoid rewriting ChatContext, the edge function **translates Anthropic stream events into OpenAI-shaped SSE chunks** (see `translateStream` in `supabase/functions/ai-coach/index.ts`). When making changes to either side:
 
 - Client expects `data: {"choices":[{"delta":{...},"finish_reason":null}]}` lines, terminated by `data: [DONE]`.
 - Anthropic emits `content_block_start`, `content_block_delta` (with `text_delta` or `input_json_delta`), and `message_delta`. The translator maps those to the OpenAI shape.
@@ -79,6 +111,24 @@ Streams a response that the client (`src/contexts/ChatContext.tsx`) parses as an
 - A `stop_reason` of `max_tokens` is translated to `finish_reason: "length"`. That matters because a tool call cut off mid-`input_json_delta` reaches the client as unparseable JSON; `parseAccumulatedToolCalls` in ChatContext flags those instead of letting them fall through validation as empty arguments. Tool JSON for a full-workout template runs to a few thousand tokens, so keep `MAX_TOKENS` well above that.
 
 Template mutations come in two flavours, and the split exists for output-budget reasons: `edit_template` replaces the whole exercise list (so the model must re-send everything that should survive), while `add_exercises_to_template` appends only the new ones. Additions must use the append tool — a full re-send of a long template is thousands of tokens of tool JSON and is what pushes a reply into truncation. The client dedupes on `exerciseId` (`appendableTemplateExercises`) so a model that re-sends the list anyway can't duplicate rows.
+
+A template proposal is applied against the template **as it is at Apply time**, not
+the snapshot on the card. `edit_template` replaces the list, so `applyProposal`
+refuses it (`templateChangedSince`, "changed since this was proposed") when the
+template's name or rows differ from the ones it was built on — an edit made in
+the builder in between used to be silently overwritten. `add_exercises_to_template`
+re-derives instead: its additions are deduped against and appended to the
+current rows, which is also what lets two append proposals from one reply both
+apply. A proposal whose save is in flight is `status: 'applying'` (the card's
+buttons are disabled; a second tap is a no-op), and it goes back to `pending`
+when the write resolves `false`, so a refused delete or save never reads as
+Applied. What the model may write is bounded at proposal time — `SetType`
+outside the known list becomes `normal`, `sets`/`count` are 1–20 (they become
+array lengths), a `create_program` day must name an existing template or
+`rest`, and a `delete_template` obeys the same "used by a program" refusal as
+the Templates screen (`templateDeleteBlockers` mirrors `templateUsedBy` in
+`Index.tsx`; keep the two rules the same). Tests: `src/test/aiChatProposals.test.tsx`,
+`src/test/chatProposalGuards.test.ts`.
 
 A stream that dies after it has started (upstream billing, rate limit, dropped connection) is reported as a bare `data: {"error": "<plain sentence>"}` chunk with no `choices`. The client surfaces that sentence as the coach's reply — before this it skipped the payload and rendered an empty bubble, so an out-of-credits API key looked like the app silently doing nothing.
 
@@ -124,7 +174,9 @@ of input against that reserve. The ceilings sit well above what the client
 sends (a typed message is capped at 500 characters; the context runs to about
 100 KB, most of it the exercise library) so only a crafted request hits them.
 If the client legitimately grows past one, raise the constant rather than
-removing the check.
+removing the check. `generate-program` has the same check in
+`programRequestTooLarge` (exercise count and row size, every `userInputs`
+value, and the whole), placed before `begin_ai_turn` for the same reason.
 
 **Message shape.** The Messages API rejects two same-role turns in a row with a
 400, and the client writes a second assistant message whenever a proposal is
@@ -208,11 +260,14 @@ easy to undo by accident:
   place, and a Send tapped in that instant goes out without them. The engine
   therefore never hands words over from inside a React effect — `stop()`
   between sessions finishes on a fresh task for exactly that reason.
-- A session opens `RESTART_DELAY_MS` after the previous recognizer was told
-  to abort (chaining, or a tap right after a send or a double tap). Chrome for
-  Android tears the native recognizer down asynchronously and reports a start
-  that races it as `not-allowed`, which would otherwise surface as a false
-  "microphone blocked" toast.
+- A session opens `RESTART_DELAY_MS` after the previous one closed, whether
+  it was told to abort (a tap right after a send, a double tap) or ended by
+  itself (chaining, and a run started from inside `onEnd` — which is how the
+  bug-report sheet moves the mic between its boxes). Chrome for Android tears
+  the native recognizer down asynchronously, after `onend` as well, and
+  reports a start that races it as `not-allowed`, which would otherwise
+  surface as a false "microphone blocked" toast. `lastClosedAt` in the engine
+  is recorded on both paths for that reason.
 
 Browser facts the design leans on (verified in Chromium and WebKit source):
 Chrome and WebKit only ever append finals and keep at most one interim, always
@@ -258,14 +313,17 @@ If you need to provision a fresh Supabase project (e.g., moving off the old `wek
 2. Install the Supabase CLI: `npm install -g supabase`. Log in: `supabase login`.
 3. Link locally: `supabase link --project-ref <new-project-ref>`.
 4. Push the schema: `supabase db push` (applies everything under `supabase/migrations/`).
-5. Set the Anthropic API key as a function secret:
+5. Set the function secrets. The Anthropic key is required; the RapidAPI key
+   is optional and the exercise-GIF feature is simply off without it:
    ```bash
    supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   supabase secrets set EXERCISE_GIF_API_KEY=...
    ```
-6. Deploy both edge functions:
+6. Deploy the three live edge functions (the same set the deploy workflow ships):
    ```bash
    supabase functions deploy ai-coach
    supabase functions deploy generate-program
+   supabase functions deploy exercise-gif
    ```
 7. Configure Google OAuth in the dashboard (Auth → Providers → Google) and add `http://localhost:8080` plus your production URL to the allowed redirect list.
 8. Update `.env` with the new project URL and anon key (copy them from Settings → API in the dashboard).
@@ -324,6 +382,26 @@ client sends the one input it controls, the function holds the key). `.env`
 carries only the Supabase URL and the publishable key, both of which are public
 by design.
 
+### What the credits screen may claim
+
+Every allowance figure on the credits screen, including the toast raised when
+the plan changes, is derived from `FREE_MONTHLY_MICROS` and
+`PREMIUM_MONTHLY_MICROS` rather than typed. The Premium toast used to say
+"Unlimited AI coach access" while the same screen, and the server's own meter,
+gave 7,000 credits a month. A figure written by hand in one of four places is
+how that starts; keep them on the one source.
+
+### Browser security headers
+
+`vercel.json` sends `X-Frame-Options: DENY`, `Content-Security-Policy:
+frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` and
+`Referrer-Policy: strict-origin-when-cross-origin` on every route. The session
+token in localStorage is partitioned inside a cross-site iframe, so this is
+hygiene rather than a closed exploit. A full `script-src` CSP was deliberately
+not attempted: it needs an inventory of every origin the bundle talks to and
+breaks silently when one is missed. There is no `Permissions-Policy`; the
+coach's mic button needs the microphone.
+
 ## Capacitor (when you're ready for mobile)
 
 The app isn't wrapped for native yet. When you're ready:
@@ -362,6 +440,27 @@ are easy to break by accident:
   is what let a failed sessions query read as "the streak broke" and clear a real
   adjustment permanently. Tests: `src/test/storageLoadErrors.test.tsx`.
 
+- **Two tables are read a page at a time, and a `.range()` is not a promise.**
+  PostgREST trims every response to the project's max-rows (1000 here — no
+  `pgrst.db_max_rows` override is set), so asking for `range(0, 4999)` does not
+  get you 5000 rows: the server's cap silently decides what the app knows.
+  `fetchAllPages` in `useStorage.ts` loops `PAGE_SIZE` (1000) pages until one
+  comes back short, and `future_workouts` and `body_measurements` go through
+  it. Both are tables an ordinary account outgrows — a plan is ~7 rows a week
+  and nothing deletes a deactivated program's remaining weeks; daily bodyweight
+  passes 1000 in under three years — and both order the *wanted* end last, so
+  what a cap cut was the upcoming calendar and the oldest weight history.
+  Three rules hold it together: `PAGE_SIZE` must never exceed the server's
+  max-rows (a short page is how the loop knows it is done, so a lower server
+  cap would read as the end of the table); every paged read ends its ORDER BY
+  on `id`, because pages are separate queries and a partial order lets two of
+  them disagree and lose a row in the overlap; and a failed page returns
+  `{ data: null, error }` so the load fails whole rather than passing the pages
+  gathered so far off as the table. `MAX_PAGES` (20) bounds the loop and
+  reaching it raises a toast — truncation nobody mentions is the defect this
+  replaced. `MAX_SESSIONS` (500) is a deliberate product cap, not a paging
+  oversight; leave it. Tests: `src/test/storagePaging.test.tsx`.
+
 If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
@@ -399,6 +498,18 @@ the URL was refused (48 weeks of daily rows is a 13 KB query string), and a
 refused delete doubled every date. A workout already completed on or after
 today is not scheduled a second time beside its completed row.
 
+**Shifting a program's calendar is one transaction.** `pushProgramBack` calls
+`shift_program_workouts` (`20260919141335_atomic_program_shift.sql`, `SECURITY
+INVOKER` under RLS), which writes the program's shifted start date and days
+and moves every uncompleted row on or after the from-date by N days, or does
+none of it. It used to be one UPDATE per row fired in parallel: a failure
+part-way left some rows moved with the screen showing none, and the program's
+own anchors unshifted. The client still computes the shifted program (only
+every-N-days anchors move) and runs it through `sanitizeProgramDays` before
+sending, applies the same object locally on success, toasts the server's row
+count, bounds days to 1–366 as the function does, and is single-flight so a
+double tap cannot shift twice.
+
 **A write that lands while a load is in flight wins.** Every write bumps
 `writeSerial`; a load that started before a write and resolved after it is
 discarded and run once more (at most twice), instead of painting rows that are
@@ -433,7 +544,23 @@ had nothing to retry from and the change was gone — while the session itself
 still saved, because the user was sitting on the summary screen and could
 press Save again. Anything that resolves a template's fate (a later
 successful save, a delete) must clear its queued entry, or the replay
-resurrects it.
+resurrects it. `saveTemplate` and `deleteTemplate` also **wait for the replay
+in flight** (`pendingFlush`) before writing: a queued version is older than
+anything the user does after reopening the app, and its upsert landing second
+silently replaced the newer edit. That `await` is not a needless delay.
+
+A queued write also **replays only over the row it was built on**. Templates
+carry the server's `updated_at` (`updatedAt`, selected back on every
+successful upsert), and a queued entry records the stamp of the row the edit
+started from as its `baseline` (`null` for a template that did not exist yet;
+absent on entries queued before this rule, which replay as before). At load,
+an entry whose row now carries a different stamp, or no row at all, is dropped
+with a toast naming the template rather than laid over the loaded rows: the
+phone's gym-day update used to overwrite the laptop's edit from that evening,
+and a template deleted elsewhere came back. The baseline is captured *after*
+the pending flush the save waits for, so a replay in flight cannot make the
+next save read as a conflict, and a second failed save keeps the first
+entry's baseline (its "before" is the local version, not the server's).
 
 ## Program frequencies are validated at every door
 
@@ -452,7 +579,10 @@ whole schedule by a day or three for good.
 and the day-tap helper in `useScreenHelpers`. The first fix validated the
 scheduler alone and left the other three with their own loops, so a program
 saved before validation existed still hung the home screen. Do not add a
-fifth loop. `saveProgram` also writes sanitized days and the load-time repair
+fifth loop. The program editor's calendar preview is `programOccurrences` over
+the draft, the same call `saveProgram` schedules from — its own loops used to
+drop today's every-N-days occurrence, so the preview and the saved calendar
+disagreed. `saveProgram` also writes sanitized days and the load-time repair
 re-saves a stored program whose days sanitize differently, so the database
 heals itself. An invalid frequency makes the day *unscheduled*, never dropped;
 weekday 7 is read as Sunday (an older builder's numbering), the same mapping
@@ -502,7 +632,9 @@ at the root, and entries from an earlier page load pop back to it.
 that belongs to a live session: it does not register with the session
 controller (the coach saw a fake `active_session` and its tools rewrote
 history), re-ticking a set gets a no-op `startTimer` (no sound, OS
-notification or permission prompt), and the fields the edit screen has no
+notification or permission prompt), the rest bars between sets and between
+exercises are not rendered at all (they took the live `startTimer`, so the
+no-op never reached them), and the fields the edit screen has no
 control for — `location`, `isRestDay`, `recoveryActivities` — ride through from
 the session being edited. Duration is written back only when the minutes field
 was actually changed; the field shows whole minutes, and writing it back
@@ -520,11 +652,33 @@ shifted forward on every resume so elapsed stays continuous; `trueStart`
 session's date come from `trueStart`; duration is `now − startTime` while
 running and the frozen figure while paused, so a pause is never counted.
 
+## Dialogs opened from a workout sit above Focus Mode
+
+`ActiveSession` renders its note editor and its rest-length editor before
+`FocusMode` in the tree, and Focus Mode is an opaque `fixed inset-0 z-50`
+overlay whose kebab menu opens those same dialogs. At an equal level the
+dialog lands *underneath* it and the tap reads as doing nothing, which is
+exactly the defect "Update Rest Timer" was reported for. Both dialogs are
+`z-[70]`; Focus Mode's own floating clone is `z-[60]`. A new dialog reachable
+from the exercise menu belongs at the same level.
+
+The rest editor addresses its exercise **by id, not by row**: a coach proposal
+applying underneath the overlay can insert, remove or reorder blocks, the same
+reason the stopwatch and the rest timer remap their indices. Its value is
+session-scoped and deliberately not written back to the template;
+`TemplateSnapshotEntry` carries no `restSeconds`, so the end-of-workout update
+prompt neither mentions nor saves it. The floor of 5 seconds is not cosmetic:
+a rest of 0 is already complete when it starts, so it fires the toast and the
+notification and never arms the sound or the worker.
+
 ## The session cache belongs to one workout
 
 `ActiveSession` rebuilds a workout from `ActiveSessionCache` — blocks, name,
-elapsed timer, `templateSnapshot`. That cache is only ever valid for the workout
-it was written for, and two rules keep it that way:
+elapsed timer, `templateSnapshot`. `getSessionCache` and `clearSessionCache`
+live in `src/utils/sessionCache.ts`; only the screen's own debounced writer
+stays in `ActiveSession.tsx`, which is the rule the doc comment there states.
+That cache is only ever valid for the workout it was written for, and two rules
+keep it that way:
 
 - **`Index.tsx` hands the cache only to a screen that is resuming one.** The
   `activeSession` screen carries a `resumed` flag, set by the cold-start restore
@@ -547,6 +701,23 @@ link used to change screen without minimizing — leaving a live session with no
 bar and no way back short of a reload. Both now minimize first. Tests:
 `src/test/activeSessionStaleCache.test.tsx`.
 
+## The stopwatch set is keyed by position
+
+`runningSet` and `countdown` in `ActiveSession` hold a block index and a set
+index into `blocks`, and the mutations in `useBlockMutations` move rows under
+them: 'Add Warm-up Sets' prepends a row, deleting a set or an exercise pulls
+the rows below it up, and drag-reordering permutes the blocks. Every such
+mutation reports the move through `onSetIndicesShifted` /
+`onBlockIndicesShifted` (`handleDragEnd` does the same for reorders), and
+`ActiveSession` remaps the two states — a row that is gone ends what was on
+it. Before this, Stop wrote the set's time and completion to whichever row had
+slid into the index. A new mutation that inserts, removes or reorders rows
+must report through the same callbacks. The rest timer's id and the
+`restRecords` keys are index-keyed the same way (`useSessionRestTimer`), and
+`ActiveSession` forwards every remap to `remapTimerIds`, so the rest bar and
+the rest chips move with their rows too; a drop-row remap
+(`onDropIndicesShifted`) covers a stopwatch running on a drop.
+
 ## The rest timer outlives the screen
 
 `src/utils/restTimerScheduler.ts` holds everything about a rest that must keep
@@ -564,6 +735,12 @@ Rules that keep it correct:
 - **Completion is signalled once per rest, from `recalcRestSchedule`.** The
   worker's "done", the completion timeout and the visibility catch-up all route
   through it; whichever lands first fires, the rest are no-ops.
+- **A cross-tab `storage` event is applied only when its timer or records
+  actually differ** (`sameTimer` / `sameRecords` in `useSessionRestTimer`).
+  Setting the freshly parsed objects as they come re-ran this tab's cache
+  writer, whose write was the other tab's next storage event: two tabs on one
+  workout rewrote the cache every half-second and the last writer owned the
+  blocks.
 - **`ensureRestSchedule` is a no-op for the live key.** A remounting hook
   re-attaches rather than restarting; `releaseRestSchedule` is the only
   teardown. It is called by skip/pause/replace, by `clearSessionCache`
@@ -687,6 +864,27 @@ encoding back to the level. Never hand a stored band weight straight to
 `getBandLevelShortLabel` — that is how the Previous column, the summary and
 the strength chart came to say "Level 2.72".
 
+**A template can carry a distance target.** `TemplateExercise.targetDistance`
+is metres; the builder edits it in km on its own block field (it used to write
+into `targetWeight`, which `blockToExercise` rightly refused to keep for
+distance work, so the number was dropped on every save). It round-trips
+through `templateBlocks.ts` for distance *and* time-and-distance modes (no
+built-in exercise is distance-only; rowing and walking are
+time-and-distance), prefills the set's distance when a workout starts from the
+template, comes back through `templateFromSession`, shows on the shared page,
+and is accepted and bounded (0 < m <= 1,000,000) by the coach's template
+tools, with `carryTemplateOnlyFields` keeping it across an `edit_template`
+that does not mention it.
+
+**A drop row obeys the main row's rules at every door.** `completionBlocker`
+in `useBlockMutations` holds the `canCompleteSet` check and its wordings once;
+`toggleSetComplete` and `updateDrop` both call it, the finish guard validates
+each completed drop under a completed set with `getSetFieldErrors` (drops
+under an incomplete parent never reach the log), and the table's drop inputs
+carry the same error ring and disabled tick through `fieldRingClass`. Before
+this a drop could be ticked with blank reps or a five-figure weight and saved
+into the volume totals.
+
 ## Supersets are links, not a set type
 
 A superset is `supersetGroup` shared by two or more exercises; it is made from
@@ -745,6 +943,17 @@ has an unsaved draft, rather than dropping or saving it silently. The editor's
 localStorage draft (`program_builder_draft`) carries the template drafts too,
 keyed to the program; the back arrow clears it, as Cancel did.
 
+**A builder draft is restored only over an unchanged source.** Both drafts
+carry a fingerprint (`src/utils/draftFingerprint.ts`, a 32-bit FNV-1a over a
+key-sorted serialisation) of the item they were taken from: name and
+exercises for a template, name, duration and days for a program, and one per
+template for the program editor's tile drafts. A draft whose source now
+fingerprints differently is stale (edited on another device, by the coach, or
+by an import) and is discarded silently, because restoring it and saving
+overwrote the newer version. A new item has no source and keeps its draft;
+drafts without a fingerprint, from before this rule, are discarded once for
+existing items.
+
 The editor shows **one target row per exercise and a set-count stepper**,
 because that is what a template can hold: `TemplateExercise` has a set count
 next to a single reps/weight/RPE, and `blockToExercise` reads only `sets[0]`.
@@ -775,7 +984,10 @@ out of volume and set aggregates without hiding it from the log.
 - Applied to: weekly sets by body part (`Dashboard`), both charts in
   `analytics/VolumeTab`, movement-pattern sets in `analytics/BalanceTab`, and
   the AI coach's `summary` / `volume_by_muscle` analyses so its numbers match
-  the charts.
+  the charts. The coach counts the way the charts count, too:
+  `volume_by_muscle` is working sets only (no warm-ups, like the Dashboard's
+  Weekly Sets and the Volume tab's body-part lines) and `frequency` counts a
+  body part once per session (like the Frequency tab), not once per exercise.
 - Deliberately *not* applied to: per-session summaries, per-exercise history
   (`exercise_progression`, `weekly_volume_by_exercise`, `ExerciseDetailModal`),
   streaks, and consistency — those answer "what did I do" and "did I show up",
@@ -801,19 +1013,89 @@ import into their own library.
 - **`shares` is owner-only under RLS with no anon policy** — an anon `SELECT`
   would let anyone dump every share. The sole public read path is the
   `SECURITY DEFINER` function `get_shared_item(token)`, granted to `anon`, which
-  returns a narrow column list (never `user_id` or `view_count`). A revoked
-  share resolves with `revoked = true` and a null payload so the viewer sees
-  "no longer available" rather than a not-found page.
+  returns a narrow column list (never `user_id`, `view_count` or
+  `last_viewed_at`). **A revoked share now reveals nothing but the fact that it
+  was revoked**: `revoked = true` and every other column null, so the viewer
+  still sees "no longer available" rather than a not-found page, but whoever
+  kept the old URL can no longer read the item's title or its dates out of the
+  RPC. An unknown token returns no rows at all, which is still the right answer
+  to someone probing for valid ones. The result *shape* is unchanged — same six
+  columns, same types — because `SharedItem` returns on `row.revoked` before it
+  touches any of them; the generated RPC type still says those columns are
+  non-null, so a future reader of `row.title` has to narrow it itself.
 - **A partial unique index** on `(user_id, kind, source_id) WHERE revoked_at IS NULL`
   keeps at most one live link per item, which is what makes the URL stable
   across updates while still allowing a re-share after a revoke.
 - **Import remaps every id** (`src/utils/shareImport.ts`). Custom exercise ids
   are `custom-<row uuid>`, so the recipient's copies necessarily differ —
   missing ones are created (deduped by name) and each `exerciseId` is rewritten.
+  A custom id the snapshot carries **no definition for** (the sharer's library
+  had not loaded, or the exercise was deleted) is created for the viewer from
+  the snapshot's name when it has a real one, and otherwise removed from the
+  template and counted in the import toast; a stub is inserted with its
+  defaulted columns spelled out, because postgrest-js sends every key of the
+  row and an `undefined` lands as a NOT NULL violation. The sharer side is
+  gated too: the dialog waits for the custom library to load, and
+  `ShareTarget.buildPayload` takes the library at publish time rather than
+  closing over the list the screen held when Share was tapped, which was empty
+  in exactly the case the wait exists for.
   An imported program is deliberately **not** activated: activating it would
   regenerate the viewer's `future_workouts`, which is destructive.
-- Snapshot shape changes must bump `SHARE_SNAPSHOT_VERSION` in
-  `src/types/share.ts`; the public page refuses payloads newer than it knows.
+- **A program import that fails takes its templates back out.** The templates
+  are inserted first so the day list can point at the new ids, and nothing
+  dedupes a template on insert — so a failed program row used to leave its
+  workouts in the library while the toast said the import had failed, and every
+  retry laid down another copy of each. `importSharedSnapshot` now deletes the
+  ids it minted and throws a `ShareImportError` carrying the sentence to show:
+  `IMPORT_FAILED_MESSAGE` when the rollback is confirmed (the delete returns
+  the rows it removed — an RLS refusal reports no error and removes nothing,
+  which must not read as clean), and `IMPORT_LEFTOVERS_MESSAGE` when it is not,
+  telling the user to go and look. `SharedItem` must render `err.userMessage`;
+  collapsing it back to one generic line is what made the honest half of this
+  unreachable. Custom exercises are deliberately *not* rolled back — they are
+  matched by name, so a retry reuses them. Tests: `src/test/shareImport.test.ts`,
+  `src/test/sharedItemImportError.test.tsx`.
+
+  **The rollback covers the program path only.** A template or session link
+  inserts one template and returns; if that insert commits server-side but the
+  response is lost, the user sees `IMPORT_FAILED_MESSAGE` with the template
+  actually in their library, and a retry adds a second copy. It is the same
+  hazard the program path reasons about, left open because there is no second
+  write to roll back *to* — the insert is the whole import. Say "a failed
+  program import cleans up", not "a failed import cleans up".
+- **The table bounds what a share can be.** `public.shares` has CHECKs of
+  1 MiB on `payload` (`pg_column_size`) and 200 characters on `title`
+  (`20260919141231_share_payload_bounds.sql`); without them a hand-built
+  request could store any size, and `get_shared_item` streams the whole
+  payload to anyone with the link on the project's egress. The client clamps
+  the title, keeps its own 1,000,000-character payload guard, and reads a
+  `23514` refusal as "too large to share". The two limits measure different
+  things (JSON text length vs jsonb binary size) and only agree to within a
+  factor; real payloads are 50–100 KB, so neither is hit by legitimate use.
+- **`view_count` counts hours, not views, and a view is not an edit.** The
+  counter used to be an unconditional `UPDATE` on every anonymous hit, so a
+  refresh, a crawler and every chat app's link preview each added one — and
+  each fired the `updated_at` trigger, making that column say "when a stranger
+  last loaded this" instead of "when the owner last changed this". It is now
+  throttled to one per link per hour (`last_viewed_at`), and
+  `update_shares_updated_at` carries a `WHEN` clause that skips an update which
+  touched a view column and no owner-editable one. The honest reading of the
+  number is a floor — ten people in one hour count once — which is why
+  `SharedLinksScreen` says "opened at least N times" rather than "N views".
+  Keep the two in step: if a new column is ever written *together with* a view
+  bump, add it to the trigger's second list, or that write stops bumping
+  `updated_at`.
+- **`sharedBy` is never an email address.** Sign-up seeds `display_name` from
+  the email, so an account that never renamed itself would put its address on
+  a public page. `publishableSharedBy` drops anything that could be one, at
+  share time in the snapshot builders and again on read in `SharedItem`
+  (payloads frozen before the guard still carry it). Route any new reader or
+  writer of `sharedBy` through it.
+- A snapshot shape change an older page could not render correctly must bump
+  `SHARE_SNAPSHOT_VERSION` in `src/types/share.ts`; the public page refuses
+  payloads newer than it knows. An added *optional* field (`targetDistance`
+  was one) needs no bump: an older page renders the payload exactly as before,
+  and a bump would only make it refuse a link it could show.
 - Links preview with the generic RepVision card — this is a client-rendered SPA
   behind a catch-all rewrite, so per-share OG tags would need a prerender step.
 
@@ -847,6 +1129,27 @@ the Supabase MCP server.
 `main` and every PR. The routine waits for it and reverts a fix whose run goes
 red, so keep the workflow's steps identical to the local gate.
 
+**A lint warning now fails that gate.** `npm run lint` is
+`eslint . --max-warnings 0`, so the CI step and the routine's local check both
+go red on one. The repo carried 55 warnings that passed silently for exactly as
+long as it took one of them to be a real bug — the frozen `addExercise` closure
+in `useBlockMutations`. They were cleared on 2026-09-21, almost all of them by
+making the code honest rather than by silencing the rule: two helpers moved to
+module scope where they are not dependencies at all, `noteWrite` became a
+module-scope function taking the ref (it was stable by construction, yet wanted
+naming in fourteen dependency arrays), and `getSessionCache` /
+`clearSessionCache` / `timerIdKey` / `creditsBreakdown` moved to `src/utils/`.
+Exactly one new `eslint-disable-next-line` was added
+(`src/components/AIProgramBuilder.tsx`), saying what re-running would break;
+three others in `src/hooks/` predate the sweep. Two scoped overrides in
+`eslint.config.js` turn `react-refresh/only-export-components` off for
+`src/components/ui/**` (regenerated by the shadcn CLI, which ships the variant
+exports) and `src/contexts/**` (a provider beside its `useX` hook is the idiom).
+The rule is live everywhere else, so a new warning fails `npm run lint` — and
+therefore CI and the triage gate, though not `vite build`, which never runs
+eslint. Fix it, or add a disable that says why. Do not reach for
+`--max-warnings` to make one go away.
+
 ## Known issues / deferred work
 
 `docs/audit-2026-09.md` is the current audit (commit efffcd8): 193 verified findings,
@@ -854,20 +1157,26 @@ each traced to a file and line by one reviewer and re-checked by another, with t
 critical and high ones also given to a reviewer told to disprove them. Start there.
 
 **All 4 critical and all 18 high findings are fixed** on `claude/code-audit-859aow`,
-and a second pass closed the 20 highest-exposure items from the backlog; the
-audit's status note lists both passes and says which ship where. Its "Everything
-else" section is the remaining backlog, grouped by area.
+a second pass closed the 20 highest-exposure items from the backlog, a third
+pass (`claude/code-audit-batch-one`) closed 69 more that were unambiguous
+defects, and a fourth (`claude/code-audit-batch-two`) closed 8 the owner
+approved one by one from the remaining list. The audit's status note lists all
+four passes, names the 56 rows still open, and says which ship where.
 
 Two facts from that audit change how you work in this repo:
 
-- **The repo's migration filenames no longer match the live migration history.** Eight
-  were applied through the Supabase MCP server, which stamps its own version. Running
-  the documented `supabase db push` against the linked project will fail until the
-  versions are repaired. When you apply through the MCP server, read the version it
-  recorded and rename the local file to match, as
-  `20260915170641_lock_down_token_credits.sql`,
-  `20260915182136_atomic_ai_turn_gate.sql` and
-  `20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql` do.
+- **The migration filenames now match the live history, and it is on you to keep them
+  that way.** Eight had drifted, because the Supabase MCP server stamps its own
+  version and ignores the local filename. For two of them the *filename* order and
+  the recorded order disagreed outright — the old names put `token_credits_and_iap`
+  before `subscription_tier`, while the database recorded the reverse — so a replay
+  from the files would not have reproduced the history the database actually ran.
+  (No column dependency was broken by that particular inversion; the migration that
+  reads `profiles.subscription_tier` is `premium_monthly_allowance`, and its order
+  was already correct. An earlier revision of this note claimed otherwise.) All
+  eight were renamed on 2026-09-21 and all 40 now agree with the recorded history.
+  The rule that keeps it true is in "Applying schema changes" above: apply, read
+  the recorded version, rename the file.
 - **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
   Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). Rates now live in
   `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap with no entry bills at the
@@ -892,6 +1201,18 @@ close on their own:
 - **Balances consumed at the 3x rate were never corrected.** Nothing has re-priced
   them; see the token-price note above for what the data does and does not allow.
 
+**Scheduled workouts are shown for the active program only.** The dashboard's
+week strip, the monthly calendar, the start-workout screen, the calendar day
+tap and the Activity screen's Upcoming tab all filter
+`futureWorkouts` on `programId === activeProgramId || programId === 'manual'`.
+That rule is load-bearing because nothing ever removes a deactivated program's
+rows: `setActiveProgram` writes one settings field, and `saveProgram` retires
+rows only for the program being saved, so a plan switched off keeps its
+remaining weeks of scheduled rows for as long as the program exists. Activity
+was the one reader without the filter and listed every plan the user had ever
+run, each row offering Perform. A new reader of `futureWorkouts` needs the same
+expression, and a count beside a list needs to be taken from the filtered rows.
+
 **Deleting something still referenced is refused, not cascaded.** A template a
 program schedules (or a manual scheduled workout points at) and a custom
 exercise a template uses cannot be deleted from their screens; the dialog names
@@ -899,10 +1220,45 @@ what references them. `Index.tsx` computes `templateUsedBy` / `exerciseUsedBy`
 from loaded state. Cascading was the alternative and was rejected: the
 reference is a plan the user made, not a row to clean up.
 
+**But the database now owns two cascades the app used to do by hand.** These
+are about *ownership*, not about a user deleting something on a screen, and the
+rule above is untouched by them.
+
+- `user_id → auth.users(id) ON DELETE CASCADE` on all sixteen user-scoped
+  tables (`20260921155014`). Nine were missing it, so "delete this account"
+  took the login, the profile and the money rows and left behind every workout,
+  template, program, scheduled day, setting and usage row the account had ever
+  written. **This is irreversible in effect**: removing a user from the
+  dashboard now destroys their history in the same statement, with no undo and
+  no prompt, and re-creating the login recovers nothing. (A *soft* delete —
+  auth's `deleted_at` — does not cascade; only a real `DELETE` does.) Two of
+  the nine are judgement calls the migration header spells out and leaves
+  editable: `user_ai_usage` (cascading rewrites `ai_usage_daily_summary` for
+  past dates, but `token_ledger` — the authoritative billing record — has
+  always cascaded, so keeping only the derived tally would be the incoherent
+  option) and `workout_templates_superset_backup`.
+- `future_workouts.program_id → workout_programs(id) ON DELETE CASCADE`
+  (`20260921155056`). `deleteProgram` already deleted the calendar rows in a
+  second statement, so nothing a user can do changes; what changes is that a
+  deletion which does *not* go through the app can no longer leave scheduled
+  rows behind a program that is gone — rows every reader filters out, so they
+  would pile up invisibly. The `'manual'` program id never reaches the database
+  (`program_id` is `uuid NOT NULL`, and both write paths gate on
+  `hasValidProgramId && !isManual`), so the key cannot reject it.
+
+Five of those tables also gained the composite index their actual queries want —
+six indexes in all, since `future_workouts` needs two (`20260921154930`). The
+sixth table the audit named, `ai_error_log`, deliberately got none: it is
+insert-only and nothing reads it back, so an index there would cost writes and
+answer nothing. The one query with no user filter of its own is
+`custom_exercises`, narrowed only by its RLS policy, which was therefore
+scanning every user's rows.
+
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
-gone, `ActiveSession.tsx` is 1,673 lines rather than 2,737, and the unpaginated
+gone, `ActiveSession.tsx` is about 1,750 lines rather than the 2,737 it quotes (measure
+with `wc -l` rather than trusting either figure), and the unpaginated
 `workout_sessions` read is now an explicit, documented 500-row cap. Its two surviving
-items are `Index.tsx` (724 lines, still a god-router) and the decomposition of
+items are `Index.tsx` (about 970 lines, still a god-router) and the decomposition of
 `ActiveSession.tsx`.
 
 ## Conventions

@@ -11,13 +11,28 @@ import type { WorkoutTemplate } from '@/types/workout';
  * and can press Save again), so the session lands and the template silently
  * does not.
  *
- * Entries are keyed by template id, last-write-wins, and flushed on the next
- * load that has a working connection.
+ * Entries are keyed by template id and flushed on the next load that has a
+ * working connection — but only over the row the edit was built on. The
+ * phone that queued its gym-day update offline must not replay it over the
+ * edit the laptop made that evening, nor put back a template the laptop has
+ * since deleted; `baseline` is what lets the replay tell.
  */
 export interface PendingTemplateWrite {
   template: WorkoutTemplate;
   /** ms epoch of the attempt, used to expire writes too old to be trusted. */
   queuedAt: number;
+  /**
+   * `updatedAt` of the row this edit was built on; `null` for a template
+   * that did not exist locally. Absent on an entry queued before the field
+   * existed, which is replayed unconditionally, as every entry once was.
+   */
+  baseline?: string | null;
+}
+
+export interface PendingTemplateConflict {
+  entry: PendingTemplateWrite;
+  /** The row is gone, or it is no longer the one the edit was built on. */
+  reason: 'deleted' | 'changed';
 }
 
 const KEY_PREFIX = 'repvision:pending-templates:';
@@ -68,14 +83,55 @@ export function readPendingTemplates(userId: string, now = Date.now()): PendingT
   return live;
 }
 
-/** Park a template whose save failed. A newer attempt replaces an older one. */
+/**
+ * Split the queue against the rows the server just handed back. A write is
+ * replayed only when its row is still the one the edit was built on; any
+ * other entry is a conflict for the caller to drop and report, because the
+ * newer work is the other device's.
+ */
+export function resolvePendingTemplates(
+  pending: PendingTemplateWrite[],
+  loaded: Pick<WorkoutTemplate, 'id' | 'updatedAt'>[],
+): { replay: PendingTemplateWrite[]; conflicts: PendingTemplateConflict[] } {
+  const stamps = new Map(loaded.map(t => [t.id, t.updatedAt] as const));
+  const replay: PendingTemplateWrite[] = [];
+  const conflicts: PendingTemplateConflict[] = [];
+  for (const entry of pending) {
+    const reason = conflictReason(entry, stamps);
+    if (reason) conflicts.push({ entry, reason });
+    else replay.push(entry);
+  }
+  return { replay, conflicts };
+}
+
+function conflictReason(
+  { template, baseline }: PendingTemplateWrite,
+  stamps: Map<string, string | undefined>,
+): PendingTemplateConflict['reason'] | null {
+  if (baseline === undefined) return null;
+  if (!stamps.has(template.id)) return baseline === null ? null : 'deleted';
+  return stamps.get(template.id) === baseline ? null : 'changed';
+}
+
+/**
+ * Park a template whose save failed. A newer attempt replaces an older one
+ * but keeps its baseline: the second attempt was built on the first's local
+ * version, not on anything the server has, so the first attempt's "before"
+ * is still the row this write must find untouched.
+ */
 export function queuePendingTemplate(
   userId: string,
   template: WorkoutTemplate,
+  baseline?: string | null,
   now = Date.now(),
 ): void {
-  const rest = read(userId).filter(e => e.template.id !== template.id);
-  write(userId, [...rest, { template, queuedAt: now }]);
+  const entries = read(userId);
+  const existing = entries.find(e => e.template.id === template.id);
+  const rest = entries.filter(e => e.template.id !== template.id);
+  const entry: PendingTemplateWrite = { template, queuedAt: now };
+  const kept = existing ? existing.baseline : baseline;
+  if (kept !== undefined) entry.baseline = kept;
+  write(userId, [...rest, entry]);
 }
 
 /** Drop a template's queued write — it landed, or was superseded by one that did. */

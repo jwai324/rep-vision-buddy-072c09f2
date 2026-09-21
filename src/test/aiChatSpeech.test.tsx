@@ -201,6 +201,9 @@ describe('AI coach voice input', () => {
     expect(box()).toHaveValue('add three sets');
 
     tapMic();
+    // The recognizer the last run ended on is still closing; the next opens
+    // once it has had the restart delay.
+    browser.wait(RESTART_DELAY_MS);
     browser.final('of squats');
     browser.replay();
     expect(box()).toHaveValue('add three sets of squats');
@@ -412,6 +415,7 @@ describe('AI coach voice input', () => {
     expect(box()).toHaveValue('add three sets of squats');
 
     tapMic();
+    browser.wait(RESTART_DELAY_MS);
     browser.final('and lunges');
     tapStop();
     act(() => mic().end());

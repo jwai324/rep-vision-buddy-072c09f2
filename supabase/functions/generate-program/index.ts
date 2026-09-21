@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import Anthropic from "npm:@anthropic-ai/sdk@0.40.0";
 import { costMicros, RESERVE_MICROS } from "../_shared/pricing.ts";
 import { consume, recordUsageAggregate } from "../_shared/balance.ts";
+import { programRequestTooLarge } from "../_shared/requestBounds.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,6 +141,16 @@ serve(async (req) => {
       });
     }
 
+    // Before the gate, so a rejected request never takes a concurrency slot.
+    {
+      const tooLarge = programRequestTooLarge(userInputs, exercises);
+      if (tooLarge) {
+        return new Response(JSON.stringify({ error: tooLarge }), {
+          status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Pre-call balance gate. Taken under the same row lock as the debit, so
     // concurrent generations cannot all pass on one reserve — reading the
     // balance and then deciding was a check-then-act race.
@@ -242,6 +253,17 @@ ${exercises.map((e: ExerciseSummary) => `- ${e.name} (${e.primaryBodyPart}, ${e.
       await recordUsageAggregate(supabase, userId, message.usage, cost);
     } catch (e) {
       console.error("generate-program metering failed:", e);
+      // Anthropic billed the call whether or not the debit landed; an unbilled
+      // generation that leaves no row anywhere is invisible to triage.
+      try {
+        await supabase.from('ai_error_log').insert({
+          user_id: userId,
+          error_type: 'metering_failed',
+          error_message: String((e as { message?: string } | undefined)?.message ?? e),
+        });
+      } catch (logErr) {
+        console.error("Failed to log error:", logErr);
+      }
     } finally {
       await releaseTurn();
     }
@@ -276,8 +298,10 @@ ${exercises.map((e: ExerciseSummary) => `- ${e.name} (${e.primaryBodyPart}, ${e.
       });
     }
   } catch (e) {
+    // The detail stays in the function log: a raw message here named the
+    // missing secret or the Postgres error to whoever sent the request.
     console.error("generate-program error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "The program generator hit a server error. Try again in a moment." }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } finally {

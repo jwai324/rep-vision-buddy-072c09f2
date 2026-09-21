@@ -144,7 +144,7 @@ describe('the one target row per exercise', () => {
     // library, which is too slow under jsdom to drive in a test.
     const fresh: TemplateBlock = {
       exerciseId: BENCH, exerciseName: 'Flat Barbell Bench Press', setType: 'normal', restSeconds: 90,
-      sets: Array.from({ length: 3 }, (_, i) => ({ setNumber: i + 1, targetWeight: '', targetReps: '10', targetRpe: '' })),
+      sets: Array.from({ length: 3 }, (_, i) => ({ setNumber: i + 1, targetWeight: '', targetReps: '10', targetRpe: '', targetDistance: '' })),
     };
     const onBlocks = vi.fn<(blocks: TemplateBlock[]) => void>();
     const Harness = () => {

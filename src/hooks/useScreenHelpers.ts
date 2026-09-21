@@ -2,28 +2,53 @@ import { useCallback } from 'react';
 import { format, addDays, addWeeks, getDay, isSameDay } from 'date-fns';
 import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
 import { programOccurrencesOn } from '@/utils/programFrequency';
+import { repairFlatSets } from '@/utils/dropsetRepair';
+import { getExerciseInputMode, isDistanceBased, isTimeBased, usesReps } from '@/utils/exerciseInputMode';
+import type { CustomExercise } from '@/hooks/useCustomExercises';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 
 /**
  * Build a WorkoutTemplate from a finished or viewed WorkoutSession.
  * Centralises the pattern repeated in summary, sessionDetail, and reperform flows.
  */
-export function templateFromSession(session: WorkoutSession, nameOverride?: string, defaultRestSeconds: number = 90): WorkoutTemplate {
+export function templateFromSession(
+  session: WorkoutSession,
+  nameOverride?: string,
+  defaultRestSeconds: number = 90,
+  customExercises: CustomExercise[] = [],
+): WorkoutTemplate {
   return {
     id: crypto.randomUUID(),
     name: nameOverride ?? `Workout ${parseLocalDate(session.date).toLocaleDateString()}`,
     exercises: session.exercises.map(ex => {
+      // Rows saved by the old flat-dropset bug carry the parent's type on
+      // every row; the summary repairs them before reading, so do we.
+      const sets = repairFlatSets(ex.sets);
       // Warm-ups are prepended, so sets[0] is a warm-up whenever one was added
       // — and its light load and low reps are not what the template is for.
-      const first = ex.sets.find(s => s.type !== 'warmup') ?? ex.sets[0];
+      const first = sets.find(s => s.type !== 'warmup') ?? sets[0];
+      // Drop-set rows are saved beside their parent set and warm-ups ahead of
+      // the working ones; neither is a set the template should ask for again.
+      const working = sets.filter(s => s.type !== 'warmup' && s.type !== 'dropset').length;
+      // A timed set logs reps as 1 and its length in `time`; the template's
+      // target for time-only work is minutes, so read the length, not the 1.
+      const mode = getExerciseInputMode(ex.exerciseId, customExercises);
+      const timed = isTimeBased(mode) && !usesReps(mode);
+      const targetReps = timed
+        ? Math.max(1, Math.round((first?.time ?? 60) / 60))
+        : first?.reps ?? 10;
       return {
         exerciseId: ex.exerciseId,
-        sets: ex.sets.length,
-        targetReps: first?.reps ?? 10,
+        sets: Math.max(1, working),
+        targetReps,
         setType: first?.type ?? 'normal',
         restSeconds: defaultRestSeconds,
         // Session weights are already in the canonical kg that targetWeight uses.
         targetWeight: first?.weight,
+        // Likewise metres for distance, on any exercise measured by it. Rounded
+        // to the metre as the builder saves it: an lbs user's miles land in
+        // the log as a fractional metre count.
+        targetDistance: isDistanceBased(mode) && first?.distance ? Math.round(first.distance) : undefined,
         supersetGroup: ex.supersetGroup,
       };
     }),

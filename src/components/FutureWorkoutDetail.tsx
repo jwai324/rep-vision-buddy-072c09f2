@@ -29,9 +29,11 @@ interface FutureWorkoutDetailProps {
   futureWorkout: FutureWorkout;
   template: WorkoutTemplate | null;
   onPerformWorkout: (template: WorkoutTemplate) => void;
-  onUpdateFutureWorkout?: (fw: FutureWorkout) => void;
+  // A handler that resolves false did not land; the screen then stays put
+  // rather than saying done. One that returns nothing is taken as done.
+  onUpdateFutureWorkout?: (fw: FutureWorkout) => void | Promise<boolean>;
   onSaveRestDay?: (fw: FutureWorkout) => void;
-  onDeleteFutureWorkout?: (id: string) => void;
+  onDeleteFutureWorkout?: (id: string) => void | Promise<boolean>;
   onPushProgramBack?: (programId: string, fromDate: string, days: number) => void;
   onBack: () => void;
 }
@@ -120,16 +122,16 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
 
   const dateChanged = localDate !== futureWorkout.date;
 
-  const handleReschedule = () => {
+  const handleReschedule = async () => {
     if (!onUpdateFutureWorkout || !dateChanged) return;
-    onUpdateFutureWorkout({ ...futureWorkout, date: localDate });
+    if (await onUpdateFutureWorkout({ ...futureWorkout, date: localDate }) === false) return;
     toast.success('Workout rescheduled');
     onBack();
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (!onDeleteFutureWorkout) return;
-    onDeleteFutureWorkout(futureWorkout.id);
+    if (await onDeleteFutureWorkout(futureWorkout.id) === false) return;
     toast.success('Workout skipped');
     onBack();
   };
@@ -143,7 +145,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
       <div className="flex items-center gap-3 pt-2">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
+        <button onClick={onBack} aria-label="Back" className="text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-0">
@@ -299,9 +301,11 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">Recovery Plan</p>
               <div className="flex flex-col gap-2">
                 {activities.map(a => {
-                  const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId);
+                  // A custom recovery exercise is in neither static table, and
+                  // a row that resolves to nothing still has to be removable.
+                  const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId)
+                    ?? customExercises.find(ex => ex.id === a.activityId);
                   const lookup = EXERCISES[a.activityId];
-                  if (!info && !lookup) return null;
                   const name = info?.name ?? lookup?.name ?? a.activityId;
                   const icon = lookup?.icon ?? '🏋️';
                   return (
@@ -315,6 +319,8 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                     >
                       <button
                         onClick={() => toggleActivityComplete(a.id)}
+                        aria-label={`${name} complete`}
+                        aria-pressed={a.completed}
                         className={`w-7 h-7 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
                           a.completed
                             ? 'bg-primary border-primary text-primary-foreground'
@@ -336,6 +342,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                       </div>
                       <button
                         onClick={() => removeActivity(a.id)}
+                        aria-label={`Remove ${name}`}
                         className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -365,6 +372,7 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                 <p className="text-sm font-bold text-foreground">Add Exercise</p>
                 <button
                   onClick={() => { setShowPicker(false); setSearch(''); }}
+                  aria-label="Close exercise picker"
                   className="text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <X className="w-4 h-4" />
@@ -415,7 +423,10 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
           )}
 
           {/* Save Rest Day to History */}
-          {activities.length > 0 && onSaveRestDay && (
+          {/* Offered from the moment the screen opens: a rest day is a thing
+              you did, and gating Save on a recovery activity meant marking a
+              day as rest and leaving recorded nothing at all. */}
+          {onSaveRestDay && (
             <div className="mt-auto pb-4">
               <Button
                 variant={allCompleted ? 'default' : 'outline'}
@@ -424,7 +435,9 @@ export const FutureWorkoutDetail: React.FC<FutureWorkoutDetailProps> = ({
                 onClick={handleSaveRestDay}
               >
                 <Check className="w-5 h-5 mr-2" />
-                {allCompleted ? 'Complete Rest Day' : 'Save Rest Day'}
+                {activities.length === 0
+                  ? 'Log Rest Day'
+                  : allCompleted ? 'Complete Rest Day' : 'Save Rest Day'}
               </Button>
             </div>
           )}

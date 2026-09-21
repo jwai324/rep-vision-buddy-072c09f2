@@ -56,6 +56,14 @@ export interface TemplateExercise {
    */
   targetWeight?: number;
   targetRpe?: number;
+  /**
+   * Target distance in metres, for work measured by distance (a run, a row,
+   * whether the exercise is distance-only or time-and-distance). The
+   * editor's "Dist (km)" box used to write into targetWeight, which the save
+   * path rightly refused to keep for distance modes, so the number was
+   * dropped on every save.
+   */
+  targetDistance?: number;
   supersetGroup?: number;
 }
 
@@ -63,6 +71,13 @@ export interface WorkoutTemplate {
   id: string;
   name: string;
   exercises: TemplateExercise[];
+  /**
+   * The server's `updated_at` for the row this object was loaded or saved
+   * from. Undefined for a template built in the app and not yet written. A
+   * queued offline save records it as the baseline it was built on, so the
+   * replay can tell whether the row has since changed on another device.
+   */
+  updatedAt?: string;
 }
 
 export type DayFrequency =

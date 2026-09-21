@@ -6,6 +6,16 @@ import { ArrowLeft, ChevronDown, ChevronUp, RefreshCw, Check, ArrowRight, Sparkl
 import { EXERCISE_DATABASE, EQUIPMENT_LIST, type Exercise } from '@/data/exercises';
 import { supabase } from '@/integrations/supabase/client';
 import { useChatContext } from '@/contexts/ChatContext';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import type { WorkoutTemplate, WorkoutProgram, TemplateExercise, SetType } from '@/types/workout';
 import { formatLocalDate } from '@/utils/dateUtils';
@@ -114,6 +124,10 @@ interface BuilderDraft {
   customEquipmentText: string;
   showEquipmentOther: boolean;
   generatedProgram: AIProgram | null;
+  // Whether the reviewed plan carries hand-made exercise swaps, so the
+  // regenerate confirmation still says what is about to be lost after a
+  // remount restores the plan.
+  swappedExercises: boolean;
   // The ids the generated program and its templates are saved under, minted
   // on the first Save and kept for every retry. Index writes the templates
   // before the program row, so a failed program save leaves them in the
@@ -152,6 +166,7 @@ function loadBuilderDraft(): BuilderDraft | null {
       customEquipmentText: draft.customEquipmentText ?? '',
       showEquipmentOther: draft.showEquipmentOther ?? false,
       generatedProgram: draft.generatedProgram ?? null,
+      swappedExercises: draft.swappedExercises ?? false,
       saveIds: draft.saveIds ?? null,
     };
   } catch {
@@ -187,6 +202,8 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>(restored?.selectedEquipment ?? []);
   const [injuryText, setInjuryText] = useState(restored?.injuryText ?? '');
   const [generatedProgram, setGeneratedProgram] = useState<AIProgram | null>(restored?.generatedProgram ?? null);
+  const [swappedExercises, setSwappedExercises] = useState(restored?.swappedExercises ?? false);
+  const [confirmingRegenerate, setConfirmingRegenerate] = useState(false);
   const [saveIds, setSaveIds] = useState<SaveIds | null>(restored?.saveIds ?? null);
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
   const [swappingExercise, setSwappingExercise] = useState<{ dayIdx: number; exIdx: number } | null>(null);
@@ -218,6 +235,10 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     if (restored.phase === 'chat' && last?.role === 'user' && restored.currentStep + 1 < STEPS.length) {
       showAIMessage(restored.currentStep + 1);
     }
+    // Mount only: `showAIMessage` appends a question to the transcript and is
+    // rebuilt on every render, so listing it would re-ask the current step on
+    // each keystroke. `restored` is read-only state that never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Cache the whole flow (answers, transcript, unsent text, generated program)
@@ -228,12 +249,12 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       phase: phase === 'generating' ? 'chat' : phase,
       currentStep, inputs, messages, selectedEquipment,
       injuryText, additionalNotesText, otherText, showOtherInput,
-      customEquipmentText, showEquipmentOther, generatedProgram, saveIds,
+      customEquipmentText, showEquipmentOther, generatedProgram, swappedExercises, saveIds,
     });
   }, [
     phase, currentStep, inputs, messages, selectedEquipment,
     injuryText, additionalNotesText, otherText, showOtherInput,
-    customEquipmentText, showEquipmentOther, generatedProgram, saveIds,
+    customEquipmentText, showEquipmentOther, generatedProgram, swappedExercises, saveIds,
   ]);
 
   // Auto-focus other input when shown
@@ -379,6 +400,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     setInjuryText('');
     setAdditionalNotesText('');
     setGeneratedProgram(null);
+    setSwappedExercises(false);
     setSaveIds(null);
     setShowFullNotes(false);
     showAIMessage(0);
@@ -473,6 +495,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       }
 
       setGeneratedProgram(program);
+      setSwappedExercises(false);
       setSaveIds(null);
       setExpandedDays(new Set([0]));
       setPhase('review');
@@ -514,6 +537,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
       };
     });
     setGeneratedProgram(updated);
+    setSwappedExercises(true);
     setSwappingExercise(null);
   };
 
@@ -615,14 +639,14 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <div className="flex items-center gap-3 p-4 border-b border-border">
-          <button onClick={() => setPhase('chat')} disabled={saving} className="p-2 rounded-lg hover:bg-secondary disabled:opacity-40">
+          <button onClick={() => setPhase('chat')} disabled={saving} aria-label="Back" className="p-2 rounded-lg hover:bg-secondary disabled:opacity-40">
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
           <div className="flex-1">
             <h2 className="text-lg font-bold text-foreground">{generatedProgram.program_name}</h2>
             <p className="text-xs text-muted-foreground">{generatedProgram.days_per_week} days/week · {generatedProgram.weeks} weeks · {generatedProgram.goal}</p>
           </div>
-          <Button variant="ghost" size="icon" onClick={generateProgram} disabled={saving} aria-label="Regenerate program">
+          <Button variant="ghost" size="icon" onClick={() => setConfirmingRegenerate(true)} disabled={saving} aria-label="Regenerate program">
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
@@ -658,6 +682,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                       </div>
                       <button
                         onClick={() => setSwappingExercise(swappingExercise?.dayIdx === dayIdx && swappingExercise?.exIdx === exIdx ? null : { dayIdx, exIdx })}
+                        aria-label={`Swap ${ex.exercise_name}`}
                         className="ml-2 p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10"
                       >
                         <Replace className="w-4 h-4" />
@@ -692,6 +717,25 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
             <Check className="w-5 h-5 mr-2" /> Save Program
           </Button>
         </div>
+
+        <AlertDialog open={confirmingRegenerate} onOpenChange={open => { if (!open) setConfirmingRegenerate(false); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Generate a new program?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {swappedExercises
+                  ? 'This replaces the program below, including the exercise swaps you made, and cannot be undone. Generating a new program spends AI credits.'
+                  : 'This replaces the program below and cannot be undone. Generating a new program spends AI credits.'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep this program</AlertDialogCancel>
+              <AlertDialogAction onClick={() => { setConfirmingRegenerate(false); void generateProgram(); }}>
+                Generate new
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
@@ -706,7 +750,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b border-border">
-        <button onClick={currentStep > 0 ? goBack : onBack} className="p-2 rounded-lg hover:bg-secondary">
+        <button onClick={currentStep > 0 ? goBack : onBack} aria-label="Back" className="p-2 rounded-lg hover:bg-secondary">
           <ArrowLeft className="w-5 h-5 text-foreground" />
         </button>
         <div className="flex-1">
@@ -845,7 +889,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                   {selectedEquipment.filter(e => !ALL_EQUIPMENT.includes(e)).map(custom => (
                     <span key={custom} className="px-2 py-1 rounded-lg text-xs bg-primary text-primary-foreground flex items-center gap-1">
                       {custom}
-                      <button onClick={() => setSelectedEquipment(prev => prev.filter(e => e !== custom))} className="hover:opacity-70">×</button>
+                      <button onClick={() => setSelectedEquipment(prev => prev.filter(e => e !== custom))} aria-label={`Remove ${custom}`} className="hover:opacity-70">×</button>
                     </span>
                   ))}
                 </div>
@@ -882,7 +926,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                   className="flex-1"
                   onKeyDown={(e) => e.key === 'Enter' && confirmInjuries(injuryText)}
                 />
-                <Button variant="neon" size="sm" onClick={() => confirmInjuries(injuryText)}>
+                <Button variant="neon" size="sm" aria-label="Continue" onClick={() => confirmInjuries(injuryText)}>
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
@@ -935,7 +979,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
                   className="flex-1"
                   onKeyDown={(e) => e.key === 'Enter' && submitOtherText()}
                 />
-                <Button variant="neon" size="sm" onClick={submitOtherText}>
+                <Button variant="neon" size="sm" aria-label="Continue" onClick={submitOtherText}>
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>

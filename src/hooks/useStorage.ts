@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,7 +9,7 @@ import { parseLocalDate } from '@/utils/dateUtils';
 import { getCurrentStreak, computeDisplayedStreak } from '@/utils/streak';
 import { getFutureWorkoutsCompletedBySession } from '@/utils/scheduledWorkout';
 import { readStorageCache, writeStorageCache, type CachedStorage } from '@/utils/storageCache';
-import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate, type PendingTemplateWrite } from '@/utils/pendingTemplateWrites';
+import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate, resolvePendingTemplates, type PendingTemplateWrite, type PendingTemplateConflict } from '@/utils/pendingTemplateWrites';
 import { programOccurrences, programWindow, sanitizeProgramDays } from '@/utils/programFrequency';
 
 type SessionRow = Database['public']['Tables']['workout_sessions']['Row'];
@@ -22,11 +22,26 @@ type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
 type BodyMeasurementRow = Database['public']['Tables']['body_measurements']['Row'];
 type BodyMeasurementInsert = Database['public']['Tables']['body_measurements']['Insert'];
 
-// Maximum rows to fetch per table (Supabase default is 1000)
+// A single PostgREST response is trimmed to the project's max-rows (1000 on a
+// default Supabase project, and this one sets no `pgrst.db_max_rows` override),
+// so asking for a wider range does not widen the answer: the server's cap
+// quietly decides what the app knows about. This is the ceiling for the tables
+// that cannot outgrow one response; the two that can are read page by page
+// (`fetchAllPages`) rather than capped here.
 const MAX_ROWS = 5000;
-// Session history cap — loads most-recent 500 sessions eagerly.
-// Full pagination is a future improvement; 500 covers ~1.4 years of daily workouts
-// without the memory/startup cost of a 5000-row fetch on mobile.
+// One page of a paged read. It must never exceed the project's max-rows: a
+// page that comes back shorter than asked for is how the loop knows the table
+// is exhausted, so a server-side cap below this would read as the end of the
+// table and truncate silently all over again.
+const PAGE_SIZE = 1000;
+// Ceiling on the paging loop, so a table that keeps answering full pages can't
+// spin forever. 20 pages is ~55 years of daily scheduled workouts; reaching it
+// is logged and told to the user, never absorbed.
+const MAX_PAGES = 20;
+// Session history cap — loads most-recent 500 sessions eagerly. Deliberate,
+// and not something the paging below should quietly undo: 500 covers ~1.4
+// years of daily workouts without the memory/startup cost of reading a whole
+// history on mobile.
 const MAX_SESSIONS = 500;
 
 // Clamp out-of-range or non-integer weekday values into 0-6. Duplicate
@@ -89,6 +104,49 @@ export function generateFutureWorkouts(program: WorkoutProgram): Omit<FutureWork
   return workouts;
 }
 
+/**
+ * The reverse of `getFutureWorkoutsCompletedBySession`: which of a date's
+ * ticked-off scheduled entries no longer have a logged session behind them,
+ * given `remaining` — everything still logged on that date.
+ *
+ * Nothing records which entry a given session ticked. The forward pass decides
+ * that from the origin template, which lives only in the screen that started
+ * the workout, so there is no note to undo. This replays the forward rule over
+ * the sessions that are left and releases whatever none of them claims, which
+ * is why two workouts logged on one day give back one tick each rather than
+ * both: the first remaining session claims the entry it would have claimed
+ * when it was saved, and only the surplus is released.
+ */
+export function futureWorkoutsReleasedOnDate(
+  date: string,
+  isRestDay: boolean,
+  futureWorkouts: FutureWorkout[],
+  remaining: WorkoutSession[],
+  templates: WorkoutTemplate[],
+): FutureWorkout[] {
+  const dateStr = format(parseLocalDate(date), 'yyyy-MM-dd');
+  const ticked = futureWorkouts.filter(fw =>
+    fw.completed === true &&
+    format(parseLocalDate(fw.date), 'yyyy-MM-dd') === dateStr &&
+    // A rest-day session only ever ticks scheduled rest, and a workout only
+    // ever ticks scheduled workouts — the same split the forward pass makes.
+    (isRestDay ? fw.templateId === 'rest' : fw.templateId !== 'rest'),
+  );
+  if (ticked.length === 0) return [];
+
+  let pool: FutureWorkout[] = ticked.map(fw => ({ ...fw, completed: false }));
+  const claimed = new Set<string>();
+  for (const session of remaining) {
+    if (format(parseLocalDate(session.date), 'yyyy-MM-dd') !== dateStr) continue;
+    if ((session.isRestDay === true) !== isRestDay) continue;
+    for (const fw of getFutureWorkoutsCompletedBySession(session, pool, { templates })) {
+      claimed.add(fw.id);
+    }
+    pool = pool.map(fw => (claimed.has(fw.id) ? { ...fw, completed: true } : fw));
+  }
+  return ticked.filter(fw => !claimed.has(fw.id));
+}
+
 // Map DB row to app type — typed row inputs
 function mapSession(row: SessionRow): WorkoutSession {
   return {
@@ -113,6 +171,7 @@ function mapTemplate(row: TemplateRow): WorkoutTemplate {
     id: row.id,
     name: row.name,
     exercises: row.exercises as unknown as WorkoutTemplate['exercises'],
+    updatedAt: row.updated_at,
   };
 }
 
@@ -247,27 +306,104 @@ function mapSettingsRow(row: SettingsRow): { activeProgramId: string | null; pre
  * Replay template writes that an earlier session couldn't get through. Runs
  * after a successful load, so a connection good enough to read is the signal
  * to try writing again. Stops at the first failure and leaves the rest queued
- * rather than burning through a batch that is clearly still offline.
+ * rather than burning through a batch that is clearly still offline. The
+ * caller has already dropped the entries whose row moved on elsewhere
+ * (`resolvePendingTemplates`); everything that arrives here is safe to write.
+ *
+ * saveTemplate and deleteTemplate wait for the replay before writing: a
+ * queued version is older than anything the user does after reopening the
+ * app, and its upsert landing second would silently replace their edit.
  */
-async function flushPendingTemplateWrites(userId: string, pending: PendingTemplateWrite[]): Promise<void> {
-  for (const { template } of pending) {
+async function flushPendingTemplateWrites(
+  userId: string,
+  pending: PendingTemplateWrite[],
+  onReplayed: (templateId: string, updatedAt: string) => void,
+): Promise<void> {
+  for (const { template, queuedAt } of pending) {
+    // The queue was captured at load. An entry cleared since — a save that
+    // landed from another tab, a delete — must not be written over that.
+    const stillQueued = readPendingTemplates(userId).some(
+      e => e.template.id === template.id && e.queuedAt === queuedAt,
+    );
+    if (!stillQueued) continue;
     try {
-      const { error } = await supabase.from('workout_templates').upsert({
+      const { data, error } = await supabase.from('workout_templates').upsert({
         id: template.id,
         user_id: userId,
         name: template.name,
         exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
-      });
+      }).select('updated_at').single();
       if (error) {
         console.error('[useStorage] pending template flush failed:', error);
         return;
       }
       clearPendingTemplate(userId, template.id);
+      onReplayed(template.id, data.updated_at);
     } catch (e) {
       console.error('[useStorage] pending template flush failed:', e);
       return;
     }
   }
+}
+
+/**
+ * Read a table a page at a time, the way `exportUserData` already reads one for
+ * the backup file. PostgREST trims every response to the project's max-rows, so
+ * a table that can outgrow one page has to be asked for the rest explicitly —
+ * otherwise the cap decides what the app sees, and for `future_workouts`, which
+ * loads in date order, the rows it cuts are the upcoming ones: the week strip
+ * and the calendar go thin while the plan is still on the server.
+ *
+ * `page` must order by something unique as its last term (a primary key will
+ * do). Pages are separate queries, and without a total order Postgres is free
+ * to answer two of them from different row orders, which loses rows in the
+ * overlap and repeats others.
+ *
+ * The result keeps postgrest-js's `{ data, error }` shape on purpose: a failed
+ * page resolves `{ data: null, error }`, so the caller's "every query came back
+ * clean" check fails the whole load rather than mistaking the pages gathered so
+ * far for the whole table. Rejections (an offline fetch) propagate, as the
+ * unpaged reads' do.
+ */
+async function fetchAllPages<T>(
+  label: string,
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<{ data: T[] | null; error: unknown; truncated: boolean }> {
+  const rows: T[] = [];
+  for (let p = 0; p < MAX_PAGES; p++) {
+    const from = p * PAGE_SIZE;
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) return { data: null, error, truncated: false };
+    // A list read answers with rows or with an error, so null data and no error
+    // is a shape we do not understand. Treating it as "that's the end" would
+    // truncate silently, which is the defect this helper exists to prevent.
+    if (!data) {
+      return { data: null, error: new Error(`${label}: a page returned neither rows nor an error`), truncated: false };
+    }
+    rows.push(...data);
+    if (data.length < PAGE_SIZE) return { data: rows, error: null, truncated: false };
+  }
+  console.error(
+    `[useStorage] ${label}: stopped after ${MAX_PAGES} pages (${rows.length} rows) — there are more rows than one load will read.`,
+  );
+  return { data: rows, error: null, truncated: true };
+}
+
+// postgrest-js resolves `{ error }` for a server refusal, but an offline fetch
+// rejects; a write that promises a boolean needs the two as one value.
+async function writeError(query: PromiseLike<{ error: unknown }>): Promise<unknown> {
+  try {
+    return (await query).error;
+  } catch (e) {
+    return e;
+  }
+}
+
+function pendingConflictMessage({ entry, reason }: PendingTemplateConflict): string {
+  const { name } = entry.template;
+  return reason === 'deleted'
+    ? `${name} was deleted elsewhere — your unsaved update was dropped`
+    : `${name} changed elsewhere — your unsaved update from ${format(entry.queuedAt, 'MMM d')} was not applied`;
 }
 
 /** Loaded rows with any not-yet-written edits laid back over the top. */
@@ -280,6 +416,19 @@ function overlayPendingTemplates(
   return [...byId.values()];
 }
 
+/**
+ * Bump the load-vs-write serial (`writeSerial` in the hook below). Hoisted to
+ * module scope, and handed the ref rather than closing over it, so that it is
+ * not a hook value at all: as a `useCallback` inside the hook it was stable by
+ * construction — it touches nothing but the ref — yet exhaustive-deps still
+ * wanted it named in the dependency list of all fourteen write callbacks,
+ * which is fourteen entries for something that cannot change and fourteen
+ * arrays whose real dependencies are that much harder to read.
+ */
+function noteWrite(serial: MutableRefObject<number>): void {
+  serial.current += 1;
+}
+
 export function useStorage() {
   const { user } = useAuth();
   // Supabase hands back a freshly deserialized user object on every auth
@@ -288,10 +437,25 @@ export function useStorage() {
   // re-runs it, which is what used to throw the whole app back to a spinner.
   const userId = user?.id ?? null;
   const [history, setHistory] = useState<WorkoutSession[]>([]);
+  // Read by the save path to see the record as it was before this write, and
+  // by the scheduled-completion release to see what is still logged on a date.
+  const historyRef = useRef(history);
+  historyRef.current = history;
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  // Mirrors `templates` for a callback that has to read it without taking it
+  // as a dependency: saveTemplate would otherwise change identity on every
+  // edit of any template.
+  const templatesRef = useRef(templates);
+  templatesRef.current = templates;
+  // The stamp each replayed write left on its row, for a save that waited on
+  // that replay: it read its baseline before the row moved, and the re-stamped
+  // row has not rendered into templatesRef by the time it resumes.
+  const replayedStamps = useRef(new Map<string, string>());
   const [programs, setPrograms] = useState<WorkoutProgram[]>([]);
   const [activeProgramId, setActiveProgramIdState] = useState<string | null>(null);
   const [futureWorkouts, setFutureWorkouts] = useState<FutureWorkout[]>([]);
+  const futureWorkoutsRef = useRef(futureWorkouts);
+  futureWorkoutsRef.current = futureWorkouts;
   const [preferences, setPreferencesState] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [profile, setProfileState] = useState<UserProfile>(DEFAULT_PROFILE);
   const [bodyMeasurements, setBodyMeasurements] = useState<BodyMeasurement[]>([]);
@@ -317,7 +481,9 @@ export function useStorage() {
   // the save, and the next preferences write would then push the stale values
   // back to the server. Such a load is thrown away and run once more.
   const writeSerial = useRef(0);
-  const noteWrite = useCallback(() => { writeSerial.current += 1; }, []);
+  // The replay of queued template writes after a load. Template writes wait
+  // for it, so a queued (older) version can never land on top of a new one.
+  const pendingFlush = useRef<Promise<void>>(Promise.resolve());
 
   // Load all data from Supabase on mount / user change
   useEffect(() => {
@@ -327,7 +493,7 @@ export function useStorage() {
       setHistory([]);
       setTemplates([]);
       setPrograms([]);
-      setActiveProgramId(null);
+      setActiveProgramIdState(null);
       setFutureWorkouts([]);
       setBodyMeasurements([]);
       setLoading(false);
@@ -365,13 +531,31 @@ export function useStorage() {
           supabase.from('workout_sessions').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
           supabase.from('workout_templates').select('*').eq('user_id', userId).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
           supabase.from('workout_programs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-          supabase.from('future_workouts').select('*').eq('user_id', userId).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
+          // Read in full rather than capped: a program is ~7 rows a week and
+          // nothing ever deletes a deactivated one's remaining weeks, so an
+          // account a few plans old passes one page. Ascending by date means
+          // the rows a cap cuts are the upcoming ones — the week strip and the
+          // calendar thinning out with the plan still on the server. `id` is
+          // the primary key and makes the order total: a date is not unique
+          // (two workouts a day, and every rest day carries one), and two
+          // pages tied on date could otherwise disagree about who came first.
+          fetchAllPages<FutureWorkoutRow>('schedule', (from, to) => supabase
+            .from('future_workouts').select('*').eq('user_id', userId)
+            .order('date', { ascending: true }).order('id', { ascending: true })
+            .range(from, to)),
           supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
           supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
-          // Uses MAX_ROWS like the other paginated tables so a daily
-          // bodyweight logger keeps more than a year of history. Previously
-          // capped at 366 rows which silently truncated after ~1 year.
-          supabase.from('body_measurements').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_ROWS - 1),
+          // Paged too: someone logging their weight daily passes one page in
+          // under three years, and loading newest-first this one loses the far
+          // end of the history instead. Two entries on one day are told apart
+          // by when they were logged — ordered by date alone a reload could put
+          // the older one first, and the profile and the coach would show it as
+          // the latest — and `id` after that is the tiebreak that makes the
+          // order total, since created_at is not declared unique.
+          fetchAllPages<BodyMeasurementRow>('measurements', (from, to) => supabase
+            .from('body_measurements').select('*').eq('user_id', userId)
+            .order('date', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
+            .range(from, to)),
         ]);
         if (cancelled) return;
         if (writeSerial.current !== serialAtStart && reloads < 2) {
@@ -401,11 +585,25 @@ export function useStorage() {
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
         if (templatesRes.data) {
           const loaded = templatesRes.data.map(mapTemplate);
-          // A queued write is newer than what the server just handed back, so
-          // it wins on screen while the replay below catches the row up.
-          const pending = readPendingTemplates(userId);
-          setTemplates(pending.length ? overlayPendingTemplates(loaded, pending) : loaded);
-          if (pending.length) void flushPendingTemplateWrites(userId, pending);
+          // A queued write is newer than the row it was built on, so it wins
+          // on screen while the replay below catches the row up. A row that
+          // has since changed or gone on another device is the newer one
+          // instead: that write is dropped and said so, never laid over it.
+          const { replay, conflicts } = resolvePendingTemplates(readPendingTemplates(userId), loaded);
+          for (const conflict of conflicts) {
+            clearPendingTemplate(userId, conflict.entry.template.id);
+            toast.error(pendingConflictMessage(conflict));
+          }
+          setTemplates(replay.length ? overlayPendingTemplates(loaded, replay) : loaded);
+          if (replay.length) {
+            pendingFlush.current = flushPendingTemplateWrites(userId, replay, (id, updatedAt) => {
+              replayedStamps.current.set(id, updatedAt);
+              // Only the stamp: the row on screen may already hold an edit
+              // made while the replay was in flight, which saveTemplate is
+              // waiting on this flush to write.
+              setTemplates(prev => prev.map(t => (t.id === id ? { ...t, updatedAt } : t)));
+            });
+          }
         }
         if (programsRes.data) setPrograms(programsRes.data.map(mapProgram));
         if (futureRes.data) setFutureWorkouts(futureRes.data.map(mapFutureWorkout));
@@ -436,6 +634,17 @@ export function useStorage() {
             date: r.date,
             weightKg: Number(r.weight_kg),
           })));
+        }
+
+        // A table too big to finish reading is said out loud. Truncation that
+        // nothing mentions is the whole defect this paging replaced, and these
+        // two lists are read by screens ("what's next", the weight chart) that
+        // look perfectly normal while they are missing their far end.
+        if (futureRes.truncated) {
+          toast.error("You have more scheduled workouts than one load can read — the furthest-out dates aren't shown.");
+        }
+        if (measurementsRes.truncated) {
+          toast.error("You have more bodyweight entries than one load can read — the oldest aren't shown.");
         }
 
         if (failures.length) {
@@ -488,9 +697,34 @@ export function useStorage() {
     writeStorageCache(userId, snapshot);
   }, [userId, loading, snapshotTrusted, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
 
-  const setActiveProgramId = useCallback((id: string | null) => {
-    setActiveProgramIdState(id);
-  }, []);
+  /**
+   * Put back the ticks a date no longer has a session behind. The mirror of
+   * the completion write below, down to only applying the rows the server
+   * took; a refused update leaves the entry ticked rather than lying locally.
+   */
+  const releaseScheduledCompletions = useCallback(async (
+    date: string,
+    isRestDay: boolean,
+    remaining: WorkoutSession[],
+  ): Promise<void> => {
+    if (!user) return;
+    const release = futureWorkoutsReleasedOnDate(
+      date, isRestDay, futureWorkoutsRef.current, remaining, templatesRef.current,
+    );
+    if (release.length === 0) return;
+    const errors = await Promise.all(release.map(fw =>
+      writeError(
+        supabase.from('future_workouts').update({ completed: false }).eq('id', fw.id).eq('user_id', user.id),
+      ),
+    ));
+    const clearedIds = new Set(
+      release.filter((_, i) => !errors[i]).map(fw => fw.id),
+    );
+    if (clearedIds.size < release.length) {
+      console.error('[useStorage] scheduled workout release: some updates failed');
+    }
+    setFutureWorkouts(prev => prev.map(fw => clearedIds.has(fw.id) ? { ...fw, completed: false } : fw));
+  }, [user]);
 
   /**
    * Persist a session. `origin.templateId` is the template the workout was
@@ -505,8 +739,10 @@ export function useStorage() {
   // payload, and an unhandled rejection here used to leave the caller believing
   // the save had succeeded while it tore down the only other copy.
   const saveSessionNow = useCallback(async (session: WorkoutSession, origin: SaveSessionOrigin = {}): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
+    // Captured before the write: the record as this date's calendar knew it.
+    const priorRecord = historyRef.current.find(s => s.id === session.id);
     let error: unknown = null;
     try {
       ({ error } = await supabase.from('workout_sessions').upsert({
@@ -539,6 +775,21 @@ export function useStorage() {
       return [session, ...prev];
     });
 
+    // A record moved to another day leaves the old day's plan ticked off with
+    // nothing behind it. The old tick is cleared rather than carried across:
+    // which entry a session ticked is never stored, so there is nothing to
+    // move, and the new date is marked from scratch by the rule below — which
+    // already knows about that day's own plan and whatever else is logged on
+    // it. Guessing an entry on the new date would tick off a workout the user
+    // never did.
+    if (priorRecord && priorRecord.date !== session.date) {
+      await releaseScheduledCompletions(
+        priorRecord.date,
+        priorRecord.isRestDay === true,
+        historyRef.current.filter(s => s.id !== session.id),
+      );
+    }
+
     // Flag matching scheduled workouts as done rather than deleting them — the
     // day's plan stays on the calendar and can still be started again.
     const matchingFws = origin.markScheduled === false ? [] : getFutureWorkoutsCompletedBySession(session, futureWorkouts, {
@@ -562,7 +813,7 @@ export function useStorage() {
       setFutureWorkouts(prev => prev.map(fw => updatedIds.has(fw.id) ? { ...fw, completed: true } : fw));
     }
     return true;
-  }, [user, futureWorkouts, templates]);
+  }, [user, futureWorkouts, templates, releaseScheduledCompletions]);
 
   // Writes to one session row are chained rather than raced. The summary's
   // recovery-activity chips fire a save per tap, and two in flight at once
@@ -598,16 +849,38 @@ export function useStorage() {
    * screen unmounts moments later and so has nowhere of its own to retry from.
    */
   const saveTemplate = useCallback(async (template: WorkoutTemplate): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
+    // The stamp of the row this edit was built on, read before the local
+    // apply below replaces it; a queued write is checked against it on
+    // replay. null is a template new to this device. undefined is one whose
+    // stamp is not known, which the queue replays unconditionally.
+    const current = templatesRef.current.find(t => t.id === template.id);
+    let baseline = current ? current.updatedAt : null;
+    // Applied before the round trip: the edit is kept whatever the outcome
+    // below, and a list that lacked the template until the server answered
+    // is what invited a second tap on Duplicate.
+    applyTemplateLocally(template);
+    await pendingFlush.current;
+    // A replay that landed during that wait is what the row carries now, and
+    // queued against the older stamp this edit would be dropped as a conflict
+    // on the next load. Taken once: a later save's own row holds anything newer.
+    const replayed = replayedStamps.current.get(template.id);
+    if (replayed !== undefined) {
+      baseline = replayed;
+      replayedStamps.current.delete(template.id);
+    }
+    let updatedAt: string | undefined;
     let error: unknown = null;
     try {
-      ({ error } = await supabase.from('workout_templates').upsert({
+      const res = await supabase.from('workout_templates').upsert({
         id: template.id,
         user_id: user.id,
         name: template.name,
         exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
-      }));
+      }).select('updated_at').single();
+      error = res.error;
+      updatedAt = res.data?.updated_at;
     } catch (e) {
       // An offline fetch rejects rather than resolving with an error payload.
       error = e;
@@ -615,28 +888,35 @@ export function useStorage() {
     if (error) {
       console.error('[useStorage] saveTemplate error:', error);
       toast.error('Failed to save template — it will retry when you\'re back online');
-      applyTemplateLocally(template);
-      queuePendingTemplate(user.id, template);
+      queuePendingTemplate(user.id, template, baseline);
       return false;
     }
     clearPendingTemplate(user.id, template.id);
-    applyTemplateLocally(template);
+    // Applied again once the row is on the server, now carrying the stamp the
+    // server gave it: a load that resolved in between read the pre-write rows
+    // and painted over the early apply.
+    applyTemplateLocally({ ...template, updatedAt });
     return true;
   }, [user, applyTemplateLocally]);
 
-  const deleteTemplate = useCallback(async (id: string) => {
-    noteWrite();
-    if (!user) return;
-    const { error } = await supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id);
+  const deleteTemplate = useCallback(async (id: string): Promise<boolean> => {
+    noteWrite(writeSerial);
+    if (!user) return false;
+    await pendingFlush.current;
+    const error = await writeError(supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id));
     if (error) {
       console.error('[useStorage] deleteTemplate error:', error);
       toast.error('Failed to delete template');
-      return;
+      return false;
     }
     // Otherwise a queued write for this template would recreate it on the
     // next load.
     clearPendingTemplate(user.id, id);
+    // The row is gone, so a stamp the replay left on it is no baseline for
+    // anything written under this id again.
+    replayedStamps.current.delete(id);
     setTemplates(prev => prev.filter(t => t.id !== id));
+    return true;
   }, [user]);
 
   // Resolves true only once the program row is written. Both builders used to
@@ -644,7 +924,7 @@ export function useStorage() {
   // resolved, so a failed upsert lost the whole program — and, for the AI
   // builder, the credits spent generating it.
   const saveProgram = useCallback(async (input: WorkoutProgram): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     // What is written is what every reader will trust: a frequency that
     // arrived invalid (the coach's tool, a share, a backup, or a row saved
@@ -793,22 +1073,8 @@ export function useStorage() {
   // produced a break is set up further below, after updatePreferences is
   // defined — see the "clearedAdjustmentAt" effect.
 
-  const deleteProgram = useCallback(async (id: string) => {
-    noteWrite();
-    if (!user) return;
-    await supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id);
-    const { error } = await supabase.from('workout_programs').delete().eq('id', id).eq('user_id', user.id);
-    if (error) {
-      console.error('[useStorage] deleteProgram error:', error);
-      toast.error('Failed to delete program');
-      return;
-    }
-    setPrograms(prev => prev.filter(p => p.id !== id));
-    setFutureWorkouts(prev => prev.filter(fw => fw.programId !== id));
-  }, [user]);
-
   const setActiveProgram = useCallback(async (id: string | null): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const previous = activeProgramId;
     setActiveProgramIdState(id);
@@ -825,11 +1091,39 @@ export function useStorage() {
     return true;
   }, [user, activeProgramId]);
 
+  // Resolves true only once the program row is gone. The calendar rows go
+  // first and their delete is checked: there is no foreign key between the
+  // two tables, so a row left pointing at a deleted program is a ghost that
+  // reappears on every load and blocks deleting the templates it names.
+  const deleteProgram = useCallback(async (id: string): Promise<boolean> => {
+    noteWrite(writeSerial);
+    if (!user) return false;
+    const calendarError = await writeError(supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id));
+    if (calendarError) {
+      console.error('[useStorage] deleteProgram error:', calendarError);
+      toast.error('Failed to delete program');
+      return false;
+    }
+    setFutureWorkouts(prev => prev.filter(fw => fw.programId !== id));
+    const error = await writeError(supabase.from('workout_programs').delete().eq('id', id).eq('user_id', user.id));
+    if (error) {
+      console.error('[useStorage] deleteProgram error:', error);
+      toast.error('Failed to delete program');
+      return false;
+    }
+    setPrograms(prev => prev.filter(p => p.id !== id));
+    // Settings and the coach's context would otherwise keep naming a program
+    // that no longer exists.
+    if (activeProgramId === id) await setActiveProgram(null);
+    return true;
+  }, [user, activeProgramId, setActiveProgram]);
+
   const deleteSession = useCallback(async (id: string) => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return;
     // Capture for rollback
     const previous = history;
+    const removed = previous.find(s => s.id === id);
     setHistory(prev => prev.filter(s => s.id !== id));
     const { error } = await supabase.from('workout_sessions').delete().eq('id', id).eq('user_id', user.id);
     if (error) {
@@ -838,12 +1132,22 @@ export function useStorage() {
       setHistory(previous); // rollback
       return;
     }
-  }, [user, history]);
+    // The plan this workout ticked off goes back to outstanding (or missed,
+    // once the date is past). Without it the calendar shows an empty day
+    // sitting over a day the program still counts as done.
+    if (removed) {
+      await releaseScheduledCompletions(
+        removed.date,
+        removed.isRestDay === true,
+        previous.filter(s => s.id !== id),
+      );
+    }
+  }, [user, history, releaseScheduledCompletions]);
 
-  const updateFutureWorkout = useCallback(async (updated: FutureWorkout) => {
-    noteWrite();
-    if (!user) return;
-    const { error } = await supabase.from('future_workouts').upsert({
+  const updateFutureWorkout = useCallback(async (updated: FutureWorkout): Promise<boolean> => {
+    noteWrite(writeSerial);
+    if (!user) return false;
+    const error = await writeError(supabase.from('future_workouts').upsert({
       id: updated.id,
       user_id: user.id,
       program_id: updated.programId,
@@ -852,95 +1156,118 @@ export function useStorage() {
       label: updated.label,
       completed: updated.completed ?? false,
       recovery_activities: updated.recoveryActivities as unknown as Database['public']['Tables']['future_workouts']['Insert']['recovery_activities'] ?? null,
-    });
+    }));
     if (error) {
       console.error('[useStorage] updateFutureWorkout error:', error);
       toast.error('Failed to update future workout');
-      return;
+      return false;
     }
     setFutureWorkouts(prev => {
       const exists = prev.some(fw => fw.id === updated.id);
       if (exists) return prev.map(fw => fw.id === updated.id ? updated : fw);
       return [...prev, updated];
     });
+    return true;
   }, [user]);
 
-  const deleteFutureWorkout = useCallback(async (id: string) => {
-    noteWrite();
-    if (!user) return;
-    const { error } = await supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id);
+  const deleteFutureWorkout = useCallback(async (id: string): Promise<boolean> => {
+    noteWrite(writeSerial);
+    if (!user) return false;
+    const error = await writeError(supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id));
     if (error) {
       console.error('[useStorage] deleteFutureWorkout error:', error);
       toast.error('Failed to delete scheduled workout');
-      return;
+      return false;
     }
     setFutureWorkouts(prev => prev.filter(fw => fw.id !== id));
+    return true;
   }, [user]);
 
+  // A second tap while a shift is in flight would move the calendar twice:
+  // the RPC has no idempotency key and the button stays live until it answers.
+  const shiftInFlight = useRef(false);
+
   const pushProgramBack = useCallback(async (programId: string, fromDate: string, days: number) => {
-    noteWrite();
     if (!user || days <= 0) return;
-    // Already-completed entries are a record of what happened on that date, so
-    // they stay put even though they still live in future_workouts.
-    const targets = futureWorkouts.filter(fw => fw.programId === programId && fw.date >= fromDate && !fw.completed);
-    if (targets.length === 0) return;
-    const updates = targets.map(fw => {
-      const d = parseLocalDate(fw.date);
-      d.setDate(d.getDate() + days);
-      const newDate = format(d, 'yyyy-MM-dd');
-      return { ...fw, date: newDate };
-    });
-    const results = await Promise.all(updates.map(u =>
-      supabase.from('future_workouts').update({ date: u.date }).eq('id', u.id).eq('user_id', user.id)
-    ));
-    const failed = results.find(r => r.error);
-    if (failed?.error) {
-      console.error('[useStorage] pushProgramBack error:', failed.error);
-      toast.error('Failed to shift program dates');
+    if (days > 366) {
+      toast.error('Shift by 1 to 366 days');
       return;
     }
-    setFutureWorkouts(prev => {
-      const map = new Map(updates.map(u => [u.id, u.date]));
-      return prev.map(fw => map.has(fw.id) ? { ...fw, date: map.get(fw.id)! } : fw)
-        .sort((a, b) => a.date.localeCompare(b.date));
-    });
-
-    // Also shift the program's startDate and frequency startDates
+    if (shiftInFlight.current) return;
     const program = programs.find(p => p.id === programId);
-    if (program) {
-      const shiftDate = (dateStr: string | undefined): string | undefined => {
-        if (!dateStr) return dateStr;
-        const d = parseLocalDate(dateStr);
-        d.setDate(d.getDate() + days);
-        return format(d, 'yyyy-MM-dd');
-      };
-      const updatedProgram: WorkoutProgram = {
+    // The RPC writes the program's days as given, so without the local copy
+    // there is nothing correct to send.
+    if (!program) return;
+    // Noted only once a write is actually attempted: a refused double tap
+    // must not make an in-flight load discard itself.
+    noteWrite(writeSerial);
+    shiftInFlight.current = true;
+    try {
+      const isIsoDay = (dateStr: string) => /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+      const shiftDate = (dateStr: string): string => format(addDays(parseLocalDate(dateStr), days), 'yyyy-MM-dd');
+      // Sanitized before the anchors move, as saveProgram does: a malformed
+      // anchor (a restored backup is written verbatim) is dropped rather than
+      // parsed, and the shifted result is valid by construction. This one
+      // object is what is sent and what is shown. A start date that is not a
+      // YYYY-MM-DD is dropped the same way rather than thrown on by `format`
+      // (or refused by the function, which would leave the program unshiftable).
+      const shifted: WorkoutProgram = {
         ...program,
-        startDate: shiftDate(program.startDate),
-        days: program.days.map(day => ({
-          ...day,
-          frequency: day.frequency && day.frequency.type === 'everyNDays' && day.frequency.startDate
-            ? { ...day.frequency, startDate: shiftDate(day.frequency.startDate) }
-            : day.frequency,
-        })),
+        startDate: program.startDate && isIsoDay(program.startDate) ? shiftDate(program.startDate) : undefined,
+        days: sanitizeProgramDays(program.days).map(day => (
+          day.frequency?.type === 'everyNDays' && day.frequency.startDate
+            ? { ...day, frequency: { ...day.frequency, startDate: shiftDate(day.frequency.startDate) } }
+            : day
+        )),
       };
-      const { error: progUpdateError } = await supabase.from('workout_programs').update({
-        start_date: updatedProgram.startDate ?? null,
-        days: updatedProgram.days as unknown as Database['public']['Tables']['workout_programs']['Update']['days'],
-      }).eq('id', programId).eq('user_id', user.id);
-      if (progUpdateError) {
-        console.error('[useStorage] pushProgramBack program update error:', progUpdateError);
-        toast.error('Failed to reschedule program');
+
+      // One transaction moves the rows and the program's dates together, so
+      // a failure leaves nothing half-shifted (audit 4.19). The generated Args
+      // say string and Json, but the function takes NULL for a program with
+      // no start date (an imported one has none) and days is a ProgramDay[]
+      // bound for a jsonb column.
+      type ShiftArgs = Database['public']['Functions']['shift_program_workouts']['Args'];
+      let moved = 0;
+      let error: unknown = null;
+      try {
+        const res = await supabase.rpc('shift_program_workouts', {
+          p_program_id: programId,
+          p_from_date: fromDate,
+          p_days: days,
+          p_start_date: (shifted.startDate ?? null) as unknown as ShiftArgs['p_start_date'],
+          p_program_days: shifted.days as unknown as ShiftArgs['p_program_days'],
+        });
+        error = res.error;
+        moved = res.data ?? 0;
+      } catch (e) {
+        // An offline fetch rejects rather than resolving with an error payload.
+        error = e;
+      }
+      if (error) {
+        console.error('[useStorage] pushProgramBack error:', error);
+        toast.error('Failed to shift program dates');
         return;
       }
-      setPrograms(prev => prev.map(p => p.id === programId ? updatedProgram : p));
-    }
 
-    toast.success(`Shifted ${updates.length} workout${updates.length === 1 ? '' : 's'} forward by ${days} day${days === 1 ? '' : 's'}`);
-  }, [user, futureWorkouts, programs]);
+      // The same rows the function moved: this program, on or after fromDate,
+      // not completed (a completed entry is the record of what happened on
+      // that date), and a real YYYY-MM-DD, which the function leaves alone
+      // rather than failing the shift. The server's count is the truth for
+      // the toast; the local list may not hold every row it moved.
+      const movesLocally = (fw: FutureWorkout) =>
+        fw.programId === programId && fw.date >= fromDate && !fw.completed && isIsoDay(fw.date);
+      setFutureWorkouts(prev => prev
+        .map(fw => movesLocally(fw) ? { ...fw, date: shiftDate(fw.date) } : fw)
+        .sort((a, b) => a.date.localeCompare(b.date)));
+      setPrograms(prev => prev.map(p => p.id === programId ? shifted : p));
+      toast.success(`Shifted ${moved} workout${moved === 1 ? '' : 's'} forward by ${days} day${days === 1 ? '' : 's'}`);
+    } finally {
+      shiftInFlight.current = false;
+    }
+  }, [user, programs]);
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return;
     // This upserts the whole settings row from local state. After a load that
     // failed with nothing cached, that state is DEFAULT_PREFERENCES, so writing
@@ -1045,7 +1372,7 @@ export function useStorage() {
   }, [user, loadedOk, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return;
     // Same whole-row hazard as updatePreferences: DEFAULT_PROFILE would blank
     // goal, equipment, injuries, age, height and drop the subscription tier.
@@ -1085,7 +1412,7 @@ export function useStorage() {
   }, [user, profile, snapshotTrusted]);
 
   const addBodyMeasurement = useCallback(async (weightKg: number, date?: string): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const id = crypto.randomUUID();
     const dateStr = date || format(new Date(), 'yyyy-MM-dd');
@@ -1104,7 +1431,7 @@ export function useStorage() {
   }, [user, bodyMeasurements]);
 
   const deleteBodyMeasurement = useCallback(async (id: string): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const previous = bodyMeasurements;
     setBodyMeasurements(prev => prev.filter(m => m.id !== id));

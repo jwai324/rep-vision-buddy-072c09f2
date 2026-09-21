@@ -8,11 +8,10 @@ import { validateWeight, validateReps, validateRpe, canCompleteSet, getSetFieldE
 import { parseLocalDate } from '@/utils/dateUtils';
 import { findPreviousPerformance } from '@/utils/previousPerformance';
 import { repairBlockNames, resolveExerciseName } from '@/utils/exerciseNames';
-import { resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
+import { resolveTemplateSupersets, withoutLoneSupersetGroups, withoutLoneSupersets } from '@/utils/templateSupersets';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
-import { releaseRestSchedule } from '@/utils/restTimerScheduler';
 import { useBlockMutations, normalizeBlocks } from '@/hooks/useBlockMutations';
 import { CameraFeed } from '@/components/CameraFeed';
 import { cn } from '@/lib/utils';
@@ -23,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { Check, Plus, MoreHorizontal, MoreVertical, StickyNote, FileText, Flame, Timer, RefreshCw, Layers, ChevronDown, Trash2, X, ArrowLeft, Pause, Play, MapPin, Focus, Camera } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
@@ -64,11 +62,20 @@ import type { WeightUnit } from '@/hooks/useStorage';
 export type { TimerStatus, PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import type { PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import { supersetInfo } from '@/types/activeSession';
-import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
+import { ExerciseTable } from '@/components/ExerciseTableComponent';
+import { timerIdKey } from '@/utils/timerIdKey';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
 import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
 const DEFAULT_LOCATION = 'Home Gym';
+
+// Bounds for the in-session rest-length editor. The floor is 5s rather than 0
+// because a zero-length rest reaches `ensureRestSchedule` already expired and
+// fires the "Rest complete" toast and notification the instant the set is
+// ticked; the ceiling keeps a typo out of a 15-minute rest bar.
+const MIN_REST_SECONDS = 5;
+const MAX_REST_SECONDS = 900;
+const REST_PRESETS = [60, 90, 120, 180];
 
 // Safe localStorage write — never throws
 function safeWriteCache(cache: ActiveSessionCache) {
@@ -85,22 +92,64 @@ function safeWriteCache(cache: ActiveSessionCache) {
 //   everything else      -> the typed display value converted to kg
 const noopStartTimer = () => {};
 
-export function clearSessionCache() {
-  localStorage.removeItem(CACHE_KEY);
-  // The workout is over, so is its rest: the scheduler outlives this screen
-  // on purpose (a minimized session keeps its rest), and this is the one
-  // signal that the session it belonged to is gone.
-  releaseRestSchedule();
+// Helper: find first incomplete drop in a set
+function findIncompleteDrop(set: SetRow): number | undefined {
+  if (!set.drops || set.drops.length === 0) return undefined;
+  const idx = set.drops.findIndex(d => !d.completed);
+  return idx === -1 ? undefined : idx;
 }
 
-export function getSessionCache(): ActiveSessionCache | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
+// Helper: scan a single block for the next incomplete item starting at fromSetIdx.
+// For the just-completed set, only checks drops (the set itself is complete).
+// Returns { setIdx, dropIdx? } or null.
+//
+// Module scope, not the component body: it reads nothing but its arguments, and
+// as a per-render closure it was a dependency `handleStartNextSet` could not
+// list without being rebuilt on every keystroke.
+function nextInBlock(
+  block: ExerciseBlock,
+  fromSetIdx: number,
+  onlyDropsForFirst = false
+): { setIdx: number; dropIdx?: number } | null {
+  for (let si = fromSetIdx; si < block.sets.length; si++) {
+    const s = block.sets[si];
+    if (si === fromSetIdx && onlyDropsForFirst) {
+      const di = findIncompleteDrop(s);
+      if (di !== undefined) return { setIdx: si, dropIdx: di };
+      continue;
+    }
+    if (!s.completed) return { setIdx: si };
+    const di = findIncompleteDrop(s);
+    if (di !== undefined) return { setIdx: si, dropIdx: di };
   }
+  return null;
+}
+
+/**
+ * Everything the edit screen can change about a saved workout, as one string.
+ * Cancelling an edit asks before discarding, and only when there is something
+ * to discard — so this deliberately leaves out what the screen rewrites on the
+ * way in without being asked: `exerciseName` (re-resolved once the custom
+ * library lands), `restSeconds` and `dropSetsEnabled` (neither is editable
+ * here, and neither is written back). Comparing whole blocks would read that
+ * normalisation as an edit and make closing an untouched record a two-tap job.
+ */
+function editStateSignature(
+  blocks: ExerciseBlock[],
+  scalars: { note: string; location: string; date: string; startTime: string; durationMin: string },
+): string {
+  return JSON.stringify({
+    ...scalars,
+    blocks: blocks.map(b => ({
+      id: b.exerciseId,
+      group: b.supersetGroup ?? null,
+      note: b.note ?? '',
+      sets: b.sets.map(set => [
+        set.setNumber, set.type, set.weight, set.reps, set.rpe, set.time ?? '', set.distance ?? '', set.completed,
+        (set.drops ?? []).map(d => [d.weight, d.reps, d.rpe, d.time ?? '', d.distance ?? '', d.completed]),
+      ]),
+    })),
+  });
 }
 
 interface ActiveSessionProps {
@@ -119,6 +168,13 @@ interface ActiveSessionProps {
   defaultRestSeconds?: number;
   cachedSession?: ActiveSessionCache | null;
   editSession?: WorkoutSession | null;
+  /**
+   * Kept pointed at this screen's unsaved-edit state so the router can ask
+   * before Back throws an edit away. The X in the corner asks directly; on a
+   * phone Back is the way most people leave, and it owns the history entry,
+   * so the question has to be reachable from there too.
+   */
+  editGuard?: React.MutableRefObject<{ hasChanges: boolean; confirm: () => void } | null>;
   onFinish: (session: WorkoutSession) => void;
   onCancel: () => void;
   onMinimize?: () => void;
@@ -129,7 +185,7 @@ interface ActiveSessionProps {
 
 // normalizeBlocks is imported from useBlockMutations
 
-export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession: cachedSessionProp, editSession, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
+export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initialExercises, templateExercises, templateName, templateId, template, history = [], weightUnit = 'kg', defaultDropSetsEnabled = false, defaultRestSeconds = 90, cachedSession: cachedSessionProp, editSession, editGuard, onFinish, onCancel, onMinimize, onUpdateTemplate, hideTimersPref = false, onUpdateHideTimers, customLocations: propLocations = ['Home Gym'], onUpdateCustomLocations, stickyNotes: propStickyNotes = {}, onUpdateStickyNotes }) => {
   const isEditMode = !!editSession;
   // A cache belongs to the workout it was written for. Mounting one whose
   // template differs from the screen's is how starting a workout on top of a
@@ -220,7 +276,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         note: ex.note,
       };
     });
-  }, [editSession, weightUnit, defaultRestSeconds, customExercises]);
+  }, [editSession, weightUnit, distanceUnit, defaultRestSeconds, customExercises]);
 
   // A template can express a superset two ways (an explicit group id, or the
   // older setType-only form the AI tools still write); the session only
@@ -239,7 +295,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       const tpl = resolvedTemplateExercises?.[idx];
       const numSets = tpl?.sets ?? 3;
       const restSec = tpl?.restSeconds ?? defaultRestSeconds;
-      const isBand = getExerciseInputMode(id, customExercises) === 'band';
+      const mode = getExerciseInputMode(id, customExercises);
+      const isBand = mode === 'band';
+      // A timed exercise's planned duration lives in the template's targetReps
+      // — that is the cell the builder labels "Time (min)" — and the session's
+      // time field holds seconds, so it is carried over multiplied by 60. Like
+      // the distance target above, it is a prefill: the box opens holding the
+      // plan instead of empty, and a set ticked without touching it records
+      // the planned time as performed.
+      const plannedSeconds = isTimeBased(mode) && typeof tpl?.targetReps === 'number' && tpl.targetReps > 0
+        ? Math.round(tpl.targetReps * 60)
+        : null;
       return {
         exerciseId: id,
         exerciseName: EXERCISES[id]?.name ?? customExercises.find(c => c.id === id)?.name ?? id,
@@ -250,10 +316,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           setNumber: i + 1,
           weight: targetWeightToInput(tpl?.targetWeight, weightUnit, isBand),
           reps: tpl?.targetReps === 'failure' ? '' : (tpl?.targetReps?.toString() ?? ''),
+          // Stored in metres; the box holds the user's unit, trimmed to two
+          // decimals so a 5000 m target reads 3.11 mi rather than 17 digits.
+          distance: tpl?.targetDistance != null ? String(Number(fromMeters(tpl.targetDistance, distanceUnit).toFixed(2))) : '',
           completed: false,
           type: tpl?.setType ?? 'normal',
           rpe: '',
-          time: '',
+          time: plannedSeconds != null ? String(plannedSeconds) : '',
         })),
       };
     });
@@ -263,6 +332,62 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const restTimer = useSessionRestTimer({ cachedSession, hideTimers: hideTimersPref });
   const { activeTimer, restRecords, computeRemaining, recalcRestTimer, startTimer, skipTimer, extendTimer } = restTimer;
 
+  // Per-set live timing state (5s countdown -> running)
+  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
+  const [runningSet, setRunningSet] = useState<RunningSetState | null>(
+    cachedSession?.runningSet ?? null
+  );
+
+  // Both are positions into `blocks`, and the mutations move rows under
+  // them: a warm-up prepended above a stopwatch set, or a row or exercise
+  // deleted above it, left the index on a different row and Stop wrote the
+  // time and completion there. A row that is gone ends what was on it.
+  // The rest timer and the recorded rests are keyed by the same positions.
+  const { remapTimerIds } = restTimer;
+  const shiftSetIndices = useCallback((blockIdx: number, remap: (setIdx: number) => number | null) => {
+    const shifted = <T extends { blockIdx: number; setIdx: number }>(s: T | null): T | null => {
+      if (!s || s.blockIdx !== blockIdx) return s;
+      const setIdx = remap(s.setIdx);
+      return setIdx === null ? null : setIdx === s.setIdx ? s : { ...s, setIdx };
+    };
+    setRunningSet(shifted);
+    setCountdown(shifted);
+    remapTimerIds(id => {
+      if (id.blockIdx !== blockIdx || id.setIdx === undefined) return id;
+      const setIdx = remap(id.setIdx);
+      return setIdx === null ? null : setIdx === id.setIdx ? id : { ...id, setIdx };
+    });
+  }, [remapTimerIds]);
+  const shiftBlockIndices = useCallback((remap: (blockIdx: number) => number | null) => {
+    const shifted = <T extends { blockIdx: number }>(s: T | null): T | null => {
+      if (!s) return s;
+      const blockIdx = remap(s.blockIdx);
+      return blockIdx === null ? null : blockIdx === s.blockIdx ? s : { ...s, blockIdx };
+    };
+    setRunningSet(shifted);
+    setCountdown(shifted);
+    remapTimerIds(id => {
+      const blockIdx = remap(id.blockIdx);
+      return blockIdx === null ? null : blockIdx === id.blockIdx ? id : { ...id, blockIdx };
+    });
+  }, [remapTimerIds]);
+  const shiftDropIndices = useCallback((blockIdx: number, setIdx: number | null, remap: (dropIdx: number) => number | null) => {
+    const shifted = <T extends { blockIdx: number; setIdx: number; dropIdx?: number }>(s: T | null): T | null => {
+      if (!s || s.blockIdx !== blockIdx || s.dropIdx === undefined) return s;
+      if (setIdx !== null && s.setIdx !== setIdx) return s;
+      const dropIdx = remap(s.dropIdx);
+      return dropIdx === null ? null : dropIdx === s.dropIdx ? s : { ...s, dropIdx };
+    };
+    setRunningSet(shifted);
+    setCountdown(shifted);
+    remapTimerIds(id => {
+      if (id.blockIdx !== blockIdx || id.dropIdx === undefined) return id;
+      if (setIdx !== null && id.setIdx !== setIdx) return id;
+      const dropIdx = remap(id.dropIdx);
+      return dropIdx === null ? null : dropIdx === id.dropIdx ? id : { ...id, dropIdx };
+    });
+  }, [remapTimerIds]);
+
   // Re-ticking a set while editing history must not start a real rest timer
   // (sound, OS notification, permission prompt), so edit mode gets a no-op.
   const blockOps = useBlockMutations(blocks, setBlocks, {
@@ -271,6 +396,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     defaultRestSeconds,
     customExercises,
     startTimer: isEditMode ? noopStartTimer : startTimer,
+    onSetIndicesShifted: shiftSetIndices,
+    onBlockIndicesShifted: shiftBlockIndices,
+    onDropIndicesShifted: shiftDropIndices,
   });
   const { exerciseLookup, updateSet, toggleSetComplete, addSet, addDrop, updateDrop, removeSet, removeDrop, addExercise, addMultipleExercises, removeExercise, replaceExercise, toggleDropSets, addWarmupSet } = blockOps;
 
@@ -411,6 +539,34 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const initialEditDate = useRef(editDate);
   const initialEditTime = useRef(editTime);
 
+  // Cancelling an edit throws the work away, so it asks first — but only when
+  // something was actually changed, so opening a record and closing it stays
+  // one tap. The baseline is taken on the first render, from the same blocks
+  // the screen was seeded with, rather than recomputed from `editSession`:
+  // recomputing would move under us when the custom-exercise library loads and
+  // read as an edit nobody made.
+  const editSignature = useMemo(
+    () => (isEditMode
+      ? editStateSignature(blocks, {
+          note: workoutNote,
+          location,
+          date: editDate,
+          startTime: editTime,
+          durationMin: editDurationMin,
+        })
+      : ''),
+    [isEditMode, blocks, workoutNote, location, editDate, editTime, editDurationMin],
+  );
+  const [editBaselineSignature] = useState(() => editSignature);
+  const editHasChanges = isEditMode && editSignature !== editBaselineSignature;
+  const [showDiscardEditsConfirm, setShowDiscardEditsConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!editGuard) return;
+    editGuard.current = { hasChanges: editHasChanges, confirm: () => setShowDiscardEditsConfirm(true) };
+    return () => { editGuard.current = null; };
+  }, [editGuard, editHasChanges]);
+
   const addCustomLocation = useCallback(() => {
     const trimmed = newLocationInput.trim();
     if (trimmed && !locations.includes(trimmed)) {
@@ -425,15 +581,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
   // Rest timer state is managed by useSessionRestTimer hook (above)
 
-  // Per-set live timing state (5s countdown -> running)
-  const [countdown, setCountdown] = useState<{ blockIdx: number; setIdx: number; dropIdx?: number } | null>(null);
-  const [runningSet, setRunningSet] = useState<RunningSetState | null>(
-    cachedSession?.runningSet ?? null
-  );
   const blockRefs = useRef<Record<number, HTMLDivElement | null>>({});
   // Note editing state
   const [editingNote, setEditingNote] = useState<{ blockIdx: number; type: 'note' | 'sticky' } | null>(null);
   const [noteText, setNoteText] = useState('');
+  // Rest-length editing state (the exercise menu's "Update Rest Timer")
+  const [editingRest, setEditingRest] = useState<{ exerciseId: string } | null>(null);
+  const [restInput, setRestInput] = useState('');
 
   // Elapsed timer — uses Date.now() anchor for absolute start, recalculates on tick
   useEffect(() => {
@@ -569,10 +723,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     const { blockIdx, setIdx, dropIdx, startedAt } = runningSet;
     const endedAt = Date.now() + bonusSeconds * 1000;
     const seconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
-    let restSec = 90;
+    // Read from the render's blocks, not from inside the updater: React only
+    // runs an updater eagerly when nothing else is queued on this screen, so
+    // a value assigned in there was sometimes still unset when the rest began.
+    const restSec = blocks[blockIdx]?.restSeconds ?? defaultRestSeconds;
     setBlocks(prev => prev.map((b, bi) => {
       if (bi !== blockIdx) return b;
-      restSec = b.restSeconds;
       const completedSet = b.sets[setIdx];
       return {
         ...b,
@@ -601,36 +757,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }));
     setRunningSet(null);
     startTimer({ type: 'set', blockIdx, setIdx, dropIdx }, restSec);
-  }, [runningSet, startTimer]);
-
-  // Helper: find first incomplete drop in a set
-  const findIncompleteDrop = (set: SetRow): number | undefined => {
-    if (!set.drops || set.drops.length === 0) return undefined;
-    const idx = set.drops.findIndex(d => !d.completed);
-    return idx === -1 ? undefined : idx;
-  };
-
-  // Helper: scan a single block for the next incomplete item starting at fromSetIdx.
-  // For the just-completed set, only checks drops (the set itself is complete).
-  // Returns { setIdx, dropIdx? } or null.
-  const nextInBlock = (
-    block: ExerciseBlock,
-    fromSetIdx: number,
-    onlyDropsForFirst = false
-  ): { setIdx: number; dropIdx?: number } | null => {
-    for (let si = fromSetIdx; si < block.sets.length; si++) {
-      const s = block.sets[si];
-      if (si === fromSetIdx && onlyDropsForFirst) {
-        const di = findIncompleteDrop(s);
-        if (di !== undefined) return { setIdx: si, dropIdx: di };
-        continue;
-      }
-      if (!s.completed) return { setIdx: si };
-      const di = findIncompleteDrop(s);
-      if (di !== undefined) return { setIdx: si, dropIdx: di };
-    }
-    return null;
-  };
+  }, [runningSet, startTimer, blocks, defaultRestSeconds]);
 
   // Public: tap "Start next set" on an exercise header.
   const handleStartNextSet = useCallback((blockIdx: number) => {
@@ -776,17 +903,27 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    setBlocks(prev => {
-      const oldIndex = prev.findIndex(b => b.exerciseId === active.id);
-      const newIndex = prev.findIndex(b => b.exerciseId === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
+    const oldIndex = blocks.findIndex(b => b.exerciseId === active.id);
+    const newIndex = blocks.findIndex(b => b.exerciseId === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    setBlocks(prev => arrayMove(prev, oldIndex, newIndex));
+    shiftBlockIndices(i => {
+      if (i === oldIndex) return newIndex;
+      if (oldIndex < newIndex && i > oldIndex && i <= newIndex) return i - 1;
+      if (oldIndex > newIndex && i >= newIndex && i < oldIndex) return i + 1;
+      return i;
     });
-  }, []);
+  }, [blocks, shiftBlockIndices]);
 
   // Register session controller for AI chat mutations. Not in edit mode: a
   // past workout registered as the live one gave the coach a fake
-  // active_session, and its session tools then rewrote history.
+  // active_session, and its session tools then rewrote history — and because
+  // the edit screen writes no cache either, editing a past workout stays
+  // invisible to the coach through both doors.
+  //
+  // Unregistering on unmount is not the coach losing the workout: with no
+  // screen mounted it falls back to the session cache (see `getSessionCache`
+  // in `@/utils/sessionCache`), which is the same workout by another name.
   useEffect(() => {
     if (isEditMode) return;
     registerSession({
@@ -853,7 +990,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             return {
               ...block,
               sets: block.sets.map(set => {
-                if (set.setNumber !== setNumber) return set;
+                // Warm-ups are numbered 1..n on their own; "set 1" from the
+                // coach means working set 1, not both.
+                if (set.type === 'warmup' || set.setNumber !== setNumber) return set;
                 found = true;
                 return {
                   ...set,
@@ -938,8 +1077,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         setReplaceIdx(blockIdx);
         setShowExercisePicker(true);
         break;
+      case 'Update Rest Timer':
+        // The menu hides this while editing a past workout; this is the
+        // backstop for any caller that does not pass isEditMode.
+        if (isEditMode) break;
+        setRestInput(String(block.restSeconds));
+        setEditingRest({ exerciseId: block.exerciseId });
+        break;
     }
-  }, [blocks, getStickyNote, toggleDropSets, addWarmupSet]);
+  }, [blocks, getStickyNote, toggleDropSets, addWarmupSet, isEditMode]);
 
   const saveNote = useCallback(() => {
     if (!editingNote) return;
@@ -951,6 +1097,28 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
     setEditingNote(null);
   }, [editingNote, noteText, blocks, setStickyNote]);
+
+  /**
+   * The exercise's own rest, for the remainder of this session only — the
+   * template is not touched here. A rest already running keeps the length it
+   * was started with, because `startTimer` reads `restSeconds` at the moment
+   * the rest begins and nothing re-reads it afterwards.
+   */
+  const saveRest = useCallback(() => {
+    if (!editingRest) return;
+    const seconds = Number(restInput.trim());
+    if (!Number.isInteger(seconds) || seconds < MIN_REST_SECONDS || seconds > MAX_REST_SECONDS) {
+      toast.error(`Rest must be a whole number of seconds from ${MIN_REST_SECONDS} to ${MAX_REST_SECONDS}.`);
+      return;
+    }
+    const { exerciseId } = editingRest;
+    // Addressed by id rather than by the index the dialog was opened at: a
+    // coach proposal applying underneath the overlay can insert, remove or
+    // reorder blocks, and every other position-keyed state here is remapped
+    // for the same reason.
+    setBlocks(prev => prev.map(b => b.exerciseId === exerciseId ? { ...b, restSeconds: seconds } : b));
+    setEditingRest(null);
+  }, [editingRest, restInput]);
 
   const handleSupersetSave = useCallback((groups: Record<string, number | undefined>) => {
     setBlocks(prev => prev.map(b => ({ ...b, supersetGroup: groups[b.exerciseId] })));
@@ -971,10 +1139,17 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       // A partner skipped outright leaves its group with one member, which is
       // no longer a superset — and writing it back would park a link the
       // template can never resolve.
+      // Only working sets count: an exercise that got no further than its
+      // warm-up is a skipped one, not a template entry of one warm-up set.
+      // Unless the template entry is itself warm-up typed (the coach's tools
+      // allow it): then its warm-up rows are the plan, done as planned.
+      const isWorking = (b: ExerciseBlock, s: SetRow) =>
+        s.completed && (s.type !== 'warmup'
+          || originalTemplateSnapshot.current?.find(e => e.exerciseId === b.exerciseId)?.setType === 'warmup');
       const completedBlocks: FinishedBlockLite[] = withoutLoneSupersets(blocks
-        .filter(b => b.sets.some(s => s.completed))
+        .filter(b => b.sets.some(s => isWorking(b, s)))
         .map(b => {
-          const completed = b.sets.filter(s => s.completed && s.type !== 'warmup');
+          const completed = b.sets.filter(s => isWorking(b, s));
           const lastSet = completed[completed.length - 1];
           const lastReps = completed.length > 0 ? parseInt(lastSet.reps) || null : null;
           const setType = completed[0]?.type ?? b.sets[0]?.type ?? 'normal';
@@ -1051,21 +1226,36 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
 
     // Guard: any completed set with invalid field values blocks finishing.
+    // A drop is checked only under a completed parent, because those are the
+    // only drops the log built below keeps.
+    const invalidField = (row: { weight: string; reps: string; rpe: string }, mode: ExerciseInputMode) => {
+      const errs = getSetFieldErrors(row, weightUnit, mode);
+      return errs.weight ? 'weight' : errs.reps ? 'reps' : errs.rpe ? 'RPE' : null;
+    };
     for (const block of blocks) {
       const mode = getExerciseInputMode(block.exerciseId, customExercises);
-      for (let si = 0; si < block.sets.length; si++) {
-        const s = block.sets[si];
+      for (const s of block.sets) {
         if (!s.completed) continue;
-        const errs = getSetFieldErrors({ weight: s.weight, reps: s.reps, rpe: s.rpe }, weightUnit, mode);
-        const badField = errs.weight ? 'weight' : errs.reps ? 'reps' : errs.rpe ? 'RPE' : null;
+        const badField = invalidField(s, mode);
         if (badField) {
           toast.error(`Fix invalid ${badField} in ${block.exerciseName}, Set ${s.setNumber}`);
           return;
         }
+        for (const [di, d] of (s.drops ?? []).entries()) {
+          if (!d.completed) continue;
+          const badDropField = invalidField(d, mode);
+          if (badDropField) {
+            toast.error(`Fix invalid ${badDropField} in ${block.exerciseName}, Set ${s.setNumber} drop ${di + 1}`);
+            return;
+          }
+        }
       }
     }
 
-    const exerciseLogs: ExerciseLog[] = normalizeBlocks(blocks)
+    // A partner with nothing completed is left out of the log, so the one
+    // that remains must not keep a group of its own — that reads as
+    // "Superset A · 1 of 1" on the summary and in history for good.
+    const exerciseLogs: ExerciseLog[] = withoutLoneSupersetGroups(normalizeBlocks(blocks)
       .filter(b => b.sets.some(s => s.completed))
       .map(b => {
         const mode = getExerciseInputMode(b.exerciseId, customExercises);
@@ -1107,7 +1297,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           sets,
           note: b.note?.trim() || undefined,
         };
-      });
+      }));
 
     const allSets = exerciseLogs.flatMap(l => l.sets);
     const totalReps = allSets.reduce((s, set) => s + set.reps, 0);
@@ -1183,7 +1373,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
 
     finishWithTemplateCheck(finalSession);
-  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, exerciseLookup, timerPaused, location]);
+  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, distanceUnit, customExercises, exerciseLookup, timerPaused, location]);
 
   if (showSupersetLinker) {
     return (
@@ -1233,9 +1423,13 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       {/* Header */}
       <div className="flex items-center justify-between p-4 pb-2">
         {isEditMode ? (
-          <button onClick={onCancel} className="text-sm text-muted-foreground hover:text-foreground">✕</button>
+          <button
+            onClick={() => (editHasChanges ? setShowDiscardEditsConfirm(true) : onCancel())}
+            aria-label="Cancel editing"
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >✕</button>
         ) : (
-          <button onClick={onMinimize ?? onCancel} className="text-muted-foreground hover:text-foreground">
+          <button onClick={onMinimize ?? onCancel} aria-label="Back" className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
@@ -1243,7 +1437,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
           {/* 3-dot menu */}
           <Popover>
             <PopoverTrigger asChild>
-              <button className="text-muted-foreground hover:text-foreground p-1">
+              <button aria-label="Workout options" className="text-muted-foreground hover:text-foreground p-1">
                 <MoreVertical className="w-5 h-5" />
               </button>
             </PopoverTrigger>
@@ -1255,13 +1449,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 <FileText className="w-4 h-4" />
                 {workoutNote ? 'Edit Note' : 'Add Note'}
               </button>
-              <button
-                onClick={() => { setHideTimers(prev => { const next = !prev; onUpdateHideTimers?.(next); return next; }); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
-              >
-                <Timer className="w-4 h-4" />
-                {hideTimers ? 'Show Timers' : 'Hide Timers'}
-              </button>
+              {!isEditMode && (
+                <button
+                  onClick={() => { setHideTimers(prev => { const next = !prev; onUpdateHideTimers?.(next); return next; }); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors text-foreground"
+                >
+                  <Timer className="w-4 h-4" />
+                  {hideTimers ? 'Show Timers' : 'Hide Timers'}
+                </button>
+              )}
             </PopoverContent>
           </Popover>
           {!isEditMode && (
@@ -1340,6 +1536,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                   />
                   <button
                     onClick={addCustomLocation}
+                    aria-label="Add location"
                     disabled={!newLocationInput.trim()}
                     className="text-primary hover:text-primary/80 disabled:opacity-30"
                   >
@@ -1418,13 +1615,16 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
 
       {/* Note Editor Modal */}
       {editingNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        // Above Focus Mode for the same reason as the rest dialog below: its
+        // kebab menu offers Add Note from an opaque z-50 overlay, and an
+        // equal level put this dialog behind it.
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-card border border-border rounded-xl w-full max-w-md p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-foreground">
                 {editingNote.type === 'sticky' ? '📌 Sticky Note' : '📝 Session Note'}
               </h3>
-              <button onClick={() => setEditingNote(null)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setEditingNote(null)} aria-label="Close note editor" className="text-muted-foreground hover:text-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1448,6 +1648,56 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         </div>
       )}
 
+      {/* Rest Length Editor Modal */}
+      {editingRest && (
+        // Above Focus Mode, which offers the same menu from an opaque z-50
+        // overlay (its floating clone is z-[60]); at an equal level the
+        // dialog opens underneath it and the tap reads as doing nothing.
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border rounded-xl w-full max-w-md p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">⏱️ Rest Timer</h3>
+              <button onClick={() => setEditingRest(null)} aria-label="Close rest timer editor" className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Rest between sets of {blocks.find(b => b.exerciseId === editingRest.exerciseId)?.exerciseName} for the rest of this workout. A rest already
+              running keeps its countdown; this applies from the next one.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={MIN_REST_SECONDS}
+                max={MAX_REST_SECONDS}
+                step={5}
+                aria-label="Rest seconds"
+                value={restInput}
+                onChange={e => setRestInput(e.target.value)}
+                className="w-24 bg-secondary/60 border border-border rounded-lg p-2 text-base text-center text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="text-xs text-muted-foreground">seconds ({MIN_REST_SECONDS}–{MAX_REST_SECONDS})</span>
+            </div>
+            <div className="flex gap-2">
+              {REST_PRESETS.map(preset => (
+                <button
+                  key={preset}
+                  onClick={() => setRestInput(String(preset))}
+                  className="px-3 py-1 rounded-md bg-secondary/60 text-xs text-foreground hover:bg-secondary transition-colors"
+                >
+                  {preset}s
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setEditingRest(null)}>Cancel</Button>
+              <Button variant="neon" size="sm" onClick={saveRest}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Exercise Blocks */}
       <div className="flex-1 overflow-y-auto px-4 pb-44 space-y-2">
         <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis]}>
@@ -1464,7 +1714,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                 && blocks[blockIdx - 1].supersetGroup === block.supersetGroup;
               return (
               <React.Fragment key={block.exerciseId}>
-                {!hideTimers && blockIdx > 0 && !withinSuperset && (
+                {!hideTimers && !isEditMode && blockIdx > 0 && !withinSuperset && (
                   <ExerciseRestTimer
                     timerId={betweenId}
                     defaultDuration={blocks[blockIdx - 1].restSeconds}
@@ -1506,7 +1756,9 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
                         onExtendTimer={extendTimer}
                         onTitleTap={() => setDetailExerciseId(block.exerciseId)}
                         isEditMode={isEditMode}
-                        hideTimers={hideTimers}
+                        // A record of a past workout has no rest to start; the
+                        // bars would drive the live scheduler from edit mode.
+                        hideTimers={hideTimers || isEditMode}
                         runningSet={runningSet}
                         onStartNextSet={handleStartNextSet}
                         onStopSet={handleStopSetClick}
@@ -1609,6 +1861,30 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => { setShowDiscardConfirm(false); onCancel(); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Leaving an edit with unsaved changes — the same question the live
+          workout's Discard asks, because the X in the corner sits where every
+          other screen's back arrow does and used to throw the edit away on
+          one tap with nothing kept. */}
+      <AlertDialog open={showDiscardEditsConfirm} onOpenChange={setShowDiscardEditsConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your changes to this workout have not been saved. Discard them and leave the record as it was?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setShowDiscardEditsConfirm(false); onCancel(); }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Discard

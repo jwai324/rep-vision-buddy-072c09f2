@@ -5,7 +5,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChatContext } from '@/contexts/ChatContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { creditsFromMicros, MICROS_PER_CREDIT } from '@/utils/credits';
+import {
+  creditsBreakdown,
+  creditsFromMicros,
+  MICROS_PER_CREDIT,
+  FREE_MONTHLY_MICROS,
+  PREMIUM_MONTHLY_MICROS,
+} from '@/utils/credits';
 import type { UserProfile, SubscriptionTier } from '@/hooks/useStorage';
 
 interface CreditsScreenProps {
@@ -14,9 +20,18 @@ interface CreditsScreenProps {
   onBack: () => void;
 }
 
+// Every allowance figure on this screen (and in the plan-change toast) is
+// derived from the same constants the server meters against, so the copy
+// cannot drift from the allowance actually granted.
+const allowanceCredits = (micros: number): string =>
+  creditsFromMicros(micros).toLocaleString();
+
+const FREE_BLURB = `${allowanceCredits(FREE_MONTHLY_MICROS)} credits each month. Top up or upgrade for more.`;
+const PREMIUM_BLURB = `${allowanceCredits(PREMIUM_MONTHLY_MICROS)} credits each month. Resets monthly; top up if you run out early.`;
+
 const TIERS: { value: SubscriptionTier; label: string; blurb: string }[] = [
-  { value: 'free', label: 'Free', blurb: '500 credits each month. Top up or upgrade for more.' },
-  { value: 'premium', label: 'Premium', blurb: '7,000 credits each month. Resets monthly; top up if you run out early.' },
+  { value: 'free', label: 'Free', blurb: FREE_BLURB },
+  { value: 'premium', label: 'Premium', blurb: PREMIUM_BLURB },
 ];
 
 interface LedgerRow {
@@ -44,9 +59,11 @@ const signedCredits = (micros: number): string => {
 
 export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateProfile, onBack }) => {
   const { user } = useAuth();
-  const { creditsBalance, refreshBalance } = useChatContext();
+  const { creditsBalance, creditsBalanceKnown, refreshBalance } = useChatContext();
   const { toast } = useToast();
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
+
+  const breakdown = creditsBreakdown(creditsBalance);
 
   const tier = profile.subscriptionTier;
   const isPremium = tier === 'premium';
@@ -56,9 +73,7 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
     onUpdateProfile({ subscriptionTier: next });
     toast({
       title: next === 'premium' ? 'Premium enabled' : 'Switched to Free',
-      description: next === 'premium'
-        ? 'Unlimited AI coach access (test mode).'
-        : 'You now use the monthly free credit allowance.',
+      description: next === 'premium' ? PREMIUM_BLURB : FREE_BLURB,
     });
   };
 
@@ -75,10 +90,14 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
 
   useEffect(() => { loadLedger(); }, [loadLedger]);
 
+  // The allowance period is the UTC calendar month (free_period is stamped
+  // from now() AT TIME ZONE 'utc'), so the reset day is named in UTC as well.
+  // Formatting the boundary in local time put it on the 30th in the evening
+  // west of Greenwich and on the 2nd in the morning east of it.
   const nextReset = (() => {
-    const d = new Date();
-    d.setUTCMonth(d.getUTCMonth() + 1, 1);
-    return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+    const now = new Date();
+    const boundary = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return boundary.toLocaleDateString(undefined, { month: 'long', day: 'numeric', timeZone: 'UTC' });
   })();
 
   return (
@@ -87,6 +106,7 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
       <div className="flex items-center gap-3 pt-2">
         <button
           onClick={onBack}
+          aria-label="Back"
           className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -126,7 +146,7 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
 
       {isPremium && (
         <p className="text-[11px] text-muted-foreground -mt-2 px-1">
-          You're on Premium — 7,000 credits included each month (the balance below). It resets monthly; top up if you run out early.
+          You're on Premium — {allowanceCredits(PREMIUM_MONTHLY_MICROS)} credits included each month (the balance below). It resets monthly; top up if you run out early.
         </p>
       )}
 
@@ -135,25 +155,33 @@ export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateP
         <div className="px-4 py-5 flex flex-col items-center gap-1">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
-            <span className="text-3xl font-extrabold text-foreground">{creditsBalance.credits}</span>
-            <span className="text-sm text-muted-foreground">credits</span>
+            {creditsBalanceKnown ? (
+              <>
+                <span className="text-3xl font-extrabold text-foreground">{creditsBalance.credits}</span>
+                <span className="text-sm text-muted-foreground">credits</span>
+              </>
+            ) : (
+              // The numbers below are a placeholder allowance until a read
+              // lands, so they are held back rather than shown as a balance.
+              <span className="text-xl font-bold text-muted-foreground">Couldn't load your balance</span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
-            ≈ {creditsBalance.estMessagesLeft} messages left
+            {creditsBalanceKnown ? `≈ ${creditsBalance.estMessagesLeft} messages left` : 'Check your connection and pull to refresh.'}
           </p>
         </div>
         <div className="grid grid-cols-2 border-t border-border">
           <div className="px-4 py-3 border-r border-border">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Monthly allowance</p>
             <p className="text-sm font-semibold text-foreground">
-              {creditsFromMicros(creditsBalance.freeRemainingMicros)} credits
+              {creditsBalanceKnown ? `${breakdown.allowance} credits` : '—'}
             </p>
             <p className="text-[11px] text-muted-foreground">Resets {nextReset}</p>
           </div>
           <div className="px-4 py-3">
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Purchased</p>
             <p className="text-sm font-semibold text-foreground">
-              {creditsFromMicros(Math.max(0, creditsBalance.paidMicros))} credits
+              {creditsBalanceKnown ? `${breakdown.purchased} credits` : '—'}
             </p>
           </div>
         </div>

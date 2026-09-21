@@ -5,6 +5,7 @@ import {
   buildSessionSnapshot,
   buildTemplateSnapshot,
   isCustomExerciseId,
+  publishableSharedBy,
   remapProgram,
   remapTemplate,
   type CustomExerciseLite,
@@ -89,6 +90,13 @@ describe('buildTemplateSnapshot', () => {
       name: 'Weighted Plank',
       measurementType: 'Time',
     });
+  });
+
+  it('carries the exclude-from-volume flag so an imported rehab exercise stays out of volume', () => {
+    const rehab: CustomExerciseLite = { ...plank, excludeFromVolume: true };
+    const snap = buildTemplateSnapshot(template(), ctx({ customExercises: [rehab] }));
+    expect(snap.customExercises[0].excludeFromVolume).toBe(true);
+    expect(buildTemplateSnapshot(template(), ctx()).customExercises[0].excludeFromVolume).toBe(false);
   });
 
   it('does not carry custom exercises the template never references', () => {
@@ -217,7 +225,33 @@ describe('share → import round trip', () => {
   });
 });
 
+describe('publishableSharedBy', () => {
+  it('keeps an ordinary display name, trimmed', () => {
+    expect(publishableSharedBy('  Justin ')).toBe('Justin');
+  });
+
+  it('drops a name that could be an email address', () => {
+    expect(publishableSharedBy('justin@example.com')).toBeNull();
+    expect(publishableSharedBy('J.W@sub.example.co.uk')).toBeNull();
+  });
+
+  it('drops a blank or missing name', () => {
+    expect(publishableSharedBy('   ')).toBeNull();
+    expect(publishableSharedBy(null)).toBeNull();
+    expect(publishableSharedBy(undefined)).toBeNull();
+  });
+});
+
 describe('snapshot privacy', () => {
+  it('never publishes a display name that is an email address', () => {
+    // Sign-up seeds display_name from the email, so an account that never
+    // edited its name would otherwise put its address on a public page.
+    const snap = buildTemplateSnapshot(template(), ctx({ sharedBy: 'justin@example.com' }));
+    expect(snap.sharedBy).toBeNull();
+    expect(JSON.stringify(snap)).not.toContain('justin@example.com');
+    expect(buildTemplateSnapshot(template(), ctx()).sharedBy).toBe('Justin');
+  });
+
   it('never carries a user_id', () => {
     const snaps = [
       buildTemplateSnapshot(template(), ctx()),

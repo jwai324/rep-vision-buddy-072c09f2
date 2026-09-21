@@ -8,9 +8,12 @@ const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
+// No explicit `storage`: auth-js's default adapter probes localStorage and
+// falls back to memory when site data is blocked. Naming `localStorage` here
+// threw at module evaluation in that case, before anything could render, and
+// the app showed a blank page.
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
   }

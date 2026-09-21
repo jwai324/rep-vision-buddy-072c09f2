@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { PersistedTimer, ActiveSessionCache } from '@/types/activeSession';
-import { timerIdKey } from '@/components/ExerciseTableComponent';
+import { timerIdKey } from '@/utils/timerIdKey';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
 import {
@@ -31,6 +31,25 @@ const sessionCacheExists = (): boolean => {
   } catch {
     return false;
   }
+};
+
+// A storage event hands over freshly parsed objects. Setting them as they
+// come re-renders this tab's cache writer, whose write is the other tab's
+// next storage event — the two rewrite the same session every half-second
+// and whichever wrote last owns the blocks. Only a real change is applied.
+const sameTimer = (a: PersistedTimer | null, b: PersistedTimer | null): boolean => {
+  if (a === null || b === null) return a === b;
+  return timerIdKey(a.id) === timerIdKey(b.id)
+    && a.startedAtEpoch === b.startedAtEpoch
+    && a.duration === b.duration
+    && a.originalDuration === b.originalDuration
+    && a.status === b.status
+    && (a.elapsedAtPause ?? null) === (b.elapsedAtPause ?? null);
+};
+
+const sameRecords = (a: Record<string, number>, b: Record<string, number>): boolean => {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(k => a[k] === b[k]);
 };
 
 /**
@@ -202,11 +221,14 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
         const parsed: ActiveSessionCache = JSON.parse(e.newValue);
         if (parsed.activeTimer !== undefined) {
           const next = parsed.activeTimer ?? null;
-          setActiveTimer(next);
-          if (!next) releaseRestSchedule();
+          if (!sameTimer(activeTimerRef.current, next)) {
+            setActiveTimer(next);
+            if (!next) releaseRestSchedule();
+          }
         }
         if (parsed.restRecords) {
-          setRestRecords(parsed.restRecords);
+          const next = parsed.restRecords;
+          setRestRecords(cur => (sameRecords(cur, next) ? cur : next));
         }
       } catch {
         // ignore malformed
@@ -230,6 +252,39 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
     if (!sessionCacheExists()) releaseRestSchedule();
   }, []);
 
+  // The timer and every recorded rest are keyed by row position. When a
+  // mutation moves rows (a warm-up prepended, a set or exercise removed, an
+  // exercise dragged) the keys must move with them, or the live rest bar and
+  // the rest chips render one row off. A rest whose row is gone ends.
+  const remapTimerIds = useCallback((mapId: (id: TimerId) => TimerId | null) => {
+    const t = activeTimerRef.current;
+    if (t) {
+      const id = mapId(t.id);
+      if (id === null) {
+        setActiveTimer(null);
+        releaseRestSchedule();
+      } else if (timerIdKey(id) !== timerIdKey(t.id)) {
+        // Same rest at a new position: the sync effect re-attaches the
+        // scheduler under the new key with the same start, so the clock
+        // does not restart.
+        setActiveTimer({ ...t, id });
+      }
+    }
+    setRestRecords(prev => {
+      let changed = false;
+      const next: Record<string, number> = {};
+      for (const [key, seconds] of Object.entries(prev)) {
+        const parsed = parseTimerIdKey(key);
+        const mapped = parsed ? mapId(parsed) : parsed;
+        if (mapped === null) { changed = true; continue; }
+        const nextKey = mapped ? timerIdKey(mapped) : key;
+        if (nextKey !== key) changed = true;
+        next[nextKey] = seconds;
+      }
+      return changed ? next : prev;
+    });
+  }, [setActiveTimer]);
+
   return {
     activeTimer,
     restRecords,
@@ -240,5 +295,18 @@ export function useSessionRestTimer({ cachedSession, hideTimers = false }: UseSe
     extendTimer,
     pauseTimer,
     resumeTimer,
+    remapTimerIds,
+  };
+}
+
+/** Inverse of timerIdKey; undefined for a key that is not one. */
+function parseTimerIdKey(key: string): TimerId | undefined {
+  const m = /^(set|between)-(\d+)-(\d*)-(\d*)$/.exec(key);
+  if (!m) return undefined;
+  return {
+    type: m[1] as TimerId['type'],
+    blockIdx: Number(m[2]),
+    ...(m[3] !== '' ? { setIdx: Number(m[3]) } : {}),
+    ...(m[4] !== '' ? { dropIdx: Number(m[4]) } : {}),
   };
 }

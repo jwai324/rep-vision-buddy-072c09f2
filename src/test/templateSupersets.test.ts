@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeSupersetOrder, groupAdjacentSupersets, linkedSetType, resolveTemplateSupersets, withoutLoneSupersets } from '@/utils/templateSupersets';
+import { describeSupersetOrder, groupAdjacentSupersets, linkedSetType, resolveTemplateSupersets, withoutLoneSupersetGroups, withoutLoneSupersets } from '@/utils/templateSupersets';
 import type { TemplateExercise } from '@/types/workout';
 import { supersetInfo } from '@/types/activeSession';
 
@@ -142,6 +142,26 @@ describe('withoutLoneSupersets', () => {
       ex({ exerciseId: 'b', supersetGroup: 1 }),
     ];
     expect(withoutLoneSupersets(exercises)).toBe(exercises);
+  });
+});
+
+describe('withoutLoneSupersetGroups', () => {
+  it('clears a group of one on items that carry no set type, and nothing else', () => {
+    const logs = [
+      { exerciseId: 'a', supersetGroup: 1, sets: [] },
+      { exerciseId: 'b', supersetGroup: 2, sets: [] },
+      { exerciseId: 'c', supersetGroup: 2, sets: [] },
+      { exerciseId: 'd', sets: [] },
+    ];
+    const cleared = withoutLoneSupersetGroups(logs);
+    expect(cleared.map(l => l.supersetGroup)).toEqual([undefined, 2, 2, undefined]);
+    expect(cleared[1]).toBe(logs[1]);
+    expect(cleared[3]).toBe(logs[3]);
+  });
+
+  it('hands back the same array when every group has partners', () => {
+    const logs = [{ supersetGroup: 3 }, { supersetGroup: 3 }, {}];
+    expect(withoutLoneSupersetGroups(logs)).toBe(logs);
   });
 });
 

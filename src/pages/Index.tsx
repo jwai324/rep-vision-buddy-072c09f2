@@ -3,7 +3,8 @@ import { toast } from 'sonner';
 import { useStorage } from '@/hooks/useStorage';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
-import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
+import { ActiveSession } from '@/components/ActiveSession';
+import { getSessionCache, clearSessionCache } from '@/utils/sessionCache';
 import { restoredSessionScreen } from '@/utils/sessionRestore';
 import { useScreenHistory } from '@/hooks/useScreenHistory';
 import { setRestTimerHidden } from '@/utils/restTimerScheduler';
@@ -126,6 +127,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     return id;
   };
   const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
+  // Set by the edit screen while it is mounted; read by onUserBack below.
+  const editGuardRef = React.useRef<{ hasChanges: boolean; confirm: () => void } | null>(null);
   const [screen, setScreen] = useScreenHistory<Screen>({ type: 'dashboard' }, {
     isRoot: s => s.type === 'dashboard',
     // Back out of a live workout minimizes it; the cache is untouched, so the
@@ -133,6 +136,17 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     // Back with the summary open closes the summary instead: the user has
     // not left the workout, they have un-finished it.
     onUserBack: leaving => {
+      // Back out of an edit asks before discarding, exactly as the X does:
+      // on a phone Back is how most people leave a screen, so without this
+      // the confirmation guards the rarer of the two exits.
+      if (leaving.type === 'editSession') {
+        const guard = editGuardRef.current;
+        if (guard?.hasChanges) {
+          guard.confirm();
+          return true;
+        }
+        return;
+      }
       if (leaving.type !== 'activeSession') return;
       if (pendingSummary) {
         setPendingSummary(null);
@@ -224,7 +238,10 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
   // Everything a snapshot needs beyond the item itself. Built here because
   // this is the one place that has preferences, profile, and custom exercises
-  // in hand at the same time.
+  // in hand at the same time. The custom library is overridden at publish
+  // time by the dialog (see ShareTarget.buildPayload): a Share tapped while
+  // the library was still loading used to freeze the empty list into the
+  // closure, so the dialog's wait for the library protected nothing.
   const snapshotContext = React.useMemo(() => ({
     weightUnit: storage.preferences.weightUnit,
     sharedBy: storage.profile.displayName,
@@ -263,7 +280,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       setScreen({ type: 'dashboard' });
       tutorial.start();
     }
-  }, [storage.dataTrusted, storage.preferences.tutorialCompleted, tutorial]);
+  }, [storage.dataTrusted, storage.preferences.tutorialCompleted, tutorial, setScreen]);
 
   // When entering active session during tutorial, jump to session steps
   useEffect(() => {
@@ -294,7 +311,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       }
     });
     return () => tutorial.setScreenBackHandler(null);
-  }, [tutorial, screen]);
+  }, [tutorial, screen, setScreen]);
 
   const handleMinimize = () => {
     setMinimizedSession(screen);
@@ -524,7 +541,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               const saved = await storage.saveSession(pendingSummary, { templateId: screen.templateId });
               if (!saved) return;
               clearSessionCache();
-              storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds));
+              storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds, customExercises));
               setMinimizedSession(null);
               setPendingSummary(null);
               setScreen({ type: 'dashboard' });
@@ -549,6 +566,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             defaultRestSeconds={storage.preferences.defaultRestSeconds}
             editSession={screen.session}
+            editGuard={editGuardRef}
             onFinish={(session) => guardedSave(async () => {
               // Staying on the edit screen is what lets the user retry; leaving
               // discards their edits with nothing holding them. Correcting a
@@ -580,7 +598,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             const saved = await storage.saveSession(screen.session);
             if (!saved) return;
             clearSessionCache();
-            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds, customExercises));
             setScreen({ type: 'dashboard' });
           })}
           onClose={() => { clearSessionCache(); setScreen({ type: 'dashboard' }); }}
@@ -591,6 +609,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <ActivityScreen
           history={storage.history}
           futureWorkouts={storage.futureWorkouts}
+          activeProgramId={storage.activeProgramId}
           templates={storage.templates}
           onSelectSession={(session) => setScreen({ type: 'sessionDetail', session, from: 'activity' })}
           onSelectFutureWorkout={(fw) => setScreen({ type: 'futureWorkoutDetail', futureWorkout: fw, from: 'activity' })}
@@ -613,15 +632,23 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         const canPersist = hasValidProgramId && !isManual;
 
         const handleUpdate = canPersist
-          ? (incoming: FutureWorkout) => {
+          ? async (incoming: FutureWorkout) => {
               let next = incoming;
               if (incoming.id.startsWith('synthetic-')) {
+                // Minted before the write so a rest day's activity taps all
+                // share one id; put the synthetic row back if the write does
+                // not land, or the screen shows a reschedule that never saved.
                 next = { ...incoming, id: crypto.randomUUID() };
                 setScreen(prev => prev.type === 'futureWorkoutDetail'
                   ? { ...prev, futureWorkout: next }
                   : prev);
               }
-              storage.updateFutureWorkout(next);
+              // The detail screen waits for this before it says "done".
+              const ok = await storage.updateFutureWorkout(next);
+              if (!ok && next !== incoming) {
+                setScreen(prev => prev.type === 'futureWorkoutDetail' ? { ...prev, futureWorkout: fw } : prev);
+              }
+              return ok;
             }
           : undefined;
 
@@ -667,12 +694,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           isViewMode
           onSave={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onSaveAsTemplate={() => {
-            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds));
+            storage.saveTemplate(templateFromSession(screen.session, undefined, storage.preferences.defaultRestSeconds, customExercises));
             toast.success('Template saved');
           }}
           onClose={() => setScreen({ type: 'activity', initialTab: 'history' })}
           onReperform={(session) => {
-            startFromTemplate(templateFromSession(session, undefined, storage.preferences.defaultRestSeconds));
+            startFromTemplate(templateFromSession(session, undefined, storage.preferences.defaultRestSeconds, customExercises));
           }}
           onEdit={(session) => setScreen({ type: 'editSession', session })}
           onDelete={(id) => {
@@ -688,7 +715,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             kind: 'session',
             sourceId: session.id,
             title: `Workout on ${parseLocalDate(session.date).toLocaleDateString()}`,
-            buildPayload: () => buildSessionSnapshot(session, snapshotContext),
+            buildPayload: (customExercises) => buildSessionSnapshot(session, { ...snapshotContext, customExercises }),
           })}
         />
       )}
@@ -708,7 +735,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             kind: 'template',
             sourceId: t.id,
             title: t.name,
-            buildPayload: () => buildTemplateSnapshot(t, snapshotContext),
+            buildPayload: (customExercises) => buildTemplateSnapshot(t, { ...snapshotContext, customExercises }),
           })}
           onCreate={() => setScreen({ type: 'templateBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}
@@ -741,7 +768,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             kind: 'program',
             sourceId: p.id,
             title: p.name,
-            buildPayload: () => buildProgramSnapshot(p, storage.templates, snapshotContext),
+            buildPayload: (customExercises) => buildProgramSnapshot(p, storage.templates, { ...snapshotContext, customExercises }),
           })}
           onCreate={() => setScreen({ type: 'programBuilder' })}
           onBack={() => setScreen({ type: 'dashboard' })}
@@ -957,7 +984,10 @@ const Index = () => {
   }, [storage]);
   return (
     <CustomExercisesProvider>
-      <ErrorBoundary fallbackTitle="Chat unavailable — try reloading">
+      {/* Wraps everything below the auth provider, so a crash anywhere in the
+          app lands here; the title used to blame the chat, and the bug-report
+          handle it unmounted is the one thing the user needs on this screen. */}
+      <ErrorBoundary fallbackTitle="Something went wrong" fallbackExtra={<ErrorReportButton screen="crash" />}>
         <ChatProvider storage={storage}>
           <TutorialProvider onComplete={handleTutorialComplete}>
             <IndexInner storage={storage} />

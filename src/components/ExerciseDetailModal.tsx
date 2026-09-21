@@ -6,11 +6,13 @@ import { ExerciseAnimation } from '@/components/ExerciseAnimation';
 import { ExerciseClip } from '@/components/ExerciseClip';
 import { useExerciseClip } from '@/hooks/useExerciseClip';
 import { Button } from '@/components/ui/button';
-import type { ExerciseId, WorkoutSession } from '@/types/workout';
+import type { ExerciseId, WorkoutSession, WorkoutSet } from '@/types/workout';
 import type { UserPreferences, WeightUnit } from '@/hooks/useStorage';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useStickyNotes } from '@/hooks/useStickyNotes';
-import { formatWeightString, formatVolume, fromKg } from '@/utils/weightConversion';
+import { formatWeightString, formatVolume, fromKg, storedBandLevel } from '@/utils/weightConversion';
+import { getExerciseInputMode, getBandLevelShortLabel, formatDistance, distanceUnitFromWeightUnit, usesReps, usesWeight } from '@/utils/exerciseInputMode';
+import { formatMmSs } from '@/utils/timeFormat';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { parseLocalDate } from '@/utils/dateUtils';
 
@@ -57,11 +59,15 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
         return {
           date: parseLocalDate(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
           rawDate: s.date,
+          startedAt: s.startedAt ?? '',
           exerciseLog,
         };
       })
       .filter((h): h is NonNullable<typeof h> => h !== null)
-      .reverse();
+      // Sorted rather than read off the array order: history arrives newest
+      // first and a session whose date was edited is replaced in place, so it
+      // would otherwise sit at its old position until the next reload.
+      .sort((a, b) => a.rawDate.localeCompare(b.rawDate) || a.startedAt.localeCompare(b.startedAt));
   }, [exerciseId, history]);
 
   // Newest first — the opposite of the History tab, which reads as a progression.
@@ -74,16 +80,47 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
   );
 
   const volumeData = useMemo(() => {
+    // Weight x reps is volume only for rep-and-load work. A timed hold logs
+    // reps 1, a band set's "weight" is a level, and distance work has no
+    // load, so the series was a flat zero line or a level multiplied out as
+    // a mass; the tab's empty state is the honest answer for those.
+    if (!exerciseId) return [];
+    const mode = getExerciseInputMode(exerciseId, customExercises);
+    if (!usesReps(mode) || !usesWeight(mode) || mode === 'band') return [];
     return exerciseHistory.map(h => {
       const volumeKg = h.exerciseLog.sets.reduce((sum, set) => sum + (set.weight || 0) * set.reps, 0);
       const volume = Math.round(fromKg(volumeKg, weightUnit));
       return { date: h.date, volume };
     });
-  }, [exerciseHistory, weightUnit]);
+  }, [exerciseHistory, weightUnit, exerciseId, customExercises]);
 
   if (!exercise) return null;
 
   const noteDirty = noteDraft.trim() !== savedNote.trim();
+
+  const inputMode = getExerciseInputMode(exercise.id, customExercises);
+  const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
+  // The same branches the session summary renders by, so a timed, distance or
+  // band set reads here the way it did on the day it was logged.
+  const describeSet = (set: WorkoutSet): string => {
+    switch (inputMode) {
+      case 'time-distance': {
+        const time = formatMmSs(set.time ?? 0);
+        return set.distance ? `${time} · ${formatDistance(set.distance, distanceUnit)}` : time;
+      }
+      case 'distance':
+        return set.distance ? formatDistance(set.distance, distanceUnit) : '—';
+      case 'time':
+      case 'weight-time': {
+        const time = formatMmSs(set.time ?? 0);
+        return set.weight ? `${formatWeightString(set.weight, weightUnit)} × ${time}` : time;
+      }
+      case 'band':
+        return `${getBandLevelShortLabel(storedBandLevel(set.weight ?? 0))} × ${set.reps} reps`;
+      default:
+        return `${set.weight != null ? `${formatWeightString(set.weight, weightUnit)} × ` : ''}${set.reps} reps`;
+    }
+  };
 
   return (
     <Dialog open={!!exerciseId} onOpenChange={() => onClose()}>
@@ -224,7 +261,7 @@ export const ExerciseDetailModal: React.FC<ExerciseDetailModalProps> = ({
                         <div key={si} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">Set {set.setNumber}</span>
                           <span className="text-foreground font-medium">
-                            {set.weight != null ? `${formatWeightString(set.weight, weightUnit)} × ` : ''}{set.reps} reps
+                            {describeSet(set)}
                             {set.rpe ? ` @ RPE ${set.rpe}` : ''}
                           </span>
                         </div>

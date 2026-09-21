@@ -4,8 +4,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
+import { timerIdKey } from '@/utils/timerIdKey';
 import { BAND_LEVELS, getBandLevelLabel, getBandLevelShortLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
-import { formatWeight, storedBandLevel } from '@/utils/weightConversion';
+import { formatWeight, storedBandLevel, targetWeightToInput } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
 import { parseLocalDate } from '@/utils/dateUtils';
 import { format, differenceInCalendarDays } from 'date-fns';
@@ -15,8 +16,6 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import type { ExerciseBlock, SetRow, DropRow, PersistedTimer, RunningSetState } from '@/types/activeSession';
 import { supersetInfo } from '@/types/activeSession';
 import { SupersetBadge } from '@/components/SupersetBadge';
-
-export const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
 
 /* ---------- RPE Picker Button ---------- */
 
@@ -165,7 +164,7 @@ const RpeHeaderPopover: React.FC = () => (
 const TimerHeaderPopover: React.FC = () => (
   <Popover>
     <PopoverTrigger asChild>
-      <button className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+      <button aria-label="About the time column" className="text-center w-full text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
         <Timer className="w-3 h-3 mx-auto" />
       </button>
     </PopoverTrigger>
@@ -190,9 +189,12 @@ function previousWeightText(weightKg: number, unit: WeightUnit, isBand: boolean)
   return isBand ? getBandLevelShortLabel(storedBandLevel(weightKg)) : formatWeight(weightKg, unit).display;
 }
 
-/** What tapping the cell puts in the weight input. */
+/**
+ * What tapping the cell puts in the weight input: the number, not the display
+ * text — "1,000" parses as 1.
+ */
 function previousWeightValue(weightKg: number, unit: WeightUnit, isBand: boolean): string {
-  return isBand ? String(storedBandLevel(weightKg)) : formatWeight(weightKg, unit).display;
+  return targetWeightToInput(weightKg, unit, isBand);
 }
 
 /**
@@ -364,13 +366,21 @@ function handleInputNext(e: React.KeyboardEvent<HTMLInputElement>, blocks: Exerc
   (e.target as HTMLInputElement).blur();
 }
 
+/** The ring an input wears for its field's error; main rows and drop rows share it so the two cannot drift. */
+function fieldRingClass(errors: SetFieldErrors, field: keyof SetFieldErrors): string {
+  return errors[field] ? 'ring-1 ring-destructive focus:ring-destructive' : 'focus:ring-1 focus:ring-primary';
+}
+
 /* ---------- Exercise Menu ---------- */
 
 const EXERCISE_MENU_ITEMS = [
   { icon: FileText, label: 'Add Note' },
   { icon: StickyNote, label: 'Add Sticky Note' },
   { icon: Flame, label: 'Add Warm-up Sets' },
-  { icon: Timer, label: 'Update Rest Timer' },
+  // Editing a past workout renders no rest bars and runs a no-op timer, so an
+  // exercise's rest length means nothing there — hidden, like the header's
+  // Hide Timers item.
+  { icon: Timer, label: 'Update Rest Timer', liveOnly: true },
   { icon: RefreshCw, label: 'Replace Exercise' },
   { icon: Layers, label: 'Create Superset' },
   { icon: ChevronDown, label: 'Drop Sets', toggle: true },
@@ -454,12 +464,12 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
           )}
           <Popover open={menuOpen} onOpenChange={setMenuOpen}>
           <PopoverTrigger asChild>
-            <button className="text-muted-foreground hover:text-foreground p-1">
+            <button aria-label={`Options for ${block.exerciseName}`} className="text-muted-foreground hover:text-foreground p-1">
               <MoreHorizontal className="w-4 h-4" />
             </button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-52 p-1">
-            {EXERCISE_MENU_ITEMS.map(item => (
+            {EXERCISE_MENU_ITEMS.filter(item => !(isEditMode && 'liveOnly' in item && item.liveOnly)).map(item => (
               <button
                 key={item.label}
                 onClick={() => { setMenuOpen(false); onMenuAction(item.label, blockIdx); }}
@@ -520,14 +530,16 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
         const setLabelClass = `text-xs font-bold text-center ${set.type === 'warmup' ? 'text-yellow-400' : 'text-muted-foreground'}`;
         const setErrors = getSetFieldErrors({ weight: set.weight, reps: set.reps, rpe: set.rpe }, weightUnit, inputMode);
         const setHasError = hasFieldErrors(setErrors);
-        const errorRingClass = (field: keyof SetFieldErrors) => setErrors[field]
-          ? 'ring-1 ring-destructive focus:ring-destructive'
-          : 'focus:ring-1 focus:ring-primary';
+        const errorRingClass = (field: keyof SetFieldErrors) => fieldRingClass(setErrors, field);
         const completeBtn = (
           <button
             id={blockIdx === 0 && setIdx === 0 ? 'tutorial-complete-set' : undefined}
             onClick={() => { if (!setHasError) onToggleComplete(blockIdx, setIdx); }}
             disabled={setHasError}
+            // The name stays put and aria-pressed carries the state: a name that
+            // flips with it too is announced as "...as not done, pressed".
+            aria-label={`${set.type === 'warmup' ? 'Warm-up set' : 'Set'} ${set.setNumber} complete`}
+            aria-pressed={set.completed}
             aria-disabled={setHasError}
             data-testid={`set-complete-${blockIdx}-${setIdx}`}
             className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
@@ -669,9 +681,20 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
 
         const renderDropRow = (drop: DropRow, dropIdx: number) => {
           const dropLabel = `${set.setNumber}D${superscripts[dropIdx] ?? `${dropIdx + 1}`}`;
+          const dropErrors = getSetFieldErrors({ weight: drop.weight, reps: drop.reps, rpe: drop.rpe }, weightUnit, inputMode);
+          const dropHasError = hasFieldErrors(dropErrors);
+          const dropRingClass = (field: keyof SetFieldErrors) => fieldRingClass(dropErrors, field);
           const dropCompleteBtn = (
-            <button onClick={() => onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed)}
-              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${drop.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'}`}>
+            <button onClick={() => { if (!dropHasError) onUpdateDrop(blockIdx, setIdx, dropIdx, 'completed', !drop.completed); }}
+              disabled={dropHasError}
+              aria-label={`Drop ${dropIdx + 1} of set ${set.setNumber} complete`}
+              aria-pressed={drop.completed}
+              aria-disabled={dropHasError}
+              data-testid={`drop-complete-${blockIdx}-${setIdx}-${dropIdx}`}
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${
+                dropHasError ? 'bg-secondary/30 text-muted-foreground/40 pointer-events-none opacity-50 cursor-not-allowed' :
+                drop.completed ? 'bg-primary text-primary-foreground' : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+              }`}>
               <Check className="w-4 h-4" />
             </button>
           );
@@ -709,7 +732,8 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                   <span className="text-xs text-muted-foreground text-center">—</span>
                   <input id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} type="number" inputMode="decimal" value={drop.weight}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
-                    placeholder="—" className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    placeholder="—" aria-invalid={!!dropErrors.weight}
+                    className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${dropRingClass('weight')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   {dropCompleteBtn}
@@ -731,12 +755,14 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
                     <input id={buildInputId(blockIdx, setIdx, 'weight', dropIdx)} type="number" inputMode="decimal" value={drop.weight}
                       onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'weight', e.target.value)}
                       onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'weight', dropIdx)} placeholder="—"
-                      className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                      aria-invalid={!!dropErrors.weight}
+                      className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${dropRingClass('weight')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   )}
                   <input id={buildInputId(blockIdx, setIdx, 'reps', dropIdx)} type="number" inputMode="numeric" value={drop.reps}
                     onChange={e => onUpdateDrop(blockIdx, setIdx, dropIdx, 'reps', e.target.value)}
                     onKeyDown={e => handleInputNext(e, blocks, blockIdx, setIdx, 'reps', dropIdx)} placeholder="—"
-                    className="w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto" />
+                    aria-invalid={!!dropErrors.reps}
+                    className={`w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none ${dropRingClass('reps')} [&::-webkit-inner-spin-button]:appearance-auto`} />
                   <RpePickerButton id={buildInputId(blockIdx, setIdx, 'rpe', dropIdx)} value={drop.rpe} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'rpe', v)} />
                   <TimeInputButton id={buildInputId(blockIdx, setIdx, 'time', dropIdx)} value={drop.time ?? ''} onChange={v => onUpdateDrop(blockIdx, setIdx, dropIdx, 'time', v)} running={runningSet?.blockIdx === blockIdx && runningSet?.setIdx === setIdx && runningSet?.dropIdx === dropIdx} small />
                   {dropCompleteBtn}
@@ -747,7 +773,10 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
 
         return (
           <React.Fragment key={setIdx}>
-            <SwipeToDelete onDelete={() => onRemoveSet(blockIdx, setIdx)}>
+            <SwipeToDelete
+              onDelete={() => onRemoveSet(blockIdx, setIdx)}
+              removeLabel={`Remove ${set.type === 'warmup' ? 'warm-up set' : 'set'} ${set.setNumber} in ${block.exerciseName}`}
+            >
               {renderSetRow()}
             </SwipeToDelete>
 
@@ -764,7 +793,11 @@ export const ExerciseTable: React.FC<ExerciseTableProps> = ({ block, blockIdx, w
 
             {/* Drop rows */}
             {set.drops?.map((drop, dropIdx) => (
-              <SwipeToDelete key={`drop-${setIdx}-${dropIdx}`} onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}>
+              <SwipeToDelete
+                key={`drop-${setIdx}-${dropIdx}`}
+                onDelete={() => onRemoveDrop(blockIdx, setIdx, dropIdx)}
+                removeLabel={`Remove drop ${dropIdx + 1} of set ${set.setNumber} in ${block.exerciseName}`}
+              >
                 {renderDropRow(drop, dropIdx)}
               </SwipeToDelete>
             ))}

@@ -14,7 +14,8 @@ import {
 import { supersetInfo } from '@/types/activeSession';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 import type { WeightUnit } from '@/hooks/useStorage';
-import { distanceUnitFromWeightUnit, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { distanceUnitFromWeightUnit, getBandLevelShortLabel, type ExerciseInputMode } from '@/utils/exerciseInputMode';
+import { storedBandLevel } from '@/utils/weightConversion';
 
 interface FocusModeProps {
   blocks: ExerciseBlock[];
@@ -59,7 +60,7 @@ function completedRounds(block: ExerciseBlock): number {
   return n;
 }
 
-export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
+function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
   const groups = new Map<number, number[]>();
   blocks.forEach((b, i) => {
     if (b.supersetGroup === undefined) return;
@@ -94,6 +95,7 @@ export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
 }
 
 interface NextExerciseInfo {
+  exerciseId: string;
   name: string;
   weight: string;
   reps: string;
@@ -118,6 +120,7 @@ function computeNextInfo(blocks: ExerciseBlock[], focusedIdx: number | null): Ne
   const nextBlock = blocks[nextIdx];
   const nextSet = nextBlock.sets.find(s => !isSetFullyComplete(s));
   return {
+    exerciseId: nextBlock.exerciseId,
     name: nextBlock.exerciseName,
     weight: nextSet?.weight ?? '',
     reps: nextSet?.reps ?? '',
@@ -161,8 +164,11 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
     const prev = previousTargetRef.current;
     previousTargetRef.current = targetIdx;
     if (prev === null || prev === targetIdx) {
-      // First mount or no change — just sync displayed.
-      if (displayedIdx !== targetIdx) setDisplayedIdx(targetIdx);
+      // First mount or no change — just sync displayed. Set unconditionally:
+      // reading `displayedIdx` to skip an equal write would make this effect
+      // depend on the state its own promotion timer writes, and React bails
+      // out of an identical setState anyway.
+      setDisplayedIdx(targetIdx);
       return;
     }
 
@@ -353,7 +359,11 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
                 {nextInfo.name}
                 {(nextInfo.weight || nextInfo.reps) && (
                   <span className="ml-2 text-sm font-normal">
-                    {nextInfo.weight ? `${nextInfo.weight}${props.weightUnit === 'lbs' ? 'lbs' : 'kg'}` : ''}
+                    {nextInfo.weight
+                      ? (props.getInputMode(nextInfo.exerciseId) === 'band'
+                        ? getBandLevelShortLabel(storedBandLevel(Number(nextInfo.weight)))
+                        : `${nextInfo.weight}${props.weightUnit === 'lbs' ? 'lbs' : 'kg'}`)
+                      : ''}
                     {nextInfo.weight && nextInfo.reps ? ' × ' : ''}
                     {nextInfo.reps || ''}
                   </span>

@@ -36,3 +36,14 @@ describe('carryTemplateOnlyFields', () => {
     expect(carryTemplateOnlyFields([resent()], undefined)[0].supersetGroup).toBeUndefined();
   });
 });
+
+describe('carryTemplateOnlyFields — targetDistance', () => {
+  const run: ExerciseInput[] = [
+    { exerciseId: 'run', sets: 1, targetReps: 'failure', setType: 'normal', restSeconds: 60, targetDistance: 5000 },
+  ];
+
+  it('keeps the distance target the model never saw, and lets it change one it sends', () => {
+    expect(carryTemplateOnlyFields([resent({ exerciseId: 'run' })], run)[0].targetDistance).toBe(5000);
+    expect(carryTemplateOnlyFields([resent({ exerciseId: 'run', targetDistance: 8000 })], run)[0].targetDistance).toBe(8000);
+  });
+});

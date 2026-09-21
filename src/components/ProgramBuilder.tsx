@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
-import { format, addDays, addWeeks, getDay } from 'date-fns';
+import { format } from 'date-fns';
 import { ArrowLeft, CalendarIcon, ChevronDown, ChevronRight } from 'lucide-react';
-import { parseLocalDate } from '@/utils/dateUtils';
-import { monthlyOccurrences, sanitizeFrequency } from '@/utils/programFrequency';
+import { parseLocalDate, formatLocalDate } from '@/utils/dateUtils';
+import { programOccurrences } from '@/utils/programFrequency';
 import type { WorkoutProgram, WorkoutTemplate, WorkoutSession, DayFrequency, ProgramDay } from '@/types/workout';
 import type { WeightUnit } from '@/hooks/useStorage';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useExerciseLookup } from '@/hooks/useExerciseLookup';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { blocksToExercises, templateToBlocks, type TemplateBlock } from '@/utils/templateBlocks';
+import { fingerprint } from '@/utils/draftFingerprint';
 import { TemplateExerciseEditor, type BlocksUpdate } from '@/components/TemplateExerciseEditor';
 
 interface ProgramBuilderProps {
@@ -47,17 +48,41 @@ interface ProgramDraft {
   templateDrafts: TemplateDrafts;
 }
 
-function loadDraft(initial?: WorkoutProgram): ProgramDraft {
+/** What the draft was taken from; null for a program that does not exist yet. */
+const programSource = (program?: WorkoutProgram): string | null =>
+  program ? fingerprint({ name: program.name, durationWeeks: program.durationWeeks, days: program.days }) : null;
+
+const templateSource = (template: WorkoutTemplate): string =>
+  fingerprint({ name: template.name, exercises: template.exercises });
+
+/**
+ * A draft is restored only over the rows it was taken from. One abandoned on
+ * a device used to come up over a version saved since on another (or by the
+ * coach, or an import), and Save wrote the stale one back. The program and
+ * each template draft are checked on their own, so a template edited elsewhere
+ * drops only its own draft; a new program has no source to drift from. A
+ * draft written before the sources were recorded cannot be checked and is
+ * dropped, as is a template draft whose template is gone.
+ */
+function loadDraft(initial: WorkoutProgram | undefined, templates: WorkoutTemplate[]): ProgramDraft {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (raw) {
       const draft = JSON.parse(raw);
-      if ((draft.id ?? null) === (initial?.id ?? null)) {
+      const sameProgram = (draft.id ?? null) === (initial?.id ?? null);
+      const sameSource = !initial || draft.source === programSource(initial);
+      if (sameProgram && sameSource) {
+        const templateSources: Record<string, string> = draft.templateSources ?? {};
+        const templateDrafts: TemplateDrafts = {};
+        for (const [id, blocks] of Object.entries<TemplateBlock[]>(draft.templateDrafts ?? {})) {
+          const live = templates.find(t => t.id === id);
+          if (live && templateSources[id] === templateSource(live)) templateDrafts[id] = blocks;
+        }
         return {
           name: draft.name ?? '',
           durationWeeks: draft.durationWeeks ?? 8,
           days: draft.days ?? [{ label: 'Day 1', templateId: 'rest' }],
-          templateDrafts: draft.templateDrafts ?? {},
+          templateDrafts,
         };
       }
     }
@@ -84,31 +109,39 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
 }) => {
   const exerciseLookup = useExerciseLookup();
   const { exercises: customExercises } = useCustomExercisesContext();
-  const [draft] = useState(() => loadDraft(initial));
+  const [draft] = useState(() => loadDraft(initial, templates));
   const [name, setName] = useState(draft.name);
   const [durationWeeks, setDurationWeeks] = useState(draft.durationWeeks);
-  const [startDate] = useState(() => initial?.startDate ? new Date(initial.startDate + 'T00:00:00') : new Date());
+  const [startDate] = useState(() => parseLocalDate(initial?.startDate ?? formatLocalDate()));
   const [days, setDays] = useState<ProgramDay[]>(draft.days);
   const [templateDrafts, setTemplateDrafts] = useState<TemplateDrafts>(draft.templateDrafts);
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const [savingTemplateId, setSavingTemplateId] = useState<string | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
 
-  // Cache draft to localStorage on every change
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, durationWeeks, days, templateDrafts }));
-    } catch { /* ignore */ }
-  }, [name, durationWeeks, days, templateDrafts, initial?.id]);
-
-  const clearDraft = React.useCallback(() => {
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-  }, []);
-
   const templatesById = useMemo(
     () => Object.fromEntries(templates.map(t => [t.id, t])) as Record<string, WorkoutTemplate>,
     [templates],
   );
+
+  // Cache draft to localStorage on every change, stamped with the rows it is
+  // a draft of (see `loadDraft`).
+  const source = useMemo(() => programSource(initial), [initial]);
+  React.useEffect(() => {
+    try {
+      const templateSources: Record<string, string> = {};
+      for (const id of Object.keys(templateDrafts)) {
+        if (templatesById[id]) templateSources[id] = templateSource(templatesById[id]);
+      }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        id: initial?.id ?? null, name, durationWeeks, days, templateDrafts, source, templateSources,
+      }));
+    } catch { /* ignore */ }
+  }, [name, durationWeeks, days, templateDrafts, initial?.id, source, templatesById]);
+
+  const clearDraft = React.useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }, []);
 
   // What a tile shows until the user touches the template. Recomputed when the
   // custom library lands so names and band levels resolve, as the template
@@ -191,49 +224,13 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
     return names;
   }, [days, templatesById, templateDrafts]);
 
-  // Build calendar events from days + frequency + duration
-  const calendarEvents = useMemo(() => {
-    const events: { date: Date; label: string; templateId: string }[] = [];
-    const endDate = addWeeks(startDate, durationWeeks);
-
-    days.forEach((day) => {
-      // Same validation as the scheduler: an interval of 0 was an infinite
-      // loop here too, on every keystroke in the builder.
-      const freq = sanitizeFrequency(day.frequency);
-      if (!freq) return;
-
-      if (freq.type === 'weekly') {
-        // Find the first occurrence of this weekday on or after startDate
-        let current = startDate;
-        const targetDay = freq.weekday;
-        const currentDay = getDay(current);
-        const diff = (targetDay - currentDay + 7) % 7;
-        current = addDays(current, diff);
-
-        while (current < endDate) {
-          events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-          current = addDays(current, 7);
-        }
-      } else if (freq.type === 'everyNDays') {
-        const origin = freq.startDate ? parseLocalDate(freq.startDate) : new Date(startDate);
-        let current = new Date(origin);
-        while (current < endDate) {
-          if (current >= startDate) {
-            events.push({ date: new Date(current), label: day.label, templateId: day.templateId });
-          }
-          current = addDays(current, freq.interval);
-        }
-      } else if (freq.type === 'monthly') {
-        // Same helper the scheduler uses, so the preview cannot disagree with
-        // the calendar it previews (and neither overflows a short month).
-        for (const date of monthlyOccurrences(startDate, endDate, freq.dayOfMonth)) {
-          events.push({ date, label: day.label, templateId: day.templateId });
-        }
-      }
-    });
-
-    return events;
-  }, [days, durationWeeks, startDate]);
+  // The scheduler's own walker, so the preview cannot disagree with the
+  // calendar it previews. Its own loops used to: a start date carrying the
+  // time of day hid today's every-N-days occurrence that saving then scheduled.
+  const calendarEvents = useMemo(
+    () => programOccurrences({ days, durationWeeks, startDate: format(startDate, 'yyyy-MM-dd') }),
+    [days, durationWeeks, startDate],
+  );
 
   const [saving, setSaving] = useState(false);
   const save = async () => {

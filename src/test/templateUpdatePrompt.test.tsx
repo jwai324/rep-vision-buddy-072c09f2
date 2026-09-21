@@ -54,7 +54,11 @@ const resumedCache = {
   templateId: 'tpl-1',
 };
 
-function renderResumed(overrides: Record<string, unknown> = {}) {
+function renderResumed(
+  overrides: Record<string, unknown> = {},
+  tpl: WorkoutTemplate = template,
+  cache: unknown = resumedCache,
+) {
   const props = {
     onFinish: vi.fn(),
     onCancel: vi.fn(),
@@ -65,9 +69,9 @@ function renderResumed(overrides: Record<string, unknown> = {}) {
     <ActiveSession
       exercises={[] as never}
       templateId="tpl-1"
-      template={template}
+      template={tpl}
       weightUnit="lbs"
-      cachedSession={resumedCache as never}
+      cachedSession={cache as never}
       onFinish={props.onFinish as never}
       onCancel={props.onCancel as never}
       onUpdateTemplate={props.onUpdateTemplate as never}
@@ -96,6 +100,31 @@ describe('update-template prompt at finish', () => {
     expect(saved.exercises[0].sets).toBe(2);
     // 145 lbs, the load actually worked, not the template's 135.
     expect(saved.exercises[0].targetWeight).toBeCloseTo(65.77, 1);
+  });
+
+  it('treats an exercise that got no further than its warm-up as skipped', () => {
+    // It used to be written back as one warm-up set to failure.
+    const incline = 'incline-dumbbell-press';
+    const twoExercises: WorkoutTemplate = {
+      ...template,
+      exercises: [...template.exercises, { exerciseId: incline, sets: 3, targetReps: 10, setType: 'normal', restSeconds: 90 }],
+    };
+    const cache = {
+      ...resumedCache,
+      blocks: [...resumedCache.blocks, {
+        exerciseId: incline, exerciseName: 'Incline Dumbbell Press', restSeconds: 90,
+        sets: [{ setNumber: 1, weight: '40', reps: '10', rpe: '', time: '', completed: true, type: 'warmup' }],
+      }],
+      templateSnapshot: [...resumedCache.templateSnapshot, { exerciseId: incline, setCount: 3, targetReps: 10, setType: 'normal' as const }],
+    };
+    const { onUpdateTemplate } = renderResumed({}, twoExercises, cache);
+
+    expect(screen.getByText(/-1 exercise/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Update template'));
+
+    const saved = (onUpdateTemplate as ReturnType<typeof vi.fn>).mock.calls[0][0] as WorkoutTemplate;
+    expect(saved.exercises.map(e => e.exerciseId)).toEqual(['flat-barbell-bench-press']);
+    expect(saved.exercises.some(e => e.setType === 'warmup')).toBe(false);
   });
 
   it('finishes the workout exactly once per decision', () => {

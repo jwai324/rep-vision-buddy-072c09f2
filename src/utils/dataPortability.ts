@@ -38,14 +38,16 @@ async function fetchAllRows(
 ): Promise<BackupRow[]> {
   const rows: BackupRow[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    // body_measurements isn't in the generated Database type, so pass the
-    // table name as never to bypass the string-literal check. The response
-    // shape is validated at runtime by the caller (empty array on any
-    // read error), so unknown is safe here.
+    // The table name is a plain string here, so it is passed as never to get
+    // past the string-literal check; the rows are treated as opaque bags.
+    // Pages are only stable under a total order: without one, Postgres is
+    // free to hand back overlapping or gapped pages, and a table past
+    // PAGE_SIZE rows backed up with rows doubled or missing.
     const { data, error } = await (supabase
       .from(table as never)
       .select('*')
       .eq('user_id', userId)
+      .order('id', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1) as unknown as Promise<{ data: BackupRow[] | null; error: unknown }>);
     if (error) throw error;
     if (!data || data.length === 0) break;
@@ -82,8 +84,13 @@ export async function exportUserData(
       supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
       supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
       fetchAllRows(supabase, 'custom_exercises', userId),
-      fetchAllRows(supabase, 'body_measurements', userId).catch(() => [] as BackupRow[]),
+      fetchAllRows(supabase, 'body_measurements', userId),
     ]);
+  // Single-row reads resolve with an error payload rather than rejecting. Left
+  // unread, a failed one wrote a backup with that section null and reported
+  // "Export complete" — and a restore from it skips the section silently.
+  if (settings.error) throw settings.error;
+  if (profile.error) throw profile.error;
 
   const backup: RepVisionBackup = {
     version: EXPORT_VERSION,

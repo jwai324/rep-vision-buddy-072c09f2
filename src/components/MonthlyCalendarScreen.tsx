@@ -219,7 +219,7 @@ export const MonthlyCalendarScreen: React.FC<Props> = ({
                 {s.isRestDay && s.recoveryActivities && s.recoveryActivities.length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     {s.recoveryActivities
-                      .map(r => RECOVERY_ACTIVITIES.find(a => a.id === r.activityId)?.name ?? 'Recovery')
+                      .map(r => lookup[r.activityId] ?? RECOVERY_ACTIVITIES.find(a => a.id === r.activityId)?.name ?? r.activityId)
                       .join(', ')}
                   </p>
                 )}

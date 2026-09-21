@@ -94,8 +94,9 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
+    // The detail (an RPC name, a Postgres message) stays in the log.
     console.error("grant-tokens error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+    return new Response(JSON.stringify({ error: "The purchase could not be recorded. Try again in a moment." }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

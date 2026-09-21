@@ -14,6 +14,7 @@ const MAX_CHAT_CHARS = 500;
 // without letting the input consume too much of the chat panel.
 const MAX_INPUT_ROWS = 3;
 const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
+const PULSE_SEEN_KEY = 'ai-chat-pulse-seen';
 
 const TypingIndicator = () => (
   <div className="flex items-center gap-1 px-3 py-2">
@@ -36,7 +37,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const {
     messages, isOpen, isLoading, setOpen, sendMessage,
     clearChat, quickChips,
-    creditsBalance, cooldownActive, lockedUntil,
+    creditsBalance, creditsBalanceKnown, cooldownActive, lockedUntil,
     proposals, proposalIdsByMessage, applyProposal, discardProposal,
   } = useChatContext();
 
@@ -78,9 +79,13 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     }
   }, [input]);
 
-  const [hasSeenPulse, setHasSeenPulse] = useState(() =>
-    localStorage.getItem('ai-chat-pulse-seen') === 'true'
-  );
+  const [hasSeenPulse, setHasSeenPulse] = useState(() => {
+    try {
+      return localStorage.getItem(PULSE_SEEN_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -181,7 +186,11 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   const handleFabClick = () => {
     if (!hasSeenPulse) {
       setHasSeenPulse(true);
-      localStorage.setItem('ai-chat-pulse-seen', 'true');
+      try {
+        localStorage.setItem(PULSE_SEEN_KEY, 'true');
+      } catch {
+        // storage unavailable — the pulse just shows again next time
+      }
     }
     setOpen(!isOpen);
   };
@@ -216,6 +225,7 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
       {!isOpen && (
         <button
           onClick={handleFabClick}
+          aria-label="Open AI coach"
           className={cn(
             "fixed bottom-6 right-4 z-50 w-14 h-14 rounded-full gradient-green",
             "flex items-center justify-center shadow-lg",
@@ -261,16 +271,21 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground text-sm">AI Coach</h3>
-                  {(
+                  {creditsBalanceKnown ? (
                     <p className="text-[11px] text-muted-foreground leading-tight">
                       <span className="font-bold text-foreground">{creditsBalance.credits.toLocaleString()}</span>
                       {' '}credits
                       <span className="text-muted-foreground/70"> · ~{creditsBalance.estMessagesLeft} msgs left</span>
                     </p>
+                  ) : (
+                    // Never read successfully: the figure behind it is a
+                    // placeholder allowance, and showing it as a balance is
+                    // how an out-of-credits user came to see a full bar.
+                    <p className="text-[11px] text-muted-foreground/70 leading-tight">Credits unavailable</p>
                   )}
                 </div>
               </div>
-              <button onClick={clearChat} className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-secondary">
+              <button onClick={clearChat} aria-label="Clear chat" className="p-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-secondary">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

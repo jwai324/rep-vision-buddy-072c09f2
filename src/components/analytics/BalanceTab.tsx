@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import type { WorkoutSession } from '@/types/workout';
 import { EXERCISE_DATABASE } from '@/data/exercises';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts';
-import { subDays, isAfter } from 'date-fns';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { volumeExcludedIds } from '@/utils/volumeExclusions';
+import { sessionsInWindow } from '@/utils/historyAnalysis';
 
 const PATTERNS = ['Push', 'Pull', 'Hinge', 'Squat', 'Lunge', 'Fly', 'Carry', 'Rotation'];
 
@@ -23,11 +23,11 @@ export const BalanceTab: React.FC<BalanceTabProps> = ({ history }) => {
   const excludedIds = useMemo(() => volumeExcludedIds(customExercises), [customExercises]);
 
   const data = useMemo(() => {
-    const cutoff = subDays(new Date(), period);
-    const recentSessions = history.filter(s => {
-      const d = new Date(s.date.substring(0, 10) + 'T00:00:00');
-      return isAfter(d, cutoff) && !s.isRestDay;
-    });
+    // The far edge of the window is inclusive: a workout done exactly `period`
+    // days ago counts. This is the coach's own helper (rest days excluded), so
+    // the radar and the numbers the coach quotes for the same window cannot
+    // disagree by a day.
+    const recentSessions = sessionsInWindow(history, period);
 
     const setCounts: Record<string, number> = {};
     for (const s of recentSessions) {

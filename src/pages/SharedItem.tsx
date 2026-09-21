@@ -9,7 +9,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SessionSummary } from '@/components/SessionSummary';
 import { SharedProgramView } from '@/components/shared/SharedProgramView';
 import { SharedTemplateView } from '@/components/shared/SharedTemplateView';
-import { importSharedSnapshot } from '@/utils/shareImport';
+import { IMPORT_FAILED_MESSAGE, ShareImportError, importSharedSnapshot } from '@/utils/shareImport';
+import { publishableSharedBy } from '@/utils/shareSnapshot';
 import { SHARE_SNAPSHOT_VERSION, type ShareSnapshot } from '@/types/share';
 import type { WeightUnit } from '@/hooks/useStorage';
 
@@ -79,11 +80,19 @@ const SharedItem: React.FC = () => {
         result.templatesCreated ? `${result.templatesCreated} template${result.templatesCreated === 1 ? '' : 's'}` : null,
         result.customExercisesCreated ? `${result.customExercisesCreated} exercise${result.customExercisesCreated === 1 ? '' : 's'}` : null,
       ].filter(Boolean);
-      toast.success(`Saved ${parts.join(', ')} to your workouts`);
+      const dropped = result.exercisesDropped;
+      toast.success(
+        `Saved ${parts.join(', ')} to your workouts`
+        + (dropped ? `. ${dropped} exercise${dropped === 1 ? '' : 's'} couldn't be brought over.` : ''),
+      );
       navigate('/');
     } catch (err) {
       console.error('[SharedItem] import error:', err);
-      toast.error('Could not save this to your workouts');
+      // The import knows more than "it failed": whether it managed to undo
+      // the workouts it had already created, or whether some were left in the
+      // library. Telling the user only the generic line is what made a retry
+      // pile up duplicates without warning.
+      toast.error(err instanceof ShareImportError ? err.userMessage : IMPORT_FAILED_MESSAGE);
     } finally {
       setImporting(false);
     }
@@ -126,7 +135,9 @@ const SharedItem: React.FC = () => {
   }
 
   const { snapshot, title } = state;
-  const sharedBy = snapshot.sharedBy?.trim() || 'a RepVision user';
+  // Applied on read as well as at share time: a snapshot is frozen, and links
+  // made before the guard existed still carry the address.
+  const sharedBy = publishableSharedBy(snapshot.sharedBy) ?? 'a RepVision user';
   const importable = snapshot.kind !== 'session' || snapshot.session.exercises.length > 0;
 
   // SharedCustomExercise uses `sourceId`; getExerciseInputMode wants `id`.
@@ -135,9 +146,11 @@ const SharedItem: React.FC = () => {
   // handful of rows.
   const sharedCustomLite = (snapshot?.customExercises ?? []).map(c => ({
     id: c.sourceId,
+    name: c.name,
     primaryBodyPart: c.primaryBodyPart,
     equipment: c.equipment,
     measurementType: c.measurementType,
+    isRecovery: c.isRecovery,
   }));
 
   return (

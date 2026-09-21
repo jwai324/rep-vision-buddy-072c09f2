@@ -48,7 +48,6 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'landmine-press', name: 'Landmine Press', primaryBodyPart: 'Chest', equipment: 'Landmine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts', 'Core'] },
   { id: 'single-arm-cable-chest-press', name: 'Single-Arm Cable Chest Press', primaryBodyPart: 'Chest', equipment: 'Cable', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'single-arm-landmine-press', name: 'Single-Arm Landmine Press', primaryBodyPart: 'Chest', equipment: 'Landmine', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts', 'Core'] },
-  { id: 'medicine-ball-chest-pass', name: 'Medicine Ball Chest Pass', primaryBodyPart: 'Chest', equipment: 'Medicine Ball', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core'] },
   { id: 'diamond-push-up', name: 'Diamond Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Front Delts'] },
   { id: 'archer-push-up', name: 'Archer Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Triceps', 'Core', 'Shoulders'] },
   { id: 'plyo-push-up', name: 'Plyo Push-Up', primaryBodyPart: 'Chest', equipment: 'Bodyweight', difficulty: 'Advanced', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Triceps', 'Core'] },
@@ -411,7 +410,6 @@ export const EXERCISE_DATABASE: Exercise[] = [
   { id: 'running-interval', name: 'Running (Interval)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Glutes'], measurementType: 'Time + Distance' },
   { id: 'running-tempo', name: 'Running (Tempo)', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Push', secondaryMuscles: ['Quads', 'Hamstrings', 'Calves', 'Glutes'], measurementType: 'Time + Distance' },
   { id: 'high-knees', name: 'High Knees', primaryBodyPart: 'Cardio', equipment: 'Bodyweight', difficulty: 'Beginner', exerciseType: 'Compound', movementPattern: 'Plyometric', secondaryMuscles: ['Quads', 'Hip Flexors', 'Calves', 'Core'], measurementType: 'Time' },
-  { id: 'swimming-cardio', name: 'Swimming', primaryBodyPart: 'Cardio', equipment: 'None', difficulty: 'Intermediate', exerciseType: 'Compound', movementPattern: 'Pull', secondaryMuscles: ['Back', 'Shoulders', 'Core', 'Quads'], measurementType: 'Time + Distance' },
 
   // Recovery / Wellness
   { id: 'sleep-focus', name: 'Sleep Focus', primaryBodyPart: 'Full Body', equipment: 'None', difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Isometric', secondaryMuscles: [], measurementType: 'Time' },

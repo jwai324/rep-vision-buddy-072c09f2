@@ -158,6 +158,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       <div className="flex items-center gap-3 pt-2">
         <button
           onClick={onBack}
+          aria-label="Back"
           className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -187,10 +188,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && saveName()}
               />
-              <button onClick={saveName} className="p-1.5 rounded-lg text-primary hover:bg-primary/10">
+              <button onClick={saveName} aria-label="Save display name" className="p-1.5 rounded-lg text-primary hover:bg-primary/10">
                 <Check className="w-4 h-4" />
               </button>
-              <button onClick={() => setEditingName(false)} className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary">
+              <button onClick={() => setEditingName(false)} aria-label="Cancel editing display name" className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -349,6 +350,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
           <Switch
+            aria-label="Drop sets on by default"
             checked={preferences.defaultDropSetsEnabled}
             onCheckedChange={(checked) => onUpdatePreferences({ defaultDropSetsEnabled: checked })}
           />
@@ -366,6 +368,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
           <Switch
+            aria-label="Hide rest timers"
             checked={preferences.hideTimers}
             onCheckedChange={(checked) => onUpdatePreferences({ hideTimers: checked })}
           />

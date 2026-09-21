@@ -45,6 +45,15 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
 
   const isValid = name.trim() && !isDuplicate && bodyPart && equipment && difficulty;
 
+  // Band equipment short-circuits getExerciseInputMode ahead of the
+  // measurementType switch, so a measurement type chosen here would never be
+  // read. Don't offer the choice, and don't store one either.
+  const isBand = equipment === 'Band';
+  // A blank measurementType falls back to 'time' for Cardio and 'reps-weight'
+  // everywhere else (getExerciseInputMode), so the hint has to say which.
+  const isCardio = bodyPart === 'Cardio';
+  const blankDefaultLabel = isCardio ? 'Time' : 'Reps + Weight';
+
   const handleSave = () => {
     if (!isValid) return;
     onSave({
@@ -57,7 +66,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
       secondaryMuscles: [],
       isRecovery,
       excludeFromVolume,
-      measurementType: measurementType,
+      measurementType: isBand ? null : measurementType,
     });
   };
 
@@ -115,12 +124,27 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
 
       <div>
         <label className="text-xs text-muted-foreground mb-1 block">Measurement Type</label>
-        <p className="text-[10px] text-muted-foreground/60 mb-1">How is this exercise measured? Leave blank for Reps + Weight (default)</p>
-        <div className="flex gap-1 flex-wrap">
-          {MEASUREMENT_TYPES.map(mt => (
-            <button key={mt} onClick={() => setMeasurementType(measurementType === mt ? null : mt)} className={chipClass(measurementType === mt)}>{mt}</button>
-          ))}
-        </div>
+        {isBand ? (
+          <p className="text-[10px] text-muted-foreground/60">
+            Band exercises are always logged as a band level and reps, so there is no measurement type to choose.
+          </p>
+        ) : (
+          <>
+            <p className="text-[10px] text-muted-foreground/60 mb-1">
+              How is this exercise measured? Leave blank for {blankDefaultLabel} (default)
+            </p>
+            {isCardio && !measurementType && (
+              <p className="text-[10px] text-muted-foreground/60 mb-1">
+                Cardio exercises are logged as Time unless you pick one — choosing explicitly is recommended.
+              </p>
+            )}
+            <div className="flex gap-1 flex-wrap">
+              {MEASUREMENT_TYPES.map(mt => (
+                <button key={mt} onClick={() => setMeasurementType(measurementType === mt ? null : mt)} className={chipClass(measurementType === mt)}>{mt}</button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex items-center justify-between">
@@ -131,7 +155,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
             <p className="text-xs text-muted-foreground">Available on rest days</p>
           </div>
         </div>
-        <Switch checked={isRecovery} onCheckedChange={setIsRecovery} />
+        <Switch aria-label="Rest day activity" checked={isRecovery} onCheckedChange={setIsRecovery} />
       </div>
 
       <div className="flex items-center justify-between">
@@ -142,7 +166,7 @@ export const CreateExerciseForm: React.FC<CreateExerciseFormProps> = ({ onSave, 
             <p className="text-xs text-muted-foreground">Still logged, but left out of weekly volume and set counts</p>
           </div>
         </div>
-        <Switch checked={excludeFromVolume} onCheckedChange={setExcludeFromVolume} />
+        <Switch aria-label="Exclude from volume" checked={excludeFromVolume} onCheckedChange={setExcludeFromVolume} />
       </div>
 
       <div className="flex gap-2">

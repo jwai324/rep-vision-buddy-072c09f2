@@ -39,6 +39,21 @@ const snapshot = (over: Partial<CachedStorage> = {}): CachedStorage => ({
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
+/**
+ * The key a snapshot is written under, found rather than spelled out: with a
+ * hard-coded version the guard tests below kept passing after a
+ * CACHE_VERSION bump because the read never looked at the seeded key.
+ */
+function cacheKeyFor(userId: string): string {
+  writeStorageCache(userId, snapshot());
+  expect(readStorageCache(userId)).not.toBeNull();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('repvision:storage:')) return key;
+  }
+  throw new Error('no cache entry written');
+}
+
 describe('storageCache round-trip', () => {
   it('reads back what it wrote', () => {
     writeStorageCache(USER_A, snapshot());
@@ -73,14 +88,14 @@ describe('storageCache round-trip', () => {
 
 describe('storageCache is a cache, never a source of truth', () => {
   it('treats a corrupt payload as a miss instead of throwing', () => {
-    localStorage.setItem('repvision:storage:v1:' + USER_A, '{not json');
+    localStorage.setItem(cacheKeyFor(USER_A), '{not json');
     expect(() => readStorageCache(USER_A)).not.toThrow();
     expect(readStorageCache(USER_A)).toBeNull();
   });
 
   it('treats a payload missing expected arrays as a miss', () => {
     // A screen reading `.history.map` on this would crash deep in the tree.
-    localStorage.setItem('repvision:storage:v1:' + USER_A, JSON.stringify({ templates: [] }));
+    localStorage.setItem(cacheKeyFor(USER_A), JSON.stringify({ templates: [] }));
     expect(readStorageCache(USER_A)).toBeNull();
   });
 

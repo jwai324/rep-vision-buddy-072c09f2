@@ -228,8 +228,8 @@ export class SpeechToText {
   private running = false;
   /** `stop()` has been pressed and the run is waiting to hand its words over. */
   private closing = false;
-  /** When the last recognizer was told to abort; see `start`. */
-  private lastAbortAt = -Infinity;
+  /** When the last session closed, by abort or by the browser; see `start`. */
+  private lastClosedAt = -Infinity;
 
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -272,11 +272,14 @@ export class SpeechToText {
     this.segments = [];
     this.publish({ listening: true, transcript: '' });
 
-    // A recognizer told to abort a moment ago — a double tap on the mic, or a
-    // tap straight after a send — may still be tearing down, and a start that
-    // races that is refused. Give it the same room a chained session gets.
-    const sinceAbort = this.now() - this.lastAbortAt;
-    if (sinceAbort < RESTART_DELAY_MS) this.openSessionLater(RESTART_DELAY_MS - sinceAbort);
+    // A recognizer that closed a moment ago — told to abort by a double tap
+    // on the mic or a tap straight after a send, or ended by the browser with
+    // this run started from inside `onEnd`, which is how the bug-report sheet
+    // moves the mic between its boxes — may still be tearing down, and a
+    // start that races that is refused. Give it the same room a chained
+    // session gets.
+    const sinceClose = this.now() - this.lastClosedAt;
+    if (sinceClose < RESTART_DELAY_MS) this.openSessionLater(RESTART_DELAY_MS - sinceClose);
     else this.openSession(Recognizer);
   };
 
@@ -409,6 +412,9 @@ export class SpeechToText {
     }
 
     this.segments.push(session.text);
+    // Stamped here as on the other two close paths: a stop()+start() inside
+    // the restart delay must still wait out the recognizer's teardown.
+    this.lastClosedAt = this.now();
     this.session = null;
     this.clearTimer('silence');
     this.openSessionLater(RESTART_DELAY_MS);
@@ -457,8 +463,10 @@ export class SpeechToText {
         } catch {
           // Some browsers throw when aborting a recognizer that never started.
         }
-        this.lastAbortAt = this.now();
       }
+      // Recorded for a session the browser ended too: on Android the native
+      // recognizer behind it is torn down after `onend` fires, not before.
+      this.lastClosedAt = this.now();
       if (!discard) this.segments.push(session.text);
     }
 

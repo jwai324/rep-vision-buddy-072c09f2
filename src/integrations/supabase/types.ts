@@ -255,7 +255,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "future_workouts_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "workout_programs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       iap_purchases: {
         Row: {
@@ -361,6 +369,7 @@ export type Database = {
           created_at: string
           id: string
           kind: string
+          last_viewed_at: string | null
           payload: Json
           revoked_at: string | null
           source_id: string | null
@@ -374,6 +383,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind: string
+          last_viewed_at?: string | null
           payload: Json
           revoked_at?: string | null
           source_id?: string | null
@@ -387,6 +397,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          last_viewed_at?: string | null
           payload?: Json
           revoked_at?: string | null
           source_id?: string | null
@@ -774,6 +785,27 @@ export type Database = {
         Returns: {
           new_balance_micros: number
         }[]
+      }
+      record_ai_usage: {
+        Args: {
+          p_cache_creation_tokens?: number
+          p_cache_read_tokens?: number
+          p_cost_micros?: number
+          p_input_tokens?: number
+          p_output_tokens?: number
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      shift_program_workouts: {
+        Args: {
+          p_days: number
+          p_from_date: string
+          p_program_days: Json
+          p_program_id: string
+          p_start_date: string
+        }
+        Returns: number
       }
     }
     Enums: {

@@ -1,5 +1,5 @@
 -- Closes two independent ways for a client to mint itself unlimited AI credit.
--- Both were introduced by 20260518000000_token_credits_and_iap.sql and are live.
+-- Both were introduced by 20260518043122_token_credits_and_iap.sql and are live.
 
 -- ---------------------------------------------------------------------------
 -- 1. The three "Service role full access" policies carry no TO clause.
@@ -29,7 +29,7 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.iap_purchases      FROM anon, 
 -- ---------------------------------------------------------------------------
 -- 2. consume_tokens and grant_tokens are executable by anon and authenticated.
 --
--- 20260518000000 tried to lock them with REVOKE ALL ... FROM PUBLIC. That
+-- 20260518043122 tried to lock them with REVOKE ALL ... FROM PUBLIC. That
 -- removed nothing: Supabase grants EXECUTE on new functions in `public`
 -- explicitly to anon, authenticated and service_role through default
 -- privileges, not through PUBLIC. Both functions are SECURITY DEFINER, so they
@@ -50,6 +50,6 @@ REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM anon, authenticated;
 
 -- Stop the pattern recurring. New functions in `public` are not client-callable
 -- unless a migration grants it on purpose. get_shared_item keeps the explicit
--- grant it was given in 20260817120000 — the public share page depends on it,
+-- grant it was given in 20260817192401 — the public share page depends on it,
 -- and prior grants are unaffected by this statement.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated;

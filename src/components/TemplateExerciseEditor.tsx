@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import type { ExerciseId, SetType } from '@/types/workout';
 import { ExerciseSelector } from '@/components/ExerciseSelector';
 import { Button } from '@/components/ui/button';
@@ -25,7 +26,7 @@ const isLoadedHold = (mode: ExerciseInputMode) => mode === 'time' || mode === 'w
 
 export type BlocksUpdate = (prev: TemplateBlock[]) => TemplateBlock[];
 
-const EMPTY_ROW: TemplateSetRow = { setNumber: 1, targetWeight: '', targetReps: '', targetRpe: '' };
+const EMPTY_ROW: TemplateSetRow = { setNumber: 1, targetWeight: '', targetReps: '', targetRpe: '', targetDistance: '' };
 
 interface TemplateExerciseEditorProps {
   blocks: TemplateBlock[];
@@ -140,6 +141,7 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
             targetWeight: '',
             targetReps: '10',
             targetRpe: '',
+            targetDistance: '',
           })),
         }));
       return [...prev, ...newBlocks];
@@ -152,12 +154,19 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
   }, [addMultipleExercises]);
 
   const swapExercise = useCallback((blockIdx: number, newId: ExerciseId) => {
+    // Rows are keyed, dragged and superset-linked by exerciseId, so two rows
+    // sharing one cannot be told apart. The similar list already leaves out
+    // what is in the template; Browse All does not.
+    if (blocks.some((b, i) => i !== blockIdx && b.exerciseId === newId)) {
+      toast.error(`${exerciseLookup[newId] ?? newId} is already in this template.`);
+      return;
+    }
     onChange(prev => prev.map((b, i) => {
       if (i !== blockIdx) return b;
       return { ...b, exerciseId: newId, exerciseName: exerciseLookup[newId] ?? newId };
     }));
     setSwapTarget(null);
-  }, [onChange, exerciseLookup]);
+  }, [onChange, exerciseLookup, blocks]);
 
   const allExercises = useMemo(() => [...EXERCISE_DATABASE, ...customExercises], [customExercises]);
 
@@ -302,7 +311,7 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                     <div className="bg-secondary/50 rounded-lg border border-border p-3 mb-2">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Similar Exercises</p>
-                        <button onClick={() => setSwapTarget(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                        <button onClick={() => setSwapTarget(null)} aria-label="Close similar exercises" className="text-xs text-muted-foreground hover:text-foreground">✕</button>
                       </div>
                       <div className="space-y-1 max-h-48 overflow-y-auto">
                         {getSimilarExercises(block.exerciseId).map(ex => (
@@ -336,7 +345,7 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                       min={0}
                       step={15}
                       value={block.restSeconds}
-                      onChange={e => updateRestSeconds(blockIdx, parseInt(e.target.value) || 0)}
+                      onChange={e => updateRestSeconds(blockIdx, Math.max(0, parseInt(e.target.value) || 0))}
                       className="w-16 text-center text-xs bg-secondary/60 rounded-md py-1 text-foreground outline-none focus:ring-1 focus:ring-primary"
                     />
                     <span>sec</span>
@@ -364,8 +373,8 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                         onChange={e => updateSet(blockIdx, 'targetReps', e.target.value)} placeholder="min"
                         className={inputClass} />
                     ) : mode === 'distance' ? (
-                      <input type="number" inputMode="decimal" value={row.targetWeight}
-                        onChange={e => updateSet(blockIdx, 'targetWeight', e.target.value)} placeholder="km"
+                      <input type="number" inputMode="decimal" value={row.targetDistance}
+                        onChange={e => updateSet(blockIdx, 'targetDistance', e.target.value)} placeholder="km"
                         className={inputClass} />
                     ) : mode === 'band' ? (
                       <select value={row.targetWeight}

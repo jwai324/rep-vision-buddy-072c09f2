@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Settings, BarChart3 } from 'lucide-react';
 import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
@@ -44,6 +44,28 @@ function formatDuration(s: number) {
   return `${m} min`;
 }
 
+// The calendar date the dashboard is showing. A Date taken at render and
+// memoized kept last week's strip up after Sunday midnight, so this rolls
+// over at local midnight and whenever the app comes back to the foreground.
+function useTodayKey(): string {
+  const [todayKey, setTodayKey] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  // Keyed on the value so each rollover arms the timer for the next midnight.
+  useEffect(() => {
+    const refresh = () => setTodayKey(format(new Date(), 'yyyy-MM-dd'));
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const timer = window.setTimeout(refresh, nextMidnight.getTime() - now.getTime() + 1000);
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [todayKey]);
+  return todayKey;
+}
+
 const BODY_PART_COLORS: Record<string, string> = {
   Chest: 'bg-red-500/80',
   Back: 'bg-blue-500/80',
@@ -60,7 +82,7 @@ const BODY_PART_COLORS: Record<string, string> = {
 const HIDDEN_BODY_PARTS = new Set(['Full Body', 'Cardio', 'Neck', 'Forearms']);
 const ALL_BODY_PARTS = BODY_PARTS.filter(bp => bp !== 'All' && !HIDDEN_BODY_PARTS.has(bp));
 
-const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history }) => {
+const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[]; todayKey: string }> = ({ history, todayKey }) => {
   const { exercises: customExercises } = useCustomExercisesContext();
   const exerciseBodyPartMap = useMemo(() => {
     const map = new Map(EXERCISE_DATABASE.map(ex => [ex.id, ex.primaryBodyPart]));
@@ -71,7 +93,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
   const [weekOffset, setWeekOffset] = useState(0);
 
   const { weeklyData, weekLabel } = useMemo(() => {
-    const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const monday = startOfWeek(parseLocalDate(todayKey), { weekStartsOn: 1 });
     const weekStart = addDays(monday, weekOffset * 7);
     const weekEnd = addDays(weekStart, 6);
     const startStr = format(weekStart, 'yyyy-MM-dd');
@@ -103,7 +125,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       : `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d')}`;
 
     return { weeklyData: { counts, totalSets, hiddenSets }, weekLabel: label };
-  }, [history, weekOffset, exerciseBodyPartMap, excludedIds]);
+  }, [history, weekOffset, exerciseBodyPartMap, excludedIds, todayKey]);
 
   return (
     <div className="bg-card rounded-xl p-4 border border-border">
@@ -126,6 +148,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
       <div className="flex items-center justify-between mb-3">
         <button
           onClick={() => setWeekOffset(o => o - 1)}
+          aria-label="Previous week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -133,6 +156,7 @@ const WeeklySetsByBodyPart: React.FC<{ history: WorkoutSession[] }> = ({ history
         <span className="text-xs font-semibold text-muted-foreground">{weekLabel}</span>
         <button
           onClick={() => setWeekOffset(o => o + 1)}
+          aria-label="Next week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronRight className="w-4 h-4" />
@@ -180,15 +204,16 @@ const WeeklyProgramCalendar: React.FC<{
   futureWorkouts: FutureWorkout[];
   onDayClick: (date: Date, template: WorkoutTemplate | null) => void;
   onTitleClick?: () => void;
-}> = ({ program, templates, history, futureWorkouts, onDayClick, onTitleClick }) => {
-  const today = new Date();
+  todayKey: string;
+}> = ({ program, templates, history, futureWorkouts, onDayClick, onTitleClick, todayKey }) => {
+  const today = useMemo(() => parseLocalDate(todayKey), [todayKey]);
   const [weekOffset, setWeekOffset] = useState(0);
 
   const weekDays = useMemo(() => {
     const mondayOfThisWeek = startOfWeek(today, { weekStartsOn: 1 });
     const start = addDays(mondayOfThisWeek, weekOffset * 7);
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-  }, [weekOffset]);
+  }, [weekOffset, today]);
 
   const hasProgramFutureWorkouts = program && futureWorkouts.some(f => f.programId === program.id);
   const events = useMemo(() => (program && !hasProgramFutureWorkouts) ? buildProgramEvents(program) : [], [program, hasProgramFutureWorkouts]);
@@ -224,6 +249,7 @@ const WeeklyProgramCalendar: React.FC<{
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => setWeekOffset(o => o - 1)}
+          aria-label="Previous week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -231,6 +257,7 @@ const WeeklyProgramCalendar: React.FC<{
         <span className="text-xs font-semibold text-muted-foreground">{weekLabel}</span>
         <button
           onClick={() => setWeekOffset(o => o + 1)}
+          aria-label="Next week"
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
         >
           <ChevronRight className="w-4 h-4" />
@@ -349,7 +376,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const exerciseLookup = useExerciseLookup();
   const lastSession = history[0];
 
-  const todayDateStr = format(new Date(), 'yyyy-MM-dd');
+  const todayDateStr = useTodayKey();
   const todayScheduled = getScheduledWorkoutsForDate(
     todayDateStr, activeProgram, futureWorkouts, templates,
   );
@@ -378,6 +405,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
           <button
             onClick={onGoToSettings}
+            aria-label="Settings"
             className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
           >
             <Settings className="w-5 h-5" />
@@ -429,6 +457,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Weekly Program Calendar */}
       <div id="tutorial-calendar">
         <WeeklyProgramCalendar
+          todayKey={todayDateStr}
           program={activeProgram}
           templates={templates}
           history={history}
@@ -441,7 +470,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Weekly Sets by Body Part */}
       <div id="tutorial-weekly-sets">
-        <WeeklySetsByBodyPart history={history} />
+        <WeeklySetsByBodyPart history={history} todayKey={todayDateStr} />
       </div>
 
       {/* Analytics Button */}

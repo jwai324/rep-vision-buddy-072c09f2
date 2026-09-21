@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { writeStorageCache, type CachedStorage } from '@/utils/storageCache';
+import { readPendingTemplates } from '@/utils/pendingTemplateWrites';
 import type { WorkoutSession } from '@/types/workout';
 
 const USER_ID = 'user-1';
@@ -29,14 +30,21 @@ function makeBuilder(table: string) {
     const prior = releaseQueries;
     releaseQueries = () => { prior?.(); resolve({ data: rows, error: null }); };
   });
+  let upserted = false;
   const builder: Record<string, unknown> = {
-    then: (...args: Parameters<Promise<unknown>['then']>) => pending.then(...args),
+    then: (...args: Parameters<Promise<unknown>['then']>) => {
+      // A write answers at once with the stamp the row was given, through the
+      // same .select().single() chain the hook reads it from.
+      if (upserted) return Promise.resolve({ data: { updated_at: '2026-09-19T10:00:00.000Z' }, error: null }).then(...args);
+      return pending.then(...args);
+    },
     upsert: (payload: Record<string, unknown>) => {
       (serverRows[table] ||= []).push(payload);
-      return Promise.resolve({ error: null });
+      upserted = true;
+      return builder;
     },
   };
-  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle']) {
+  for (const m of ['select', 'eq', 'order', 'range', 'maybeSingle', 'single']) {
     builder[m] = () => builder;
   }
   return builder;
@@ -139,6 +147,9 @@ describe('a save that lands while a load is in flight', () => {
       await result.current.saveTemplate({ id: 't-mid', name: 'Saved mid-load', exercises: [] });
     });
     expect(result.current.templates.map(t => t.id)).toContain('t-mid');
+    // The write landed. A stub the hook's upsert chain could not run against
+    // left the save queued and the assertions here passing on the retry path.
+    expect(readPendingTemplates(USER_ID)).toEqual([]);
 
     // The stale load resolves. It used to replace every slice wholesale,
     // dropping the save; now it is discarded and the load runs once more.

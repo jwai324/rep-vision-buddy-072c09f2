@@ -62,7 +62,7 @@ interface SessionSummaryProps {
    * and carries its own definitions in the snapshot. Omit inside the app and
    * the signed-in user's own list is used.
    */
-  customExercises?: { id: string; primaryBodyPart: string; equipment: string; measurementType?: MeasurementType | null }[];
+  customExercises?: { id: string; name?: string; primaryBodyPart: string; equipment: string; measurementType?: MeasurementType | null; isRecovery?: boolean }[];
 }
 
 function formatDuration(s: number) {
@@ -84,6 +84,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
   // or band exercise fall back to the reps-and-weight branch, so a workout that
   // logged correctly renders as weight x reps the moment it is read back.
   const inputModeExercises = customExercisesProp ?? contextCustomExercises;
+  // The shared page mounts no provider, so a custom recovery activity's name
+  // comes from the snapshot's definitions when they are given.
+  const recoveryNameExercises: { id: string; name?: string; equipment: string; primaryBodyPart: string }[] = customExercisesProp ?? contextCustomExercises;
   const exerciseLookup = useExerciseLookup();
 
   const allRestDayExercises = useMemo(() => {
@@ -148,7 +151,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
       <div className="min-h-screen bg-background p-4 flex flex-col gap-4">
         <div className="flex items-center gap-3 pt-2">
           {onClose && (
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={onClose} aria-label="Back" className="text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
@@ -197,15 +200,19 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-3">Recovery Plan</p>
             <div className="flex flex-col gap-2">
               {activities.map(a => {
-                const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId);
+                // A custom recovery exercise is in neither static table, and
+                // a row that resolves to nothing still has to be removable.
+                const info = EXERCISE_DATABASE.find(ex => ex.id === a.activityId)
+                  ?? recoveryNameExercises.find(ex => ex.id === a.activityId);
                 const lookup = EXERCISES[a.activityId];
-                if (!info && !lookup) return null;
                 const name = info?.name ?? lookup?.name ?? a.activityId;
                 const icon = lookup?.icon ?? '🏋️';
                 return (
                   <div key={a.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${a.completed ? 'bg-primary/5 border-primary/20' : 'bg-secondary/30 border-border'}`}>
                     <button
                       onClick={() => toggleActivityComplete(a.id)}
+                      aria-label={`${name} complete`}
+                      aria-pressed={a.completed}
                       className={`w-7 h-7 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${a.completed ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/30 text-transparent hover:border-muted-foreground/50'}`}
                     >
                       {a.completed && <Check className="w-4 h-4" />}
@@ -215,7 +222,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
                       <p className={`text-sm font-semibold truncate ${a.completed ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{name}</p>
                       {info && <p className="text-[10px] text-muted-foreground">{info.equipment} · {info.primaryBodyPart}</p>}
                     </div>
-                    <button onClick={() => removeActivity(a.id)} className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
+                    <button onClick={() => removeActivity(a.id)} aria-label={`Remove ${name}`} className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -240,7 +247,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
           <div className="bg-card rounded-xl border border-border p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-bold text-foreground">Add Exercise</p>
-              <button onClick={() => { setShowPicker(false); setSearch(''); }} className="text-muted-foreground hover:text-foreground transition-colors">
+              <button onClick={() => { setShowPicker(false); setSearch(''); }} aria-label="Close exercise picker" className="text-muted-foreground hover:text-foreground transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -299,7 +306,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
       {isViewMode ? (
         <div className="flex items-center gap-3 pt-2">
           {onClose && (
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={onClose} aria-label="Back" className="text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
