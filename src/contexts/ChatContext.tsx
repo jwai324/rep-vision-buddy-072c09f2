@@ -1686,7 +1686,7 @@ export const ChatProvider: React.FC<{
       default:
         return { result: { error: `Action is not allowed.` } };
     }
-  }, [storage, getSessionRows, sessionController, daysSinceMember, exerciseById, mergedExercises, memberSince, earliestSessionDate, volumeExcluded]);
+  }, [storage, getSessionRows, sessionController, exerciseById, mergedExercises, memberSince, earliestSessionDate, volumeExcluded]);
 
   // Proposals whose save is in flight. The status in `proposals` is the same
   // signal for the card, but a second tap in the same tick reads the closure
@@ -2375,7 +2375,7 @@ export const ChatProvider: React.FC<{
       // server-side and unknown to the client). god-mode does not deduct.
       resyncBalanceSoon();
     }
-  }, [messages, buildContext, proposeToolCall, creditsBalance, releaseLockout, setErrorCount, lockOut, resyncBalanceSoon]);
+  }, [messages, buildContext, proposeToolCall, exerciseById, creditsBalance, releaseLockout, setErrorCount, lockOut, resyncBalanceSoon]);
 
   const clearChat = useCallback(() => {
     turnAbortRef.current?.abort();

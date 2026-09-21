@@ -6,12 +6,12 @@ import { useChatContext } from '@/contexts/ChatContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
+  creditsBreakdown,
   creditsFromMicros,
   MICROS_PER_CREDIT,
   FREE_MONTHLY_MICROS,
   PREMIUM_MONTHLY_MICROS,
 } from '@/utils/credits';
-import type { CreditsBalance } from '@/utils/credits';
 import type { UserProfile, SubscriptionTier } from '@/hooks/useStorage';
 
 interface CreditsScreenProps {
@@ -56,38 +56,6 @@ const signedCredits = (micros: number): string => {
   const c = Math.round(micros / MICROS_PER_CREDIT);
   return c > 0 ? `+${c}` : `${c}`;
 };
-
-/**
- * The two rows under the headline balance, in credits, always summing to it.
- *
- * Purchased used to be printed through a `Math.max(0, paidMicros)`, which is
- * what hid an end-of-month overspend: `consume_tokens` charged the uncovered
- * part of a turn against the paid balance with no floor, so the column went
- * negative, the headline (free + paid) was quietly reduced by the debt, and
- * Purchased still read 0 — three figures that no longer added up. The server
- * now floors that balance at zero and forgives the overshoot
- * (`PENDING_forgive_overspend_floor_paid_balance.sql`), so there is nothing
- * left for a clamp to hide and none is applied here.
- *
- * What remains is rounding. The headline is `floor((free + paid) / 1000)`;
- * flooring the two rows independently drops the sub-credit remainder the
- * headline keeps, which leaves "500" and "0" sitting under a headline of 501.
- * Purchased is floored on its own — a figure the user paid for must never read
- * higher than what they hold — and the allowance row carries the remainder.
- *
- * The subtraction cannot go negative: `paidMicros >= 0` makes
- * `floor((free + paid) / 1000) >= floor(paid / 1000)`, and a row still holding
- * a pre-migration negative gives `purchased = 0` against a non-negative
- * headline. In that case the debt nets out of the allowance row rather than
- * disappearing, so the figures reconcile through the transition too.
- */
-export function creditsBreakdown(balance: CreditsBalance): {
-  allowance: number;
-  purchased: number;
-} {
-  const purchased = creditsFromMicros(balance.paidMicros);
-  return { allowance: balance.credits - purchased, purchased };
-}
 
 export const CreditsScreen: React.FC<CreditsScreenProps> = ({ profile, onUpdateProfile, onBack }) => {
   const { user } = useAuth();

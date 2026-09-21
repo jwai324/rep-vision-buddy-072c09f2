@@ -4,6 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { RpeWheelPicker } from '@/components/RpeWheelPicker';
 import { SwipeToDelete } from '@/components/SwipeToDelete';
 import { ExerciseRestTimer, type TimerId } from '@/components/ExerciseRestTimer';
+import { timerIdKey } from '@/utils/timerIdKey';
 import { BAND_LEVELS, getBandLevelLabel, getBandLevelShortLabel, type ExerciseInputMode, type DistanceUnit } from '@/utils/exerciseInputMode';
 import { formatWeight, storedBandLevel, targetWeightToInput } from '@/utils/weightConversion';
 import { formatMmSs, timeToSeconds } from '@/utils/timeFormat';
@@ -15,8 +16,6 @@ import type { WeightUnit } from '@/hooks/useStorage';
 import type { ExerciseBlock, SetRow, DropRow, PersistedTimer, RunningSetState } from '@/types/activeSession';
 import { supersetInfo } from '@/types/activeSession';
 import { SupersetBadge } from '@/components/SupersetBadge';
-
-export const timerIdKey = (id: TimerId) => `${id.type}-${id.blockIdx}-${id.setIdx ?? ''}-${id.dropIdx ?? ''}`;
 
 /* ---------- RPE Picker Button ---------- */
 

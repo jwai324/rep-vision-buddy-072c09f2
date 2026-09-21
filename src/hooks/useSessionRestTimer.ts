@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { PersistedTimer, ActiveSessionCache } from '@/types/activeSession';
-import { timerIdKey } from '@/components/ExerciseTableComponent';
+import { timerIdKey } from '@/utils/timerIdKey';
 import type { TimerId } from '@/components/ExerciseRestTimer';
 import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
 import {

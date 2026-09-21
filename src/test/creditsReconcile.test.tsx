@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, act, cleanup } from '@testing-library/react';
-import { CreditsScreen, creditsBreakdown } from '@/components/CreditsScreen';
-import { deriveBalance, type CreditsBalance } from '@/utils/credits';
+import { CreditsScreen } from '@/components/CreditsScreen';
+import { creditsBreakdown, deriveBalance, type CreditsBalance } from '@/utils/credits';
 import type { UserProfile } from '@/hooks/useStorage';
 
 // Audit 2.20. A turn that cost slightly more than the balance left drove

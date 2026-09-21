@@ -76,6 +76,39 @@ export function deriveBalance(
   };
 }
 
+/**
+ * The two rows under the headline balance on the credits screen, in credits,
+ * always summing to it.
+ *
+ * Purchased used to be printed through a `Math.max(0, paidMicros)`, which is
+ * what hid an end-of-month overspend: `consume_tokens` charged the uncovered
+ * part of a turn against the paid balance with no floor, so the column went
+ * negative, the headline (free + paid) was quietly reduced by the debt, and
+ * Purchased still read 0 — three figures that no longer added up. The server
+ * now floors that balance at zero and forgives the overshoot
+ * (`PENDING_forgive_overspend_floor_paid_balance.sql`), so there is nothing
+ * left for a clamp to hide and none is applied here.
+ *
+ * What remains is rounding. The headline is `floor((free + paid) / 1000)`;
+ * flooring the two rows independently drops the sub-credit remainder the
+ * headline keeps, which leaves "500" and "0" sitting under a headline of 501.
+ * Purchased is floored on its own — a figure the user paid for must never read
+ * higher than what they hold — and the allowance row carries the remainder.
+ *
+ * The subtraction cannot go negative: `paidMicros >= 0` makes
+ * `floor((free + paid) / 1000) >= floor(paid / 1000)`, and a row still holding
+ * a pre-migration negative gives `purchased = 0` against a non-negative
+ * headline. In that case the debt nets out of the allowance row rather than
+ * disappearing, so the figures reconcile through the transition too.
+ */
+export function creditsBreakdown(balance: CreditsBalance): {
+  allowance: number;
+  purchased: number;
+} {
+  const purchased = creditsFromMicros(balance.paidMicros);
+  return { allowance: balance.credits - purchased, purchased };
+}
+
 // Pre-load placeholder. The app defaults new profiles to premium, so base the
 // transient placeholder on the premium allowance; refreshBalance() replaces it
 // with the authoritative tier-derived value immediately after mount.

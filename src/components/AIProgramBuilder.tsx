@@ -235,6 +235,10 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     if (restored.phase === 'chat' && last?.role === 'user' && restored.currentStep + 1 < STEPS.length) {
       showAIMessage(restored.currentStep + 1);
     }
+    // Mount only: `showAIMessage` appends a question to the transcript and is
+    // rebuilt on every render, so listing it would re-ask the current step on
+    // each keystroke. `restored` is read-only state that never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Cache the whole flow (answers, transcript, unsent text, generated program)

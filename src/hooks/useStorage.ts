@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -415,6 +415,19 @@ function overlayPendingTemplates(
   return [...byId.values()];
 }
 
+/**
+ * Bump the load-vs-write serial (`writeSerial` in the hook below). Hoisted to
+ * module scope, and handed the ref rather than closing over it, so that it is
+ * not a hook value at all: as a `useCallback` inside the hook it was stable by
+ * construction — it touches nothing but the ref — yet exhaustive-deps still
+ * wanted it named in the dependency list of all fourteen write callbacks,
+ * which is fourteen entries for something that cannot change and fourteen
+ * arrays whose real dependencies are that much harder to read.
+ */
+function noteWrite(serial: MutableRefObject<number>): void {
+  serial.current += 1;
+}
+
 export function useStorage() {
   const { user } = useAuth();
   // Supabase hands back a freshly deserialized user object on every auth
@@ -467,7 +480,6 @@ export function useStorage() {
   // the save, and the next preferences write would then push the stale values
   // back to the server. Such a load is thrown away and run once more.
   const writeSerial = useRef(0);
-  const noteWrite = useCallback(() => { writeSerial.current += 1; }, []);
   // The replay of queued template writes after a load. Template writes wait
   // for it, so a queued (older) version can never land on top of a new one.
   const pendingFlush = useRef<Promise<void>>(Promise.resolve());
@@ -480,7 +492,7 @@ export function useStorage() {
       setHistory([]);
       setTemplates([]);
       setPrograms([]);
-      setActiveProgramId(null);
+      setActiveProgramIdState(null);
       setFutureWorkouts([]);
       setBodyMeasurements([]);
       setLoading(false);
@@ -684,10 +696,6 @@ export function useStorage() {
     writeStorageCache(userId, snapshot);
   }, [userId, loading, snapshotTrusted, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
 
-  const setActiveProgramId = useCallback((id: string | null) => {
-    setActiveProgramIdState(id);
-  }, []);
-
   /**
    * Put back the ticks a date no longer has a session behind. The mirror of
    * the completion write below, down to only applying the rows the server
@@ -730,7 +738,7 @@ export function useStorage() {
   // payload, and an unhandled rejection here used to leave the caller believing
   // the save had succeeded while it tore down the only other copy.
   const saveSessionNow = useCallback(async (session: WorkoutSession, origin: SaveSessionOrigin = {}): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     // Captured before the write: the record as this date's calendar knew it.
     const priorRecord = historyRef.current.find(s => s.id === session.id);
@@ -840,7 +848,7 @@ export function useStorage() {
    * screen unmounts moments later and so has nowhere of its own to retry from.
    */
   const saveTemplate = useCallback(async (template: WorkoutTemplate): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     // The stamp of the row this edit was built on, read before the local
     // apply below replaces it; a queued write is checked against it on
@@ -891,7 +899,7 @@ export function useStorage() {
   }, [user, applyTemplateLocally]);
 
   const deleteTemplate = useCallback(async (id: string): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     await pendingFlush.current;
     const error = await writeError(supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id));
@@ -915,7 +923,7 @@ export function useStorage() {
   // resolved, so a failed upsert lost the whole program — and, for the AI
   // builder, the credits spent generating it.
   const saveProgram = useCallback(async (input: WorkoutProgram): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     // What is written is what every reader will trust: a frequency that
     // arrived invalid (the coach's tool, a share, a backup, or a row saved
@@ -1065,7 +1073,7 @@ export function useStorage() {
   // defined — see the "clearedAdjustmentAt" effect.
 
   const setActiveProgram = useCallback(async (id: string | null): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const previous = activeProgramId;
     setActiveProgramIdState(id);
@@ -1087,7 +1095,7 @@ export function useStorage() {
   // two tables, so a row left pointing at a deleted program is a ghost that
   // reappears on every load and blocks deleting the templates it names.
   const deleteProgram = useCallback(async (id: string): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const calendarError = await writeError(supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id));
     if (calendarError) {
@@ -1110,7 +1118,7 @@ export function useStorage() {
   }, [user, activeProgramId, setActiveProgram]);
 
   const deleteSession = useCallback(async (id: string) => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return;
     // Capture for rollback
     const previous = history;
@@ -1136,7 +1144,7 @@ export function useStorage() {
   }, [user, history, releaseScheduledCompletions]);
 
   const updateFutureWorkout = useCallback(async (updated: FutureWorkout): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const error = await writeError(supabase.from('future_workouts').upsert({
       id: updated.id,
@@ -1162,7 +1170,7 @@ export function useStorage() {
   }, [user]);
 
   const deleteFutureWorkout = useCallback(async (id: string): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const error = await writeError(supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id));
     if (error) {
@@ -1191,7 +1199,7 @@ export function useStorage() {
     if (!program) return;
     // Noted only once a write is actually attempted: a refused double tap
     // must not make an in-flight load discard itself.
-    noteWrite();
+    noteWrite(writeSerial);
     shiftInFlight.current = true;
     try {
       const isIsoDay = (dateStr: string) => /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
@@ -1258,7 +1266,7 @@ export function useStorage() {
   }, [user, programs]);
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return;
     // This upserts the whole settings row from local state. After a load that
     // failed with nothing cached, that state is DEFAULT_PREFERENCES, so writing
@@ -1363,7 +1371,7 @@ export function useStorage() {
   }, [user, loadedOk, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
 
   const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return;
     // Same whole-row hazard as updatePreferences: DEFAULT_PROFILE would blank
     // goal, equipment, injuries, age, height and drop the subscription tier.
@@ -1403,7 +1411,7 @@ export function useStorage() {
   }, [user, profile, snapshotTrusted]);
 
   const addBodyMeasurement = useCallback(async (weightKg: number, date?: string): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const id = crypto.randomUUID();
     const dateStr = date || format(new Date(), 'yyyy-MM-dd');
@@ -1422,7 +1430,7 @@ export function useStorage() {
   }, [user, bodyMeasurements]);
 
   const deleteBodyMeasurement = useCallback(async (id: string): Promise<boolean> => {
-    noteWrite();
+    noteWrite(writeSerial);
     if (!user) return false;
     const previous = bodyMeasurements;
     setBodyMeasurements(prev => prev.filter(m => m.id !== id));

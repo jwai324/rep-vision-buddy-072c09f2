@@ -3,7 +3,8 @@ import { toast } from 'sonner';
 import { useStorage } from '@/hooks/useStorage';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
-import { ActiveSession, getSessionCache, clearSessionCache } from '@/components/ActiveSession';
+import { ActiveSession } from '@/components/ActiveSession';
+import { getSessionCache, clearSessionCache } from '@/utils/sessionCache';
 import { restoredSessionScreen } from '@/utils/sessionRestore';
 import { useScreenHistory } from '@/hooks/useScreenHistory';
 import { setRestTimerHidden } from '@/utils/restTimerScheduler';
@@ -279,7 +280,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       setScreen({ type: 'dashboard' });
       tutorial.start();
     }
-  }, [storage.dataTrusted, storage.preferences.tutorialCompleted, tutorial]);
+  }, [storage.dataTrusted, storage.preferences.tutorialCompleted, tutorial, setScreen]);
 
   // When entering active session during tutorial, jump to session steps
   useEffect(() => {
@@ -310,7 +311,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       }
     });
     return () => tutorial.setScreenBackHandler(null);
-  }, [tutorial, screen]);
+  }, [tutorial, screen, setScreen]);
 
   const handleMinimize = () => {
     setMinimizedSession(screen);

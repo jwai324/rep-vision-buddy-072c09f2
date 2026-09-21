@@ -60,7 +60,7 @@ function completedRounds(block: ExerciseBlock): number {
   return n;
 }
 
-export function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
+function pickFocusedBlockIdx(blocks: ExerciseBlock[]): number | null {
   const groups = new Map<number, number[]>();
   blocks.forEach((b, i) => {
     if (b.supersetGroup === undefined) return;
@@ -164,8 +164,11 @@ export const FocusMode: React.FC<FocusModeProps> = (props) => {
     const prev = previousTargetRef.current;
     previousTargetRef.current = targetIdx;
     if (prev === null || prev === targetIdx) {
-      // First mount or no change — just sync displayed.
-      if (displayedIdx !== targetIdx) setDisplayedIdx(targetIdx);
+      // First mount or no change — just sync displayed. Set unconditionally:
+      // reading `displayedIdx` to skip an equal write would make this effect
+      // depend on the state its own promotion timer writes, and React bails
+      // out of an identical setState anyway.
+      setDisplayedIdx(targetIdx);
       return;
     }
 

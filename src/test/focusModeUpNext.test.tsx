@@ -17,7 +17,7 @@ function block(exerciseId: string, name: string, weight: string): ExerciseBlock 
   };
 }
 
-const renderFocus = (blocks: ExerciseBlock[], modes: Record<string, ExerciseInputMode>) => render(
+const focusEl = (blocks: ExerciseBlock[], modes: Record<string, ExerciseInputMode>) => (
   <FocusMode
     blocks={blocks}
     weightUnit="lbs"
@@ -41,8 +41,11 @@ const renderFocus = (blocks: ExerciseBlock[], modes: Record<string, ExerciseInpu
     onStartNextSet={vi.fn()}
     onStopSet={vi.fn()}
     onClose={vi.fn()}
-  />,
+  />
 );
+
+const renderFocus = (blocks: ExerciseBlock[], modes: Record<string, ExerciseInputMode>) =>
+  render(focusEl(blocks, modes));
 
 describe('Focus Mode "Up next"', () => {
   it("shows a band exercise's level as its label, not as a weight", () => {
@@ -60,5 +63,21 @@ describe('Focus Mode "Up next"', () => {
       { [BAND]: 'band' },
     );
     expect(screen.getByText(/135lbs/)).toBeInTheDocument();
+  });
+
+  // The displayed block is synced from the target by the promotion effect, and
+  // that effect is keyed on the target alone. This is the branch with no
+  // promotion to run — there was nothing on screen to fly the new name out of —
+  // so the sync has to happen on its own.
+  it('picks up a block that appears while nothing is focused', () => {
+    const finished: ExerciseBlock = {
+      ...block(BENCH, 'Bench', '135'),
+      sets: [{ setNumber: 1, weight: '135', reps: '12', rpe: '', time: '', completed: true, type: 'normal' }],
+    };
+    const { rerender } = render(focusEl([finished], {}));
+    expect(screen.queryByRole('heading', { name: 'Bench' })).toBeNull();
+
+    rerender(focusEl([finished, block(BAND, 'Band Pull-Apart', '3')], { [BAND]: 'band' }));
+    expect(screen.getByRole('heading', { name: 'Band Pull-Apart' })).toBeInTheDocument();
   });
 });

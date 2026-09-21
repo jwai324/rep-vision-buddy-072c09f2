@@ -12,7 +12,6 @@ import { resolveTemplateSupersets, withoutLoneSupersetGroups, withoutLoneSuperse
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { useSessionRestTimer } from '@/hooks/useSessionRestTimer';
-import { releaseRestSchedule } from '@/utils/restTimerScheduler';
 import { useBlockMutations, normalizeBlocks } from '@/hooks/useBlockMutations';
 import { CameraFeed } from '@/components/CameraFeed';
 import { cn } from '@/lib/utils';
@@ -63,7 +62,8 @@ import type { WeightUnit } from '@/hooks/useStorage';
 export type { TimerStatus, PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import type { PersistedTimer, ActiveSessionCache, DropRow, SetRow, RunningSetState, ExerciseBlock } from '@/types/activeSession';
 import { supersetInfo } from '@/types/activeSession';
-import { ExerciseTable, timerIdKey } from '@/components/ExerciseTableComponent';
+import { ExerciseTable } from '@/components/ExerciseTableComponent';
+import { timerIdKey } from '@/utils/timerIdKey';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
 import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
@@ -92,6 +92,39 @@ function safeWriteCache(cache: ActiveSessionCache) {
 //   everything else      -> the typed display value converted to kg
 const noopStartTimer = () => {};
 
+// Helper: find first incomplete drop in a set
+function findIncompleteDrop(set: SetRow): number | undefined {
+  if (!set.drops || set.drops.length === 0) return undefined;
+  const idx = set.drops.findIndex(d => !d.completed);
+  return idx === -1 ? undefined : idx;
+}
+
+// Helper: scan a single block for the next incomplete item starting at fromSetIdx.
+// For the just-completed set, only checks drops (the set itself is complete).
+// Returns { setIdx, dropIdx? } or null.
+//
+// Module scope, not the component body: it reads nothing but its arguments, and
+// as a per-render closure it was a dependency `handleStartNextSet` could not
+// list without being rebuilt on every keystroke.
+function nextInBlock(
+  block: ExerciseBlock,
+  fromSetIdx: number,
+  onlyDropsForFirst = false
+): { setIdx: number; dropIdx?: number } | null {
+  for (let si = fromSetIdx; si < block.sets.length; si++) {
+    const s = block.sets[si];
+    if (si === fromSetIdx && onlyDropsForFirst) {
+      const di = findIncompleteDrop(s);
+      if (di !== undefined) return { setIdx: si, dropIdx: di };
+      continue;
+    }
+    if (!s.completed) return { setIdx: si };
+    const di = findIncompleteDrop(s);
+    if (di !== undefined) return { setIdx: si, dropIdx: di };
+  }
+  return null;
+}
+
 /**
  * Everything the edit screen can change about a saved workout, as one string.
  * Cancelling an edit asks before discarding, and only when there is something
@@ -117,38 +150,6 @@ function editStateSignature(
       ]),
     })),
   });
-}
-
-export function clearSessionCache() {
-  localStorage.removeItem(CACHE_KEY);
-  // The workout is over, so is its rest: the scheduler outlives this screen
-  // on purpose (a minimized session keeps its rest), and this is the one
-  // signal that the session it belonged to is gone.
-  releaseRestSchedule();
-}
-
-/**
- * The workout in progress, as it was last written.
- *
- * Which of the two copies is the workout is a rule, not a race. While this
- * screen is mounted it owns the workout and its debounced flush is the only
- * writer of this cache: the AI coach reaches the workout through the session
- * controller registered below and deliberately does not touch the cache, whose
- * next flush would overwrite anything it wrote. The moment the screen unmounts
- * — which is what minimizing a workout does — the cache IS the workout, and the
- * coach reads and writes it directly, so a suggestion made before the minimize
- * can still be applied after it. This screen reads the result back the next
- * time it mounts, which is why the change is on screen after Resume. The other
- * half of the rule is "The workout with no screen on it" in ChatContext.
- */
-export function getSessionCache(): ActiveSessionCache | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
 }
 
 interface ActiveSessionProps {
@@ -275,7 +276,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
         note: ex.note,
       };
     });
-  }, [editSession, weightUnit, defaultRestSeconds, customExercises]);
+  }, [editSession, weightUnit, distanceUnit, defaultRestSeconds, customExercises]);
 
   // A template can express a superset two ways (an explicit group id, or the
   // older setType-only form the AI tools still write); the session only
@@ -758,35 +759,6 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     startTimer({ type: 'set', blockIdx, setIdx, dropIdx }, restSec);
   }, [runningSet, startTimer, blocks, defaultRestSeconds]);
 
-  // Helper: find first incomplete drop in a set
-  const findIncompleteDrop = (set: SetRow): number | undefined => {
-    if (!set.drops || set.drops.length === 0) return undefined;
-    const idx = set.drops.findIndex(d => !d.completed);
-    return idx === -1 ? undefined : idx;
-  };
-
-  // Helper: scan a single block for the next incomplete item starting at fromSetIdx.
-  // For the just-completed set, only checks drops (the set itself is complete).
-  // Returns { setIdx, dropIdx? } or null.
-  const nextInBlock = (
-    block: ExerciseBlock,
-    fromSetIdx: number,
-    onlyDropsForFirst = false
-  ): { setIdx: number; dropIdx?: number } | null => {
-    for (let si = fromSetIdx; si < block.sets.length; si++) {
-      const s = block.sets[si];
-      if (si === fromSetIdx && onlyDropsForFirst) {
-        const di = findIncompleteDrop(s);
-        if (di !== undefined) return { setIdx: si, dropIdx: di };
-        continue;
-      }
-      if (!s.completed) return { setIdx: si };
-      const di = findIncompleteDrop(s);
-      if (di !== undefined) return { setIdx: si, dropIdx: di };
-    }
-    return null;
-  };
-
   // Public: tap "Start next set" on an exercise header.
   const handleStartNextSet = useCallback((blockIdx: number) => {
     if (countdown) return;
@@ -951,7 +923,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   //
   // Unregistering on unmount is not the coach losing the workout: with no
   // screen mounted it falls back to the session cache (see `getSessionCache`
-  // above), which is the same workout by another name.
+  // in `@/utils/sessionCache`), which is the same workout by another name.
   useEffect(() => {
     if (isEditMode) return;
     registerSession({
@@ -1401,7 +1373,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
     }
 
     finishWithTemplateCheck(finalSession);
-  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, customExercises, exerciseLookup, timerPaused, location]);
+  }, [blocks, finishWithTemplateCheck, isEditMode, editSession, editDate, editTime, editDurationMin, workoutNote, weightUnit, distanceUnit, customExercises, exerciseLookup, timerPaused, location]);
 
   if (showSupersetLinker) {
     return (
