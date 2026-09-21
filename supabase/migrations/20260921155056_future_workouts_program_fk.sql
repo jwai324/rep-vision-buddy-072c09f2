@@ -66,10 +66,19 @@
 --
 -- Locking: ADD CONSTRAINT takes a brief ACCESS EXCLUSIVE lock on
 -- future_workouts and a SHARE ROW EXCLUSIVE on workout_programs while it
--- validates. 294 rows against 6 — milliseconds. No index is created here: a
--- sibling migration in this batch already adds
--- future_workouts_user_program_date_idx, and at this size the cascade's lookup
--- is a trivial scan either way.
+-- validates. 294 rows against 6 — milliseconds.
+--
+-- NO COVERING INDEX, deliberately, and it is worth being exact about why. This
+-- key leaves future_workouts without an index led by program_id, so Supabase's
+-- performance advisor reports it as a foreign key without a covering index, and
+-- it is right. The sibling migration in this batch adds
+-- future_workouts_user_program_date_idx, which is (user_id, program_id, date) —
+-- it leads on user_id, so Postgres cannot use it to answer the cascade's
+-- `WHERE program_id = $1`. What makes that acceptable is size, not coverage: at
+-- 294 rows the cascade is a trivial sequential scan either way, and an index
+-- fitted to a delete that happens a handful of times a year is write cost for
+-- nothing. Add `future_workouts (program_id)` if this table ever reaches the
+-- tens of thousands of rows, or if deleting a program starts being slow.
 
 DO $$
 DECLARE

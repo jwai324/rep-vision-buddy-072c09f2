@@ -86,7 +86,7 @@ export function deriveBalance(
  * negative, the headline (free + paid) was quietly reduced by the debt, and
  * Purchased still read 0 — three figures that no longer added up. The server
  * now floors that balance at zero and forgives the overshoot
- * (`PENDING_forgive_overspend_floor_paid_balance.sql`), so there is nothing
+ * (`20260920223716_forgive_overspend_floor_paid_balance.sql`), so there is nothing
  * left for a clamp to hide and none is applied here.
  *
  * What remains is rounding. The headline is `floor((free + paid) / 1000)`;

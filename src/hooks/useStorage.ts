@@ -374,8 +374,9 @@ async function fetchAllPages<T>(
     const from = p * PAGE_SIZE;
     const { data, error } = await page(from, from + PAGE_SIZE - 1);
     if (error) return { data: null, error, truncated: false };
-    // A list read answers with rows or with an error. Neither is a shape we
-    // understand, and reading it as "that's the end" would truncate silently.
+    // A list read answers with rows or with an error, so null data and no error
+    // is a shape we do not understand. Treating it as "that's the end" would
+    // truncate silently, which is the defect this helper exists to prevent.
     if (!data) {
       return { data: null, error: new Error(`${label}: a page returned neither rows nor an error`), truncated: false };
     }

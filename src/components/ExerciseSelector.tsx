@@ -116,10 +116,12 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({ onSelect, on
     setTypeFilter('All');
   };
 
-  // `key` is passed in rather than derived from `ex.id`: the library ships two
-  // rows sharing the id `medicine-ball-chest-pass`, and the flat search list is
-  // the one place they can be siblings (grouped browsing separates them by body
-  // part), where a repeated key makes React drop one of the two rows.
+  // `key` is passed in rather than derived from `ex.id`. The library no longer
+  // ships a duplicate id — the second `medicine-ball-chest-pass` row is gone and
+  // `exerciseLibraryIntegrity.test.ts` refuses a new one — but the flat search
+  // list is still the one place two rows for the same id could be siblings
+  // (grouped browsing separates them by body part), and a repeated key there
+  // makes React drop one of them. Keeping the caller's key is the cheap guard.
   const renderExercise = (ex: Exercise, key: string) => {
     const isSelected = selected.has(ex.id);
     return (

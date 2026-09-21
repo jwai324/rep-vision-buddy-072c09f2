@@ -27,6 +27,10 @@ const KIND_LABEL: Record<ShareKind, string> = {
  * the number was an over-count of unknown size. Several people opening a link
  * within the same hour therefore count once, so the honest reading is a floor —
  * "at least this many" — and the label says so rather than promising a tally.
+ *
+ * The throttle bounds robots rather than excluding them: a crawler that hits an
+ * otherwise quiet hour still counts as one. So a small number here can be all
+ * machine, and the label deliberately does not say "people".
  */
 const openedLabel = (count: number) =>
   count === 0 ? 'not opened yet' : `opened at least ${count} time${count === 1 ? '' : 's'}`;
