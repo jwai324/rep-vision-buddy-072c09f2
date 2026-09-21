@@ -38,7 +38,29 @@ supabase/
 
 ## Applying schema changes
 
-New files under `supabase/migrations/` do NOT deploy on their own. After adding a migration you must either run `supabase db push` locally or apply it via the Supabase MCP server (`mcp__Supabase__apply_migration`), then regenerate the TypeScript types (`supabase gen types typescript --linked > src/integrations/supabase/types.ts`) so `Database` reflects the new schema. Shipping migration SQL without applying it produces silent client-side upsert failures against the missing columns.
+New files under `supabase/migrations/` do NOT deploy on their own. Shipping
+migration SQL without applying it produces silent client-side upsert failures
+against the missing columns.
+
+**Apply through the Supabase MCP server (`mcp__Supabase__apply_migration`).**
+That is the one path, not one of two. The two are not interchangeable: the MCP
+server stamps the moment of application as the recorded version and ignores the
+name of your local file, so the repository and the live history drift apart
+every time one is applied and the file is left as it was. Eight had drifted
+that way, two of them into the wrong order relative to each other, which is
+what broke the documented `supabase db push`.
+
+So the rule has two halves, and the second is the one that gets forgotten:
+
+1. Write the file with any name (`PENDING_<name>.sql` while it is unapplied is
+   a useful convention), apply it through the MCP server, then
+2. read the version the server recorded (`mcp__Supabase__list_migrations`) and
+   **rename the local file to `<version>_<name>.sql`** so the two agree.
+
+Then regenerate the types (`supabase gen types typescript --linked > src/integrations/supabase/types.ts`)
+so `Database` reflects the new schema. As of 2026-09-21 all 36 local filenames
+match the recorded history exactly; keep it that way and `supabase db push`
+stays usable as a check, even though it is not the apply path.
 
 ## Deploying edge functions
 
@@ -1049,16 +1071,13 @@ four passes, names the 56 rows still open, and says which ship where.
 
 Two facts from that audit change how you work in this repo:
 
-- **The repo's migration filenames no longer match the live migration history.** Eight
-  were applied through the Supabase MCP server, which stamps its own version. Running
-  the documented `supabase db push` against the linked project will fail until the
-  versions are repaired. When you apply through the MCP server, read the version it
-  recorded and rename the local file to match, as
-  `20260915170641_lock_down_token_credits.sql`,
-  `20260915182136_atomic_ai_turn_gate.sql`,
-  `20260915200720_ai_turn_slot_lifecycle_and_repriceable_ledger.sql`,
-  `20260919141231_share_payload_bounds.sql` and
-  `20260919141335_atomic_program_shift.sql` do.
+- **The migration filenames now match the live history, and it is on you to keep them
+  that way.** Eight had drifted, because the Supabase MCP server stamps its own
+  version and ignores the local filename; two of those eight were also out of order
+  relative to each other, so a replay would have run `token_credits_and_iap` before
+  the `subscription_tier` column it reads. All eight were renamed on 2026-09-21 and
+  all 36 now agree with the recorded history. The rule that keeps it true is in
+  "Applying schema changes" above: apply, read the recorded version, rename the file.
 - **Token prices were 3x too high until 2026-09-15.** `_shared/pricing.ts` carried the
   Opus 4.1 rates ($15/$75 per MTok) rather than Opus 4.7's ($5/$25). Rates now live in
   `RATES_BY_MODEL`, keyed by model id, so a `MODEL` swap with no entry bills at the
