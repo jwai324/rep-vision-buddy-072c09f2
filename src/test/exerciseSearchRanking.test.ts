@@ -92,6 +92,55 @@ describe('ranking', () => {
   });
 });
 
+describe('the "ez" shorthand matches how the library spells EZ Bar', () => {
+  // The picker searches the built-in library plus the user's custom exercises,
+  // and the library has exactly one EZ Bar exercise, so an EZ-bar curl can only
+  // come from a custom one.
+  const ezBarCurl: Exercise = {
+    id: 'custom-ez-bar-curl', name: 'EZ Bar Curl', primaryBodyPart: 'Biceps', equipment: 'EZ Bar',
+    difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: [],
+  };
+  const withCustom = [...EXERCISE_DATABASE, ezBarCurl];
+
+  it('"ez" returns the EZ Bar exercise, first', () => {
+    const results = searchExercises(EXERCISE_DATABASE, 'ez');
+    expect(results[0]?.name).toBe('EZ Bar Skull Crusher');
+  });
+
+  it('"ez" no longer drags in trap-bar exercises', () => {
+    const results = searchExercises(EXERCISE_DATABASE, 'ez');
+    expect(results.some(e => /trap bar|t-bar/i.test(e.name))).toBe(false);
+    expect(results.every(e => /ez bar/i.test(e.name))).toBe(true);
+  });
+
+  it('"ez curl" finds an EZ-bar curl and ranks it first', () => {
+    const results = searchExercises(withCustom, 'ez curl');
+    expect(results[0]?.name).toBe('EZ Bar Curl');
+  });
+
+  it('"ez" returns both EZ Bar rows and nothing else', () => {
+    expect(names(searchExercises(withCustom, 'ez')).sort()).toEqual([
+      'EZ Bar Curl',
+      'EZ Bar Skull Crusher',
+    ]);
+  });
+
+  it('"ez bar" spelled out matches the same row', () => {
+    expect(names(searchExercises(EXERCISE_DATABASE, 'ez bar'))).toEqual(['EZ Bar Skull Crusher']);
+  });
+
+  it('the trade-off: "ez" implies "bar", so an EZ-less-bar custom name misses', () => {
+    const ezCurl: Exercise = {
+      id: 'custom-ez-curl', name: 'EZ Curl', primaryBodyPart: 'Biceps', equipment: 'Cable',
+      difficulty: 'Beginner', exerciseType: 'Isolation', movementPattern: 'Flexion', secondaryMuscles: [],
+    };
+    expect(searchExercises([ezCurl], 'ez')).toHaveLength(0);
+    expect(searchExercises([ezCurl], 'ez curl')).toHaveLength(0);
+    // It is still reachable by the words it is actually spelled with.
+    expect(names(searchExercises([ezCurl], 'curl'))).toEqual(['EZ Curl']);
+  });
+});
+
 describe('the exercise library has one Swimming', () => {
   it('contains exactly one exercise named Swimming', () => {
     const swimming = EXERCISE_DATABASE.filter(e => e.name === 'Swimming');

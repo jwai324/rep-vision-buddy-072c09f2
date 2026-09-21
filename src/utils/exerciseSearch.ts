@@ -8,7 +8,14 @@ const TOKEN_SHORTHAND: Record<string, string> = {
   bb: 'barbell',
   kb: 'kettlebell',
   sm: 'smith',
-  ez: 'ezbar',
+  // The library spells this equipment "EZ Bar" (two words, e.g. "EZ Bar Skull
+  // Crusher"), so a single made-up token like 'ezbar' can never substring-match
+  // it. The trade-off: matching is multi-word AND, so "ez" now also implies the
+  // word "bar" — a custom exercise named just "EZ Curl", with no "bar" anywhere
+  // in its name, body part or equipment, stops matching a search for "ez". That
+  // is the right call for the built-in library, which spells it "EZ Bar"
+  // everywhere.
+  ez: 'ez bar',
   ohp: 'overhead press',
   rdl: 'romanian deadlift',
 };
