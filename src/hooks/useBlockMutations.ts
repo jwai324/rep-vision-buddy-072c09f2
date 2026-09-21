@@ -275,10 +275,6 @@ export function useBlockMutations(
     onDropIndicesShifted?.(blockIdx, setIdx, d => (d === dropIdx ? null : d > dropIdx ? d - 1 : d));
   }, [setBlocks, onDropIndicesShifted]);
 
-  const addExercise = useCallback((id: ExerciseId) => {
-    addMultipleExercises([id]);
-  }, []);
-
   const addMultipleExercises = useCallback((ids: ExerciseId[]) => {
     setBlocks(prev => {
       const existingIds = new Set(prev.map(b => b.exerciseId));
@@ -302,6 +298,16 @@ export function useBlockMutations(
       return [...prev, ...newBlocks];
     });
   }, [setBlocks, defaultDropSetsEnabled, defaultRestSeconds, exerciseLookup]);
+
+  // Declared after the callback it delegates to, and depending on it, because
+  // an empty dependency array here froze the FIRST render's copy — and with it
+  // the first render's exercise lookup, rest default and drop-set default. An
+  // exercise added from the picker after the custom library loaded was named
+  // with its raw id and given stale defaults; the name healed on read, the
+  // defaults did not.
+  const addExercise = useCallback((id: ExerciseId) => {
+    addMultipleExercises([id]);
+  }, [addMultipleExercises]);
 
   const removeExercise = useCallback((blockIdx: number) => {
     setBlocks(prev => prev.filter((_, i) => i !== blockIdx));
