@@ -24,6 +24,47 @@ export interface ImportResult {
   exercisesDropped: number;
 }
 
+/**
+ * Shown verbatim when an import fails and left no workout of its own behind.
+ * It says "no workouts" rather than "nothing": a custom exercise this import
+ * created can survive a later failure, deliberately, because those are matched
+ * by name and a retry reuses them instead of duplicating them.
+ */
+export const IMPORT_FAILED_MESSAGE =
+  "Couldn't save this to your workouts. No workouts were added — try again.";
+
+/**
+ * Shown when the program row failed *and* taking its templates back out
+ * failed too (the connection is still down). Saying "nothing was saved" here
+ * would be a lie, and the user would find the strays later with no idea where
+ * they came from.
+ */
+export const IMPORT_LEFTOVERS_MESSAGE =
+  "Couldn't save this program to your workouts, and some of its workouts may have been "
+  + 'left in your library. Check your templates before trying again.';
+
+/**
+ * A failed import, carrying a sentence the caller can show as-is.
+ *
+ * `cause` is a field rather than the ES2022 `Error` option because this
+ * project compiles against the ES2020 lib; it holds the postgrest error so the
+ * console log keeps the real detail.
+ */
+export class ShareImportError extends Error {
+  readonly userMessage: string;
+  /** Rows this import created are still in the viewer's library. */
+  readonly leftBehind: boolean;
+  readonly cause: unknown;
+
+  constructor(userMessage: string, cause: unknown, leftBehind = false) {
+    super(userMessage);
+    this.name = 'ShareImportError';
+    this.userMessage = userMessage;
+    this.leftBehind = leftBehind;
+    this.cause = cause;
+  }
+}
+
 type CustomExerciseRow = { id: string; name: string };
 
 /**
@@ -54,7 +95,7 @@ async function reconcileCustomExercises(
     .from('custom_exercises')
     .select('id, name')
     .eq('user_id', userId);
-  if (error) throw error;
+  if (error) throw new ShareImportError(IMPORT_FAILED_MESSAGE, error);
 
   const byName = new Map<string, string>();
   for (const row of (existing ?? []) as CustomExerciseRow[]) {
@@ -97,7 +138,7 @@ async function reconcileCustomExercises(
     .from('custom_exercises')
     .insert(rows as never)
     .select('id, name');
-  if (insertError) throw insertError;
+  if (insertError) throw new ShareImportError(IMPORT_FAILED_MESSAGE, insertError);
 
   const insertedByName = new Map<string, string>();
   for (const row of (inserted ?? []) as CustomExerciseRow[]) {
@@ -176,7 +217,46 @@ async function insertTemplates(
       exercises: t.exercises as unknown as never,
     })) as never,
   );
-  if (error) throw error;
+  if (error) throw new ShareImportError(IMPORT_FAILED_MESSAGE, error);
+}
+
+/**
+ * Take back the templates a failed program import just created.
+ *
+ * Only ids minted by this import are passed in (`remapTemplate` gives every
+ * copy a fresh uuid), and the delete is scoped to the viewer's own rows, so a
+ * template they already had cannot be caught by it. Answers `false` when the
+ * rows are — or may still be — there, which is the difference between telling
+ * the user nothing was saved and warning them to go and look.
+ *
+ * The trade this accepts: if the program row commits server-side but the
+ * response is lost, the rollback removes templates a saved program points at,
+ * leaving a program whose days name dead ids. That program is inert — it is
+ * never activated, so no future_workouts are generated against those ids — and
+ * the user can delete it, whereas a stray template is not deduped and comes
+ * back a second time on every retry. Inserting the program first only points
+ * the same hazard the other way.
+ */
+async function removeImportedTemplates(
+  supabase: SupabaseClient,
+  userId: string,
+  ids: string[],
+): Promise<boolean> {
+  if (ids.length === 0) return true;
+  try {
+    const { data, error } = await supabase
+      .from('workout_templates')
+      .delete()
+      .eq('user_id', userId)
+      .in('id', ids)
+      // The returned rows are the proof: a delete that RLS refuses reports no
+      // error and removes nothing, which must not read as a clean rollback.
+      .select('id');
+    if (error) return false;
+    return (data ?? []).length === ids.length;
+  } catch {
+    return false;
+  }
 }
 
 export async function importSharedSnapshot(
@@ -204,7 +284,10 @@ export async function importSharedSnapshot(
   }
 
   // Programs: create the embedded templates first so the day list can point at
-  // the recipient's new ids.
+  // the recipient's new ids. Nothing dedupes a template on insert, so those
+  // rows are rolled back if the program itself fails to save — otherwise the
+  // user is told the import failed while holding its workouts, and every
+  // retry lays down another copy of each.
   const templateIdMap: Record<string, string> = {};
   let exercisesDropped = 0;
   const copies = snapshot.templates.map(t => {
@@ -217,18 +300,37 @@ export async function importSharedSnapshot(
   await insertTemplates(supabase, userId, copies);
 
   const program = remapProgram(snapshot.program, templateIdMap);
-  const { error } = await supabase.from('workout_programs').insert({
-    id: program.id,
-    user_id: userId,
-    name: program.name,
-    days: program.days as unknown as never,
-    duration_weeks: program.durationWeeks ?? 8,
-    // start_date is left null and the program is NOT made active: activating
-    // it would regenerate the viewer's future_workouts, which is destructive
-    // and not something opening a link should do. They activate it themselves.
-    start_date: null,
-  } as never);
-  if (error) throw error;
+  let error: unknown;
+  try {
+    // postgrest-js resolves `{ error }` rather than throwing, offline
+    // included; the catch is so that a throw cannot escape past the rollback.
+    ({ error } = await supabase.from('workout_programs').insert({
+      id: program.id,
+      user_id: userId,
+      name: program.name,
+      days: program.days as unknown as never,
+      duration_weeks: program.durationWeeks ?? 8,
+      // start_date is left null and the program is NOT made active: activating
+      // it would regenerate the viewer's future_workouts, which is destructive
+      // and not something opening a link should do. They activate it themselves.
+      start_date: null,
+    } as never));
+  } catch (thrown) {
+    // Normalised rather than stored as-is: a falsy throw (`throw ''`) would
+    // slip past the `if (error)` below and report the import as a success.
+    error = thrown instanceof Error ? thrown : new Error(String(thrown));
+  }
+  if (error) {
+    const cleaned = await removeImportedTemplates(supabase, userId, copies.map(c => c.id));
+    // Custom exercises this import created are deliberately kept: they are
+    // matched by name, so a retry reuses them instead of piling up duplicates,
+    // and one may already be referenced by something the user did in between.
+    throw new ShareImportError(
+      cleaned ? IMPORT_FAILED_MESSAGE : IMPORT_LEFTOVERS_MESSAGE,
+      error,
+      !cleaned,
+    );
+  }
 
   return {
     templatesCreated: copies.length,

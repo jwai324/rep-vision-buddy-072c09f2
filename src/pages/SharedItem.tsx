@@ -9,7 +9,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SessionSummary } from '@/components/SessionSummary';
 import { SharedProgramView } from '@/components/shared/SharedProgramView';
 import { SharedTemplateView } from '@/components/shared/SharedTemplateView';
-import { importSharedSnapshot } from '@/utils/shareImport';
+import { IMPORT_FAILED_MESSAGE, ShareImportError, importSharedSnapshot } from '@/utils/shareImport';
 import { publishableSharedBy } from '@/utils/shareSnapshot';
 import { SHARE_SNAPSHOT_VERSION, type ShareSnapshot } from '@/types/share';
 import type { WeightUnit } from '@/hooks/useStorage';
@@ -88,7 +88,11 @@ const SharedItem: React.FC = () => {
       navigate('/');
     } catch (err) {
       console.error('[SharedItem] import error:', err);
-      toast.error('Could not save this to your workouts');
+      // The import knows more than "it failed": whether it managed to undo
+      // the workouts it had already created, or whether some were left in the
+      // library. Telling the user only the generic line is what made a retry
+      // pile up duplicates without warning.
+      toast.error(err instanceof ShareImportError ? err.userMessage : IMPORT_FAILED_MESSAGE);
     } finally {
       setImporting(false);
     }

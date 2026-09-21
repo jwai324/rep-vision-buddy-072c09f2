@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { importSharedSnapshot } from '@/utils/shareImport';
+import {
+  IMPORT_FAILED_MESSAGE,
+  IMPORT_LEFTOVERS_MESSAGE,
+  ShareImportError,
+  importSharedSnapshot,
+} from '@/utils/shareImport';
 import {
   SHARE_SNAPSHOT_VERSION,
   type ProgramSnapshot,
@@ -22,27 +27,88 @@ import type { TemplateExercise, WorkoutTemplate } from '@/types/workout';
  * row — a value of `undefined`, or a key another row in the batch has — the
  * way the table refused a stub custom exercise.
  */
-function fakeSupabase(existing: { id: string; name: string }[] = []) {
-  const inserted: Record<string, Record<string, unknown>[]> = {};
+type Row = Record<string, unknown>;
+
+interface FakeOptions {
+  /** Tables whose insert fails the way a dropped connection does. */
+  failInsert?: string[];
+  /**
+   * Tables whose insert *throws* a falsy value rather than resolving an error.
+   * postgrest-js doesn't do this, but a thrown '' used to slip past the
+   * `if (error)` check and report a failed import as a success.
+   */
+  throwFalsyOnInsert?: string[];
+  /**
+   * How the rollback delete fails: with an error, or by reporting success
+   * while removing nothing (what an RLS refusal looks like from the client).
+   */
+  failDelete?: 'error' | 'silent';
+  /** Rows the viewer's library already held before the import. */
+  templates?: Row[];
+}
+
+function fakeSupabase(existing: { id: string; name: string }[] = [], options: FakeOptions = {}) {
+  const inserted: Record<string, Row[]> = {};
+  const deletes: { table: string; eq: Row; in?: { column: string; values: unknown[] } }[] = [];
+  // What the viewer's library actually holds, so a rollback is checked against
+  // the surviving rows rather than against the list of inserts.
+  const store: Record<string, Row[]> = { workout_templates: [...(options.templates ?? [])] };
+
+  const deleteBuilder = (table: string) => {
+    const eq: Row = {};
+    let inFilter: { column: string; values: unknown[] } | undefined;
+    let result: { data: Row[] | null; error: unknown } | undefined;
+    const run = () => {
+      if (result) return result;
+      deletes.push({ table, eq: { ...eq }, in: inFilter });
+      if (options.failDelete === 'error') {
+        result = { data: null, error: { code: 'PGRST000', message: 'network error' } };
+        return result;
+      }
+      const matches = (row: Row) =>
+        Object.entries(eq).every(([column, value]) => row[column] === value)
+        && (!inFilter || inFilter.values.includes(row[inFilter.column]));
+      const removed = options.failDelete === 'silent' ? [] : (store[table] ?? []).filter(matches);
+      store[table] = (store[table] ?? []).filter(row => !removed.includes(row));
+      result = { data: removed.map(row => ({ id: row.id })), error: null };
+      return result;
+    };
+    const builder = {
+      eq: (column: string, value: unknown) => { eq[column] = value; return builder; },
+      in: (column: string, values: unknown[]) => { inFilter = { column, values }; return builder; },
+      select: () => Promise.resolve(run()),
+      then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+        Promise.resolve(run()).then(resolve, reject),
+    };
+    return builder;
+  };
+
   const client = {
     from: (table: string) => ({
       select: () => ({ eq: () => Promise.resolve({ data: table === 'custom_exercises' ? existing : [], error: null }) }),
+      delete: () => deleteBuilder(table),
       insert: (rows: unknown) => {
-        const list = (Array.isArray(rows) ? rows : [rows]) as Record<string, unknown>[];
+        if (options.throwFalsyOnInsert?.includes(table)) throw '';
+        const list = (Array.isArray(rows) ? rows : [rows]) as Row[];
         const columns = Array.from(new Set(list.flatMap(row => Object.keys(row))));
         const nulled = columns.find(column => list.some(row => row[column] === undefined));
-        const result = nulled
-          ? {
-            data: null,
-            error: { code: '23502', message: `null value in column "${nulled}" of relation "${table}" violates not-null constraint` },
-          }
-          : { data: list.map((row, i) => ({ id: `row-${i}`, name: row.name })), error: null };
-        if (!result.error) (inserted[table] ??= []).push(...list);
+        const result = options.failInsert?.includes(table)
+          ? { data: null, error: { code: 'PGRST000', message: `insert into ${table} never landed` } }
+          : nulled
+            ? {
+              data: null,
+              error: { code: '23502', message: `null value in column "${nulled}" of relation "${table}" violates not-null constraint` },
+            }
+            : { data: list.map((row, i) => ({ id: `row-${i}`, name: row.name })), error: null };
+        if (!result.error) {
+          (inserted[table] ??= []).push(...list);
+          (store[table] ??= []).push(...list);
+        }
         return Object.assign(Promise.resolve(result), { select: () => Promise.resolve(result) });
       },
     }),
   };
-  return { client: client as unknown as SupabaseClient, inserted };
+  return { client: client as unknown as SupabaseClient, inserted, deletes, store };
 }
 
 const shared = (over: Partial<SharedCustomExercise> = {}): SharedCustomExercise => ({
@@ -265,5 +331,121 @@ describe('importSharedSnapshot — custom ids the snapshot uses but does not def
     expect(result).toMatchObject({ templatesCreated: 2, programsCreated: 1, exercisesDropped: 2 });
     const templates = insertedTemplates(inserted);
     expect(templates.map(t => t.exercises.length)).toEqual([1, 0]);
+  });
+});
+
+describe('importSharedSnapshot — a program whose own row never lands', () => {
+  const BENCH = 'flat-barbell-bench-press';
+
+  const programSnapshot = (): ProgramSnapshot => ({
+    version: SHARE_SNAPSHOT_VERSION,
+    sharedAt: '2026-09-20T00:00:00.000Z',
+    weightUnit: 'kg',
+    sharedBy: null,
+    customExercises: [],
+    kind: 'program',
+    program: {
+      id: 'prog',
+      name: 'Block',
+      days: [{ label: 'Day 1', templateId: 'tpl-a' }, { label: 'Day 2', templateId: 'tpl-b' }],
+    },
+    templates: [
+      { id: 'tpl-a', name: 'A', exercises: [templateExercise(BENCH)] },
+      { id: 'tpl-b', name: 'B', exercises: [templateExercise(BENCH)] },
+    ],
+    exerciseMeta: [{ exerciseId: BENCH, name: 'Flat Barbell Bench Press', icon: '💪' }],
+  });
+
+  /** Run the import, assert it failed, and hand back what it threw. */
+  const failing = async (fake: ReturnType<typeof fakeSupabase>, snap: ProgramSnapshot = programSnapshot()) => {
+    const err = await importSharedSnapshot(fake.client, 'user-1', snap, 'Block')
+      .then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(ShareImportError);
+    return err as ShareImportError;
+  };
+
+  it('takes its templates back out and reports the failure', async () => {
+    const fake = fakeSupabase([], { failInsert: ['workout_programs'] });
+    const err = await failing(fake);
+
+    expect(err.userMessage).toBe(IMPORT_FAILED_MESSAGE);
+    expect(err.leftBehind).toBe(false);
+    // They were written — and then taken back out, so a retry starts clean.
+    expect(insertedTemplates(fake.inserted)).toHaveLength(2);
+    expect(fake.store.workout_templates).toEqual([]);
+    expect(fake.deletes.map(d => d.table)).toEqual(['workout_templates']);
+  });
+
+  it('removes only what it created, even from a template of the same name', async () => {
+    const mine = { id: 'mine', user_id: 'user-1', name: 'A', exercises: [] };
+    const fake = fakeSupabase([], { failInsert: ['workout_programs'], templates: [mine] });
+    await failing(fake);
+
+    expect(fake.store.workout_templates).toEqual([mine]);
+    // The delete is keyed on the ids this import minted, under the viewer's id.
+    const [del] = fake.deletes;
+    expect(del.eq).toEqual({ user_id: 'user-1' });
+    expect(del.in?.column).toBe('id');
+    expect(del.in?.values).not.toContain('mine');
+  });
+
+  it('says workouts may have been left behind when the cleanup fails too', async () => {
+    const fake = fakeSupabase([], { failInsert: ['workout_programs'], failDelete: 'error' });
+    const err = await failing(fake);
+
+    expect(err.userMessage).toBe(IMPORT_LEFTOVERS_MESSAGE);
+    expect(err.userMessage).toMatch(/left in your library/);
+    expect(err.leftBehind).toBe(true);
+    expect(fake.store.workout_templates).toHaveLength(2);
+  });
+
+  it('treats a cleanup that removes nothing as a cleanup that failed', async () => {
+    const fake = fakeSupabase([], { failInsert: ['workout_programs'], failDelete: 'silent' });
+    const err = await failing(fake);
+
+    expect(err.leftBehind).toBe(true);
+    expect(err.userMessage).toBe(IMPORT_LEFTOVERS_MESSAGE);
+    expect(fake.store.workout_templates).toHaveLength(2);
+  });
+
+  it('does not try to roll back when the templates themselves never landed', async () => {
+    const fake = fakeSupabase([], { failInsert: ['workout_templates'] });
+    const err = await failing(fake);
+
+    expect(err.userMessage).toBe(IMPORT_FAILED_MESSAGE);
+    expect(err.leftBehind).toBe(false);
+    expect(fake.deletes).toEqual([]);
+  });
+
+  it('keeps the custom exercises it created, which a retry reuses by name', async () => {
+    const fake = fakeSupabase([], { failInsert: ['workout_programs'] });
+    const snap = programSnapshot();
+    snap.templates[0] = { id: 'tpl-a', name: 'A', exercises: [templateExercise('custom-sharer')] };
+    snap.customExercises = [shared({ sourceId: 'custom-sharer' })];
+    await failing(fake, snap);
+
+    expect(fake.store.custom_exercises).toHaveLength(1);
+    expect(fake.deletes.every(d => d.table === 'workout_templates')).toBe(true);
+  });
+
+  it('treats a falsy throw from the insert as a failure, not a silent success', async () => {
+    const fake = fakeSupabase([], { throwFalsyOnInsert: ['workout_programs'] });
+    const err = await failing(fake);
+
+    expect(err.userMessage).toBe(IMPORT_FAILED_MESSAGE);
+    expect(fake.store.workout_templates).toEqual([]);
+  });
+
+  it('reports the plain failure for a rest-only program, with nothing to roll back', async () => {
+    const fake = fakeSupabase([], { failInsert: ['workout_programs'] });
+    const err = await failing(fake, {
+      ...programSnapshot(),
+      program: { id: 'prog', name: 'Deload', days: [{ label: 'Day 1', templateId: 'rest' }] },
+      templates: [],
+    });
+
+    expect(err.userMessage).toBe(IMPORT_FAILED_MESSAGE);
+    expect(err.leftBehind).toBe(false);
+    expect(fake.deletes).toEqual([]);
   });
 });

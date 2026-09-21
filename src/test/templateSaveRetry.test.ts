@@ -635,10 +635,13 @@ describe('bodyweight history load', () => {
     await mounted();
     // Ordered by date alone, a reload could put the earlier of two same-day
     // entries first, and the profile and the coach would call it the latest.
+    // `id` comes last only to make the order total: the read is paged, and two
+    // pages of a partial order can drop a row in the overlap. See
+    // src/test/storagePaging.test.tsx.
     const orders = chain
       .filter(c => c[0] === 'body_measurements' && c[1] === 'order')
       .map(c => [c[2], (c[3] as { ascending: boolean }).ascending]);
-    expect(orders).toEqual([['date', false], ['created_at', false]]);
+    expect(orders).toEqual([['date', false], ['created_at', false], ['id', true]]);
   });
 });
 

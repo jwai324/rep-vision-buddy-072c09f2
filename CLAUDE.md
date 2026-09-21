@@ -433,6 +433,27 @@ are easy to break by accident:
   is what let a failed sessions query read as "the streak broke" and clear a real
   adjustment permanently. Tests: `src/test/storageLoadErrors.test.tsx`.
 
+- **Two tables are read a page at a time, and a `.range()` is not a promise.**
+  PostgREST trims every response to the project's max-rows (1000 here — no
+  `pgrst.db_max_rows` override is set), so asking for `range(0, 4999)` does not
+  get you 5000 rows: the server's cap silently decides what the app knows.
+  `fetchAllPages` in `useStorage.ts` loops `PAGE_SIZE` (1000) pages until one
+  comes back short, and `future_workouts` and `body_measurements` go through
+  it. Both are tables an ordinary account outgrows — a plan is ~7 rows a week
+  and nothing deletes a deactivated program's remaining weeks; daily bodyweight
+  passes 1000 in under three years — and both order the *wanted* end last, so
+  what a cap cut was the upcoming calendar and the oldest weight history.
+  Three rules hold it together: `PAGE_SIZE` must never exceed the server's
+  max-rows (a short page is how the loop knows it is done, so a lower server
+  cap would read as the end of the table); every paged read ends its ORDER BY
+  on `id`, because pages are separate queries and a partial order lets two of
+  them disagree and lose a row in the overlap; and a failed page returns
+  `{ data: null, error }` so the load fails whole rather than passing the pages
+  gathered so far off as the table. `MAX_PAGES` (20) bounds the loop and
+  reaching it raises a toast — truncation nobody mentions is the defect this
+  replaced. `MAX_SESSIONS` (500) is a deliberate product cap, not a paging
+  oversight; leave it. Tests: `src/test/storagePaging.test.tsx`.
+
 If you add a field to `useStorage`'s state, add it to `CachedStorage` too, or
 it will be blank on a hydrated open until revalidation lands. Changing the
 shape of anything cached means bumping `CACHE_VERSION`.
@@ -982,9 +1003,16 @@ import into their own library.
 - **`shares` is owner-only under RLS with no anon policy** — an anon `SELECT`
   would let anyone dump every share. The sole public read path is the
   `SECURITY DEFINER` function `get_shared_item(token)`, granted to `anon`, which
-  returns a narrow column list (never `user_id` or `view_count`). A revoked
-  share resolves with `revoked = true` and a null payload so the viewer sees
-  "no longer available" rather than a not-found page.
+  returns a narrow column list (never `user_id`, `view_count` or
+  `last_viewed_at`). **A revoked share now reveals nothing but the fact that it
+  was revoked**: `revoked = true` and every other column null, so the viewer
+  still sees "no longer available" rather than a not-found page, but whoever
+  kept the old URL can no longer read the item's title or its dates out of the
+  RPC. An unknown token returns no rows at all, which is still the right answer
+  to someone probing for valid ones. The result *shape* is unchanged — same six
+  columns, same types — because `SharedItem` returns on `row.revoked` before it
+  touches any of them; the generated RPC type still says those columns are
+  non-null, so a future reader of `row.title` has to narrow it itself.
 - **A partial unique index** on `(user_id, kind, source_id) WHERE revoked_at IS NULL`
   keeps at most one live link per item, which is what makes the URL stable
   across updates while still allowing a re-share after a revoke.
@@ -1003,6 +1031,20 @@ import into their own library.
   in exactly the case the wait exists for.
   An imported program is deliberately **not** activated: activating it would
   regenerate the viewer's `future_workouts`, which is destructive.
+- **A program import that fails takes its templates back out.** The templates
+  are inserted first so the day list can point at the new ids, and nothing
+  dedupes a template on insert — so a failed program row used to leave its
+  workouts in the library while the toast said the import had failed, and every
+  retry laid down another copy of each. `importSharedSnapshot` now deletes the
+  ids it minted and throws a `ShareImportError` carrying the sentence to show:
+  `IMPORT_FAILED_MESSAGE` when the rollback is confirmed (the delete returns
+  the rows it removed — an RLS refusal reports no error and removes nothing,
+  which must not read as clean), and `IMPORT_LEFTOVERS_MESSAGE` when it is not,
+  telling the user to go and look. `SharedItem` must render `err.userMessage`;
+  collapsing it back to one generic line is what made the honest half of this
+  unreachable. Custom exercises are deliberately *not* rolled back — they are
+  matched by name, so a retry reuses them. Tests: `src/test/shareImport.test.ts`,
+  `src/test/sharedItemImportError.test.tsx`.
 - **The table bounds what a share can be.** `public.shares` has CHECKs of
   1 MiB on `payload` (`pg_column_size`) and 200 characters on `title`
   (`20260919141231_share_payload_bounds.sql`); without them a hand-built
@@ -1012,6 +1054,19 @@ import into their own library.
   `23514` refusal as "too large to share". The two limits measure different
   things (JSON text length vs jsonb binary size) and only agree to within a
   factor; real payloads are 50–100 KB, so neither is hit by legitimate use.
+- **`view_count` counts hours, not views, and a view is not an edit.** The
+  counter used to be an unconditional `UPDATE` on every anonymous hit, so a
+  refresh, a crawler and every chat app's link preview each added one — and
+  each fired the `updated_at` trigger, making that column say "when a stranger
+  last loaded this" instead of "when the owner last changed this". It is now
+  throttled to one per link per hour (`last_viewed_at`), and
+  `update_shares_updated_at` carries a `WHEN` clause that skips an update which
+  touched a view column and no owner-editable one. The honest reading of the
+  number is a floor — ten people in one hour count once — which is why
+  `SharedLinksScreen` says "opened at least N times" rather than "N views".
+  Keep the two in step: if a new column is ever written *together with* a view
+  bump, add it to the trigger's second list, or that write stops bumping
+  `updated_at`.
 - **`sharedBy` is never an email address.** Sign-up seeds `display_name` from
   the email, so an account that never renamed itself would put its address on
   a public page. `publishableSharedBy` drops anything that could be one, at
@@ -1120,6 +1175,37 @@ exercise a template uses cannot be deleted from their screens; the dialog names
 what references them. `Index.tsx` computes `templateUsedBy` / `exerciseUsedBy`
 from loaded state. Cascading was the alternative and was rejected: the
 reference is a plan the user made, not a row to clean up.
+
+**But the database now owns two cascades the app used to do by hand.** These
+are about *ownership*, not about a user deleting something on a screen, and the
+rule above is untouched by them.
+
+- `user_id → auth.users(id) ON DELETE CASCADE` on all sixteen user-scoped
+  tables (`20260921155014`). Nine were missing it, so "delete this account"
+  took the login, the profile and the money rows and left behind every workout,
+  template, program, scheduled day, setting and usage row the account had ever
+  written. **This is irreversible in effect**: removing a user from the
+  dashboard now destroys their history in the same statement, with no undo and
+  no prompt, and re-creating the login recovers nothing. (A *soft* delete —
+  auth's `deleted_at` — does not cascade; only a real `DELETE` does.) Two of
+  the nine are judgement calls the migration header spells out and leaves
+  editable: `user_ai_usage` (cascading rewrites `ai_usage_daily_summary` for
+  past dates, but `token_ledger` — the authoritative billing record — has
+  always cascaded, so keeping only the derived tally would be the incoherent
+  option) and `workout_templates_superset_backup`.
+- `future_workouts.program_id → workout_programs(id) ON DELETE CASCADE`
+  (`20260921155056`). `deleteProgram` already deleted the calendar rows in a
+  second statement, so nothing a user can do changes; what changes is that a
+  deletion which does *not* go through the app can no longer leave scheduled
+  rows behind a program that is gone — rows every reader filters out, so they
+  would pile up invisibly. The `'manual'` program id never reaches the database
+  (`program_id` is `uuid NOT NULL`, and both write paths gate on
+  `hasValidProgramId && !isManual`), so the key cannot reject it.
+
+Each of the six user-scoped tables also gained the composite index its actual
+queries want (`20260921154930`); the one query with no user filter of its own
+is `custom_exercises`, narrowed only by its RLS policy, which was therefore
+scanning every user's rows.
 
 `.lovable/plan.md` is the older audit and is now partly stale: the `as any` casts are
 gone, `ActiveSession.tsx` is about 1,750 lines rather than the 2,737 it quotes (measure

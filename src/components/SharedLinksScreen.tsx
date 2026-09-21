@@ -20,6 +20,17 @@ const KIND_LABEL: Record<ShareKind, string> = {
   program: 'Program',
 };
 
+/**
+ * `view_count` counts the distinct one-hour windows the link was opened in, not
+ * requests: the server throttles the counter to one per link per hour, because
+ * before that every refresh, crawler and chat-app link preview added one and
+ * the number was an over-count of unknown size. Several people opening a link
+ * within the same hour therefore count once, so the honest reading is a floor —
+ * "at least this many" — and the label says so rather than promising a tally.
+ */
+const openedLabel = (count: number) =>
+  count === 0 ? 'not opened yet' : `opened at least ${count} time${count === 1 ? '' : 's'}`;
+
 const KindIcon: React.FC<{ kind: ShareKind }> = ({ kind }) => {
   const className = 'w-4 h-4 text-primary';
   if (kind === 'program') return <CalendarDays className={className} />;
@@ -84,8 +95,7 @@ export const SharedLinksScreen: React.FC<SharedLinksScreenProps> = ({ onBack }) 
                   {share.title}
                 </h3>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Shared {format(new Date(share.createdAt), 'MMM d, yyyy')} · {share.viewCount}{' '}
-                  {share.viewCount === 1 ? 'view' : 'views'}
+                  Shared {format(new Date(share.createdAt), 'MMM d, yyyy')} · {openedLabel(share.viewCount)}
                 </p>
 
                 {!revoked && (

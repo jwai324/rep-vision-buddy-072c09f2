@@ -255,7 +255,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "future_workouts_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "workout_programs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       iap_purchases: {
         Row: {
@@ -361,6 +369,7 @@ export type Database = {
           created_at: string
           id: string
           kind: string
+          last_viewed_at: string | null
           payload: Json
           revoked_at: string | null
           source_id: string | null
@@ -374,6 +383,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind: string
+          last_viewed_at?: string | null
           payload: Json
           revoked_at?: string | null
           source_id?: string | null
@@ -387,6 +397,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          last_viewed_at?: string | null
           payload?: Json
           revoked_at?: string | null
           source_id?: string | null

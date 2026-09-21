@@ -22,11 +22,26 @@ type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
 type BodyMeasurementRow = Database['public']['Tables']['body_measurements']['Row'];
 type BodyMeasurementInsert = Database['public']['Tables']['body_measurements']['Insert'];
 
-// Maximum rows to fetch per table (Supabase default is 1000)
+// A single PostgREST response is trimmed to the project's max-rows (1000 on a
+// default Supabase project, and this one sets no `pgrst.db_max_rows` override),
+// so asking for a wider range does not widen the answer: the server's cap
+// quietly decides what the app knows about. This is the ceiling for the tables
+// that cannot outgrow one response; the two that can are read page by page
+// (`fetchAllPages`) rather than capped here.
 const MAX_ROWS = 5000;
-// Session history cap — loads most-recent 500 sessions eagerly.
-// Full pagination is a future improvement; 500 covers ~1.4 years of daily workouts
-// without the memory/startup cost of a 5000-row fetch on mobile.
+// One page of a paged read. It must never exceed the project's max-rows: a
+// page that comes back shorter than asked for is how the loop knows the table
+// is exhausted, so a server-side cap below this would read as the end of the
+// table and truncate silently all over again.
+const PAGE_SIZE = 1000;
+// Ceiling on the paging loop, so a table that keeps answering full pages can't
+// spin forever. 20 pages is ~55 years of daily scheduled workouts; reaching it
+// is logged and told to the user, never absorbed.
+const MAX_PAGES = 20;
+// Session history cap — loads most-recent 500 sessions eagerly. Deliberate,
+// and not something the paging below should quietly undo: 500 covers ~1.4
+// years of daily workouts without the memory/startup cost of reading a whole
+// history on mobile.
 const MAX_SESSIONS = 500;
 
 // Clamp out-of-range or non-integer weekday values into 0-6. Duplicate
@@ -331,6 +346,48 @@ async function flushPendingTemplateWrites(
   }
 }
 
+/**
+ * Read a table a page at a time, the way `exportUserData` already reads one for
+ * the backup file. PostgREST trims every response to the project's max-rows, so
+ * a table that can outgrow one page has to be asked for the rest explicitly —
+ * otherwise the cap decides what the app sees, and for `future_workouts`, which
+ * loads in date order, the rows it cuts are the upcoming ones: the week strip
+ * and the calendar go thin while the plan is still on the server.
+ *
+ * `page` must order by something unique as its last term (a primary key will
+ * do). Pages are separate queries, and without a total order Postgres is free
+ * to answer two of them from different row orders, which loses rows in the
+ * overlap and repeats others.
+ *
+ * The result keeps postgrest-js's `{ data, error }` shape on purpose: a failed
+ * page resolves `{ data: null, error }`, so the caller's "every query came back
+ * clean" check fails the whole load rather than mistaking the pages gathered so
+ * far for the whole table. Rejections (an offline fetch) propagate, as the
+ * unpaged reads' do.
+ */
+async function fetchAllPages<T>(
+  label: string,
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<{ data: T[] | null; error: unknown; truncated: boolean }> {
+  const rows: T[] = [];
+  for (let p = 0; p < MAX_PAGES; p++) {
+    const from = p * PAGE_SIZE;
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) return { data: null, error, truncated: false };
+    // A list read answers with rows or with an error. Neither is a shape we
+    // understand, and reading it as "that's the end" would truncate silently.
+    if (!data) {
+      return { data: null, error: new Error(`${label}: a page returned neither rows nor an error`), truncated: false };
+    }
+    rows.push(...data);
+    if (data.length < PAGE_SIZE) return { data: rows, error: null, truncated: false };
+  }
+  console.error(
+    `[useStorage] ${label}: stopped after ${MAX_PAGES} pages (${rows.length} rows) — there are more rows than one load will read.`,
+  );
+  return { data: rows, error: null, truncated: true };
+}
+
 // postgrest-js resolves `{ error }` for a server refusal, but an offline fetch
 // rejects; a write that promises a boolean needs the two as one value.
 async function writeError(query: PromiseLike<{ error: unknown }>): Promise<unknown> {
@@ -461,16 +518,31 @@ export function useStorage() {
           supabase.from('workout_sessions').select('*').eq('user_id', userId).order('date', { ascending: false }).range(0, MAX_SESSIONS - 1),
           supabase.from('workout_templates').select('*').eq('user_id', userId).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
           supabase.from('workout_programs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-          supabase.from('future_workouts').select('*').eq('user_id', userId).order('date', { ascending: true }).range(0, MAX_ROWS - 1),
+          // Read in full rather than capped: a program is ~7 rows a week and
+          // nothing ever deletes a deactivated one's remaining weeks, so an
+          // account a few plans old passes one page. Ascending by date means
+          // the rows a cap cuts are the upcoming ones — the week strip and the
+          // calendar thinning out with the plan still on the server. `id` is
+          // the primary key and makes the order total: a date is not unique
+          // (two workouts a day, and every rest day carries one), and two
+          // pages tied on date could otherwise disagree about who came first.
+          fetchAllPages<FutureWorkoutRow>('schedule', (from, to) => supabase
+            .from('future_workouts').select('*').eq('user_id', userId)
+            .order('date', { ascending: true }).order('id', { ascending: true })
+            .range(from, to)),
           supabase.from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
           supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
-          // Uses MAX_ROWS like the other paginated tables so a daily
-          // bodyweight logger keeps more than a year of history. Previously
-          // capped at 366 rows which silently truncated after ~1 year.
-          // Two entries on one day are told apart by when they were logged.
-          // Ordered by date alone, a reload could put the older one first,
-          // and the profile and the coach would show it as the latest.
-          supabase.from('body_measurements').select('*').eq('user_id', userId).order('date', { ascending: false }).order('created_at', { ascending: false }).range(0, MAX_ROWS - 1),
+          // Paged too: someone logging their weight daily passes one page in
+          // under three years, and loading newest-first this one loses the far
+          // end of the history instead. Two entries on one day are told apart
+          // by when they were logged — ordered by date alone a reload could put
+          // the older one first, and the profile and the coach would show it as
+          // the latest — and `id` after that is the tiebreak that makes the
+          // order total, since created_at is not declared unique.
+          fetchAllPages<BodyMeasurementRow>('measurements', (from, to) => supabase
+            .from('body_measurements').select('*').eq('user_id', userId)
+            .order('date', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: true })
+            .range(from, to)),
         ]);
         if (cancelled) return;
         if (writeSerial.current !== serialAtStart && reloads < 2) {
@@ -549,6 +621,17 @@ export function useStorage() {
             date: r.date,
             weightKg: Number(r.weight_kg),
           })));
+        }
+
+        // A table too big to finish reading is said out loud. Truncation that
+        // nothing mentions is the whole defect this paging replaced, and these
+        // two lists are read by screens ("what's next", the weight chart) that
+        // look perfectly normal while they are missing their far end.
+        if (futureRes.truncated) {
+          toast.error("You have more scheduled workouts than one load can read — the furthest-out dates aren't shown.");
+        }
+        if (measurementsRes.truncated) {
+          toast.error("You have more bodyweight entries than one load can read — the oldest aren't shown.");
         }
 
         if (failures.length) {
