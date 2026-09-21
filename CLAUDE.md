@@ -1233,10 +1233,21 @@ rule above is untouched by them.
   no prompt, and re-creating the login recovers nothing. (A *soft* delete —
   auth's `deleted_at` — does not cascade; only a real `DELETE` does.) Two of
   the nine are judgement calls the migration header spells out and leaves
-  editable: `user_ai_usage` (cascading rewrites `ai_usage_daily_summary` for
-  past dates, but `token_ledger` — the authoritative billing record — has
-  always cascaded, so keeping only the derived tally would be the incoherent
-  option) and `workout_templates_superset_backup`.
+  editable: `ai_error_log`, which is operational telemetry nothing reads back
+  (`ON DELETE SET NULL` is the ready alternative, since the column is already
+  nullable), and `workout_templates_superset_backup`. A third worth knowing
+  about, though the header does not flag it: `user_ai_usage` cascading rewrites
+  `ai_usage_daily_summary` for past dates. It is kept because `token_ledger` —
+  the authoritative billing record — has always cascaded, so keeping only the
+  derived tally would be the incoherent option.
+
+  **`workout_templates_superset_backup` is not in the migration history.** It
+  was created by hand, so a database built by *replaying* these files — the
+  runbook's `supabase db push` against a fresh project, a branch, a restored
+  copy — does not have it. The migration's table guard therefore skips a table
+  that is absent rather than raising, and still raises for a table that exists
+  without a `user_id`. The first version of it raised either way, which would
+  have aborted `db push` on step 4 of the setup runbook for every new project.
 - `future_workouts.program_id → workout_programs(id) ON DELETE CASCADE`
   (`20260921155056`). `deleteProgram` already deleted the calendar rows in a
   second statement, so nothing a user can do changes; what changes is that a
