@@ -241,13 +241,16 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
             const showReps = usesReps(mode);
             const isTime = isTimeBased(mode);
             // A hold carries two inputs that aren't weight+reps, so it doesn't
-            // fit the boolean tally below.
+            // fit the boolean tally below. Locomotive cardio (running, rowing,
+            // walking) is the same shape — time next to distance, no weight or
+            // reps — so it gets the same two-input treatment.
             const isWeightTime = isLoadedHold(mode);
-            const headerColCount = isWeightTime ? 3 : [showWeight || isTime, showReps, true].filter(Boolean).length; // inputs + rpe
+            const isTimeDistance = mode === 'time-distance';
+            const headerColCount = isWeightTime || isTimeDistance ? 3 : [showWeight || isTime, showReps, true].filter(Boolean).length; // inputs + rpe
             const headerCols = headerColCount === 3 ? 'grid-cols-[1fr_1fr_42px]' : 'grid-cols-[1fr_42px]';
             const headerLabels = (() => {
               switch (mode) {
-                case 'time-distance': return ['Time (min)', 'RPE'];
+                case 'time-distance': return ['Time (min)', 'Dist (km)', 'RPE'];
                 case 'time':
                 case 'weight-time': return [weightUnit, 'Time (min)', 'RPE'];
                 case 'distance': return ['Dist (km)', 'RPE'];
@@ -255,7 +258,7 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                 default: return [weightUnit, 'Reps', 'RPE'];
               }
             })();
-            const rowColCount = isWeightTime ? 3 : [showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
+            const rowColCount = isWeightTime || isTimeDistance ? 3 : [showWeight || isTime || mode === 'distance', showReps && (showWeight || isTime || mode === 'distance'), true].filter(Boolean).length;
             const rowCols = rowColCount === 3 ? 'grid-cols-[1fr_1fr_42px]' : 'grid-cols-[1fr_42px]';
             const inputClass = 'w-full text-center text-base bg-secondary/60 rounded-md py-1.5 text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary [&::-webkit-inner-spin-button]:appearance-auto';
             const stepClass = 'w-8 h-8 rounded-md bg-secondary/60 text-base leading-none text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-secondary/60';
@@ -366,6 +369,15 @@ export const TemplateExerciseEditor: React.FC<TemplateExerciseEditorProps> = ({
                           className={inputClass} />
                         <input type="number" inputMode="decimal" value={row.targetReps}
                           onChange={e => updateSet(blockIdx, 'targetReps', e.target.value)} placeholder="min"
+                          className={inputClass} />
+                      </>
+                    ) : isTimeDistance ? (
+                      <>
+                        <input type="number" inputMode="decimal" value={row.targetReps}
+                          onChange={e => updateSet(blockIdx, 'targetReps', e.target.value)} placeholder="min"
+                          className={inputClass} />
+                        <input type="number" inputMode="decimal" value={row.targetDistance}
+                          onChange={e => updateSet(blockIdx, 'targetDistance', e.target.value)} placeholder="km"
                           className={inputClass} />
                       </>
                     ) : isTime ? (

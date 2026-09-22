@@ -63,6 +63,35 @@ describe('the template editor distance box', () => {
   });
 });
 
+describe('the template editor distance box for time-and-distance cardio', () => {
+  // Running, rowing, walking etc. are all built-in 'Time + Distance' exercises
+  // (no built-in exercise is pure Distance). The editor rendered only the
+  // minutes box for them and dropped any distance target on every save.
+  const ROW = 'rowing-machine';
+  const rowExercise = (over: Partial<TemplateExercise> = {}): TemplateExercise =>
+    ({ exerciseId: ROW, sets: 1, targetReps: 10, setType: 'normal', restSeconds: 60, ...over });
+
+  it('shows a km box next to the minutes box, and saves what is typed as distance', () => {
+    const onBlocks = vi.fn<(blocks: TemplateBlock[]) => void>();
+    const initial = templateToBlocks({ id: 'tpl-row', name: 'Row', exercises: [rowExercise({ targetDistance: 2000 })] }, 'kg');
+    const Harness = () => {
+      const [blocks, setBlocks] = useState(initial);
+      useEffect(() => { onBlocks(blocks); }, [blocks]);
+      return <TemplateExerciseEditor blocks={blocks} onChange={setBlocks} />;
+    };
+    render(<Harness />);
+
+    expect(screen.getByPlaceholderText('min')).toBeInTheDocument();
+    expect(kmBox().value).toBe('2');
+    fireEvent.change(kmBox(), { target: { value: '4.5' } });
+
+    const [block] = onBlocks.mock.lastCall![0];
+    expect(block.sets[0]).toMatchObject({ targetDistance: '4.5' });
+    const saved = blockToExercise(block, 'kg');
+    expect(saved.targetDistance).toBe(4500);
+  });
+});
+
 describe('a workout started from a template with a distance target', () => {
   it.each([['kg', '5'], ['lbs', '3.11']] as const)('prefills the distance box in the %s user\'s unit, to two decimals', (unit, shown) => {
     render(
