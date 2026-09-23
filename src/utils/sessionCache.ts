@@ -26,7 +26,17 @@ export function getSessionCache(): ActiveSessionCache | null {
   }
 }
 
+// Fired synchronously, before the key is removed, so a still-mounted
+// ActiveSession can cancel its own pending debounced write. Without this, a
+// write scheduled just before Save/Cancel/Discard clears the cache can still
+// fire moments later — on its own 500ms clock, independent of this call —
+// and resurrect the very entry that was just cleared, which is what made a
+// workout finished and saved the day before still look "in progress" on the
+// next cold load.
+export const SESSION_CACHE_CLEARING_EVENT = 'repvision:session-cache-clearing';
+
 export function clearSessionCache() {
+  window.dispatchEvent(new Event(SESSION_CACHE_CLEARING_EVENT));
   localStorage.removeItem(CACHE_KEY);
   // The workout is over, so is its rest: the scheduler outlives the session
   // screen on purpose (a minimized session keeps its rest), and this is the one

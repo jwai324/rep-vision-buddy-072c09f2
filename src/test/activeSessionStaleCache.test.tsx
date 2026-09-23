@@ -1,7 +1,9 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ActiveSession } from '@/components/ActiveSession';
+import { clearSessionCache } from '@/utils/sessionCache';
+import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
 import type { ActiveSessionCache } from '@/types/activeSession';
 import type { WorkoutTemplate } from '@/types/workout';
 
@@ -84,5 +86,28 @@ describe('starting a workout while another is cached', () => {
 
     expect(screen.getByDisplayValue('Push Day (resumed)')).toBeTruthy();
     expect(screen.getAllByText(/Barbell Back Squat/i).length).toBeGreaterThan(0);
+  });
+});
+
+describe('a workout finished and saved while a debounced write is still pending', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('does not resurrect the cache Save just cleared', () => {
+    renderSession(null);
+
+    // An edit schedules the 500ms debounced cache write.
+    fireEvent.change(screen.getByDisplayValue('Push Day 1'), { target: { value: 'Push Day 1 (done)' } });
+
+    // Save resolves and the parent clears the cache — the same instant
+    // clearSessionCache() runs in Index.tsx's onSave, before the screen has
+    // actually unmounted ActiveSession.
+    act(() => clearSessionCache());
+    expect(localStorage.getItem(ACTIVE_SESSION_CACHE_KEY)).toBeNull();
+
+    // The debounce timer scheduled before the clear still fires on its own
+    // schedule; it must not write the cache back.
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(localStorage.getItem(ACTIVE_SESSION_CACHE_KEY)).toBeNull();
   });
 });

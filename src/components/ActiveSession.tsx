@@ -67,6 +67,7 @@ import { timerIdKey } from '@/utils/timerIdKey';
 export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTableComponent';
 
 import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
+import { SESSION_CACHE_CLEARING_EVENT } from '@/utils/sessionCache';
 const DEFAULT_LOCATION = 'Home Gym';
 
 // Bounds for the in-session rest-length editor. The floor is 5s rather than 0
@@ -691,6 +692,24 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       }
     };
   }, [flushCache]);
+
+  // clearSessionCache() is called by the parent (Save/Cancel/Discard) before
+  // this screen has actually unmounted — it is still rendered under the
+  // summary overlay until then. A debounced write scheduled just before that
+  // fires on its own 500ms clock regardless, and would otherwise resurrect
+  // the cache the clear just removed: a workout finished and saved would come
+  // back on the next cold load looking still in progress. This cancels that
+  // write the instant the clear happens, same tab, synchronously.
+  useEffect(() => {
+    const cancelPendingWrite = () => {
+      if (writeTimerRef.current) {
+        clearTimeout(writeTimerRef.current);
+        writeTimerRef.current = null;
+      }
+    };
+    window.addEventListener(SESSION_CACHE_CLEARING_EVENT, cancelPendingWrite);
+    return () => window.removeEventListener(SESSION_CACHE_CLEARING_EVENT, cancelPendingWrite);
+  }, []);
 
   const toggleTimerPause = useCallback(() => {
     setTimerPaused(prev => {
