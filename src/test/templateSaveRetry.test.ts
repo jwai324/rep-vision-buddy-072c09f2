@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 import { readPendingTemplates, queuePendingTemplate, clearPendingTemplate } from '@/utils/pendingTemplateWrites';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram } from '@/types/workout';
 
@@ -257,7 +258,10 @@ describe('a queued write is replayed only over the row it was built on', () => {
   });
 
   it('drops a write whose row changed on another device and keeps the server row', async () => {
-    const queuedAt = new Date(2026, 8, 18, 12).getTime();
+    // Relative to now: readPendingTemplates expires an entry older than its
+    // max age against the real clock, so a fixed date ages out of the window
+    // and the conflict branch under test stops being reached at all.
+    const queuedAt = Date.now() - 60_000;
     queuePendingTemplate(USER_ID, tpl({ name: 'Saved at the gym' }), 'stamp-1', queuedAt);
     rows.workout_templates = [templateRow('Edited on the laptop', 'stamp-2')];
 
@@ -268,7 +272,7 @@ describe('a queued write is replayed only over the row it was built on', () => {
     expect(result.current.templates.map(t => t.name)).toEqual(['Edited on the laptop']);
     expect(toast.error).toHaveBeenCalledTimes(1);
     expect(toast.error).toHaveBeenCalledWith(
-      'Saved at the gym changed elsewhere — your unsaved update from Sep 18 was not applied',
+      `Saved at the gym changed elsewhere — your unsaved update from ${format(queuedAt, 'MMM d')} was not applied`,
     );
   });
 
