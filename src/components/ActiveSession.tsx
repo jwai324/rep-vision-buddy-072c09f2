@@ -1810,6 +1810,15 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
             Link Supersets
           </button>
         )}
+
+        {/* The header's Finish scrolls away on a long workout; this is the
+            same handler where the thumb already is after the last set. */}
+        {!isEditMode && (
+          <Button variant="neon" size="lg" onClick={finishWorkout} className="w-full mt-4">
+            <Check className="w-4 h-4 mr-1" />
+            Finish Workout
+          </Button>
+        )}
       </div>
 
       {/* Focus Mode overlay */}
