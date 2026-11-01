@@ -1124,6 +1124,92 @@ import into their own library.
 - Links preview with the generic RepVision card — this is a client-rendered SPA
   behind a catch-all rewrite, so per-share OG tags would need a prerender step.
 
+## Coach mode
+
+A client hands another account a one-time code (Settings → Coaching → Invite a
+coach: 8 characters, 7 days, one live code per client). Whoever redeems it is
+that client's coach until either of them ends the link. A coach "acts as" a
+client: the whole app re-renders on the client's rows, under the coach's own
+session. Migration: `*_coach_mode.sql` (`coach_links`, `coach_invites`,
+`coach_activity`, the coach policies and triggers, the four RPCs).
+
+**The database grants the access; the app only chooses whose rows are on
+screen.** Every policy on the eight coach tables (`profiles`, `user_settings`,
+`workout_programs`, `workout_templates`, `future_workouts`,
+`workout_sessions`, `body_measurements`, `custom_exercises`) gained a
+permissive twin, `user_id IN (SELECT client_id FROM coach_links WHERE coach_id
+= auth.uid())`, with the same commands the owner has (no DELETE on profiles
+or settings for anyone). Billing (`user_token_balance`, `token_ledger`,
+`iap_purchases`, `user_ai_usage`), `shares` and `error_reports` have no coach
+policy and must never get one. Links are created only by
+`redeem_coach_invite`; there is no INSERT grant on `coach_links`.
+
+Three consequences that are easy to break:
+
+- **Every query on a coach table filters `user_id` explicitly.** Under the
+  coach policies RLS answers a coach with their own rows *and* every client's,
+  so a query that relied on RLS alone (custom exercises did) mixes accounts —
+  in the coach's own view, not only while acting. A new read or write on one
+  of the eight tables takes `useCoach().ownerId`, never `useAuth().user.id`.
+- **A row never changes owner.** `coach_write_guard` refuses an UPDATE that
+  changes `user_id` for any JWT caller: UPDATE policies OR together, so a
+  coach could otherwise re-point a client's row at themselves (the owner
+  policy's WITH CHECK passes). It also refuses a coach's change to a client's
+  `subscription_tier` — the plan is billing. The client's own plan toggle is
+  untouched.
+- **The activity log is the database's, not the app's.** Statement-level
+  triggers with transition tables write one `coach_activity` row per coach
+  statement (a regenerated calendar is one row, not hundreds), with labels
+  and the columns an UPDATE actually changed; a no-op upsert is not logged,
+  and the service role (`auth.uid()` null — edge functions, account-deletion
+  cascades) is skipped. Nobody but the service role can edit it.
+
+**Identity on the client.** `CoachContext` (mounted in `App.tsx` on the `/`
+route only, keyed on the auth user) holds `authUserId`, `ownerId` (the client
+while acting, else the auth user) and `actingAs`. `App.tsx` remounts `Index`
+with `key={ownerId}`, so no state, ref, chat turn or in-flight write of one
+account can land in another — do not try to reset per-identity state
+piecemeal instead. What stays the person holding the phone's while acting:
+the AI coach's billing and credits display (`ownTier`, not
+`storage.profile.subscriptionTier`), share links (entry points hidden;
+`useShares` refuses as a backstop), bug reports, the tutorial (never started
+or completed into a client's settings), backups (Data Management hidden), and
+Sign Out (replaced by Exit coaching). The automatic write-backs in
+`useStorage` (program-day repair, streak-adjustment clear) do not run while
+acting, and a client's data is never written to the localStorage snapshot.
+A clean load with no profile row while acting means the link is gone
+(`accessLost`): RLS answers that with empty results, not an error.
+
+**Per-account device state.** Builder and chat drafts use `ownerDraftKey`
+(`<key>:<clientId>` while acting, the bare key for the user's own, so existing
+drafts survive); `clearLocalDrafts` sweeps both forms and the
+`repvision:coach:` keys on sign-out. Each account's AI conversation and the
+coach's lockout live in `src/utils/chatThreads.ts` (in memory, keyed by auth
+user and owner) because the remount would otherwise reset them — and a lockout
+reset by switching would be a way around it.
+
+**The workout in progress belongs to one account.** `ActiveSessionCache`
+carries `ownerUserId` (absent on older caches = the auth user). A cold start
+resumes in that identity; `Index` reads the cache only through `ownCache()`,
+so a workout of another account (a second tab left in the other identity, a
+client who ended the link mid-workout) is never resumed, restored or
+auto-saved under the wrong one — `ForeignWorkoutBar` offers Switch, or Keep
+(into the coach's own history) and Discard when its owner is out of reach.
+Switching identity is refused while a workout is in progress, except towards
+the account that owns it, and is never blocked by an owner the coach can no
+longer reach.
+
+**The AI coach.** `buildContext` adds `coaching: { acting_for_client,
+client_display_name }` while acting, and the `ai-coach` system prompt tells
+the model it is talking to the client's coach. The key is stable per client,
+so it stays in the cached prompt block (it is not in `VOLATILE_CONTEXT_KEYS`);
+the first turn after switching to a client is a cache write billed to the
+coach. Concurrent edits by coach and client are last-writer-wins, the same as
+two devices of one user.
+
+Tests: `src/test/coachingScreen.test.tsx`, `src/test/coachActivity.test.ts`
+and the `coachMode*` / `coachContext` tests.
+
 ## Error reports and the triage routine
 
 Every signed-in screen has a small bug handle hanging from the top centre of

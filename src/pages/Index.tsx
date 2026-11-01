@@ -531,6 +531,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             onGoToPrograms={() => setScreen({ type: 'programs' })}
             onBrowseExercises={() => setScreen({ type: 'browseExercises' })}
             onGoToSettings={() => setScreen({ type: 'settings' })}
+            onGoToCoaching={!acting && coach.clients.length > 0 ? () => setScreen({ type: 'coaching' }) : undefined}
             onGoToAnalytics={() => setScreen({ type: 'analytics' })}
             onBuildAIProgram={() => setScreen({ type: 'aiProgramBuilder' })}
             onGoToMonthlyCalendar={() => setScreen({ type: 'monthlyCalendar' })}

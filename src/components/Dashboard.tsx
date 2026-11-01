@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Settings, BarChart3 } from 'lucide-react';
+import { Settings, BarChart3, Users } from 'lucide-react';
 import { BODY_PARTS } from '@/data/exercises';
 import type { WorkoutSession, WorkoutProgram, WorkoutTemplate, DayFrequency, FutureWorkout } from '@/types/workout';
 import { EXERCISES } from '@/types/workout';
@@ -31,6 +31,8 @@ interface DashboardProps {
   onGoToPrograms: () => void;
   onBrowseExercises: () => void;
   onGoToSettings: () => void;
+  // Shown only to someone who coaches at least one client.
+  onGoToCoaching?: () => void;
   onGoToAnalytics: () => void;
   onBuildAIProgram: () => void;
   onAddRestDay: () => void;
@@ -361,7 +363,7 @@ const WeeklyProgramCalendar: React.FC<{
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  history, activeProgram, templates, futureWorkouts, preferences, hasActiveWorkout = false, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar, onOpenTodayWorkout
+  history, activeProgram, templates, futureWorkouts, preferences, hasActiveWorkout = false, onStartWorkout, onGoToFutureWorkouts, onStartTemplate, onGoToHistory, onGoToTemplates, onGoToPrograms, onBrowseExercises, onGoToSettings, onGoToCoaching, onGoToAnalytics, onBuildAIProgram, onAddRestDay, onDayClick, onGoToMonthlyCalendar, onOpenTodayWorkout
 }) => {
   const streak = computeDisplayedStreak(
     history,
@@ -403,6 +405,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <span className="text-[9px] uppercase tracking-wider text-muted-foreground -mt-0.5">{streakLabel}</span>
           </div>
+          {onGoToCoaching && (
+            <button
+              onClick={onGoToCoaching}
+              aria-label="Your clients"
+              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+            >
+              <Users className="w-5 h-5" />
+            </button>
+          )}
           <button
             onClick={onGoToSettings}
             aria-label="Settings"
