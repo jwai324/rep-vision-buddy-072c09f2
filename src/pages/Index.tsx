@@ -4,7 +4,11 @@ import { useStorage } from '@/hooks/useStorage';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession } from '@/components/ActiveSession';
-import { getSessionCache, clearSessionCache } from '@/utils/sessionCache';
+import {
+  getSessionCache, clearSessionCache,
+  getFinishedWorkout, setFinishedWorkout, FINISHED_AUTO_SAVE_MS, type FinishedWorkout,
+} from '@/utils/sessionCache';
+import { useFinishedAutoSave } from '@/hooks/useFinishedAutoSave';
 import { restoredSessionScreen } from '@/utils/sessionRestore';
 import { useScreenHistory } from '@/hooks/useScreenHistory';
 import { setRestTimerHidden } from '@/utils/restTimerScheduler';
@@ -126,7 +130,21 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     restDaySessionIds.current.set(date, id);
     return id;
   };
-  const [pendingSummary, setPendingSummary] = useState<WorkoutSession | null>(null);
+  // The Workout Complete screen's workout, persisted with its auto-save
+  // deadline so a reload or a discarded tab picks the countdown back up.
+  const [finished, setFinished] = useState<FinishedWorkout | null>(() => getFinishedWorkout());
+  const pendingSummary = finished?.session ?? null;
+  const showPendingSummary = (session: WorkoutSession, templateId?: string) => {
+    const next: FinishedWorkout = { session, templateId, autoSaveAt: Date.now() + FINISHED_AUTO_SAVE_MS };
+    setFinishedWorkout(next);
+    setFinished(next);
+  };
+  const clearPendingSummary = () => {
+    setFinishedWorkout(null);
+    setFinished(null);
+  };
+  const finishedRef = React.useRef(finished);
+  useEffect(() => { finishedRef.current = finished; }, [finished]);
   // Set by the edit screen while it is mounted; read by onUserBack below.
   const editGuardRef = React.useRef<{ hasChanges: boolean; confirm: () => void } | null>(null);
   const [screen, setScreen] = useScreenHistory<Screen>({ type: 'dashboard' }, {
@@ -149,7 +167,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       }
       if (leaving.type !== 'activeSession') return;
       if (pendingSummary) {
-        setPendingSummary(null);
+        clearPendingSummary();
         return true;
       }
       setMinimizedSession(leaving);
@@ -199,6 +217,33 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   useEffect(() => {
     setRestTimerHidden(storage.preferences.hideTimers);
   }, [storage.preferences.hideTimers]);
+
+  // Nothing chosen on the Workout Complete screen within the window saves the
+  // workout as Save Workout would. It runs here rather than in the summary so
+  // it keeps running with the summary off screen (the session minimized).
+  useFinishedAutoSave(finished, !storage.loading, async (fw) => {
+    // The stored record is the one every tab shares: answered in another tab
+    // (Continue, Discard, Save), it is gone there, and this tab's copy of the
+    // deadline must not save a workout the user has since taken back.
+    if (getFinishedWorkout()?.session.id !== fw.session.id) {
+      setFinished(cur => (cur?.session.id === fw.session.id ? null : cur));
+      return true;
+    }
+    let saved = false;
+    await guardedSave(async () => {
+      saved = await storage.saveSession(fw.session, { templateId: fw.templateId });
+      if (!saved) return;
+      // Continue or Discard tapped while the write was in flight: the row
+      // stands, but the workout on screen is no longer this one to tear down.
+      if (finishedRef.current?.session.id !== fw.session.id) return;
+      clearSessionCache();
+      setMinimizedSession(null);
+      setFinished(null);
+      setScreen(s => (s.type === 'activeSession' ? { type: 'dashboard' } : s));
+      toast.success('Workout saved automatically');
+    });
+    return saved;
+  });
 
   // #11: a template a program still schedules, or a custom exercise a template
   // still uses, cannot be deleted — the reference would dangle, today's workout
@@ -337,7 +382,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const handleDiscardMinimized = () => {
     clearSessionCache();
     setMinimizedSession(null);
-    setPendingSummary(null);
+    clearPendingSummary();
   };
 
   const activeProgram = storage.activeProgramId
@@ -492,7 +537,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           destructiveAction={{
             label: 'Discard workout',
             confirmLabel: 'Tap again to discard this workout',
-            onClick: () => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); },
+            onClick: () => { clearSessionCache(); setMinimizedSession(null); clearPendingSummary(); setScreen({ type: 'dashboard' }); },
           }}
         >
           <ActiveSession
@@ -506,8 +551,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             defaultRestSeconds={storage.preferences.defaultRestSeconds}
             cachedSession={screen.resumed ? getSessionCache() : null}
-            onFinish={(session) => { setPendingSummary(session); }}
-            onCancel={() => { clearSessionCache(); setMinimizedSession(null); setPendingSummary(null); setScreen({ type: 'dashboard' }); }}
+            onFinish={(session) => showPendingSummary(session, screen.templateId)}
+            onCancel={() => { clearSessionCache(); setMinimizedSession(null); clearPendingSummary(); setScreen({ type: 'dashboard' }); }}
             onMinimize={handleMinimize}
             onUpdateTemplate={(t) => storage.saveTemplate(t)}
             hideTimersPref={storage.preferences.hideTimers}
@@ -526,6 +571,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           <SessionSummary
             session={pendingSummary}
             weightUnit={storage.preferences.weightUnit}
+            autoSaveAt={finished?.autoSaveAt}
             // The session cache is the only other copy of this workout, and the
             // summary is the only screen offering a retry, so neither may be
             // torn down until the upsert has actually landed.
@@ -534,7 +580,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               if (!saved) return;
               clearSessionCache();
               setMinimizedSession(null);
-              setPendingSummary(null);
+              clearPendingSummary();
               setScreen({ type: 'dashboard' });
             })}
             onSaveAsTemplate={() => guardedSave(async () => {
@@ -543,14 +589,14 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               clearSessionCache();
               storage.saveTemplate(templateFromSession(pendingSummary, undefined, storage.preferences.defaultRestSeconds, customExercises));
               setMinimizedSession(null);
-              setPendingSummary(null);
+              clearPendingSummary();
               setScreen({ type: 'dashboard' });
             })}
-            onContinue={() => setPendingSummary(null)}
+            onContinue={() => clearPendingSummary()}
             onClose={() => {
               clearSessionCache();
               setMinimizedSession(null);
-              setPendingSummary(null);
+              clearPendingSummary();
               setScreen({ type: 'dashboard' });
             }}
           />
@@ -948,7 +994,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
                 const next = pendingStart;
                 clearSessionCache();
                 setMinimizedSession(null);
-                setPendingSummary(null);
+                clearPendingSummary();
                 setPendingStart(null);
                 if (next) setScreen(next);
               }}
