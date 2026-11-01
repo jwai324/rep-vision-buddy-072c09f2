@@ -345,14 +345,16 @@ CREATE TRIGGER coach_link_ended AFTER DELETE ON public.coach_links
 -- client's calendar rows at a program of the coach's own and, after the link
 -- ended, delete that program — and the cascade would delete the client's
 -- rows, completed history included, with no coach policy involved and nothing
--- logged. Keying the reference on (id, user_id) makes it impossible for a
--- row to point at another account's program at all. Existing rows all agree
--- (checked on production before this was written: 0 mismatched, 0 orphans).
+-- logged. A second reference keyed on (id, user_id) makes it impossible for a
+-- row to point at another account's program at all. The original
+-- program_id-only key stays: with this one in place every row it cascades
+-- from is the same account's anyway, so dropping it would gain nothing.
+-- Existing rows all agree (checked on production before this was written:
+-- 0 mismatched, 0 orphans).
 ALTER TABLE public.workout_programs
   ADD CONSTRAINT workout_programs_id_user_id_key UNIQUE (id, user_id);
-ALTER TABLE public.future_workouts DROP CONSTRAINT future_workouts_program_id_fkey;
 ALTER TABLE public.future_workouts
-  ADD CONSTRAINT future_workouts_program_id_fkey
+  ADD CONSTRAINT future_workouts_program_owner_fkey
   FOREIGN KEY (program_id, user_id) REFERENCES public.workout_programs (id, user_id) ON DELETE CASCADE;
 
 -- 8. RPCs ------------------------------------------------------------------
