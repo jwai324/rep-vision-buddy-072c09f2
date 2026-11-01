@@ -10,9 +10,11 @@
  * key added anywhere in the app belongs in this list.
  */
 export const ACTIVE_SESSION_CACHE_KEY = 'active-session-cache';
+export const FINISHED_WORKOUT_KEY = 'finished-workout-pending';
 
 export const USER_DRAFT_KEYS = [
   ACTIVE_SESSION_CACHE_KEY,
+  FINISHED_WORKOUT_KEY,
   'ai-chat-input-draft',
   'ai_program_builder_draft',
   'program_builder_draft',

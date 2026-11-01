@@ -1,6 +1,7 @@
-import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
+import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY, FINISHED_WORKOUT_KEY } from '@/utils/localDrafts';
 import { releaseRestSchedule } from '@/utils/restTimerScheduler';
 import type { ActiveSessionCache } from '@/types/activeSession';
+import type { WorkoutSession } from '@/types/workout';
 
 /**
  * The workout in progress, as it was last written.
@@ -38,8 +39,65 @@ export const SESSION_CACHE_CLEARING_EVENT = 'repvision:session-cache-clearing';
 export function clearSessionCache() {
   window.dispatchEvent(new Event(SESSION_CACHE_CLEARING_EVENT));
   localStorage.removeItem(CACHE_KEY);
+  // Its auto-save goes with it: every path that ends a workout (save,
+  // discard, start-new) comes through here, so none can leave a deadline
+  // behind that later saves a workout the user threw away.
+  setFinishedWorkout(null);
   // The workout is over, so is its rest: the scheduler outlives the session
   // screen on purpose (a minimized session keeps its rest), and this is the one
   // signal that the session it belonged to is gone.
   releaseRestSchedule();
+}
+
+/** How long the Workout Complete screen waits for a choice before saving. */
+export const FINISHED_AUTO_SAVE_MS = 10 * 60 * 1000;
+
+/**
+ * A workout that reached the Workout Complete screen and has not been saved,
+ * continued or discarded yet, with the moment it saves itself.
+ *
+ * Persisted rather than held in a timer because a timer does not survive what
+ * the deadline has to: a phone that locks freezes the page, and a page frozen
+ * long enough is discarded. The deadline is a timestamp, so whichever comes
+ * first — the timer, the tab becoming visible again, or the next cold load —
+ * sees it has passed and saves. The session itself was fixed at Finish
+ * (date, start time, duration), so a save that lands late writes the same row.
+ */
+export interface FinishedWorkout {
+  session: WorkoutSession;
+  templateId?: string;
+  autoSaveAt: number;
+}
+
+/**
+ * The pending finished workout, or null. A record whose session cache is gone
+ * is stale — the workout it belonged to has ended by some path — and is
+ * dropped here, so it can never save a workout the user discarded.
+ */
+export function getFinishedWorkout(): FinishedWorkout | null {
+  try {
+    const raw = localStorage.getItem(FINISHED_WORKOUT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<FinishedWorkout> | null;
+    const valid = !!parsed
+      && typeof parsed.autoSaveAt === 'number'
+      && typeof parsed.session?.id === 'string'
+      && localStorage.getItem(CACHE_KEY) !== null;
+    if (!valid) {
+      localStorage.removeItem(FINISHED_WORKOUT_KEY);
+      return null;
+    }
+    return parsed as FinishedWorkout;
+  } catch {
+    return null;
+  }
+}
+
+export function setFinishedWorkout(finished: FinishedWorkout | null): void {
+  try {
+    if (finished) localStorage.setItem(FINISHED_WORKOUT_KEY, JSON.stringify(finished));
+    else localStorage.removeItem(FINISHED_WORKOUT_KEY);
+  } catch {
+    // Storage unavailable: the in-memory timer still runs for this page load.
+  }
 }

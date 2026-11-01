@@ -56,6 +56,8 @@ interface SessionSummaryProps {
   onReperform?: (session: WorkoutSession) => void;
   onShare?: (session: WorkoutSession) => void;
   isViewMode?: boolean;
+  /** Epoch ms at which an unanswered summary saves itself; shown, not acted on. */
+  autoSaveAt?: number;
   /**
    * Custom-exercise definitions to resolve input modes against. Supplied by the
    * public share page, which renders this component outside the app's provider
@@ -71,7 +73,7 @@ function formatDuration(s: number) {
   return `${m}m ${sec}s`;
 }
 
-export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, onShare, isViewMode, customExercises: customExercisesProp }) => {
+export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightUnit = 'kg', onSave, onSaveAsTemplate, onClose, onDelete, onEdit, onUpdateSession, onContinue, onReperform, onShare, isViewMode, autoSaveAt, customExercises: customExercisesProp }) => {
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -325,6 +327,19 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({ session, weightU
             {parseLocalDate(session.date).toLocaleDateString()}
             {session.startedAt && ` · Started at ${format(new Date(session.startedAt), 'h:mm a')}`}
           </p>
+        </div>
+      )}
+
+      {/* The bottom one sits under every exercise card; this one is reachable
+          without scrolling past a long workout. */}
+      {!isViewMode && (
+        <div className="flex flex-col gap-1">
+          <Button variant="neon" onClick={onSave} className="w-full">Save Workout</Button>
+          {autoSaveAt !== undefined && (
+            <p className="text-xs text-muted-foreground text-center">
+              Saves automatically at {format(new Date(autoSaveAt), 'h:mm a')}
+            </p>
+          )}
         </div>
       )}
 

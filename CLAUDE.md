@@ -701,6 +701,31 @@ link used to change screen without minimizing — leaving a live session with no
 bar and no way back short of a reload. Both now minimize first. Tests:
 `src/test/activeSessionStaleCache.test.tsx`.
 
+## An unanswered Workout Complete screen saves itself
+
+Ten minutes (`FINISHED_AUTO_SAVE_MS`) after Finish with no Save, Save as
+Template, Continue or Discard, the workout saves exactly as Save Workout would.
+The summary's workout and its deadline are persisted (`FinishedWorkout` in
+`src/utils/sessionCache.ts`), not held in a timer, because what the deadline
+must survive is a locked phone (timers frozen) and a tab the browser discards
+while frozen. `useFinishedAutoSave` checks the deadline on its timer, whenever
+the tab becomes visible, and on mount, so a late save lands the moment the app
+next runs; the session's date and duration were fixed at Finish, so a late save
+writes the same row. It cannot save while the page is not running at all —
+that would need a server-side job — so a workout finished on a phone that then
+sleeps reaches other devices only once the phone is woken or reopened.
+
+Three rules hold it together. `clearSessionCache` clears the record too, and
+`getFinishedWorkout` drops one whose session cache is gone, so no path that
+ends a workout can leave a deadline that later saves a discarded one. The
+auto-save re-reads the stored record before writing, because that is what
+every tab shares: Continue in one tab must stop another tab's copy of the
+deadline. And the hook runs in `Index`, not in `SessionSummary`, so it keeps
+running with the session minimized. Back with the summary open still
+un-finishes the workout (it is Continue), and cancels the auto-save with it.
+The update-template prompt that can come *before* the summary is not covered.
+Tests: `src/test/finishedAutoSave.test.tsx`.
+
 ## The stopwatch set is keyed by position
 
 `runningSet` and `countdown` in `ActiveSession` hold a block index and a set
