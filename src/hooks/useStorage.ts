@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, type MutableRefObject } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { useCoach } from '@/contexts/CoachContext';
 import type { WorkoutSession, WorkoutTemplate, WorkoutProgram, FutureWorkout } from '@/types/workout';
 import type { Database } from '@/integrations/supabase/types';
 import { addDays, addWeeks, getDay, format } from 'date-fns';
@@ -429,13 +429,24 @@ function noteWrite(serial: MutableRefObject<number>): void {
   serial.current += 1;
 }
 
+function withoutTier(updates: Partial<UserProfile>): Partial<UserProfile> {
+  const rest = { ...updates };
+  delete rest.subscriptionTier;
+  return rest;
+}
+
 export function useStorage() {
-  const { user } = useAuth();
-  // Supabase hands back a freshly deserialized user object on every auth
-  // event — including the token refreshes that fire when the tab regains
-  // focus. Keying the load on the id means a same-user refresh no longer
-  // re-runs it, which is what used to throw the whole app back to a spinner.
-  const userId = user?.id ?? null;
+  // Whose rows these are: the signed-in user's, or the client a coach is
+  // acting as. Every read and write below is scoped to it explicitly — under
+  // the coach policies RLS lets a coach reach their clients' rows too, so a
+  // `user_id` filter is what keeps one account's data from mixing into
+  // another's, never a redundancy. Keyed on the id, not the auth user object:
+  // Supabase hands back a freshly deserialized user on every token refresh,
+  // and keying on its identity re-ran the whole load on every refocus.
+  const { ownerId, authUserId, accessLost } = useCoach();
+  const userId = ownerId;
+  // Index is remounted when this changes, so it is fixed for the hook's life.
+  const actingAsClient = !!userId && userId !== authUserId;
   const [history, setHistory] = useState<WorkoutSession[]>([]);
   // Read by the save path to see the record as it was before this write, and
   // by the scheduled-completion release to see what is still logged on a date.
@@ -501,8 +512,10 @@ export function useStorage() {
     }
 
     // Paint last-known-good data immediately; the network load below then
-    // overwrites it. A miss just falls through to the old spinner path.
-    const cached = readStorageCache(userId);
+    // overwrites it. A miss just falls through to the old spinner path. A
+    // client's data is never snapshotted on a coach's device: it would outlive
+    // the coach's access, and the snapshot store keeps one account at a time.
+    const cached = actingAsClient ? null : readStorageCache(userId);
     if (cached) {
       setHistory(cached.history);
       setTemplates(cached.templates);
@@ -581,6 +594,16 @@ export function useStorage() {
           ['profile', profileRes.error],
           ['measurements', measurementsRes.error],
         ] as const).filter(([, error]) => error != null);
+
+        // Every account has a profile row (handle_new_user writes it, and no
+        // one can delete it), so a clean load without one means RLS no longer
+        // lets this coach see the client: the link was ended. RLS answers that
+        // with empty results, not an error, and painting them would show — and
+        // let the coach edit — an empty account.
+        if (actingAsClient && failures.length === 0 && !profileRes.data) {
+          accessLost(userId);
+          return;
+        }
 
         if (sessionsRes.data) setHistory(sessionsRes.data.map(mapSession));
         if (templatesRes.data) {
@@ -679,13 +702,13 @@ export function useStorage() {
 
     load();
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, actingAsClient, accessLost]);
 
   // Snapshot after every settle, so the next open has something to paint.
   // Runs on real data changes too, not just loads, which keeps the cache warm
   // as the user edits.
   useEffect(() => {
-    if (!userId || loading) return;
+    if (!userId || loading || actingAsClient) return;
     // Only ever persist a snapshot we can stand behind. A first open whose
     // load failed has nothing but placeholders, and caching those as
     // last-known-good is what re-ran the tutorial over a real account.
@@ -695,7 +718,7 @@ export function useStorage() {
       futureWorkouts, preferences, profile, bodyMeasurements,
     };
     writeStorageCache(userId, snapshot);
-  }, [userId, loading, snapshotTrusted, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
+  }, [userId, actingAsClient, loading, snapshotTrusted, history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements]);
 
   /**
    * Put back the ticks a date no longer has a session behind. The mirror of
@@ -707,14 +730,14 @@ export function useStorage() {
     isRestDay: boolean,
     remaining: WorkoutSession[],
   ): Promise<void> => {
-    if (!user) return;
+    if (!userId) return;
     const release = futureWorkoutsReleasedOnDate(
       date, isRestDay, futureWorkoutsRef.current, remaining, templatesRef.current,
     );
     if (release.length === 0) return;
     const errors = await Promise.all(release.map(fw =>
       writeError(
-        supabase.from('future_workouts').update({ completed: false }).eq('id', fw.id).eq('user_id', user.id),
+        supabase.from('future_workouts').update({ completed: false }).eq('id', fw.id).eq('user_id', userId),
       ),
     ));
     const clearedIds = new Set(
@@ -724,7 +747,7 @@ export function useStorage() {
       console.error('[useStorage] scheduled workout release: some updates failed');
     }
     setFutureWorkouts(prev => prev.map(fw => clearedIds.has(fw.id) ? { ...fw, completed: false } : fw));
-  }, [user]);
+  }, [userId]);
 
   /**
    * Persist a session. `origin.templateId` is the template the workout was
@@ -740,14 +763,14 @@ export function useStorage() {
   // the save had succeeded while it tore down the only other copy.
   const saveSessionNow = useCallback(async (session: WorkoutSession, origin: SaveSessionOrigin = {}): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     // Captured before the write: the record as this date's calendar knew it.
     const priorRecord = historyRef.current.find(s => s.id === session.id);
     let error: unknown = null;
     try {
       ({ error } = await supabase.from('workout_sessions').upsert({
         id: session.id,
-        user_id: user.id,
+        user_id: userId,
         date: session.date,
         started_at: session.startedAt ?? null,
         exercises: session.exercises as unknown as Database['public']['Tables']['workout_sessions']['Insert']['exercises'],
@@ -799,7 +822,7 @@ export function useStorage() {
     if (matchingFws.length > 0) {
       const updateResults = await Promise.all(
         matchingFws.map(fw =>
-          supabase.from('future_workouts').update({ completed: true }).eq('id', fw.id).eq('user_id', user.id)
+          supabase.from('future_workouts').update({ completed: true }).eq('id', fw.id).eq('user_id', userId)
         )
       );
       const updatedIds = new Set(
@@ -813,7 +836,7 @@ export function useStorage() {
       setFutureWorkouts(prev => prev.map(fw => updatedIds.has(fw.id) ? { ...fw, completed: true } : fw));
     }
     return true;
-  }, [user, futureWorkouts, templates, releaseScheduledCompletions]);
+  }, [userId, futureWorkouts, templates, releaseScheduledCompletions]);
 
   // Writes to one session row are chained rather than raced. The summary's
   // recovery-activity chips fire a save per tap, and two in flight at once
@@ -850,7 +873,7 @@ export function useStorage() {
    */
   const saveTemplate = useCallback(async (template: WorkoutTemplate): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     // The stamp of the row this edit was built on, read before the local
     // apply below replaces it; a queued write is checked against it on
     // replay. null is a template new to this device. undefined is one whose
@@ -875,7 +898,7 @@ export function useStorage() {
     try {
       const res = await supabase.from('workout_templates').upsert({
         id: template.id,
-        user_id: user.id,
+        user_id: userId,
         name: template.name,
         exercises: template.exercises as unknown as Database['public']['Tables']['workout_templates']['Insert']['exercises'],
       }).select('updated_at').single();
@@ -888,22 +911,22 @@ export function useStorage() {
     if (error) {
       console.error('[useStorage] saveTemplate error:', error);
       toast.error('Failed to save template — it will retry when you\'re back online');
-      queuePendingTemplate(user.id, template, baseline);
+      queuePendingTemplate(userId, template, baseline);
       return false;
     }
-    clearPendingTemplate(user.id, template.id);
+    clearPendingTemplate(userId, template.id);
     // Applied again once the row is on the server, now carrying the stamp the
     // server gave it: a load that resolved in between read the pre-write rows
     // and painted over the early apply.
     applyTemplateLocally({ ...template, updatedAt });
     return true;
-  }, [user, applyTemplateLocally]);
+  }, [userId, applyTemplateLocally]);
 
   const deleteTemplate = useCallback(async (id: string): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     await pendingFlush.current;
-    const error = await writeError(supabase.from('workout_templates').delete().eq('id', id).eq('user_id', user.id));
+    const error = await writeError(supabase.from('workout_templates').delete().eq('id', id).eq('user_id', userId));
     if (error) {
       console.error('[useStorage] deleteTemplate error:', error);
       toast.error('Failed to delete template');
@@ -911,13 +934,13 @@ export function useStorage() {
     }
     // Otherwise a queued write for this template would recreate it on the
     // next load.
-    clearPendingTemplate(user.id, id);
+    clearPendingTemplate(userId, id);
     // The row is gone, so a stamp the replay left on it is no baseline for
     // anything written under this id again.
     replayedStamps.current.delete(id);
     setTemplates(prev => prev.filter(t => t.id !== id));
     return true;
-  }, [user]);
+  }, [userId]);
 
   // Resolves true only once the program row is written. Both builders used to
   // toast "saved", clear their draft and leave the screen before this had
@@ -925,7 +948,7 @@ export function useStorage() {
   // builder, the credits spent generating it.
   const saveProgram = useCallback(async (input: WorkoutProgram): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     // What is written is what every reader will trust: a frequency that
     // arrived invalid (the coach's tool, a share, a backup, or a row saved
     // before validation existed) is dropped here, so the stored program can
@@ -943,7 +966,7 @@ export function useStorage() {
     try {
       ({ error } = await supabase.from('workout_programs').upsert({
         id: program.id,
-        user_id: user.id,
+        user_id: userId,
         name: program.name,
         days: program.days as unknown as Database['public']['Tables']['workout_programs']['Insert']['days'],
         duration_weeks: program.durationWeeks ?? 8,
@@ -998,7 +1021,7 @@ export function useStorage() {
     let retireBefore: string | null = null;
     if (futureFws.length > 0) {
       const rows = futureFws.map(fw => ({
-        user_id: user.id,
+        user_id: userId,
         program_id: fw.programId,
         date: fw.date,
         template_id: fw.templateId,
@@ -1022,7 +1045,7 @@ export function useStorage() {
       .from('future_workouts')
       .delete()
       .eq('program_id', program.id)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .gte('date', today)
       .or('completed.is.null,completed.eq.false');
     if (retireBefore) retire = retire.lt('created_at', retireBefore);
@@ -1043,7 +1066,7 @@ export function useStorage() {
       return [...kept, ...inserted].sort((a, b) => a.date.localeCompare(b.date));
     });
     return true;
-  }, [user, programs, futureWorkouts]);
+  }, [userId, programs, futureWorkouts]);
 
   // Auto-heal previously-saved programs whose stored day.frequency values
   // collide on the same weekday (a bug in older AI Coach output that
@@ -1054,8 +1077,10 @@ export function useStorage() {
   const repairedProgramIds = useRef<Set<string>>(new Set());
   useEffect(() => {
     // loadedOk, not !loading: this writes back to the database, so it must
-    // never run against a hydrated-only or partially-failed load.
-    if (!user || !loadedOk) return;
+    // never run against a hydrated-only or partially-failed load. Not while a
+    // coach is looking, either: viewing a client must not rewrite their
+    // calendar (and log it as the coach's edit); their own device heals it.
+    if (!userId || !loadedOk || actingAsClient) return;
     for (const p of programs) {
       if (repairedProgramIds.current.has(p.id)) continue;
       const { days: normalized, changed } = normalizeProgramDays(p.days);
@@ -1067,7 +1092,7 @@ export function useStorage() {
       repairedProgramIds.current.add(p.id);
       saveProgram({ ...p, days });
     }
-  }, [user, loadedOk, programs, saveProgram]);
+  }, [userId, actingAsClient, loadedOk, programs, saveProgram]);
 
   // Auto-clear of the streak adjustment when the new mode has actually
   // produced a break is set up further below, after updatePreferences is
@@ -1075,11 +1100,11 @@ export function useStorage() {
 
   const setActiveProgram = useCallback(async (id: string | null): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     const previous = activeProgramId;
     setActiveProgramIdState(id);
     const { error } = await supabase.from('user_settings').upsert({
-      user_id: user.id,
+      user_id: userId,
       active_program_id: id,
     }, { onConflict: 'user_id' });
     if (error) {
@@ -1089,7 +1114,7 @@ export function useStorage() {
       return false;
     }
     return true;
-  }, [user, activeProgramId]);
+  }, [userId, activeProgramId]);
 
   // Resolves true only once the program row is gone. The calendar rows go
   // first and their delete is checked: there is no foreign key between the
@@ -1097,15 +1122,15 @@ export function useStorage() {
   // reappears on every load and blocks deleting the templates it names.
   const deleteProgram = useCallback(async (id: string): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
-    const calendarError = await writeError(supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', user.id));
+    if (!userId) return false;
+    const calendarError = await writeError(supabase.from('future_workouts').delete().eq('program_id', id).eq('user_id', userId));
     if (calendarError) {
       console.error('[useStorage] deleteProgram error:', calendarError);
       toast.error('Failed to delete program');
       return false;
     }
     setFutureWorkouts(prev => prev.filter(fw => fw.programId !== id));
-    const error = await writeError(supabase.from('workout_programs').delete().eq('id', id).eq('user_id', user.id));
+    const error = await writeError(supabase.from('workout_programs').delete().eq('id', id).eq('user_id', userId));
     if (error) {
       console.error('[useStorage] deleteProgram error:', error);
       toast.error('Failed to delete program');
@@ -1116,16 +1141,16 @@ export function useStorage() {
     // that no longer exists.
     if (activeProgramId === id) await setActiveProgram(null);
     return true;
-  }, [user, activeProgramId, setActiveProgram]);
+  }, [userId, activeProgramId, setActiveProgram]);
 
   const deleteSession = useCallback(async (id: string) => {
     noteWrite(writeSerial);
-    if (!user) return;
+    if (!userId) return;
     // Capture for rollback
     const previous = history;
     const removed = previous.find(s => s.id === id);
     setHistory(prev => prev.filter(s => s.id !== id));
-    const { error } = await supabase.from('workout_sessions').delete().eq('id', id).eq('user_id', user.id);
+    const { error } = await supabase.from('workout_sessions').delete().eq('id', id).eq('user_id', userId);
     if (error) {
       console.error('[useStorage] deleteSession error:', error);
       toast.error('Failed to delete session');
@@ -1142,14 +1167,14 @@ export function useStorage() {
         previous.filter(s => s.id !== id),
       );
     }
-  }, [user, history, releaseScheduledCompletions]);
+  }, [userId, history, releaseScheduledCompletions]);
 
   const updateFutureWorkout = useCallback(async (updated: FutureWorkout): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     const error = await writeError(supabase.from('future_workouts').upsert({
       id: updated.id,
-      user_id: user.id,
+      user_id: userId,
       program_id: updated.programId,
       date: updated.date,
       template_id: updated.templateId,
@@ -1168,12 +1193,12 @@ export function useStorage() {
       return [...prev, updated];
     });
     return true;
-  }, [user]);
+  }, [userId]);
 
   const deleteFutureWorkout = useCallback(async (id: string): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
-    const error = await writeError(supabase.from('future_workouts').delete().eq('id', id).eq('user_id', user.id));
+    if (!userId) return false;
+    const error = await writeError(supabase.from('future_workouts').delete().eq('id', id).eq('user_id', userId));
     if (error) {
       console.error('[useStorage] deleteFutureWorkout error:', error);
       toast.error('Failed to delete scheduled workout');
@@ -1181,14 +1206,14 @@ export function useStorage() {
     }
     setFutureWorkouts(prev => prev.filter(fw => fw.id !== id));
     return true;
-  }, [user]);
+  }, [userId]);
 
   // A second tap while a shift is in flight would move the calendar twice:
   // the RPC has no idempotency key and the button stays live until it answers.
   const shiftInFlight = useRef(false);
 
   const pushProgramBack = useCallback(async (programId: string, fromDate: string, days: number) => {
-    if (!user || days <= 0) return;
+    if (!userId || days <= 0) return;
     if (days > 366) {
       toast.error('Shift by 1 to 366 days');
       return;
@@ -1264,11 +1289,11 @@ export function useStorage() {
     } finally {
       shiftInFlight.current = false;
     }
-  }, [user, programs]);
+  }, [userId, programs]);
 
   const updatePreferences = useCallback(async (prefs: Partial<UserPreferences>) => {
     noteWrite(writeSerial);
-    if (!user) return;
+    if (!userId) return;
     // This upserts the whole settings row from local state. After a load that
     // failed with nothing cached, that state is DEFAULT_PREFERENCES, so writing
     // it would replace the user's real streak mode, target and unit with
@@ -1332,7 +1357,7 @@ export function useStorage() {
       customLocations: 'custom_locations',
       stickyNotes: 'sticky_notes',
     };
-    const payload: Record<string, unknown> = { user_id: user.id };
+    const payload: Record<string, unknown> = { user_id: userId };
     for (const key of changedKeys) payload[column[key]] = updated[key];
     const { error } = await supabase.from('user_settings').upsert(
       payload as Database['public']['Tables']['user_settings']['Insert'],
@@ -1343,7 +1368,7 @@ export function useStorage() {
       toast.error('Failed to save preferences');
       setPreferencesState(previous); // rollback
     }
-  }, [user, preferences, history, snapshotTrusted]);
+  }, [userId, preferences, history, snapshotTrusted]);
 
   // Once the new streak mode has produced an actual break (raw=0 for at
   // least one period past the day the adjustment was set), clear the
@@ -1354,8 +1379,9 @@ export function useStorage() {
   useEffect(() => {
     // loadedOk, not !loading: an empty `history` left by a failed sessions
     // query looks exactly like a broken streak, and this clears the
-    // adjustment in the database on the strength of it.
-    if (!user || !loadedOk) return;
+    // adjustment in the database on the strength of it. Skipped while a coach
+    // is acting as the client, like the program repair above.
+    if (!userId || !loadedOk || actingAsClient) return;
     if (preferences.streakAdjustment === 0 && preferences.streakAdjustmentSetAt === null) return;
     const { shouldClearAdjustment } = computeDisplayedStreak(
       history,
@@ -1369,11 +1395,15 @@ export function useStorage() {
     if (clearedAdjustmentAt.current === key) return;
     clearedAdjustmentAt.current = key;
     updatePreferences({ streakAdjustment: 0, streakAdjustmentSetAt: null });
-  }, [user, loadedOk, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
+  }, [userId, actingAsClient, loadedOk, history, preferences.streakMode, preferences.streakWeeklyTarget, preferences.streakAdjustment, preferences.streakAdjustmentSetAt, updatePreferences]);
 
-  const updateProfile = useCallback(async (updates: Partial<UserProfile>) => {
+  const updateProfile = useCallback(async (requested: Partial<UserProfile>) => {
     noteWrite(writeSerial);
-    if (!user) return;
+    if (!userId) return;
+    // The plan is billing, which stays the client's: the database refuses a
+    // coach's change to it (coach_write_guard), so it is never sent.
+    const updates = actingAsClient ? withoutTier(requested) : requested;
+    if (Object.keys(updates).length === 0) return;
     // Same whole-row hazard as updatePreferences: DEFAULT_PROFILE would blank
     // goal, equipment, injuries, age, height and drop the subscription tier.
     if (!snapshotTrusted) {
@@ -1399,7 +1429,7 @@ export function useStorage() {
     };
     const profileKeys = new Set<keyof UserProfile>(Object.keys(updates) as (keyof UserProfile)[]);
     if (profileKeys.has('goal')) profileKeys.add('hybridGoals');
-    const profilePayload: ProfileInsert = { user_id: user.id };
+    const profilePayload: ProfileInsert = { user_id: userId };
     for (const key of profileKeys) (profilePayload as Record<string, unknown>)[profileColumn[key]] = updated[key];
     const { error } = await supabase
       .from('profiles')
@@ -1409,17 +1439,17 @@ export function useStorage() {
       toast.error('Failed to save profile');
       setProfileState(previous); // rollback
     }
-  }, [user, profile, snapshotTrusted]);
+  }, [userId, actingAsClient, profile, snapshotTrusted]);
 
   const addBodyMeasurement = useCallback(async (weightKg: number, date?: string): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     const id = crypto.randomUUID();
     const dateStr = date || format(new Date(), 'yyyy-MM-dd');
     const newRow: BodyMeasurement = { id, date: dateStr, weightKg };
     const previous = bodyMeasurements;
     setBodyMeasurements(prev => [newRow, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
-    const payload: BodyMeasurementInsert = { id, user_id: user.id, date: dateStr, weight_kg: weightKg };
+    const payload: BodyMeasurementInsert = { id, user_id: userId, date: dateStr, weight_kg: weightKg };
     const { error } = await supabase.from('body_measurements').insert(payload);
     if (error) {
       console.error('[useStorage] addBodyMeasurement error:', error);
@@ -1428,14 +1458,14 @@ export function useStorage() {
       return false;
     }
     return true;
-  }, [user, bodyMeasurements]);
+  }, [userId, bodyMeasurements]);
 
   const deleteBodyMeasurement = useCallback(async (id: string): Promise<boolean> => {
     noteWrite(writeSerial);
-    if (!user) return false;
+    if (!userId) return false;
     const previous = bodyMeasurements;
     setBodyMeasurements(prev => prev.filter(m => m.id !== id));
-    const { error } = await supabase.from('body_measurements').delete().eq('id', id);
+    const { error } = await supabase.from('body_measurements').delete().eq('id', id).eq('user_id', userId);
     if (error) {
       console.error('[useStorage] deleteBodyMeasurement error:', error);
       toast.error('Failed to delete measurement');
@@ -1443,7 +1473,7 @@ export function useStorage() {
       return false;
     }
     return true;
-  }, [user, bodyMeasurements]);
+  }, [userId, bodyMeasurements]);
 
   return {
     history, templates, programs, activeProgramId, futureWorkouts, preferences, profile, bodyMeasurements, loading, refreshing,

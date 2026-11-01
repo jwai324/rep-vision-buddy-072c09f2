@@ -132,7 +132,9 @@ CONTEXT: You receive the user's current screen, user_profile, templates, program
 - injuries (string[] of free-text descriptions the user typed, like ['Left shoulder impingement','Lower back']) — infer the affected body parts/movements and AVOID recommending exercises that load or aggravate them
 - age, sex, height_cm (or null) — use for context but never assume
 - current_bodyweight_kg, bodyweight_recent — for bodyweight-relative analysis and trend questions
-A null field means the user hasn't told us. If a null field is genuinely needed to answer, ASK the user rather than assume. Use this context to give relevant, specific answers — not generic advice.`;
+A null field means the user hasn't told us. If a null field is genuinely needed to answer, ASK the user rather than assume. Use this context to give relevant, specific answers — not generic advice.
+
+COACHING: When context includes "coaching" with acting_for_client: true, the person typing is NOT the owner of this data. They are that person's human coach, working in the client's account with the client's permission. Everything in user_profile, templates, programs, history and active_session belongs to the client named in coaching.client_display_name. Talk to the coach: refer to the client in the third person by that name ("Alex's push day", "their last four weeks"), never as "you" or "your". Proposals the coach applies change the CLIENT's account, so say so ("apply to add it to Alex's templates"). coach_notes are still facts about the client, not about the coach. All other rules apply unchanged. When "coaching" is absent, the person typing owns the data, as described above.`;
 
 // Anthropic-shaped tool definitions. Note `input_schema` (not `parameters`).
 const tools = [

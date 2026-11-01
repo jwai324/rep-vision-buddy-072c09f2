@@ -26,7 +26,8 @@ interface TemplatesScreenProps {
   /** Names of the programs that schedule this template; deletion is refused while any do. */
   usedBy?: (id: string) => string[];
   onDuplicate: (template: WorkoutTemplate) => void;
-  onShare: (template: WorkoutTemplate) => void;
+  // Absent while a coach acts as a client: share links stay the client's own.
+  onShare?: (template: WorkoutTemplate) => void;
   onCreate: () => void;
   onBack: () => void;
 }
@@ -104,9 +105,11 @@ export const TemplatesScreen: React.FC<TemplatesScreenProps> = ({ templates, onS
               <div className="flex gap-2">
                 <Button variant="neon" size="sm" onClick={() => onStart(t)}>Start</Button>
                 <Button variant="outline" size="sm" onClick={() => onEdit(t)}>Edit</Button>
-                <Button variant="ghost" size="sm" onClick={() => onShare(t)} aria-label={`Share ${t.name}`}>
-                  <Share2 className="w-4 h-4" />
-                </Button>
+                {onShare && (
+                  <Button variant="ghost" size="sm" onClick={() => onShare(t)} aria-label={`Share ${t.name}`}>
+                    <Share2 className="w-4 h-4" />
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ id: t.id, name: t.name })} className="text-set-failure">Delete</Button>
               </div>
 

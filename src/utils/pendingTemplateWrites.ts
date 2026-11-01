@@ -141,6 +141,15 @@ export function clearPendingTemplate(userId: string, templateId: string): void {
   if (rest.length !== entries.length) write(userId, rest);
 }
 
+/**
+ * Drop every queued write for one owner. A coach's queue for a client is keyed
+ * by the client (the replay writes `user_id` from the key), so when the coach
+ * loses access it can never replay and must not linger on the device.
+ */
+export function clearPendingTemplatesFor(userId: string): void {
+  write(userId, []);
+}
+
 /** Called on sign-out so the next account on this device starts clean. */
 export function clearAllPendingTemplates(): void {
   try {

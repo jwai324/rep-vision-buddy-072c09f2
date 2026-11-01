@@ -20,13 +20,16 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 vi.mock('@/integrations/supabase/client', () => {
   const ok = { data: [], error: null };
+  const changed = { data: [{ id: 'row' }], error: null };
   return {
     supabase: {
       from: () => ({
-        select: () => ({ order: () => Promise.resolve(ok) }),
+        select: () => ({ eq: () => ({ order: () => Promise.resolve(ok) }) }),
         insert: () => Promise.resolve(ok),
-        update: () => ({ eq: () => Promise.resolve(ok) }),
-        delete: () => ({ eq: () => Promise.resolve(ok) }),
+        // Updates and deletes are scoped to the owner and read back, so a
+        // refusal that changes nothing is not reported as a success.
+        update: () => ({ eq: () => ({ eq: () => ({ select: () => Promise.resolve(changed) }) }) }),
+        delete: () => ({ eq: () => ({ eq: () => ({ select: () => Promise.resolve(changed) }) }) }),
       }),
     },
   };

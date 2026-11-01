@@ -7,13 +7,14 @@ import { SPEECH_ERROR_MESSAGES, withSpoken } from '@/utils/speechToText';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { ProposalDiffCard } from '@/components/chat/ProposalDiffCard';
+import { useOwnerDraftKey } from '@/contexts/CoachContext';
+import { AI_CHAT_DRAFT_KEY } from '@/utils/localDrafts';
 
 const MAX_CHAT_CHARS = 500;
 // Cap the auto-growing input at 3 visible lines; anything longer scrolls
 // internally. Chosen so drafting/editing a fuller message is comfortable
 // without letting the input consume too much of the chat panel.
 const MAX_INPUT_ROWS = 3;
-const DRAFT_STORAGE_KEY = 'ai-chat-input-draft';
 const PULSE_SEEN_KEY = 'ai-chat-pulse-seen';
 
 const TypingIndicator = () => (
@@ -59,9 +60,12 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
     return map;
   }, [templates]);
 
+  // Per account on screen: a message half-typed about one client must not
+  // follow the coach into another account.
+  const draftKey = useOwnerDraftKey(AI_CHAT_DRAFT_KEY);
   const [input, setInput] = useState(() => {
     try {
-      return localStorage.getItem(DRAFT_STORAGE_KEY) ?? '';
+      return localStorage.getItem(draftKey) ?? '';
     } catch {
       return '';
     }
@@ -70,14 +74,14 @@ export const AIChatBubble: React.FC<AIChatBubbleProps> = ({ templates, onOpenCre
   useEffect(() => {
     try {
       if (input) {
-        localStorage.setItem(DRAFT_STORAGE_KEY, input);
+        localStorage.setItem(draftKey, input);
       } else {
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        localStorage.removeItem(draftKey);
       }
     } catch {
       // storage unavailable (private mode, quota) — draft just won't persist
     }
-  }, [input]);
+  }, [input, draftKey]);
 
   const [hasSeenPulse, setHasSeenPulse] = useState(() => {
     try {

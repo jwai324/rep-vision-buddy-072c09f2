@@ -15,6 +15,8 @@ import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { blocksToExercises, templateToBlocks, type TemplateBlock } from '@/utils/templateBlocks';
 import { fingerprint } from '@/utils/draftFingerprint';
 import { TemplateExerciseEditor, type BlocksUpdate } from '@/components/TemplateExerciseEditor';
+import { useOwnerDraftKey } from '@/contexts/CoachContext';
+import { PROGRAM_BUILDER_DRAFT_KEY } from '@/utils/localDrafts';
 
 interface ProgramBuilderProps {
   templates: WorkoutTemplate[];
@@ -36,7 +38,6 @@ const FREQUENCY_OPTIONS = [
   { value: 'monthly', label: 'Monthly on day…' },
 ];
 
-const DRAFT_KEY = 'program_builder_draft';
 
 /** Unsaved edits to the templates the program's days point at, keyed by template id. */
 type TemplateDrafts = Record<string, TemplateBlock[]>;
@@ -64,9 +65,9 @@ const templateSource = (template: WorkoutTemplate): string =>
  * draft written before the sources were recorded cannot be checked and is
  * dropped, as is a template draft whose template is gone.
  */
-function loadDraft(initial: WorkoutProgram | undefined, templates: WorkoutTemplate[]): ProgramDraft {
+function loadDraft(draftKey: string, initial: WorkoutProgram | undefined, templates: WorkoutTemplate[]): ProgramDraft {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(draftKey);
     if (raw) {
       const draft = JSON.parse(raw);
       const sameProgram = (draft.id ?? null) === (initial?.id ?? null);
@@ -109,7 +110,8 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
 }) => {
   const exerciseLookup = useExerciseLookup();
   const { exercises: customExercises } = useCustomExercisesContext();
-  const [draft] = useState(() => loadDraft(initial, templates));
+  const draftKey = useOwnerDraftKey(PROGRAM_BUILDER_DRAFT_KEY);
+  const [draft] = useState(() => loadDraft(draftKey, initial, templates));
   const [name, setName] = useState(draft.name);
   const [durationWeeks, setDurationWeeks] = useState(draft.durationWeeks);
   const [startDate] = useState(() => parseLocalDate(initial?.startDate ?? formatLocalDate()));
@@ -133,15 +135,15 @@ export const ProgramBuilder: React.FC<ProgramBuilderProps> = ({
       for (const id of Object.keys(templateDrafts)) {
         if (templatesById[id]) templateSources[id] = templateSource(templatesById[id]);
       }
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      localStorage.setItem(draftKey, JSON.stringify({
         id: initial?.id ?? null, name, durationWeeks, days, templateDrafts, source, templateSources,
       }));
     } catch { /* ignore */ }
-  }, [name, durationWeeks, days, templateDrafts, initial?.id, source, templatesById]);
+  }, [draftKey, name, durationWeeks, days, templateDrafts, initial?.id, source, templatesById]);
 
   const clearDraft = React.useCallback(() => {
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-  }, []);
+    try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+  }, [draftKey]);
 
   // What a tile shows until the user touches the template. Recomputed when the
   // custom library lands so names and band levels resolve, as the template

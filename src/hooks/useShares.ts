@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCoach } from '@/contexts/CoachContext';
 import { toast } from 'sonner';
 import type { ShareKind, ShareListItem, ShareSnapshot } from '@/types/share';
 import type { Database } from '@/integrations/supabase/types';
@@ -63,6 +64,11 @@ export function useShares({ autoFetch = true }: UseSharesOptions = {}) {
   // Keyed on the id, not the user object — a token refresh hands back a fresh
   // object and would otherwise refetch the list on every tab refocus.
   const userId = user?.id ?? null;
+  // Share links are the signed-in user's own and are never published from a
+  // client's account: the row would be the coach's, full of the client's data,
+  // and the client could neither see nor revoke it. The entry points are
+  // hidden while coaching; this is the backstop.
+  const { actingAs } = useCoach();
   const [shares, setShares] = useState<ShareListItem[]>([]);
   const [loading, setLoading] = useState(autoFetch);
 
@@ -101,6 +107,10 @@ export function useShares({ autoFetch = true }: UseSharesOptions = {}) {
     payload: ShareSnapshot;
   }): Promise<string | null> => {
     if (!userId) return null;
+    if (actingAs) {
+      toast.error("Share links can't be created while coaching.");
+      return null;
+    }
 
     const serialized = JSON.stringify(args.payload);
     if (serialized.length > MAX_PAYLOAD_BYTES) {
@@ -158,7 +168,7 @@ export function useShares({ autoFetch = true }: UseSharesOptions = {}) {
     }
     await refreshList();
     return data.token;
-  }, [userId, refreshList]);
+  }, [userId, actingAs, refreshList]);
 
   /** Look up the live share for a source without creating one. */
   const findLiveShare = useCallback(async (kind: ShareKind, sourceId: string): Promise<string | null> => {

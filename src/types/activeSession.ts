@@ -89,6 +89,12 @@ export interface ActiveSessionCache {
   // the snapshot: a cold reload rebuilds the screen from this cache alone, and
   // without the id there is no template to offer to update.
   templateId?: string | null;
+  // Whose workout this is: the signed-in user's own id, or a client's when a
+  // coach is logging it for them. The coach context resumes a cold start in
+  // this identity, so the workout is saved into the account it was started
+  // for. Absent on caches written before coach mode, which belong to the
+  // signed-in user.
+  ownerUserId?: string;
 }
 
 export const SUPERSET_COLORS = [

@@ -65,6 +65,93 @@ export type Database = {
         }
         Relationships: []
       }
+      coach_activity: {
+        Row: {
+          action: string
+          changed_fields: string[]
+          client_id: string
+          coach_id: string | null
+          coach_name: string | null
+          created_at: string
+          id: string
+          labels: string[]
+          row_count: number
+          table_name: string
+        }
+        Insert: {
+          action: string
+          changed_fields?: string[]
+          client_id: string
+          coach_id?: string | null
+          coach_name?: string | null
+          created_at?: string
+          id?: string
+          labels?: string[]
+          row_count?: number
+          table_name: string
+        }
+        Update: {
+          action?: string
+          changed_fields?: string[]
+          client_id?: string
+          coach_id?: string | null
+          coach_name?: string | null
+          created_at?: string
+          id?: string
+          labels?: string[]
+          row_count?: number
+          table_name?: string
+        }
+        Relationships: []
+      }
+      coach_invites: {
+        Row: {
+          client_id: string
+          code: string
+          created_at: string
+          expires_at: string
+          redeemed_at: string | null
+          redeemed_by: string | null
+        }
+        Insert: {
+          client_id: string
+          code: string
+          created_at?: string
+          expires_at?: string
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+        }
+        Update: {
+          client_id?: string
+          code?: string
+          created_at?: string
+          expires_at?: string
+          redeemed_at?: string | null
+          redeemed_by?: string | null
+        }
+        Relationships: []
+      }
+      coach_links: {
+        Row: {
+          client_id: string
+          coach_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          client_id: string
+          coach_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          client_id?: string
+          coach_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
       custom_exercises: {
         Row: {
           created_at: string
@@ -763,6 +850,13 @@ export type Database = {
           paid_balance_micros: number
         }[]
       }
+      create_coach_invite: {
+        Args: never
+        Returns: {
+          invite_code: string
+          invite_expires_at: string
+        }[]
+      }
       end_ai_turn: { Args: { p_user_id: string }; Returns: undefined }
       get_shared_item: {
         Args: { p_token: string }
@@ -786,6 +880,24 @@ export type Database = {
           new_balance_micros: number
         }[]
       }
+      list_my_clients: {
+        Args: never
+        Returns: {
+          client_id: string
+          display_name: string
+          link_id: string
+          linked_at: string
+        }[]
+      }
+      list_my_coaches: {
+        Args: never
+        Returns: {
+          coach_id: string
+          display_name: string
+          link_id: string
+          linked_at: string
+        }[]
+      }
       record_ai_usage: {
         Args: {
           p_cache_creation_tokens?: number
@@ -796,6 +908,13 @@ export type Database = {
           p_user_id: string
         }
         Returns: undefined
+      }
+      redeem_coach_invite: {
+        Args: { p_code: string }
+        Returns: {
+          client_id: string
+          client_name: string
+        }[]
       }
       shift_program_workouts: {
         Args: {

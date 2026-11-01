@@ -1,13 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useReducer } from 'react';
 import { toast } from 'sonner';
 import { useStorage } from '@/hooks/useStorage';
 import { BrowseExercisesScreen } from '@/components/BrowseExercisesScreen';
 import { Dashboard } from '@/components/Dashboard';
 import { ActiveSession } from '@/components/ActiveSession';
 import {
-  getSessionCache, clearSessionCache,
+  getSessionCache, clearSessionCache, setSessionCacheOwner,
   getFinishedWorkout, setFinishedWorkout, FINISHED_AUTO_SAVE_MS, type FinishedWorkout,
 } from '@/utils/sessionCache';
+import { useCoach, type ActingAs } from '@/contexts/CoachContext';
+import { CoachBanner, CoachFrame, ForeignWorkoutBar } from '@/components/CoachBanner';
+import { clientLabel } from '@/utils/clientLabel';
+import { CoachingScreen } from '@/components/CoachingScreen';
+import type { ActiveSessionCache } from '@/types/activeSession';
 import { useFinishedAutoSave } from '@/hooks/useFinishedAutoSave';
 import { restoredSessionScreen } from '@/utils/sessionRestore';
 import { useScreenHistory } from '@/hooks/useScreenHistory';
@@ -85,6 +90,7 @@ type Screen =
   | { type: 'aiProgramBuilder' }
   | { type: 'customExercises' }
   | { type: 'sharedLinks' }
+  | { type: 'coaching' }
   | { type: 'monthlyCalendar' };
 
 // Clearance for the fixed AI chat FAB (bottom-6 = 24px + h-14 = 56px, plus breathing room)
@@ -95,11 +101,27 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const { registerScreen } = useChatContext();
   const { exercises: customExercises, addExercise: addCustomExercise, deleteExercise: deleteCustomExercise, updateExercise: updateCustomExercise } = useCustomExercisesContext();
   const tutorial = useTutorial();
+  const coach = useCoach();
+  // Set while a coach is acting as a client: the data on screen is the
+  // client's, and everything that belongs to the person holding the phone
+  // (share links, credits, the tutorial, backups) is out of reach.
+  const acting = coach.actingAs;
+  // The workout in progress, but only when it is this account's. One belonging
+  // to another account (a second tab left in the other identity, a client who
+  // ended the link mid-workout) is never resumed, restored or auto-saved here —
+  // saving it would put it in the wrong history. ForeignWorkoutBar handles it.
+  const ownCache = (): ActiveSessionCache | null => {
+    const cache = getSessionCache();
+    return cache && (cache.ownerUserId ?? coach.authUserId) === coach.ownerId ? cache : null;
+  };
+  // Re-render after the foreign workout is kept or discarded: neither changes
+  // any state this component holds.
+  const [, refreshCacheView] = useReducer((n: number) => n + 1, 0);
   // On a cold load with a cached in-progress workout, surface a dashboard
   // banner instead of dropping the user straight back into the session.
   const [minimizedSession, setMinimizedSession] = useState<Screen | null>(
     () => {
-      const restored = restoredSessionScreen(getSessionCache());
+      const restored = restoredSessionScreen(ownCache());
       return restored ? { ...restored, resumed: true } : null;
     },
   );
@@ -132,7 +154,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   };
   // The Workout Complete screen's workout, persisted with its auto-save
   // deadline so a reload or a discarded tab picks the countdown back up.
-  const [finished, setFinished] = useState<FinishedWorkout | null>(() => getFinishedWorkout());
+  const [finished, setFinished] = useState<FinishedWorkout | null>(() => (ownCache() ? getFinishedWorkout() : null));
   const pendingSummary = finished?.session ?? null;
   const showPendingSummary = (session: WorkoutSession, templateId?: string) => {
     const next: FinishedWorkout = { session, templateId, autoSaveAt: Date.now() + FINISHED_AUTO_SAVE_MS };
@@ -180,7 +202,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     restore: s => {
       switch (s.type) {
         case 'activeSession': {
-          const cache = getSessionCache();
+          const cache = ownCache();
           return cache && (cache.templateId ?? null) === (s.templateId ?? null) ? { ...s, resumed: true } : null;
         }
         case 'sessionDetail':
@@ -225,7 +247,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     // The stored record is the one every tab shares: answered in another tab
     // (Continue, Discard, Save), it is gone there, and this tab's copy of the
     // deadline must not save a workout the user has since taken back.
-    if (getFinishedWorkout()?.session.id !== fw.session.id) {
+    if (!ownCache() || getFinishedWorkout()?.session.id !== fw.session.id) {
       setFinished(cur => (cur?.session.id === fw.session.id ? null : cur));
       return true;
     }
@@ -303,7 +325,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       summary: 'dashboard', sessionDetail: 'activity', activity: 'activity',
       futureWorkoutDetail: 'activity', templates: 'templates', templateBuilder: 'templates',
       programs: 'programs', programView: 'programs', programBuilder: 'programs', settings: 'settings',
-      profile: 'profile', sharedLinks: 'settings',
+      profile: 'profile', sharedLinks: 'settings', coaching: 'settings',
       analytics: 'analytics', aiProgramBuilder: 'programs',
     };
     registerScreen({ screen: screenMap[screen.type] || 'dashboard' });
@@ -318,6 +340,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const autoStartedRef = React.useRef(false);
   useEffect(() => {
     if (!storage.dataTrusted) return;
+    // The tour is the viewer's, not the account's: run on a coach's phone it
+    // would mark the client's own tutorial done.
+    if (acting) return;
     if (autoStartedRef.current) return;
     if (!storage.preferences.tutorialCompleted) {
       autoStartedRef.current = true;
@@ -325,7 +350,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       setScreen({ type: 'dashboard' });
       tutorial.start();
     }
-  }, [storage.dataTrusted, storage.preferences.tutorialCompleted, tutorial, setScreen]);
+  }, [storage.dataTrusted, acting, storage.preferences.tutorialCompleted, tutorial, setScreen]);
 
   // When entering active session during tutorial, jump to session steps
   useEffect(() => {
@@ -368,7 +393,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   // navigates away from a session without minimizing it is still caught.
   const inProgressScreen = (): Screen | null => {
     if (minimizedSession?.type === 'activeSession') return { ...minimizedSession, resumed: true };
-    const restored = restoredSessionScreen(getSessionCache());
+    const restored = restoredSessionScreen(ownCache());
     return restored ? { ...restored, resumed: true } : null;
   };
 
@@ -394,14 +419,43 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     setScreen,
   );
 
+  // Into or out of a client's account. Index is remounted on the new owner
+  // (App.tsx), so nothing on screen survives — which is why unsaved edits to a
+  // past workout must be dealt with first, and why the browser history is
+  // unwound to the root: the new instance cannot read this one's entries.
+  const switchIdentity = (next: ActingAs | null) => {
+    if (screen.type === 'editSession' && editGuardRef.current?.hasChanges) {
+      toast.error('Save or discard your edits to this workout first.');
+      return;
+    }
+    const ok = next ? coach.actAs(next) : coach.stopActing();
+    if (ok) setScreen({ type: 'dashboard' });
+  };
+
+  const rawCache = getSessionCache();
+  const foreignOwner = rawCache && (rawCache.ownerUserId ?? coach.authUserId) !== coach.ownerId
+    ? rawCache.ownerUserId ?? coach.authUserId
+    : null;
+  const foreignClient = foreignOwner ? coach.clients.find(c => c.clientId === foreignOwner) : undefined;
+  const foreignReachable = !!foreignOwner
+    && (foreignOwner === coach.authUserId || !!foreignClient || !coach.clientsLoaded);
+  const foreignOwnerName = foreignOwner === coach.authUserId
+    ? 'your own account'
+    : clientLabel(foreignClient?.displayName ?? (acting?.clientId === foreignOwner ? acting.displayName : null));
+
   if (storage.loading) {
     return (
-      <div className="max-w-lg mx-auto min-h-screen flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading your data…</p>
+      <>
+        <CoachBanner onSwitch={switchIdentity} />
+        <div className="max-w-lg mx-auto min-h-screen flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-muted-foreground">
+              {acting ? `Loading ${clientLabel(acting.displayName)}'s data…` : 'Loading your data…'}
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -410,6 +464,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   // under the new template, which then offered to overwrite the new template
   // with the old workout's exercises and marked the wrong scheduled entry done.
   const openSession = (next: Screen) => {
+    // The device holds one workout at a time; starting another would overwrite
+    // the one in progress for the other account.
+    if (foreignOwner) {
+      toast.error(`A workout for ${foreignOwnerName} is still in progress on this device. Switch to it or discard it first.`);
+      return;
+    }
     if (inProgressScreen()) {
       setPendingStart(next);
       return;
@@ -435,15 +495,19 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   };
 
   const showMinimizedBar = !!minimizedSession && screen.type !== 'activeSession';
+  const showForeignBar = !!foreignOwner && !showMinimizedBar && screen.type !== 'activeSession';
 
   return (
+    <>
+    <CoachBanner onSwitch={switchIdentity} />
+    <CoachFrame />
     <div className="flex min-h-screen w-full overflow-x-hidden">
       <DesktopSidebar activeScreen={screen.type} onNavigate={handleDesktopNav} />
       <div
         className="flex-1 max-w-3xl mx-auto min-h-screen overflow-x-hidden transition-[padding-bottom] duration-150"
         style={{
           paddingBottom: `calc(${
-            showMinimizedBar ? Math.max(MINIMIZED_BAR_HEIGHT, CHAT_BUBBLE_GUTTER) : CHAT_BUBBLE_GUTTER
+            showMinimizedBar || showForeignBar ? Math.max(MINIMIZED_BAR_HEIGHT, CHAT_BUBBLE_GUTTER) : CHAT_BUBBLE_GUTTER
           }px + env(safe-area-inset-bottom))`,
         }}
       >
@@ -550,7 +614,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             weightUnit={storage.preferences.weightUnit}
             defaultDropSetsEnabled={storage.preferences.defaultDropSetsEnabled}
             defaultRestSeconds={storage.preferences.defaultRestSeconds}
-            cachedSession={screen.resumed ? getSessionCache() : null}
+            cachedSession={screen.resumed ? ownCache() : null}
             onFinish={(session) => showPendingSummary(session, screen.templateId)}
             onCancel={() => { clearSessionCache(); setMinimizedSession(null); clearPendingSummary(); setScreen({ type: 'dashboard' }); }}
             onMinimize={handleMinimize}
@@ -757,7 +821,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             if (!saved) return;
             setScreen({ type: 'sessionDetail', session: updated, from: 'activity' });
           }}
-          onShare={(session) => setShareTarget({
+          onShare={acting ? undefined : (session) => setShareTarget({
             kind: 'session',
             sourceId: session.id,
             title: `Workout on ${parseLocalDate(session.date).toLocaleDateString()}`,
@@ -777,7 +841,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
             const copy = { ...t, id: crypto.randomUUID(), name: `${t.name} (2)` };
             storage.saveTemplate(copy);
           }}
-          onShare={(t) => setShareTarget({
+          onShare={acting ? undefined : (t) => setShareTarget({
             kind: 'template',
             sourceId: t.id,
             title: t.name,
@@ -810,7 +874,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onView={(p) => setScreen({ type: 'programView', programId: p.id })}
           onEdit={(p) => setScreen({ type: 'programBuilder', program: p })}
           onDelete={storage.deleteProgram}
-          onShare={(p) => setShareTarget({
+          onShare={acting ? undefined : (p) => setShareTarget({
             kind: 'program',
             sourceId: p.id,
             title: p.name,
@@ -857,9 +921,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           onBack={() => setScreen({ type: 'dashboard' })}
           onGoToCustomExercises={() => setScreen({ type: 'customExercises' })}
           onGoToProfile={() => setScreen({ type: 'profile' })}
-          onGoToCredits={() => setScreen({ type: 'credits' })}
-          onGoToSharedLinks={() => setScreen({ type: 'sharedLinks' })}
-          onReplayTutorial={() => {
+          onGoToCredits={acting ? undefined : () => setScreen({ type: 'credits' })}
+          onGoToSharedLinks={acting ? undefined : () => setScreen({ type: 'sharedLinks' })}
+          onGoToCoaching={acting ? undefined : () => setScreen({ type: 'coaching' })}
+          coachingClientName={acting ? clientLabel(acting.displayName) : undefined}
+          onExitCoaching={acting ? () => switchIdentity(null) : undefined}
+          onReplayTutorial={acting ? undefined : () => {
             setScreen({ type: 'dashboard' });
             // Defer to next tick so dashboard mounts before overlay measures
             setTimeout(() => tutorial.start(), 50);
@@ -879,7 +946,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
-      {screen.type === 'credits' && (
+      {screen.type === 'credits' && !acting && (
         <CreditsScreen
           profile={storage.profile}
           onUpdateProfile={storage.updateProfile}
@@ -929,8 +996,15 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         />
       )}
 
-      {screen.type === 'sharedLinks' && (
+      {screen.type === 'sharedLinks' && !acting && (
         <SharedLinksScreen onBack={() => setScreen({ type: 'settings' })} />
+      )}
+
+      {screen.type === 'coaching' && !acting && (
+        <CoachingScreen
+          onBack={() => setScreen({ type: 'settings' })}
+          onOpenClient={switchIdentity}
+        />
       )}
 
       {screen.type === 'monthlyCalendar' && (
@@ -959,7 +1033,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       {showMinimizedBar && (() => {
         // Read cache once so timerPaused / pausedElapsedSec stay consistent
         // with the workoutName/startTimestamp we display alongside.
-        const cache = getSessionCache();
+        const cache = ownCache();
         return (
           <MinimizedSessionBar
             workoutName={cache?.workoutName ?? 'Workout'}
@@ -971,6 +1045,30 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
           />
         );
       })()}
+
+      {showForeignBar && (
+        <ForeignWorkoutBar
+          workoutName={rawCache?.workoutName ?? 'Workout'}
+          ownerName={foreignOwnerName}
+          onSwitch={foreignReachable
+            ? () => switchIdentity(foreignOwner === coach.authUserId
+              ? null
+              : { clientId: foreignOwner as string, displayName: foreignClient?.displayName ?? null })
+            : undefined}
+          // Out of reach for good: the coach may keep what they logged in
+          // their own history instead of losing it, but only from their own
+          // account, where it would then save.
+          onKeep={!foreignReachable && !acting && coach.authUserId
+            ? () => {
+              if (!coach.authUserId || !setSessionCacheOwner(coach.authUserId)) return;
+              const restored = restoredSessionScreen(getSessionCache());
+              setMinimizedSession(restored ? { ...restored, resumed: true } : null);
+              setFinished(getFinishedWorkout());
+            }
+            : undefined}
+          onDiscard={() => { clearSessionCache(); refreshCacheView(); }}
+        />
+      )}
 
       <AlertDialog open={!!pendingStart} onOpenChange={(open) => { if (!open) setPendingStart(null); }}>
         <AlertDialogContent>
@@ -1011,7 +1109,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
       <AIChatBubble
         templates={storage.templates}
-        onOpenCredits={() => {
+        onOpenCredits={acting ? undefined : () => {
           if (screen.type === 'activeSession') setMinimizedSession(screen);
           setScreen({ type: 'credits' });
         }}
@@ -1020,14 +1118,18 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
       <ErrorReportButton screen={screen.type} />
       </div>
     </div>
+    </>
   );
 };
 
 const Index = () => {
   const storage = useStorage();
+  const { actingAs } = useCoach();
   const handleTutorialComplete = React.useCallback(() => {
+    // Never written into a client's settings from a coach's phone.
+    if (actingAs) return;
     storage.updatePreferences({ tutorialCompleted: true });
-  }, [storage]);
+  }, [storage, actingAs]);
   return (
     <CustomExercisesProvider>
       {/* Wraps everything below the auth provider, so a crash anywhere in the

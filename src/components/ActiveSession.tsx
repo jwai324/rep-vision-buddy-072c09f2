@@ -68,6 +68,7 @@ export { ExerciseTable, type ExerciseTableProps } from '@/components/ExerciseTab
 
 import { ACTIVE_SESSION_CACHE_KEY as CACHE_KEY } from '@/utils/localDrafts';
 import { SESSION_CACHE_CLEARING_EVENT } from '@/utils/sessionCache';
+import { useCoach } from '@/contexts/CoachContext';
 const DEFAULT_LOCATION = 'Home Gym';
 
 // Bounds for the in-session rest-length editor. The floor is 5s rather than 0
@@ -195,7 +196,12 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // that template with the old workout's exercises. Index only hands the cache
   // to a screen that is resuming; this is the backstop for any path that
   // forgets to.
-  const cachedSession = cachedSessionProp && (cachedSessionProp.templateId ?? null) === (templateId ?? null)
+  // The same goes for the account: a workout started for one account is never
+  // picked up under another (Index's `ownCache` is the first line of that).
+  const { ownerId, authUserId } = useCoach();
+  const cachedSession = cachedSessionProp
+    && (cachedSessionProp.templateId ?? null) === (templateId ?? null)
+    && (cachedSessionProp.ownerUserId ?? authUserId) === ownerId
     ? cachedSessionProp
     : null;
   const distanceUnit = distanceUnitFromWeightUnit(weightUnit);
@@ -616,6 +622,10 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
   // the dependency array of the schedule-write effect below, and the
   // safeWriteCache() call inside flushCache. react-hooks/exhaustive-deps will
   // flag any state used in the schedule effect that's not in the deps array.
+  // Whose account this workout saves into. Stamped on the cache so a cold
+  // start resumes in that identity (see CoachContext) and never saves it into
+  // whichever account happens to be on screen.
+  const ownerIdRef = useRef(ownerId);
   const cacheStateRef = useRef({
     blocks, workoutName, location, workoutNote, activeTimer,
     restRecords, runningSet, showFocusMode, showExercisePicker,
@@ -655,6 +665,7 @@ export const ActiveSession: React.FC<ActiveSessionProps> = ({ exercises: initial
       pausedElapsedSec: pausedSec,
       templateSnapshot: originalTemplateSnapshot.current,
       templateId: templateIdRef.current,
+      ownerUserId: ownerIdRef.current ?? undefined,
     });
   }, []);
 

@@ -15,7 +15,8 @@ interface ProgramsScreenProps {
   onView: (program: WorkoutProgram) => void;
   onEdit: (program: WorkoutProgram) => void;
   onDelete: (id: string) => void;
-  onShare: (program: WorkoutProgram) => void;
+  // Absent while a coach acts as a client: share links stay the client's own.
+  onShare?: (program: WorkoutProgram) => void;
   onCreate: () => void;
   onBack: () => void;
 }
@@ -65,9 +66,11 @@ export const ProgramsScreen: React.FC<ProgramsScreenProps> = ({
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => onView(p)}>View</Button>
                 <Button variant="outline" size="sm" onClick={() => onEdit(p)}>Edit</Button>
-                <Button variant="ghost" size="sm" onClick={() => onShare(p)} aria-label={`Share ${p.name}`}>
-                  <Share2 className="w-4 h-4" />
-                </Button>
+                {onShare && (
+                  <Button variant="ghost" size="sm" onClick={() => onShare(p)} aria-label={`Share ${p.name}`}>
+                    <Share2 className="w-4 h-4" />
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setDeleteTarget({ id: p.id, name: p.name })} className="text-set-failure">Delete</Button>
               </div>
             </div>

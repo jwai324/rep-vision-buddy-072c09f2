@@ -8,6 +8,8 @@ import { resolveTemplateSupersets } from '@/utils/templateSupersets';
 import { blocksToExercises, templateToBlocks, type CustomExerciseLite, type TemplateBlock } from '@/utils/templateBlocks';
 import { fingerprint } from '@/utils/draftFingerprint';
 import { TemplateExerciseEditor, type BlocksUpdate } from '@/components/TemplateExerciseEditor';
+import { useOwnerDraftKey } from '@/contexts/CoachContext';
+import { TEMPLATE_BUILDER_DRAFT_KEY } from '@/utils/localDrafts';
 
 interface TemplateBuilderProps {
   initial?: WorkoutTemplate;
@@ -17,19 +19,19 @@ interface TemplateBuilderProps {
   onCancel: () => void;
 }
 
-const DRAFT_KEY = 'template_builder_draft';
 
 /** What the draft was taken from; null for a template that does not exist yet. */
 const templateSource = (template?: WorkoutTemplate): string | null =>
   template ? fingerprint({ name: template.name, exercises: template.exercises }) : null;
 
 function loadDraft(
+  draftKey: string,
   initialTemplate?: WorkoutTemplate,
   weightUnit: WeightUnit = 'kg',
   customExercises?: CustomExerciseLite,
 ): { name: string; blocks: TemplateBlock[] } {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(draftKey);
     if (raw) {
       const draft = JSON.parse(raw);
       // Only restore if editing the same template (or both are new), and only
@@ -71,20 +73,21 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = (props) => {
 const LoadedTemplateBuilder: React.FC<TemplateBuilderProps> = ({ initial, weightUnit = 'kg', defaultRestSeconds = 90, onSave, onCancel }) => {
   const { exercises: customExercises } = useCustomExercisesContext();
 
-  const [name, setName] = useState(() => loadDraft(initial, weightUnit, customExercises).name);
-  const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(initial, weightUnit, customExercises).blocks);
+  const draftKey = useOwnerDraftKey(TEMPLATE_BUILDER_DRAFT_KEY);
+  const [name, setName] = useState(() => loadDraft(draftKey, initial, weightUnit, customExercises).name);
+  const [blocks, setBlocks] = useState<TemplateBlock[]>(() => loadDraft(draftKey, initial, weightUnit, customExercises).blocks);
   const onBlocksChange = useCallback((update: BlocksUpdate) => setBlocks(update), []);
 
   const source = useMemo(() => templateSource(initial), [initial]);
   React.useEffect(() => {
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ id: initial?.id ?? null, name, blocks, source }));
+      localStorage.setItem(draftKey, JSON.stringify({ id: initial?.id ?? null, name, blocks, source }));
     } catch { /* quota exceeded, ignore */ }
-  }, [name, blocks, initial?.id, source]);
+  }, [draftKey, name, blocks, initial?.id, source]);
 
   const clearDraft = useCallback(() => {
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
-  }, []);
+    try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+  }, [draftKey]);
 
   const save = () => {
     if (!name.trim()) {

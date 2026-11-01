@@ -3,6 +3,9 @@ import { EXERCISE_DATABASE, type Exercise } from '@/data/exercises';
 import type { SetType, WorkoutSession } from '@/types/workout';
 import { supabase } from '@/integrations/supabase/client';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
+import { useCoach } from '@/contexts/CoachContext';
+import { getSessionCache } from '@/utils/sessionCache';
+import { lockouts, threads, restoredThread, type LockoutState } from '@/utils/chatThreads';
 import { getSessionController, isSessionActive, type SessionMutations } from '@/hooks/useSessionController';
 import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
 import type { ActiveSessionCache, ExerciseBlock as SessionBlock, SetRow as SessionSetRow } from '@/types/activeSession';
@@ -913,7 +916,13 @@ export const ChatProvider: React.FC<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   storage: any;
 }> = ({ children, storage }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { authUserId, ownerId, actingAs, ownTier } = useCoach();
+  const threadKey = authUserId && ownerId ? `${authUserId}:${ownerId}` : null;
+  const [initialThread] = useState(() => restoredThread(threadKey));
+  const [initialLockout] = useState<LockoutState>(
+    () => (authUserId && lockouts.get(authUserId)) || { consecutiveErrors: 0, lockedUntil: 0 },
+  );
+  const [messages, setMessages] = useState<ChatMessage[]>(initialThread.messages);
   const [isOpen, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const screenRef = useRef<ScreenContext>({ screen: 'dashboard' });
@@ -924,35 +933,46 @@ export const ChatProvider: React.FC<{
   // placeholder, so a credits display should say it could not load rather than
   // show the allowance as if it were real.
   const [balanceKnown, setBalanceKnown] = useState(false);
-  const [consecutiveErrors, setConsecutiveErrors] = useState(0);
+  const [consecutiveErrors, setConsecutiveErrors] = useState(initialLockout.consecutiveErrors);
   const [cooldownActive, setCooldownActive] = useState(false);
-  const [lockedUntil, setLockedUntil] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(initialLockout.lockedUntil);
   // The error path of a turn runs long after the render that created it, and
   // a reset that happened inside the same turn (on a good response) is not in
   // its closure. Both counters are read from refs for that reason; the state
   // copies exist only to render.
-  const consecutiveErrorsRef = useRef(0);
-  const lockedUntilRef = useRef(0);
+  const consecutiveErrorsRef = useRef(initialLockout.consecutiveErrors);
+  const lockedUntilRef = useRef(initialLockout.lockedUntil);
   const sendDisabledUntil = useRef(0);
   // The turn currently streaming, so clearChat and unmount can end it.
   const turnAbortRef = useRef<AbortController | null>(null);
 
+  const rememberLockout = useCallback(() => {
+    if (!authUserId) return;
+    lockouts.set(authUserId, {
+      consecutiveErrors: consecutiveErrorsRef.current,
+      lockedUntil: lockedUntilRef.current,
+    });
+  }, [authUserId]);
+
   const setErrorCount = useCallback((n: number) => {
     consecutiveErrorsRef.current = n;
     setConsecutiveErrors(n);
-  }, []);
+    rememberLockout();
+  }, [rememberLockout]);
 
   const lockOut = useCallback((until: number) => {
     lockedUntilRef.current = until;
     setLockedUntil(until);
-  }, []);
+    rememberLockout();
+  }, [rememberLockout]);
 
   const releaseLockout = useCallback(() => {
     lockedUntilRef.current = 0;
     setLockedUntil(0);
     consecutiveErrorsRef.current = 0;
     setConsecutiveErrors(0);
-  }, []);
+    rememberLockout();
+  }, [rememberLockout]);
 
   // Honours the "will retry in 5 minutes" promise: before this the count was
   // only reset by a successful turn, which the lockout itself prevented.
@@ -975,15 +995,24 @@ export const ChatProvider: React.FC<{
     turnAbortRef.current?.abort();
   }, []);
   const balanceResyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [proposals, setProposals] = useState<Record<string, Proposal>>({});
-  const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>({});
+  const [proposals, setProposals] = useState<Record<string, Proposal>>(initialThread.proposals);
+  const [proposalIdsByMessage, setProposalIdsByMessage] = useState<Record<string, string[]>>(initialThread.proposalIdsByMessage);
   const [memberSince, setMemberSince] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (threadKey) threads.set(threadKey, { messages, proposals, proposalIdsByMessage });
+  }, [threadKey, messages, proposals, proposalIdsByMessage]);
 
   // Subscription tier only affects the size of the monthly metered allowance
   // (premium gets a larger bucket); it is no longer a gate bypass. Tracked via
   // a ref so the []-dep refreshBalance callback always reads the current value.
+  // It is the signed-in user's own tier: their account is what the server
+  // meters, so while a coach acts as a client it is not the profile on screen.
+  const subscriptionTier: string | null | undefined = actingAs
+    ? ownTier ?? undefined
+    : storage?.profile?.subscriptionTier;
   const tierRef = useRef<string | null | undefined>(undefined);
-  tierRef.current = storage?.profile?.subscriptionTier;
+  tierRef.current = subscriptionTier;
 
   // Merge the user's custom exercises into the resolver so the AI can reference
   // them in tools (view + swap), even though it cannot create new ones.
@@ -1039,19 +1068,30 @@ export const ChatProvider: React.FC<{
     }, 2000);
   }, [refreshBalance]);
 
+  // Whose membership dates the history window: the account on screen. A coach
+  // cannot read a client's auth record, so a client's comes from their profile
+  // row, which is written at sign-up.
+  const actingClientId = actingAs?.clientId ?? null;
   useEffect(() => {
+    let cancelled = false;
     const init = async () => {
+      if (actingClientId) {
+        const { data } = await supabase
+          .from('profiles').select('created_at').eq('user_id', actingClientId).maybeSingle();
+        if (!cancelled && data?.created_at) setMemberSince(data.created_at.substring(0, 10));
+        return;
+      }
       const { data: { user } } = await supabase.auth.getUser();
-      if (user?.created_at) setMemberSince(user.created_at.substring(0, 10));
+      if (!cancelled && user?.created_at) setMemberSince(user.created_at.substring(0, 10));
     };
     init();
-  }, []);
+    return () => { cancelled = true; };
+  }, [actingClientId]);
 
   // The allowance is sized by tier, and on a cold open the profile lands after
   // the first fetch, so the balance is re-read whenever the tier changes (that
   // covers mount too). Before this a premium user saw the free allowance until
   // their next message resynced it.
-  const subscriptionTier = storage?.profile?.subscriptionTier;
   useEffect(() => {
     void refreshBalance();
   }, [subscriptionTier, refreshBalance]);
@@ -1074,13 +1114,19 @@ export const ChatProvider: React.FC<{
    * Null when there is no workout at all — which is also what a past workout
    * being edited looks like, since the edit screen registers nothing.
    */
-  const sessionController = useCallback((): SessionMutations | null => (
-    getSessionController() ?? cachedSessionController({
+  const sessionController = useCallback((): SessionMutations | null => {
+    const mounted = getSessionController();
+    if (mounted) return mounted;
+    // A minimized workout that belongs to another account (another tab left in
+    // the other identity) is not this conversation's to read or change.
+    const cached = getSessionCache();
+    if (cached && (cached.ownerUserId ?? authUserId) !== ownerId) return null;
+    return cachedSessionController({
       nameFor: (exerciseId: string) => exerciseById.get(exerciseId)?.name ?? exerciseId,
       defaultRestSeconds: storage.preferences?.defaultRestSeconds ?? 90,
       defaultDropSetsEnabled: storage.preferences?.defaultDropSetsEnabled ?? false,
-    })
-  ), [exerciseById, storage.preferences?.defaultRestSeconds, storage.preferences?.defaultDropSetsEnabled]);
+    });
+  }, [authUserId, ownerId, exerciseById, storage.preferences?.defaultRestSeconds, storage.preferences?.defaultDropSetsEnabled]);
 
   const buildContext = useCallback(() => {
     const memberDays = daysSinceMember();
@@ -1117,6 +1163,16 @@ export const ChatProvider: React.FC<{
         bodyweight_recent: measurements.slice(0, 5).map(m => ({ date: m.date, weight_kg: m.weightKg })),
       },
     };
+
+    // The person typing is the client's coach, not the owner of this data.
+    // Stable for as long as the coach stays on this client, so it can sit in
+    // the cached block of the system prompt (it is not in VOLATILE_CONTEXT_KEYS).
+    if (actingAs) {
+      ctx.coaching = {
+        acting_for_client: true,
+        client_display_name: storage.profile?.displayName ?? actingAs.displayName ?? null,
+      };
+    }
 
     if (storage.templates?.length > 0) {
       /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -1191,7 +1247,7 @@ export const ChatProvider: React.FC<{
     }
 
     return ctx;
-  }, [storage, memberSince, daysSinceMember, earliestSessionDate, exerciseById, exerciseListLean, sessionController]);
+  }, [storage, actingAs, memberSince, daysSinceMember, earliestSessionDate, exerciseById, exerciseListLean, sessionController]);
 
   const getSessionRows = useCallback((): SessionExerciseRow[] => {
     const controller = sessionController();

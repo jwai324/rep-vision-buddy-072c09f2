@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { useCoach } from '@/contexts/CoachContext';
 import { toast } from 'sonner';
 import type { Exercise, MeasurementType } from '@/data/exercises';
 import type { Database } from '@/integrations/supabase/types';
@@ -34,10 +34,10 @@ export interface CustomExerciseInput {
 }
 
 export function useCustomExercises() {
-  const { user } = useAuth();
-  // Keyed on the id, not the user object — see AuthContext. A token refresh
-  // used to recreate this callback and refetch the whole list.
-  const userId = user?.id ?? null;
+  // The library being shown: the signed-in user's, or the client's a coach is
+  // acting as. Keyed on the id, not the user object — see AuthContext. A token
+  // refresh used to recreate this callback and refetch the whole list.
+  const { ownerId: userId } = useCoach();
   const [exercises, setExercises] = useState<CustomExercise[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,6 +46,9 @@ export function useCustomExercises() {
     const { data, error } = await supabase
       .from('custom_exercises')
       .select('*')
+      // Never RLS alone: a coach's RLS reaches every client's library too, and
+      // without this the coach's own picker would list all of them.
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
     if (error) { console.error(error); setLoading(false); return; }
     setExercises((data ?? []).map(row => ({
@@ -70,9 +73,9 @@ export function useCustomExercises() {
   useEffect(() => { fetchExercises(); }, [fetchExercises]);
 
   const addExercise = useCallback(async (input: CustomExerciseInput) => {
-    if (!user) return;
+    if (!userId) return;
     const payload: CustomExerciseInsertExtended = {
-      user_id: user.id,
+      user_id: userId,
       name: input.name,
       primary_body_part: input.primaryBodyPart,
       equipment: input.equipment,
@@ -90,19 +93,22 @@ export function useCustomExercises() {
     if (error) { toast.error('Failed to save exercise'); return; }
     toast.success(`Exercise "${input.name}" saved.`);
     fetchExercises();
-  }, [user, fetchExercises]);
+  }, [userId, fetchExercises]);
 
   const deleteExercise = useCallback(async (customId: string) => {
-    if (!user) return;
+    if (!userId) return;
     const dbId = customId.replace('custom-', '');
-    const { error } = await supabase.from('custom_exercises').delete().eq('id', dbId);
-    if (error) { toast.error('Failed to delete exercise'); return; }
+    // Scoped to the owner, and checked: a refusal under RLS removes nothing and
+    // reports no error, which must not read as a deletion.
+    const { data, error } = await supabase
+      .from('custom_exercises').delete().eq('id', dbId).eq('user_id', userId).select('id');
+    if (error || !data?.length) { toast.error('Failed to delete exercise'); return; }
     toast.success('Exercise deleted');
     fetchExercises();
-  }, [user, fetchExercises]);
+  }, [userId, fetchExercises]);
 
   const updateExercise = useCallback(async (customId: string, input: CustomExerciseInput) => {
-    if (!user) return;
+    if (!userId) return;
     const dbId = customId.replace('custom-', '');
     const patch: CustomExerciseUpdateExtended = {
       name: input.name,
@@ -116,14 +122,16 @@ export function useCustomExercises() {
       exclude_from_volume: input.excludeFromVolume,
       measurement_type: input.measurementType ?? null,
     };
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('custom_exercises')
       .update(patch as Database['public']['Tables']['custom_exercises']['Update'])
-      .eq('id', dbId);
-    if (error) { toast.error('Failed to update exercise'); return; }
+      .eq('id', dbId)
+      .eq('user_id', userId)
+      .select('id');
+    if (error || !data?.length) { toast.error('Failed to update exercise'); return; }
     toast.success(`Exercise "${input.name}" updated.`);
     fetchExercises();
-  }, [user, fetchExercises]);
+  }, [userId, fetchExercises]);
 
   return { exercises, loading, addExercise, deleteExercise, updateExercise, refetch: fetchExercises };
 }

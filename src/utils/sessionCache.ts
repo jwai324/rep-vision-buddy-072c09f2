@@ -27,6 +27,22 @@ export function getSessionCache(): ActiveSessionCache | null {
   }
 }
 
+/**
+ * Hand the workout in progress to another account. Used only when its owner
+ * can no longer be reached (a client ended the link mid-workout) and the coach
+ * chooses to keep it in their own history rather than lose it.
+ */
+export function setSessionCacheOwner(ownerUserId: string): boolean {
+  const cache = getSessionCache();
+  if (!cache) return false;
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cache, ownerUserId }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Fired synchronously, before the key is removed, so a still-mounted
 // ActiveSession can cancel its own pending debounced write. Without this, a
 // write scheduled just before Save/Cancel/Discard clears the cache can still

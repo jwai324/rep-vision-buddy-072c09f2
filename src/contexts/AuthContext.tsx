@@ -5,6 +5,7 @@ import { clearStorageCache } from '@/utils/storageCache';
 import { clearAllPendingTemplates } from '@/utils/pendingTemplateWrites';
 import { clearLocalDrafts } from '@/utils/localDrafts';
 import { releaseRestSchedule } from '@/utils/restTimerScheduler';
+import { forgetChatThreads } from '@/utils/chatThreads';
 import { toast } from 'sonner';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -26,8 +27,11 @@ import type { User, Session } from '@supabase/supabase-js';
 function forgetAccountOnThisDevice(): void {
   clearStorageCache();
   clearAllPendingTemplates();
+  // Includes the coach context's record of which client was last open, so a
+  // sign-in does not resume acting as someone the next account cannot reach.
   clearLocalDrafts();
   releaseRestSchedule();
+  forgetChatThreads();
 }
 
 /**

@@ -21,6 +21,8 @@ import type { WorkoutTemplate, WorkoutProgram, TemplateExercise, SetType } from 
 import { formatLocalDate } from '@/utils/dateUtils';
 import { toast } from 'sonner';
 import { describeInvokeError } from '@/utils/invokeError';
+import { useOwnerDraftKey } from '@/contexts/CoachContext';
+import { AI_PROGRAM_BUILDER_DRAFT_KEY } from '@/utils/localDrafts';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -101,7 +103,6 @@ const ALL_EQUIPMENT = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 
 
 // ─── Draft Persistence ───────────────────────────────────────────────
 
-const DRAFT_KEY = 'ai_program_builder_draft';
 const DRAFT_VERSION = 1;
 
 const EMPTY_INPUTS: UserInputs = {
@@ -141,9 +142,9 @@ interface SaveIds {
   templateIds: string[];
 }
 
-function loadBuilderDraft(): BuilderDraft | null {
+function loadBuilderDraft(key: string): BuilderDraft | null {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const draft = JSON.parse(raw) as Partial<BuilderDraft>;
     if (draft?.version !== DRAFT_VERSION) return null;
@@ -174,14 +175,14 @@ function loadBuilderDraft(): BuilderDraft | null {
   }
 }
 
-function saveBuilderDraft(draft: Omit<BuilderDraft, 'version'>): void {
+function saveBuilderDraft(key: string, draft: Omit<BuilderDraft, 'version'>): void {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, version: DRAFT_VERSION }));
+    localStorage.setItem(key, JSON.stringify({ ...draft, version: DRAFT_VERSION }));
   } catch { /* storage unavailable (private mode, quota) — draft just won't persist */ }
 }
 
-function clearBuilderDraft(): void {
-  try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+function clearBuilderDraft(key: string): void {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
 }
 
 // ─── Onboarding Chat ─────────────────────────────────────────────────
@@ -193,7 +194,10 @@ interface AIProgramBuilderProps {
 
 export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSaveProgram }) => {
   const { refreshBalance } = useChatContext();
-  const [restored] = useState<BuilderDraft | null>(loadBuilderDraft);
+  // Per account on screen: the answers are the client's details, and the
+  // minted save ids belong to rows in one account only.
+  const draftKey = useOwnerDraftKey(AI_PROGRAM_BUILDER_DRAFT_KEY);
+  const [restored] = useState<BuilderDraft | null>(() => loadBuilderDraft(draftKey));
   const [phase, setPhase] = useState<'chat' | 'generating' | 'review'>(restored?.phase ?? 'chat');
   const [currentStep, setCurrentStep] = useState(restored?.currentStep ?? 0);
   const [inputs, setInputs] = useState<UserInputs>(restored?.inputs ?? EMPTY_INPUTS);
@@ -245,14 +249,14 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   // so navigating away mid-build doesn't start over. 'generating' is transient:
   // the in-flight request dies with the unmount, so persist it as 'chat'.
   useEffect(() => {
-    saveBuilderDraft({
+    saveBuilderDraft(draftKey, {
       phase: phase === 'generating' ? 'chat' : phase,
       currentStep, inputs, messages, selectedEquipment,
       injuryText, additionalNotesText, otherText, showOtherInput,
       customEquipmentText, showEquipmentOther, generatedProgram, swappedExercises, saveIds,
     });
   }, [
-    phase, currentStep, inputs, messages, selectedEquipment,
+    draftKey, phase, currentStep, inputs, messages, selectedEquipment,
     injuryText, additionalNotesText, otherText, showOtherInput,
     customEquipmentText, showEquipmentOther, generatedProgram, swappedExercises, saveIds,
   ]);
@@ -391,7 +395,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
   };
 
   const startOver = () => {
-    clearBuilderDraft();
+    clearBuilderDraft(draftKey);
     setPhase('chat');
     setCurrentStep(0);
     setInputs(EMPTY_INPUTS);
@@ -611,7 +615,7 @@ export const AIProgramBuilder: React.FC<AIProgramBuilderProps> = ({ onBack, onSa
     try {
       const saved = await onSaveProgram(program, templates);
       if (!saved) return;
-      clearBuilderDraft();
+      clearBuilderDraft(draftKey);
       toast.success(`Program "${program.name}" saved.`);
     } finally {
       setSaving(false);

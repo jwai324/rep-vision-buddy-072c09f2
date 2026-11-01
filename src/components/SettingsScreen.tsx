@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload, Volume2, Target, ChevronRight, Sparkles, Link2 } from 'lucide-react';
+import { ChevronLeft, LogOut, User, Timer, Weight, Pencil, Check, X, ChevronDown, Dumbbell, Flame, GraduationCap, Download, Upload, Volume2, Target, ChevronRight, Sparkles, Link2, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { exportUserData, importUserData, validateBackup, getBackupCounts, type RepVisionBackup } from '@/utils/dataPortability';
 import { useToast } from '@/hooks/use-toast';
@@ -22,7 +22,13 @@ interface SettingsScreenProps {
   onGoToProfile?: () => void;
   onGoToCredits?: () => void;
   onGoToSharedLinks?: () => void;
+  onGoToCoaching?: () => void;
   onReplayTutorial?: () => void;
+  // Set while a coach is acting as a client. The preferences and profile on
+  // this screen are then the client's; the email, backups and sign-out are the
+  // coach's own and are not offered under the client's name.
+  coachingClientName?: string;
+  onExitCoaching?: () => void;
 }
 
 const UNIT_OPTIONS: { value: WeightUnit; label: string }[] = [
@@ -138,8 +144,10 @@ const DataManagementSection: React.FC = () => {
 };
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
-  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onGoToProfile, onGoToCredits, onGoToSharedLinks, onReplayTutorial,
+  preferences, profile, onUpdatePreferences, onUpdateProfile, onBack, onGoToCustomExercises, onGoToProfile, onGoToCredits, onGoToSharedLinks, onGoToCoaching, onReplayTutorial,
+  coachingClientName, onExitCoaching,
 }) => {
+  const coaching = coachingClientName !== undefined;
   const { user, signOut } = useAuth();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(profile.displayName ?? '');
@@ -150,7 +158,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     setEditingName(false);
   };
 
-  const displayName = profile.displayName || user?.email?.split('@')[0] || 'User';
+  const displayName = profile.displayName
+    || (coaching ? coachingClientName : user?.email?.split('@')[0])
+    || 'User';
 
   return (
     <div className="min-h-screen bg-background p-4 flex flex-col gap-5">
@@ -165,6 +175,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </button>
         <h1 className="text-xl font-extrabold text-foreground">Settings</h1>
       </div>
+
+      {coaching && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          You're editing {coachingClientName}'s settings. Changes apply to their app.
+        </p>
+      )}
 
       {/* Profile Section */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -205,7 +221,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </button>
           )}
 
-          <p className="text-xs text-muted-foreground">{user?.email}</p>
+          {!coaching && <p className="text-xs text-muted-foreground">{user?.email}</p>}
         </div>
       </div>
 
@@ -237,6 +253,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-foreground">Subscription & Credits</span>
               <span className="text-[11px] text-muted-foreground">Plan, balance, top-ups</span>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </button>
+      )}
+
+      {/* Coaching */}
+      {onGoToCoaching && (
+        <button
+          onClick={onGoToCoaching}
+          className="bg-card rounded-xl border border-border overflow-hidden flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Users className="w-4 h-4 text-primary" />
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-foreground">Coaching</span>
+              <span className="text-[11px] text-muted-foreground">Invite a coach, or coach a client</span>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-muted-foreground" />
@@ -476,8 +509,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </button>
       )}
 
-      {/* Data Management */}
-      <DataManagementSection />
+      {/* Data Management: the signed-in user's own backup, never a client's
+          (an import into a client could overwrite their rows by id). */}
+      {!coaching && <DataManagementSection />}
 
       {/* Dev builds only */}
       <ClipModeDevToggle />
@@ -493,16 +527,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
       </div>
 
-      {/* Sign Out */}
+      {/* Sign Out — or, while coaching, back to the coach's own account */}
       <div className="mt-auto pb-6">
-        <Button
-          variant="outline"
-          className="w-full border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          onClick={signOut}
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          Sign Out
-        </Button>
+        {coaching ? (
+          <Button variant="outline" className="w-full" onClick={onExitCoaching}>
+            <LogOut className="w-4 h-4 mr-2" />
+            Exit coaching
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            className="w-full border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={signOut}
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Sign Out
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, Navigate, useSearchParams } from "react-r
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { CoachProvider, useCoach } from "@/contexts/CoachContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index.tsx";
 import Auth from "./pages/Auth.tsx";
@@ -18,6 +19,25 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
   if (!user) return <Navigate to="/auth" replace />;
   return <>{children}</>;
+};
+
+// Index is remounted whenever the account on screen changes (a coach switching
+// into or out of a client), so no state, ref or in-flight write of one account
+// can land in another. The provider sits only on this route: the public share
+// page imports into the signed-in user's own library and must never see it.
+const IndexForOwner = () => {
+  const { ownerId } = useCoach();
+  return <Index key={ownerId ?? "none"} />;
+};
+
+const CoachedIndex = () => {
+  const { user } = useAuth();
+  if (!user) return null;
+  return (
+    <CoachProvider key={user.id} authUserId={user.id}>
+      <IndexForOwner />
+    </CoachProvider>
+  );
 };
 
 const AuthRoute = ({ children }: { children: React.ReactNode }) => {
@@ -43,7 +63,7 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               {/* Public: no wrapper, so a logged-out viewer isn't bounced to /auth. */}
               <Route path="/s/:token" element={<SharedItem />} />
-              <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute><CoachedIndex /></ProtectedRoute>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
