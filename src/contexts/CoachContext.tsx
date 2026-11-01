@@ -5,7 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getSessionCache } from '@/utils/sessionCache';
 import { isSessionActive } from '@/hooks/useSessionController';
 import { clearPendingTemplatesFor } from '@/utils/pendingTemplateWrites';
-import { COACH_STORAGE_PREFIX, ownerDraftKey } from '@/utils/localDrafts';
+import { COACH_STORAGE_PREFIX, USER_DRAFT_KEYS, ownerDraftKey } from '@/utils/localDrafts';
+import { forgetClientThreads } from '@/utils/chatThreads';
 import type { SubscriptionTier } from '@/hooks/useStorage';
 
 /**
@@ -87,15 +88,39 @@ function persistActing(authUserId: string, acting: ActingAs | null): void {
  */
 function initialActing(authUserId: string): ActingAs | null {
   const persisted = readPersistedActing(authUserId);
-  const cacheOwner = getSessionCache()?.ownerUserId;
-  if (cacheOwner) {
-    if (cacheOwner === authUserId) return null;
-    return {
-      clientId: cacheOwner,
-      displayName: persisted?.clientId === cacheOwner ? persisted.displayName : null,
-    };
+  const cacheOwner = workoutOwner(authUserId);
+  if (!cacheOwner) return persisted;
+  const acting = cacheOwner === authUserId
+    ? null
+    : { clientId: cacheOwner, displayName: persisted?.clientId === cacheOwner ? persisted.displayName : null };
+  // Recorded, so the choice the workout made is also the next cold start's.
+  persistActing(authUserId, acting);
+  return acting;
+}
+
+/**
+ * Start the next visit in the signed-in user's own account. For the share
+ * page, which imports into the user's own library and then opens the app:
+ * landing in a client's account would hide what was just saved. A workout in
+ * progress for a client still decides, as it always does.
+ */
+export function resumeAsSelfNextTime(authUserId: string): void {
+  persistActing(authUserId, null);
+}
+
+/**
+ * Everything this device holds for one client: their drafts, their queued
+ * template writes and the coach's conversations about them. Called when the
+ * link ends, whichever side ended it, so none of it outlives the access.
+ */
+function forgetClientOnDevice(clientId: string): void {
+  clearPendingTemplatesFor(clientId);
+  forgetClientThreads(clientId);
+  try {
+    for (const base of USER_DRAFT_KEYS) localStorage.removeItem(ownerDraftKey(base, clientId));
+  } catch {
+    // Storage unavailable: nothing to clear.
   }
-  return persisted;
 }
 
 /**
@@ -121,6 +146,17 @@ export function CoachProvider({ authUserId, children }: { authUserId: string; ch
   // The last clean answer from list_my_clients, or null before there is one.
   const clientsRef = useRef<CoachClient[] | null>(null);
   const lastRefresh = useRef(0);
+  // Answers are applied in the order they were asked for, and none after the
+  // provider is gone: a late, older list could otherwise end acting for a
+  // client who was just linked, or rewrite the persisted identity after a
+  // sign-out had cleared it.
+  const refreshSeq = useRef(0);
+  const appliedSeq = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   const setActing = useCallback((next: ActingAs | null) => {
     actingRef.current = next;
@@ -130,25 +166,32 @@ export function CoachProvider({ authUserId, children }: { authUserId: string; ch
 
   const refreshClients = useCallback(async () => {
     lastRefresh.current = Date.now();
+    const seq = ++refreshSeq.current;
     const { data, error } = await supabase.rpc('list_my_clients');
+    if (!mounted.current || seq < appliedSeq.current) return;
     // A failed read (offline at the gym) proves nothing about the link, so the
     // current identity stands; only a clean answer can end it.
     if (error || !data) return;
+    appliedSeq.current = seq;
     const next: CoachClient[] = data.map(row => ({
       linkId: row.link_id,
       clientId: row.client_id,
       displayName: row.display_name ?? null,
       linkedAt: row.linked_at,
     }));
+    const previous = clientsRef.current;
     clientsRef.current = next;
     setClients(next);
     setClientsLoaded(true);
+    for (const gone of previous ?? []) {
+      if (!next.some(c => c.clientId === gone.clientId)) forgetClientOnDevice(gone.clientId);
+    }
     const acting = actingRef.current;
     if (!acting) return;
     const match = next.find(c => c.clientId === acting.clientId);
     if (!match) {
       setActing(null);
-      clearPendingTemplatesFor(acting.clientId);
+      forgetClientOnDevice(acting.clientId);
       toast.error(`You no longer have access to ${acting.displayName ?? 'that client'}'s account.`);
     } else if (match.displayName !== acting.displayName) {
       setActing({ clientId: acting.clientId, displayName: match.displayName });
@@ -197,11 +240,15 @@ export function CoachProvider({ authUserId, children }: { authUserId: string; ch
     const reachable = !!owner && (owner === authUserId || !known || known.some(c => c.clientId === owner));
     if (owner && reachable && owner !== target) {
       toast.error(SWITCH_BLOCKED_MESSAGE);
+      // The refusal may rest on a client list that is out of date (the client
+      // ended the link a moment ago). Asking again ends acting by itself if so,
+      // and the workout then offers Keep or Discard from the coach's account.
+      if (owner !== authUserId) void refreshClients();
       return false;
     }
     setActing(next);
     return true;
-  }, [authUserId, setActing]);
+  }, [authUserId, setActing, refreshClients]);
 
   const actAs = useCallback(
     (client: ActingAs) => switchTo(client.clientId === authUserId ? null : client),
@@ -213,7 +260,7 @@ export function CoachProvider({ authUserId, children }: { authUserId: string; ch
     const acting = actingRef.current;
     if (!acting || acting.clientId !== clientId) return;
     setActing(null);
-    clearPendingTemplatesFor(clientId);
+    forgetClientOnDevice(clientId);
     toast.error(`You no longer have access to ${acting.displayName ?? 'that client'}'s account.`);
     void refreshClients();
   }, [setActing, refreshClients]);

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Download, LinkIcon, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { resumeAsSelfNextTime } from '@/contexts/CoachContext';
 import { Button } from '@/components/ui/button';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { SessionSummary } from '@/components/SessionSummary';
@@ -85,6 +86,9 @@ const SharedItem: React.FC = () => {
         `Saved ${parts.join(', ')} to your workouts`
         + (dropped ? `. ${dropped} exercise${dropped === 1 ? '' : 's'} couldn't be brought over.` : ''),
       );
+      // The import went into the signed-in user's own library, so the app
+      // opens there, not in a client's account a coach last acted as.
+      resumeAsSelfNextTime(user.id);
       navigate('/');
     } catch (err) {
       console.error('[SharedItem] import error:', err);

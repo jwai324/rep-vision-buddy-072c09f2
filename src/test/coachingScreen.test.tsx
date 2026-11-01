@@ -125,26 +125,26 @@ describe('CoachingScreen', () => {
 
   it('mints an invite code and shows it formatted with its expiry', async () => {
     rpcResults.create_coach_invite = {
-      data: [{ invite_code: 'ABCDEFGH', invite_expires_at: new Date(Date.now() + 6 * DAY + 60_000).toISOString() }],
+      data: [{ invite_code: 'ABCDEFGHJK', invite_expires_at: new Date(Date.now() + 6 * DAY + 60_000).toISOString() }],
       error: null,
     };
     renderScreen();
 
     fireEvent.click(await screen.findByRole('button', { name: /invite a coach/i }));
 
-    expect(await screen.findByText('ABCD-EFGH')).toBeInTheDocument();
+    expect(await screen.findByText('ABCDE-FGHJK')).toBeInTheDocument();
     expect(screen.getByText(/Expires in 6 days/)).toBeInTheDocument();
     expect(mocks.rpc).toHaveBeenCalledWith('create_coach_invite', undefined);
   });
 
   it('shows a live code that already exists, looked up for the signed-in user', async () => {
     mocks.results['coach_invites:select'] = {
-      data: { code: 'WXYZ2345', created_at: '', expires_at: new Date(Date.now() + 3 * DAY).toISOString(), redeemed_at: null, redeemed_by: null },
+      data: { code: 'WXYZ234567', created_at: '', expires_at: new Date(Date.now() + 3 * DAY).toISOString(), redeemed_at: null, redeemed_by: null },
       error: null,
     };
     renderScreen();
 
-    expect(await screen.findByText('WXYZ-2345')).toBeInTheDocument();
+    expect(await screen.findByText('WXYZ2-34567')).toBeInTheDocument();
     const lookup = mocks.calls.find(c => c.table === 'coach_invites' && c.op === 'select');
     expect(lookup?.filters).toContainEqual(['eq', 'client_id', 'me']);
     expect(lookup?.filters).toContainEqual(['is', 'redeemed_at', null]);
@@ -155,12 +155,12 @@ describe('CoachingScreen', () => {
     renderScreen();
 
     const input = screen.getByLabelText("Enter a client's code");
-    fireEvent.change(input, { target: { value: 'abcd-efgh' } });
-    expect(input).toHaveValue('ABCD-EFGH');
+    fireEvent.change(input, { target: { value: 'abcde-fghjk' } });
+    expect(input).toHaveValue('ABCDE-FGHJK');
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     await waitFor(() => expect(mocks.refreshClients).toHaveBeenCalled());
-    expect(mocks.rpc).toHaveBeenCalledWith('redeem_coach_invite', { p_code: 'ABCDEFGH' });
+    expect(mocks.rpc).toHaveBeenCalledWith('redeem_coach_invite', { p_code: 'ABCDEFGHJK' });
     expect(mocks.toastSuccess).toHaveBeenCalledWith("You're now coaching Alice");
     expect(input).toHaveValue('');
   });
@@ -172,7 +172,7 @@ describe('CoachingScreen', () => {
     };
     renderScreen();
 
-    fireEvent.change(screen.getByLabelText("Enter a client's code"), { target: { value: 'ZZZZ ZZZZ' } });
+    fireEvent.change(screen.getByLabelText("Enter a client's code"), { target: { value: 'ZZZZZ ZZZZZ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('That code is invalid or has expired.');

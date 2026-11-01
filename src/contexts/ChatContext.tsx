@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useCustomExercisesContext } from '@/contexts/CustomExercisesContext';
 import { useCoach } from '@/contexts/CoachContext';
 import { getSessionCache } from '@/utils/sessionCache';
-import { lockouts, threads, restoredThread, type LockoutState } from '@/utils/chatThreads';
+import { lockouts, threads, restoredThread, noteThreadUnmounted, type LockoutState } from '@/utils/chatThreads';
 import { getSessionController, isSessionActive, type SessionMutations } from '@/hooks/useSessionController';
 import { ACTIVE_SESSION_CACHE_KEY } from '@/utils/localDrafts';
 import type { ActiveSessionCache, ExerciseBlock as SessionBlock, SetRow as SessionSetRow } from '@/types/activeSession';
@@ -1002,6 +1002,7 @@ export const ChatProvider: React.FC<{
   useEffect(() => {
     if (threadKey) threads.set(threadKey, { messages, proposals, proposalIdsByMessage });
   }, [threadKey, messages, proposals, proposalIdsByMessage]);
+  useEffect(() => () => noteThreadUnmounted(threadKey), [threadKey]);
 
   // Subscription tier only affects the size of the monthly metered allowance
   // (premium gets a larger bucket); it is no longer a gate bypass. Tracked via
@@ -1013,6 +1014,8 @@ export const ChatProvider: React.FC<{
     : storage?.profile?.subscriptionTier;
   const tierRef = useRef<string | null | undefined>(undefined);
   tierRef.current = subscriptionTier;
+  const actingRef = useRef(!!actingAs);
+  actingRef.current = !!actingAs;
 
   // Merge the user's custom exercises into the resolver so the AI can reference
   // them in tools (view + swap), even though it cannot create new ones.
@@ -1042,16 +1045,27 @@ export const ChatProvider: React.FC<{
   const refreshBalance = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data, error } = await supabase
-      .from('user_token_balance')
-      .select('paid_balance_micros, free_used_micros, free_period')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    const [{ data, error }, ownTierNow] = await Promise.all([
+      supabase
+        .from('user_token_balance')
+        .select('paid_balance_micros, free_used_micros, free_period')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      // While acting as a client the profile on screen is theirs, and the
+      // coach's tier held by CoachContext was read once, when the provider
+      // mounted — a plan changed since would size the allowance wrongly and
+      // gate Send against what the server (which reads it live) would allow.
+      // So it is read with the balance, as the server does.
+      actingRef.current
+        ? supabase.from('profiles').select('subscription_tier').eq('user_id', user.id).maybeSingle()
+          .then(({ data: row }) => row?.subscription_tier ?? null, () => null)
+        : Promise.resolve(null),
+    ]);
     if (error) {
       console.error('Balance read failed:', error);
       return;
     }
-    setCreditsBalance(deriveBalance(data ?? null, tierRef.current));
+    setCreditsBalance(deriveBalance(data ?? null, ownTierNow ?? tierRef.current));
     setBalanceKnown(true);
   }, []);
 

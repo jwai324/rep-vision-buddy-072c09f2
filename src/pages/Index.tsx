@@ -114,6 +114,14 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     const cache = getSessionCache();
     return cache && (cache.ownerUserId ?? coach.authUserId) === coach.ownerId ? cache : null;
   };
+  // Read at the moment of acting, never from a render: another tab may have
+  // started a workout for another account since this one last drew.
+  const foreignCacheOwner = (): string | null => {
+    const cache = getSessionCache();
+    if (!cache) return null;
+    const owner = cache.ownerUserId ?? coach.authUserId;
+    return owner !== coach.ownerId ? owner : null;
+  };
   // Re-render after the foreign workout is kept or discarded: neither changes
   // any state this component holds.
   const [, refreshCacheView] = useReducer((n: number) => n + 1, 0);
@@ -392,6 +400,9 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   // Keyed on the cache rather than on `minimizedSession` alone so a path that
   // navigates away from a session without minimizing it is still caught.
   const inProgressScreen = (): Screen | null => {
+    // A minimized bar held from before another account's workout replaced the
+    // cache must not resume a blank screen over that workout.
+    if (foreignCacheOwner()) return null;
     if (minimizedSession?.type === 'activeSession') return { ...minimizedSession, resumed: true };
     const restored = restoredSessionScreen(ownCache());
     return restored ? { ...restored, resumed: true } : null;
@@ -405,6 +416,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   };
 
   const handleDiscardMinimized = () => {
+    // Same stale-bar case: its Discard must not throw away another account's
+    // workout. The foreign-workout bar has its own, explicit Discard.
+    if (foreignCacheOwner()) {
+      setMinimizedSession(null);
+      return;
+    }
     clearSessionCache();
     setMinimizedSession(null);
     clearPendingSummary();
@@ -466,8 +483,14 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
   const openSession = (next: Screen) => {
     // The device holds one workout at a time; starting another would overwrite
     // the one in progress for the other account.
-    if (foreignOwner) {
-      toast.error(`A workout for ${foreignOwnerName} is still in progress on this device. Switch to it or discard it first.`);
+    const owner = foreignCacheOwner();
+    if (owner) {
+      const name = owner === coach.authUserId
+        ? 'your own account'
+        : clientLabel(coach.clients.find(c => c.clientId === owner)?.displayName
+          ?? (acting?.clientId === owner ? acting.displayName : null));
+      toast.error(`A workout for ${name} is still in progress on this device. Switch to it or discard it first.`);
+      refreshCacheView();
       return;
     }
     if (inProgressScreen()) {
@@ -494,8 +517,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
     setScreen({ type: key } as Screen);
   };
 
-  const showMinimizedBar = !!minimizedSession && screen.type !== 'activeSession';
-  const showForeignBar = !!foreignOwner && !showMinimizedBar && screen.type !== 'activeSession';
+  const showMinimizedBar = !!minimizedSession && !foreignOwner && screen.type !== 'activeSession';
+  const showForeignBar = !!foreignOwner && screen.type !== 'activeSession';
 
   return (
     <>
@@ -1051,11 +1074,13 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <ForeignWorkoutBar
           workoutName={rawCache?.workoutName ?? 'Workout'}
           ownerName={foreignOwnerName}
+          // Its owner, when reachable. When not, and the coach is in another
+          // client's account, back to their own — where Keep is offered.
           onSwitch={foreignReachable
             ? () => switchIdentity(foreignOwner === coach.authUserId
               ? null
               : { clientId: foreignOwner as string, displayName: foreignClient?.displayName ?? null })
-            : undefined}
+            : acting ? () => switchIdentity(null) : undefined}
           // Out of reach for good: the coach may keep what they logged in
           // their own history instead of losing it, but only from their own
           // account, where it would then save.
@@ -1064,7 +1089,12 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
               if (!coach.authUserId || !setSessionCacheOwner(coach.authUserId)) return;
               const restored = restoredSessionScreen(getSessionCache());
               setMinimizedSession(restored ? { ...restored, resumed: true } : null);
-              setFinished(getFinishedWorkout());
+              // Detached from the client's template, as the cache now is: it
+              // names nothing in this account and must not tick anything off.
+              const kept = getFinishedWorkout();
+              const detached = kept ? { ...kept, templateId: undefined } : null;
+              if (detached) setFinishedWorkout(detached);
+              setFinished(detached);
             }
             : undefined}
           onDiscard={() => { clearSessionCache(); refreshCacheView(); }}
@@ -1125,7 +1155,7 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
 
 const Index = () => {
   const storage = useStorage();
-  const { actingAs } = useCoach();
+  const { actingAs, stopActing } = useCoach();
   const handleTutorialComplete = React.useCallback(() => {
     // Never written into a client's settings from a coach's phone.
     if (actingAs) return;
@@ -1136,7 +1166,18 @@ const Index = () => {
       {/* Wraps everything below the auth provider, so a crash anywhere in the
           app lands here; the title used to blame the chat, and the bug-report
           handle it unmounted is the one thing the user needs on this screen. */}
-      <ErrorBoundary fallbackTitle="Something went wrong" fallbackExtra={<ErrorReportButton screen="crash" />}>
+      <ErrorBoundary
+        fallbackTitle="Something went wrong"
+        fallbackExtra={(
+          <>
+            {/* A crash in a client's account must not strand the coach there. */}
+            {actingAs && (
+              <Button variant="outline" onClick={() => stopActing()}>Back to my account</Button>
+            )}
+            <ErrorReportButton screen="crash" />
+          </>
+        )}
+      >
         <ChatProvider storage={storage}>
           <TutorialProvider onComplete={handleTutorialComplete}>
             <IndexInner storage={storage} />

@@ -49,10 +49,14 @@ CREATE POLICY "Either party can end a coach link"
 
 -- 2. Invite codes ----------------------------------------------------------
 
--- Eight characters from a 32-letter alphabet with no 0/O or 1/I: about 40
--- bits, live for seven days, one live code per client, single use.
+-- Ten characters from a 32-letter alphabet with no 0/O or 1/I: 50 bits, live
+-- for seven days, one live code per client, single use. A redeemed code is
+-- full access to an account, and redeem_coach_invite has no attempt limit (a
+-- failed attempt raises, which would roll back any counter it wrote), so the
+-- space is what makes guessing hopeless: with a hundred live codes at a
+-- thousand guesses a second, the expected time to a hit is centuries.
 CREATE TABLE public.coach_invites (
-  code text PRIMARY KEY CHECK (code ~ '^[A-HJ-NP-Z2-9]{8}$'),
+  code text PRIMARY KEY CHECK (code ~ '^[A-HJ-NP-Z2-9]{10}$'),
   client_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL DEFAULT now() + interval '7 days',
@@ -149,19 +153,24 @@ $$;
 
 -- 5. Write guard -----------------------------------------------------------
 
--- Two things RLS cannot express, because a policy sees only the new row:
+-- Three things RLS cannot express, because a policy sees only the new row:
 --
 -- * A row never changes owner. UPDATE policies OR together, so with a coach
 --   policy in place a coach could otherwise re-point a client's row at their
 --   own account (the owner policy's WITH CHECK passes) or at another client.
---   No caller has ever needed to change user_id, so this applies to everyone
---   with a JWT; the service role (auth.uid() null) is left alone.
+-- * A row never changes id. The activity log pairs an UPDATE's old and new
+--   rows by id, so a re-keyed row would be rewritten with no record of it;
+--   and templates, sessions and programs refer to each other by id in text
+--   and JSON that no foreign key follows.
+--   No caller has ever needed to change either column (upserts conflict on
+--   them), so both rules apply to everyone with a JWT; the service role
+--   (auth.uid() null) is left alone.
 -- * A coach cannot change a client's subscription tier. The tier is billing,
 --   which stays the client's. The client's own write path (the plan toggle on
---   the credits screen) is untouched. On INSERT — a coach upserting a profile
---   for a client who has no row — the tier must be the column default
---   ('premium', from 20260518042920_subscription_tier.sql); a profile upsert
---   that leaves the tier out gets that default, so the app never trips this.
+--   the credits screen) is untouched. A coach's INSERT — which every upsert
+--   starts as, even onto an existing row — has its tier replaced by the
+--   client's current one (or 'free' for a client with no profile row), so
+--   neither an omitted tier nor a supplied one can set the plan.
 CREATE OR REPLACE FUNCTION public.coach_write_guard()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -176,12 +185,18 @@ BEGIN
   IF TG_OP = 'UPDATE' AND NEW.user_id IS DISTINCT FROM OLD.user_id THEN
     RAISE EXCEPTION 'a row cannot be moved to another account' USING ERRCODE = '42501';
   END IF;
+  IF TG_OP = 'UPDATE' AND NEW.id IS DISTINCT FROM OLD.id THEN
+    RAISE EXCEPTION 'a row''s id cannot be changed' USING ERRCODE = '42501';
+  END IF;
   IF TG_TABLE_NAME = 'profiles' AND NEW.user_id IS DISTINCT FROM v_actor THEN
     IF TG_OP = 'UPDATE' AND NEW.subscription_tier IS DISTINCT FROM OLD.subscription_tier THEN
       RAISE EXCEPTION 'a coach cannot change a client''s plan' USING ERRCODE = '42501';
     END IF;
-    IF TG_OP = 'INSERT' AND NEW.subscription_tier IS DISTINCT FROM 'premium' THEN
-      RAISE EXCEPTION 'a coach cannot set a client''s plan' USING ERRCODE = '42501';
+    IF TG_OP = 'INSERT' THEN
+      NEW.subscription_tier := coalesce(
+        (SELECT p.subscription_tier FROM profiles p WHERE p.user_id = NEW.user_id),
+        'free'
+      );
     END IF;
   END IF;
   RETURN NEW;
@@ -323,11 +338,31 @@ REVOKE ALL ON FUNCTION public.log_coach_link_ended() FROM PUBLIC, anon, authenti
 CREATE TRIGGER coach_link_ended AFTER DELETE ON public.coach_links
   FOR EACH ROW EXECUTE FUNCTION public.log_coach_link_ended();
 
--- 7. RPCs ------------------------------------------------------------------
+-- 7. A calendar row and its program belong to the same account ------------
+
+-- future_workouts.program_id referenced workout_programs(id) alone, and
+-- foreign-key checks and cascades ignore RLS. So a coach could re-point a
+-- client's calendar rows at a program of the coach's own and, after the link
+-- ended, delete that program — and the cascade would delete the client's
+-- rows, completed history included, with no coach policy involved and nothing
+-- logged. Keying the reference on (id, user_id) makes it impossible for a
+-- row to point at another account's program at all. Existing rows all agree
+-- (checked on production before this was written: 0 mismatched, 0 orphans).
+ALTER TABLE public.workout_programs
+  ADD CONSTRAINT workout_programs_id_user_id_key UNIQUE (id, user_id);
+ALTER TABLE public.future_workouts DROP CONSTRAINT future_workouts_program_id_fkey;
+ALTER TABLE public.future_workouts
+  ADD CONSTRAINT future_workouts_program_id_fkey
+  FOREIGN KEY (program_id, user_id) REFERENCES public.workout_programs (id, user_id) ON DELETE CASCADE;
+
+-- 8. RPCs ------------------------------------------------------------------
 
 -- A client mints a code. Any earlier code of theirs is cancelled first, so
 -- there is at most one live code per client and re-tapping "Invite a coach"
--- never leaves an old one redeemable.
+-- never leaves an old one redeemable. The per-client lock makes that hold for
+-- two taps at once (phone and laptop): without it each call's delete misses
+-- the other's uncommitted insert and both codes stay live. (Not a unique
+-- index on client_id: its violation would be caught by the retry below.)
 CREATE OR REPLACE FUNCTION public.create_coach_invite()
 RETURNS TABLE (invite_code text, invite_expires_at timestamptz)
 LANGUAGE plpgsql
@@ -344,12 +379,13 @@ BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not authenticated' USING ERRCODE = '42501';
   END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('coach_invite:' || v_uid::text, 0));
   DELETE FROM coach_invites WHERE client_id = v_uid;
   LOOP
     -- 256 is a multiple of 32, so byte % 32 is uniform over the alphabet.
-    v_bytes := extensions.gen_random_bytes(8);
+    v_bytes := extensions.gen_random_bytes(10);
     v_code := '';
-    FOR i IN 0..7 LOOP
+    FOR i IN 0..9 LOOP
       v_code := v_code || substr(v_alphabet, (get_byte(v_bytes, i) % 32) + 1, 1);
     END LOOP;
     BEGIN
@@ -457,7 +493,7 @@ GRANT EXECUTE ON FUNCTION public.redeem_coach_invite(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.list_my_clients() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.list_my_coaches() TO authenticated;
 
--- 8. Shifting a client's program -------------------------------------------
+-- 9. Shifting a client's program -------------------------------------------
 
 -- shift_program_workouts scoped both writes to user_id = auth.uid(), which a
 -- coach acting on a client's program can never satisfy. It now takes the

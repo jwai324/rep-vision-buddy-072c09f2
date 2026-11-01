@@ -20,7 +20,7 @@ interface CoachingScreenProps {
   onOpenClient: (client: { clientId: string; displayName: string | null }) => void;
 }
 
-const INVITE_CODE_LENGTH = 8;
+const INVITE_CODE_LENGTH = 10;
 
 const destructiveAction = 'bg-destructive text-destructive-foreground hover:bg-destructive/90';
 
@@ -97,7 +97,7 @@ const ClientsSection: React.FC<{ onOpenClient: CoachingScreenProps['onOpenClient
               setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9\- ]/g, ''));
               setRedeemError(null);
             }}
-            placeholder="ABCD-EFGH"
+            placeholder="ABCDE-FGHJK"
             autoCapitalize="characters"
             autoComplete="off"
             autoCorrect="off"

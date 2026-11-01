@@ -36,7 +36,10 @@ export function setSessionCacheOwner(ownerUserId: string): boolean {
   const cache = getSessionCache();
   if (!cache) return false;
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cache, ownerUserId }));
+    // Detached from the template it was started from: that template belongs
+    // to the previous owner, and naming it here would offer to update, or
+    // tick off, something this account does not have.
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cache, ownerUserId, templateId: null, templateSnapshot: null }));
     return true;
   } catch {
     return false;

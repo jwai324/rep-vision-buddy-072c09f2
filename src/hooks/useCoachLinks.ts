@@ -37,7 +37,7 @@ export function normaliseInviteCode(raw: string): string {
 
 export function formatInviteCode(code: string): string {
   const clean = normaliseInviteCode(code);
-  return clean.length > 4 ? `${clean.slice(0, 4)}-${clean.slice(4)}` : clean;
+  return clean.length > 5 ? `${clean.slice(0, 5)}-${clean.slice(5)}` : clean;
 }
 
 /**

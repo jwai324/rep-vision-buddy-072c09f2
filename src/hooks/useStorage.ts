@@ -443,7 +443,7 @@ export function useStorage() {
   // another's, never a redundancy. Keyed on the id, not the auth user object:
   // Supabase hands back a freshly deserialized user on every token refresh,
   // and keying on its identity re-ran the whole load on every refocus.
-  const { ownerId, authUserId, accessLost } = useCoach();
+  const { ownerId, authUserId, accessLost, refreshClients } = useCoach();
   const userId = ownerId;
   // Index is remounted when this changes, so it is fixed for the hook's life.
   const actingAsClient = !!userId && userId !== authUserId;
@@ -790,6 +790,10 @@ export function useStorage() {
     if (error) {
       console.error('[useStorage] saveSession error:', error);
       toast.error('Couldn\'t save this workout — check your connection and tap Save again');
+      // A refusal while acting may mean the client has just ended the link;
+      // asking again moves the coach out (and the workout to Keep or Discard)
+      // rather than leaving them retrying a save that can never land.
+      if (actingAsClient) void refreshClients();
       return false;
     }
     setHistory(prev => {
@@ -836,7 +840,7 @@ export function useStorage() {
       setFutureWorkouts(prev => prev.map(fw => updatedIds.has(fw.id) ? { ...fw, completed: true } : fw));
     }
     return true;
-  }, [userId, futureWorkouts, templates, releaseScheduledCompletions]);
+  }, [userId, actingAsClient, refreshClients, futureWorkouts, templates, releaseScheduledCompletions]);
 
   // Writes to one session row are chained rather than raced. The summary's
   // recovery-activity chips fire a save per tap, and two in flight at once
