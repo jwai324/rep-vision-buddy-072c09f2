@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useCoach, type CoachClient } from '@/contexts/CoachContext';
 import {
-  endCoachLink, formatInviteCode, normaliseInviteCode, redeemCoachInvite, useCoachLinks,
+  COACH_NAME_MAX, endCoachLink, formatInviteCode, isUsableCoachName, normaliseInviteCode, redeemCoachInvite, useCoachLinks,
   type MyCoach,
 } from '@/hooks/useCoachLinks';
 import { describeActivity } from '@/utils/coachActivity';
@@ -18,6 +18,9 @@ import { describeActivity } from '@/utils/coachActivity';
 interface CoachingScreenProps {
   onBack: () => void;
   onOpenClient: (client: { clientId: string; displayName: string | null }) => void;
+  /** The signed-in user's own display name: what a client sees as their coach. */
+  ownDisplayName: string | null;
+  onSaveOwnName: (name: string) => Promise<void> | void;
 }
 
 const INVITE_CODE_LENGTH = 10;
@@ -41,8 +44,14 @@ const SectionTitle: React.FC<{ icon: React.ReactNode; children: React.ReactNode 
   </div>
 );
 
-const ClientsSection: React.FC<{ onOpenClient: CoachingScreenProps['onOpenClient'] }> = ({ onOpenClient }) => {
+const ClientsSection: React.FC<Pick<CoachingScreenProps, 'onOpenClient' | 'ownDisplayName' | 'onSaveOwnName'>> = ({
+  onOpenClient, ownDisplayName, onSaveOwnName,
+}) => {
   const { clients, clientsLoaded, refreshClients } = useCoach();
+  // Asked for only while the account has no name a client could be shown
+  // (sign-up seeds it with the email address); saved before the link is made.
+  const needsName = !isUsableCoachName(ownDisplayName);
+  const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [redeeming, setRedeeming] = useState(false);
@@ -52,12 +61,20 @@ const ClientsSection: React.FC<{ onOpenClient: CoachingScreenProps['onOpenClient
     e.preventDefault();
     if (redeeming) return;
     const clean = normaliseInviteCode(code);
+    const typedName = name.trim();
+    if (needsName && !isUsableCoachName(typedName)) {
+      setRedeemError(typedName.includes('@')
+        ? 'Use your name, not an email address. Your client will see it.'
+        : 'Add your name. Your client will see it.');
+      return;
+    }
     if (clean.length !== INVITE_CODE_LENGTH) {
       setRedeemError(`Invite codes are ${INVITE_CODE_LENGTH} characters.`);
       return;
     }
     setRedeeming(true);
     setRedeemError(null);
+    if (needsName) await onSaveOwnName(typedName);
     const result = await redeemCoachInvite(clean);
     setRedeeming(false);
     // `in` rather than `!result.ok`: without strictNullChecks a boolean
@@ -86,6 +103,24 @@ const ClientsSection: React.FC<{ onOpenClient: CoachingScreenProps['onOpenClient
       </SectionTitle>
 
       <form onSubmit={connect} className="flex flex-col gap-2 mb-4">
+        {needsName && (
+          <>
+            <label htmlFor="coach-own-name" className="text-xs text-muted-foreground">
+              Your name
+            </label>
+            <Input
+              id="coach-own-name"
+              value={name}
+              onChange={e => { setName(e.target.value); setRedeemError(null); }}
+              placeholder="e.g. Alex Rivera"
+              autoComplete="name"
+              maxLength={COACH_NAME_MAX}
+            />
+            <p className="text-[11px] text-muted-foreground -mt-1">
+              Your client sees this in their coach list and activity log.
+            </p>
+          </>
+        )}
         <label htmlFor="coach-invite-code" className="text-xs text-muted-foreground">
           Enter a client's code
         </label>
@@ -105,7 +140,10 @@ const ClientsSection: React.FC<{ onOpenClient: CoachingScreenProps['onOpenClient
             maxLength={16}
             className="font-mono tracking-widest uppercase"
           />
-          <Button type="submit" disabled={redeeming || normaliseInviteCode(code).length === 0}>
+          <Button
+            type="submit"
+            disabled={redeeming || normaliseInviteCode(code).length === 0 || (needsName && name.trim().length === 0)}
+          >
             {redeeming ? 'Connecting…' : 'Connect'}
           </Button>
         </div>
@@ -379,7 +417,7 @@ const ActivitySection: React.FC<{ links: CoachLinks }> = ({ links }) => {
   );
 };
 
-export const CoachingScreen: React.FC<CoachingScreenProps> = ({ onBack, onOpenClient }) => {
+export const CoachingScreen: React.FC<CoachingScreenProps> = ({ onBack, onOpenClient, ownDisplayName, onSaveOwnName }) => {
   const links = useCoachLinks();
 
   return (
@@ -391,7 +429,7 @@ export const CoachingScreen: React.FC<CoachingScreenProps> = ({ onBack, onOpenCl
         <h2 className="text-xl font-extrabold text-foreground">Coaching</h2>
       </div>
 
-      <ClientsSection onOpenClient={onOpenClient} />
+      <ClientsSection onOpenClient={onOpenClient} ownDisplayName={ownDisplayName} onSaveOwnName={onSaveOwnName} />
       <CoachesSection links={links} />
       <ActivitySection links={links} />
     </div>

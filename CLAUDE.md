@@ -1144,6 +1144,13 @@ or settings for anyone). Billing (`user_token_balance`, `token_ledger`,
 policy and must never get one. Links are created only by
 `redeem_coach_invite`; there is no INSERT grant on `coach_links`.
 
+**A client sees their coach's name, never an address.** Sign-up seeds
+`display_name` with the email, so `redeem_coach_invite` refuses a coach whose
+display name is blank or contains `@`, and the Connect form asks for "Your
+name" (saved to the coach's profile) when it would be refused. The name is
+read live for the coach list and snapshotted into each `coach_activity` row,
+so the record still reads after the coach's account is gone.
+
 Three consequences that are easy to break:
 
 - **Every query on a coach table filters `user_id` explicitly.** Under the

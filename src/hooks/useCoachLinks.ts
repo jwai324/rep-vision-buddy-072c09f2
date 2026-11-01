@@ -31,6 +31,17 @@ export const ACTIVITY_PAGE_SIZE = 50;
 const ACTIVITY_COLUMNS =
   'id, client_id, coach_id, coach_name, table_name, action, row_count, labels, changed_fields, created_at';
 
+/**
+ * Whether a display name can be shown to a client as their coach's name. The
+ * server refuses a link otherwise (redeem_coach_invite): sign-up seeds the
+ * display name with the email address, which is not a name to show anyone.
+ */
+export function isUsableCoachName(name: string | null | undefined): boolean {
+  return !!name && name.trim().length > 0 && !name.includes('@');
+}
+
+export const COACH_NAME_MAX = 80;
+
 export function normaliseInviteCode(raw: string): string {
   return raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }

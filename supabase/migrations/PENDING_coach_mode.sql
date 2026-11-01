@@ -403,6 +403,13 @@ $$;
 
 -- Whoever redeems a live code becomes that client's coach. The code is
 -- normalised (case, spaces, the dash the app displays) before lookup.
+--
+-- The coach must have a name first. The client sees it in their coach list
+-- and in every activity entry, and it is how they know who holds the keys to
+-- their account — but sign-up seeds display_name with the email address, so
+-- an account that never set one would show its email instead. A missing name,
+-- or one that could be an address (it contains '@'), is refused before the
+-- link is made; the app asks for the name on the same screen.
 CREATE OR REPLACE FUNCTION public.redeem_coach_invite(p_code text)
 RETURNS TABLE (client_id uuid, client_name text)
 LANGUAGE plpgsql
@@ -425,6 +432,14 @@ BEGIN
   END IF;
   IF v_invite.client_id = v_uid THEN
     RAISE EXCEPTION 'That is your own invite code.' USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.profiles p
+     WHERE p.user_id = v_uid
+       AND btrim(coalesce(p.display_name, '')) <> ''
+       AND position('@' in p.display_name) = 0
+  ) THEN
+    RAISE EXCEPTION 'Add your name first. It''s what your client will see.' USING ERRCODE = '22023';
   END IF;
 
   INSERT INTO public.coach_links (coach_id, client_id)

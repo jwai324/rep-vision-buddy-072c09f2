@@ -102,10 +102,18 @@ const activityRow = (overrides: Partial<CoachActivityRow>): CoachActivityRow => 
   ...overrides,
 });
 
-const renderScreen = () => {
+const renderScreen = (ownDisplayName: string | null = 'Coach Bob') => {
   const onOpenClient = vi.fn();
-  render(<CoachingScreen onBack={vi.fn()} onOpenClient={onOpenClient} />);
-  return { onOpenClient };
+  const onSaveOwnName = vi.fn(async () => {});
+  render(
+    <CoachingScreen
+      onBack={vi.fn()}
+      onOpenClient={onOpenClient}
+      ownDisplayName={ownDisplayName}
+      onSaveOwnName={onSaveOwnName}
+    />,
+  );
+  return { onOpenClient, onSaveOwnName };
 };
 
 describe('CoachingScreen', () => {
@@ -163,6 +171,33 @@ describe('CoachingScreen', () => {
     expect(mocks.rpc).toHaveBeenCalledWith('redeem_coach_invite', { p_code: 'ABCDEFGHJK' });
     expect(mocks.toastSuccess).toHaveBeenCalledWith("You're now coaching Alice");
     expect(input).toHaveValue('');
+  });
+
+  it('does not ask for a name when the coach already has one', () => {
+    renderScreen('Coach Bob');
+    expect(screen.queryByLabelText('Your name')).toBeNull();
+  });
+
+  it('asks for a name when the account only has its email, and saves it before linking', async () => {
+    rpcResults.redeem_coach_invite = { data: [{ client_id: 'client-1', client_name: 'Alice' }], error: null };
+    const { onSaveOwnName } = renderScreen('bob@example.com');
+
+    fireEvent.change(screen.getByLabelText("Enter a client's code"), { target: { value: 'ABCDEFGHJK' } });
+    const connect = screen.getByRole('button', { name: 'Connect' });
+    expect(connect).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'bob@example.com' } });
+    fireEvent.click(connect);
+    expect(await screen.findByRole('alert')).toHaveTextContent('not an email address');
+    expect(onSaveOwnName).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalledWith('redeem_coach_invite', expect.anything());
+
+    fireEvent.change(screen.getByLabelText('Your name'), { target: { value: '  Bob Rivera ' } });
+    fireEvent.click(connect);
+    await waitFor(() => expect(mocks.refreshClients).toHaveBeenCalled());
+    expect(onSaveOwnName).toHaveBeenCalledWith('Bob Rivera');
+    expect(onSaveOwnName.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.rpc.mock.invocationCallOrder[mocks.rpc.mock.calls.findIndex(c => c[0] === 'redeem_coach_invite')]);
   });
 
   it('shows the server\'s refusal and does not refresh', async () => {

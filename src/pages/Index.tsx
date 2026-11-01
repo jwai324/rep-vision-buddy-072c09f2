@@ -1028,6 +1028,8 @@ const IndexInner = ({ storage }: { storage: ReturnType<typeof useStorage> }) => 
         <CoachingScreen
           onBack={() => setScreen({ type: 'settings' })}
           onOpenClient={switchIdentity}
+          ownDisplayName={storage.profile.displayName}
+          onSaveOwnName={(name) => storage.updateProfile({ displayName: name })}
         />
       )}
 
